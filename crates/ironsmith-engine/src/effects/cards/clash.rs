@@ -179,36 +179,6 @@ fn winner_tags(winner: Option<PlayerId>) -> HashMap<TagKey, Vec<PlayerId>> {
     tags
 }
 
-fn reveal_clash_card(
-    game: &GameState,
-    ctx: &mut ExecutionContext,
-    player: PlayerId,
-    card: ObjectId,
-) -> TriggerEvent {
-    for viewer_idx in 0..game.players.len() {
-        let viewer = PlayerId::from_index(viewer_idx as u8);
-        let view_ctx = ViewCardsContext::new(
-            viewer,
-            player,
-            Some(ctx.source),
-            Zone::Library,
-            "Reveal the top card of a library",
-        )
-        .with_public(true);
-        ctx.decision_maker
-            .view_cards(game, viewer, &[card], &view_ctx);
-    }
-
-    let snapshot = game
-        .object(card)
-        .map(|object| ObjectSnapshot::from_object(object, game));
-
-    TriggerEvent::new_with_provenance(
-        CardRevealedEvent::new(player, card, Zone::Library, Some(ctx.source), snapshot),
-        ctx.provenance,
-    )
-}
-
 impl EffectExecutor for ClashEffect {
     fn execute(
         &self,
@@ -241,11 +211,21 @@ impl EffectExecutor for ClashEffect {
         });
 
         let mut events = Vec::new();
-        if let Some(card) = controller_card {
-            events.push(reveal_clash_card(game, ctx, ctx.controller, card));
-        }
-        if let Some(card) = opponent_card {
-            events.push(reveal_clash_card(game, ctx, opponent, card));
+        let mut reveals = Vec::new();
+        for (player, card) in [(ctx.controller, controller_card), (opponent, opponent_card)] {
+            if let Some(card) = card {
+                let cards = ObjectSnapshot::from_object_id(game, card)
+                    .into_iter()
+                    .collect();
+                reveals.push(super::reveal_objects(
+                    game,
+                    ctx,
+                    cards,
+                    Some(player),
+                    "Reveal the top card of a library",
+                    None,
+                )?);
+            }
         }
 
         let mut cards_to_bottom = Vec::new();
@@ -282,14 +262,15 @@ impl EffectExecutor for ClashEffect {
             ctx.provenance,
         ));
 
-        Ok(
+        Ok(EffectOutcome::aggregate_with_primary_result(
             EffectOutcome::count(if clash_winner == Some(ctx.controller) {
                 1
             } else {
                 0
             })
             .with_events(events),
-        )
+            reveals,
+        ))
     }
 }
 

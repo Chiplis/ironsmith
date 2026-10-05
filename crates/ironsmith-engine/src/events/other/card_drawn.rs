@@ -19,6 +19,7 @@ pub struct CardsDrawnEvent {
     pub player: PlayerId,
     /// The cards that were drawn (in hand after drawing)
     pub cards: Vec<ObjectId>,
+    pub snapshots: Vec<ObjectSnapshot>,
     /// Whether this draw action started as the first draw this turn
     pub is_first_this_turn: bool,
     /// Whether this draw happened during the drawing player's draw step.
@@ -28,6 +29,11 @@ pub struct CardsDrawnEvent {
 }
 
 impl CardsDrawnEvent {
+    pub fn with_snapshots(mut self, snapshots: Vec<ObjectSnapshot>) -> Self {
+        self.snapshots = snapshots;
+        self
+    }
+
     /// Create a new cards drawn event.
     pub fn new(player: PlayerId, cards: Vec<ObjectId>, is_first_this_turn: bool) -> Self {
         Self::new_with_step_context(player, cards, is_first_this_turn, false, 0)
@@ -44,6 +50,7 @@ impl CardsDrawnEvent {
         Self {
             player,
             cards,
+            snapshots: Vec::new(),
             is_first_this_turn,
             is_during_players_draw_step,
             cards_previously_drawn_this_draw_step,

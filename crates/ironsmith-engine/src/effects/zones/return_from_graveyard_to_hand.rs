@@ -1,6 +1,5 @@
 //! Return from graveyard to hand effect implementation.
 
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
@@ -13,55 +12,10 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::ReturnFromGraveyardToHandEffect;
 
-type ReturnZoneReceipts = Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>)>;
-
-/// Effect that returns a target card from a graveyard to its owner's hand.
-///
-/// This is used for recursion spells like Regrowth, Raise Dead, etc.
-///
-/// # Fields
-///
-/// * `target` - Which card to return (resolved from `ChooseSpec`)
-///
-/// # Example
-///
-/// ```ignore
-/// // Return target creature card from your graveyard to your hand
-/// let effect = ReturnFromGraveyardToHandEffect::new(ChooseSpec::creature_card_in_graveyard());
-/// ```
-fn return_object(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    object_id: ObjectId,
-    receipts: &mut ReturnZoneReceipts,
-) -> Result<Option<ObjectId>, ExecutionError> {
-    let Some(obj) = game.object(object_id) else {
-        return Ok(None);
-    };
-    if obj.zone != Zone::Graveyard {
-        return Ok(None);
-    }
-    let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-    let receipt = apply_zone_change_with_context_and_additional_effects(
-    game,
-    object_id,
-    Zone::Graveyard,
-    Zone::Hand,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-    let original = receipt.original.clone();
-    receipts.push((object_id, receipt));
-    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
-    Ok(match original {
-        EventOutcome::Proceed(result) => result.new_object_id,
-        EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => None,
-    })
-}
-
 impl EffectExecutor for ReturnFromGraveyardToHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Returned)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -86,82 +40,86 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let mut receipts: ReturnZoneReceipts = Vec::new();
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let original = (|| -> Result<EffectOutcome, ExecutionError> {
-        let mut returned = Vec::new();
-
-        if self.random {
-            let base = self.target.base();
-            let ChooseSpec::Object(filter) = base else {
-                return Ok(EffectOutcome::impossible());
-            };
-            if filter.zone != Some(Zone::Graveyard) {
-                return Ok(EffectOutcome::impossible());
-            }
-
-            let count = self.target.count();
-            let requested = if count.is_dynamic_x() {
-                0
+            let targets = if self.random {
+                let ChooseSpec::Object(filter) = self.target.base() else {
+                    return Ok(EffectOutcome::impossible());
+                };
+                if filter.zone != Some(Zone::Graveyard) {
+                    return Ok(EffectOutcome::impossible());
+                }
+                let count = self.target.count();
+                let requested = if count.is_dynamic_x() {
+                    0
+                } else {
+                    count.max.unwrap_or(count.min)
+                };
+                if requested == 0 {
+                    return Ok(EffectOutcome::with_objects(Vec::new()));
+                }
+                let filter_ctx = ctx.filter_context(game);
+                let mut candidates = game
+                    .players
+                    .iter()
+                    .flat_map(|player| player.graveyard.iter().copied())
+                    .filter(|id| {
+                        game.object(*id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                game.shuffle_slice(&mut candidates);
+                candidates.into_iter().take(requested).collect::<Vec<_>>()
             } else {
-                count.max.unwrap_or(count.min)
+                match resolve_objects_for_effect(game, ctx, &self.target) {
+                    Ok(objects) => objects,
+                    Err(ExecutionError::InvalidTarget) => {
+                        return Ok(EffectOutcome::target_invalid());
+                    }
+                    Err(error) => return Err(error),
+                }
             };
-            if requested == 0 {
-                return Ok(EffectOutcome::with_objects(Vec::new()));
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-
-            let filter_ctx = ctx.filter_context(game);
-            let mut candidates: Vec<_> = game
-                .players
-                .iter()
-                .flat_map(|p| p.graveyard.iter().copied())
+            let requests = targets
+                .into_iter()
                 .filter(|id| {
                     game.object(*id)
-                        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                        .is_some_and(|object| object.zone == Zone::Graveyard)
+                })
+                .map(|id| {
+                    super::PreparedZoneMove::capture(
+                        game,
+                        id,
+                        Zone::Graveyard,
+                        Zone::Hand,
+                        ctx.cause.clone(),
+                        None,
+                    )
                 })
                 .collect();
-
-            game.shuffle_slice(&mut candidates);
-            for id in candidates.into_iter().take(requested) {
-                if let Some(new_id) = return_object(game, ctx, id, &mut receipts)? {
-                    returned.push(new_id);
+            super::execute_zone_moves(game, ctx, requests, |game, _, receipts| {
+                let returned = receipts
+                    .iter()
+                    .filter_map(|(_, receipt)| match &receipt.original {
+                        EventOutcome::Proceed(change) => change.new_object_id,
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                if returned.is_empty() && !self.random {
+                    return Ok(EffectOutcome::target_invalid());
                 }
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
-
-            return Ok(EffectOutcome::with_objects(returned.clone())
-                .with_affected_objects_from_game(game, returned));
-        }
-
-        // Non-random: return all resolved object targets that are still in a graveyard.
-        let resolved_targets = match resolve_objects_for_effect(game, ctx, &self.target) {
-            Ok(targets) => targets,
-            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-            Err(error) => return Err(error),
-        };
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        for target_id in resolved_targets {
-            if let Some(new_id) = return_object(game, ctx, target_id, &mut receipts)? {
-                returned.push(new_id);
-            }
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        }
-
-        if returned.is_empty() {
-            Ok(EffectOutcome::target_invalid())
-        } else {
-            Ok(EffectOutcome::with_objects(returned.clone())
-                .with_affected_objects_from_game(game, returned))
-        }
-        })()?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        super::finish_zone_change_receipts(game, ctx, original, receipts)
+                Ok(EffectOutcome::with_objects(returned.clone())
+                    .with_affected_objects_from_game(game, returned))
+            })
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         result
     }
 

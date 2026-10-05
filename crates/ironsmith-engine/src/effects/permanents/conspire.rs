@@ -104,21 +104,17 @@ impl EffectExecutor for ConspireCostEffect {
             ));
         }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
-        for id in chosen {
-            if game.object(id).is_some() && !game.is_tapped(id) {
-                game.tap(id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-            }
-        }
+        let taps = super::tap::tap_cost_objects(game, ctx, &chosen)?;
+        let mut events = taps.events.clone();
 
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
-        Ok(EffectOutcome::resolved().with_events(events))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved().with_events(events),
+            [{
+                let mut receipts = taps.clone();
+                receipts.events.clear();
+                receipts
+            }],
+        ))
     }
 
     fn cost_description(&self) -> Option<String> {

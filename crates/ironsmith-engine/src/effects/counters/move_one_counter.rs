@@ -17,7 +17,8 @@ impl EffectExecutor for MoveOneCounterEffect {
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
             let target_pair = if crate::game_loop::requires_target_selection(&self.from)
-                && crate::game_loop::requires_target_selection(&self.to) {
+                && crate::game_loop::requires_target_selection(&self.to)
+            {
                 super::assigned_counter_transfer_pair(ctx)
             } else {
                 let from = resolve_objects_for_effect(game, ctx, &self.from)?;
@@ -72,23 +73,17 @@ impl EffectExecutor for MoveOneCounterEffect {
                 if to_remove == 0 {
                     continue;
                 }
-                let mut outcome = super::remove_moved_counters(game, ctx, from_id, counter_type, 1)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, 1)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                outcome = EffectOutcome::aggregate([outcome, placed]);
-                outcome.set_value(crate::effect::OutcomeValue::Count(1));
-                return Ok(outcome);
+                let source = game.object(from_id).map(|object| (from_id, object.zone));
+                return super::transfer_counters(game, ctx, source, to_id, counter_type, 1);
             }
 
             Ok(EffectOutcome::count(0))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));

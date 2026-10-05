@@ -230,29 +230,19 @@ impl EffectExecutor for SaddleCostEffect {
             ));
         }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
+        let taps = super::tap::tap_cost_objects(game, ctx, &chosen)?;
+        let mut events = taps.events.clone();
         let saddle_count = chosen.len();
         for id in &chosen {
-            if game.object(*id).is_some() && !game.is_tapped(*id) {
-                game.tap(*id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, *id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-                events.push(keyword_saddle_event(
-                    game,
-                    *id,
-                    source,
-                    controller,
-                    saddle_count,
-                    ctx.provenance,
-                ));
-            }
+            events.push(keyword_saddle_event(
+                game,
+                *id,
+                source,
+                controller,
+                saddle_count,
+                ctx.provenance,
+            ));
         }
-
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
 
         // Record saddle contributors for "saddled it this turn" references.
         let entry = game
@@ -267,7 +257,14 @@ impl EffectExecutor for SaddleCostEffect {
             }
         }
 
-        Ok(EffectOutcome::resolved().with_events(events))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved().with_events(events),
+            [{
+                let mut receipts = taps.clone();
+                receipts.events.clear();
+                receipts
+            }],
+        ))
     }
 
     fn cost_description(&self) -> Option<String> {

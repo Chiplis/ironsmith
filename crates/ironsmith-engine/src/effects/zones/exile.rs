@@ -1,7 +1,7 @@
 //! Exile effect implementation.
 
 use crate::color::{Color, ColorSet};
-use crate::effect::{EffectOutcome, OutcomeObjectMemory, OutcomeStatus};
+use crate::effect::{EffectOutcome, OutcomeStatus};
 use crate::effects::helpers::{
     ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
 };
@@ -204,6 +204,9 @@ fn matching_cost_candidates(
 }
 
 impl EffectExecutor for ExileEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Exiled)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         // Exiling the objects selected for the iterated player is choice-free
         // once the surrounding effect has established that player.  Defer
@@ -255,7 +258,7 @@ impl EffectExecutor for ExileEffect {
                     if count.is_single() {
                         let pre_memory = ctx.targets.iter().find_map(|target| match target {
                             ResolvedTarget::Object(object_id) => {
-                                OutcomeObjectMemory::from_object_id(game, *object_id)
+                                ObjectSnapshot::from_object_id(game, *object_id)
                             }
                             ResolvedTarget::Player(_) => None,
                         });
@@ -346,8 +349,7 @@ impl EffectExecutor for ExileEffect {
                         };
                         for target in selected {
                             if let ResolvedTarget::Object(object_id) = target {
-                                let pre_memory =
-                                    OutcomeObjectMemory::from_object_id(game, object_id);
+                                let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
                                 let status = exile_object(
                                     game,
                                     ctx,
@@ -437,8 +439,7 @@ impl EffectExecutor for ExileEffect {
                                             moved_source = result.new_object_ids.first().copied();
                                         }
                                     }
-                                    affected_memory
-                                        .push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
+                                    affected_memory.push(Clone::clone(&pre_snapshot));
                                     affected_ids.extend(result.new_object_ids.iter().copied());
                                     for &new_id in &result.new_object_ids {
                                         if self.face_down && result.final_zone == Zone::Exile {
@@ -472,8 +473,7 @@ impl EffectExecutor for ExileEffect {
                             }
                             EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
                             EventOutcome::Replaced => {
-                                affected_memory
-                                    .push(OutcomeObjectMemory::from_snapshot(&pre_snapshot));
+                                affected_memory.push(Clone::clone(&pre_snapshot));
                                 if let Some(result) = take_recorded_zone_change(game, object_id) {
                                     affected_ids.extend(result.new_object_ids);
                                 }

@@ -209,17 +209,25 @@ impl EffectExecutor for MoveAllCountersEffect {
             // Bind live movement versus historical placement once, before
             // replacement programs can change the source's incarnation/zone.
             // A live source that later departs must not turn into an LKI placement.
-            let live_source = from_id.filter(|id| {
-                game.object(*id).is_some_and(|obj| {
-                    if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
-                        return false;
-                    }
-                    from_tag.and_then(|tag| {
-                        ctx.get_tagged_all(tag).and_then(|snapshots| snapshots.iter()
-                            .find(|snapshot| snapshot.object_id == *id).or_else(|| snapshots.first()))
-                    }).is_none_or(|snapshot| snapshot.zone == obj.zone)
+            let live_source = from_id
+                .filter(|id| {
+                    game.object(*id).is_some_and(|obj| {
+                        if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
+                            return false;
+                        }
+                        from_tag
+                            .and_then(|tag| {
+                                ctx.get_tagged_all(tag).and_then(|snapshots| {
+                                    snapshots
+                                        .iter()
+                                        .find(|snapshot| snapshot.object_id == *id)
+                                        .or_else(|| snapshots.first())
+                                })
+                            })
+                            .is_none_or(|snapshot| snapshot.zone == obj.zone)
+                    })
                 })
-            }).and_then(|id| game.object(id).map(|object| (id, object.zone)))
+                .and_then(|id| game.object(id).map(|object| (id, object.zone)))
                 .filter(|_| self.remove_from_source);
             if self.remove_from_source && live_source.is_none() {
                 return Ok(EffectOutcome::count(0));
@@ -228,38 +236,32 @@ impl EffectExecutor for MoveAllCountersEffect {
                 return Ok(EffectOutcome::count(0));
             }
             let mut total_moved = 0i64;
-            let mut outcome = EffectOutcome::count(0);
-            for (counter_type, count) in counters_to_move {
-                let budget = if let Some((from_id, zone)) = live_source {
-                    if game.is_phased_out(from_id)
-                        || !game.object(from_id).is_some_and(|object| object.zone == zone)
-                        || !super::move_destination_can_receive_counters(game, to_id, counter_type)
-                    {
-                        continue;
-                    }
-                    let budget = count.min(game.counter_count(from_id, counter_type));
-                    if budget == 0 { continue; }
-                    let removed = super::remove_moved_counters(game, ctx, from_id, counter_type, budget)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    outcome = EffectOutcome::aggregate([outcome, removed]);
-                    budget
-                } else {
-                    // CR 122.8/122.9: historical counters are placement only.
-                    count
-                };
-                if budget == 0 { continue; }
-                total_moved = total_moved.checked_add(i64::from(budget)).ok_or_else(||
-                    ExecutionError::InternalError("counter movement total exceeds the supported wide count range".into()))?;
-                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, budget)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                outcome = EffectOutcome::aggregate([outcome, placed]);
+            let mut children = Vec::new();
+            for (kind, count) in counters_to_move {
+                let transferred =
+                    super::transfer_counters(game, ctx, live_source, to_id, kind, count)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                total_moved = total_moved
+                    .checked_add(transferred.instruction_result().count_or_zero())
+                    .ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "counter movement total exceeds the supported wide count range".into(),
+                        )
+                    })?;
+                children.push(transferred);
             }
-
-            outcome.set_value(crate::effect::OutcomeValue::Count(total_moved));
-            Ok(outcome)
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(total_moved),
+                children,
+            ))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));

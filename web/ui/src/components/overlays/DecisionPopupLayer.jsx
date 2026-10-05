@@ -41,6 +41,7 @@ import {
   buildObjectNameById,
 } from "@/lib/decision-object-meta";
 import {
+  presentOptionalReplacementDecision,
   defaultEffectOrderingOrder,
   isEffectOrderingDecision,
   normalizeEffectOrderingOrder,
@@ -1343,7 +1344,10 @@ function MobileDecisionDock({
 }) {
   const ui = useUiText();
   const { state, multiplayer, playerAccentOverrides } = useGame();
-  const decision = state?.decision || null;
+  const decision = useMemo(
+    () => presentOptionalReplacementDecision(state?.decision || null),
+    [state?.decision],
+  );
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const { style: decisionButtonStyle, isLocal: localDecisionButton } =
     useDecisionButtonAccent(state, decision, playerAccentOverrides);
@@ -1638,7 +1642,10 @@ function MobileBattleDecisionLayer({
     setHoverLinkedObjects,
     clearHoverLinkedObjects,
   } = useHover();
-  const decision = state?.decision || null;
+  const decision = useMemo(
+    () => presentOptionalReplacementDecision(state?.decision || null),
+    [state?.decision],
+  );
   // Prompts quote the source card, so they follow that card's localized text.
   const { t } = useI18n();
   const localizeDecisionText = useTranslatedDecisionText(decision);
@@ -2463,7 +2470,10 @@ function PriorityBar({
     clearHoverLinkedObjects,
     showAnchoredCardPreview,
   } = useHover();
-  const decision = state?.decision || null;
+  const decision = useMemo(
+    () => presentOptionalReplacementDecision(state?.decision || null),
+    [state?.decision],
+  );
   // Prompts quote the source card, so they follow that card's localized text.
   const { t } = useI18n();
   const localizeDecisionText = useTranslatedDecisionText(decision);
@@ -3963,7 +3973,10 @@ export default function DecisionPopupLayer({
   quickControls = null,
 }) {
   const { state } = useGame();
-  const decision = state?.decision || null;
+  const decision = useMemo(
+    () => presentOptionalReplacementDecision(state?.decision || null),
+    [state?.decision],
+  );
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
 
   if (!decision) {

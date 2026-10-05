@@ -5,9 +5,7 @@ use crate::effects::{
     ChooseObjectsEffect, EffectExecutor, ExecutionContext, ExecutionError, MayEffect,
     SequenceEffect, execute_effect,
 };
-use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_execution_context,
-};
+use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -31,111 +29,122 @@ impl EffectExecutor for LearnEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let would_event = Event::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
-            ctx.provenance,
-        );
-        let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
-        crate::effects::replacement::execute_event_expansion(game, ctx, replacement_result, |game, ctx, original| {
-        match original {
-            TraitEventResult::Replaced {
-                effects, source, controller, context, ..
-            } => {
-                return crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects(
-                    game, ctx, effects, source, controller, &context, None,
-                );
-            }
-            TraitEventResult::Prevented => return Ok(EffectOutcome::count(0)),
-            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
-                return Ok(EffectOutcome::count(0));
-            }
-            TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
-            TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("keyword commit received an unflattened result".into())),
-        }
-
-        // CR 701.48a offers the discard first. Only a player who did not
-        // actually discard a card gets the later Lesson choice.
-        let discard_outcome = execute_effect(
-            game,
-            &Effect::new(MayEffect::single(Effect::discard(1))),
-            ctx,
-        )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        if discard_outcome.count_or_zero() > 0 {
-            let draw_outcome = execute_effect(game, &Effect::draw(1), ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            return Ok(
-                EffectOutcome::aggregate([discard_outcome, draw_outcome]).with_event(
-                    crate::triggers::TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Learn,
-                            ctx.controller,
-                            ctx.source,
-                            1,
-                        ),
-                        ctx.provenance,
-                    ),
-                ),
+            let would_event = Event::new_with_provenance(
+                KeywordActionEvent::new(KeywordActionKind::Learn, ctx.controller, ctx.source, 1),
+                ctx.provenance,
             );
-        }
+            crate::effects::composition::execute_keyword_action(
+                game,
+                ctx,
+                would_event,
+                crate::effects::composition::KeywordActionOutput::Body,
+                crate::effects::composition::KeywordActionAmount::Repetitions,
+                |game, ctx, action| {
+                    // CR 701.48a offers the discard first. Only a player who did not
+                    // actually discard a card gets the later Lesson choice.
+                    let discard_outcome = execute_effect(
+                        game,
+                        &Effect::new(MayEffect::single(Effect::discard(1))),
+                        ctx,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    if discard_outcome.count_or_zero() > 0 {
+                        let draw_outcome = execute_effect(game, &Effect::draw(1), ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        return Ok(EffectOutcome::aggregate([discard_outcome, draw_outcome])
+                            .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                                KeywordActionEvent::new(
+                                    KeywordActionKind::Learn,
+                                    ctx.controller,
+                                    action.source,
+                                    1,
+                                ),
+                                ctx.provenance,
+                            )));
+                    }
 
-        let lesson_filter = ObjectFilter::default()
-            .with_subtype(Subtype::Lesson)
-            .owned_by(PlayerFilter::You)
-            .in_zone(Zone::OutsideGame);
+                    let lesson_filter = ObjectFilter::default()
+                        .with_subtype(Subtype::Lesson)
+                        .owned_by(PlayerFilter::You)
+                        .in_zone(Zone::OutsideGame);
 
-        let choose_lesson = Effect::new(
-            ChooseObjectsEffect::new(lesson_filter, 1, PlayerFilter::You, LEARN_LESSON_TAG)
-                .as_optional_search()
-                .in_zone(Zone::OutsideGame),
-        );
-        let choose_outcome = execute_effect(game, &choose_lesson, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        if choose_outcome
-            .objects()
-            .is_some_and(|objects| !objects.is_empty())
-        {
-            let reveal_and_put = SequenceEffect::new(vec![
-                Effect::new(crate::effects::RevealTaggedEffect::new(LEARN_LESSON_TAG)),
-                Effect::move_to_zone(ChooseSpec::tagged(LEARN_LESSON_TAG), Zone::Hand, false),
-            ]);
-            let lesson_outcome = execute_effect(game, &Effect::new(reveal_and_put), ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            return Ok(
-                EffectOutcome::aggregate([discard_outcome, choose_outcome, lesson_outcome])
-                    .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Learn,
-                            ctx.controller,
-                            ctx.source,
+                    let choose_lesson = Effect::new(
+                        ChooseObjectsEffect::new(
+                            lesson_filter,
                             1,
-                        ),
-                        ctx.provenance,
-                    )),
-            );
-        }
+                            PlayerFilter::You,
+                            LEARN_LESSON_TAG,
+                        )
+                        .as_optional_search()
+                        .in_zone(Zone::OutsideGame),
+                    );
+                    let choose_outcome = execute_effect(game, &choose_lesson, ctx)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    if choose_outcome
+                        .objects()
+                        .is_some_and(|objects| !objects.is_empty())
+                    {
+                        let reveal_and_put = SequenceEffect::new(vec![
+                            Effect::new(crate::effects::RevealTaggedEffect::new(LEARN_LESSON_TAG)),
+                            Effect::move_to_zone(
+                                ChooseSpec::tagged(LEARN_LESSON_TAG),
+                                Zone::Hand,
+                                false,
+                            ),
+                        ]);
+                        let lesson_outcome =
+                            execute_effect(game, &Effect::new(reveal_and_put), ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        return Ok(EffectOutcome::aggregate([
+                            discard_outcome,
+                            choose_outcome,
+                            lesson_outcome,
+                        ])
+                        .with_event(
+                            crate::triggers::TriggerEvent::new_with_provenance(
+                                KeywordActionEvent::new(
+                                    KeywordActionKind::Learn,
+                                    ctx.controller,
+                                    action.source,
+                                    1,
+                                ),
+                                ctx.provenance,
+                            ),
+                        ));
+                    }
 
-        Ok(
-            EffectOutcome::aggregate([discard_outcome, choose_outcome]).with_event(
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Learn,
-                        ctx.controller,
-                        ctx.source,
-                        1,
-                    ),
-                    ctx.provenance,
-                ),
-            ),
-        )
-        })
+                    Ok(
+                        EffectOutcome::aggregate([discard_outcome, choose_outcome]).with_event(
+                            crate::triggers::TriggerEvent::new_with_provenance(
+                                KeywordActionEvent::new(
+                                    KeywordActionKind::Learn,
+                                    ctx.controller,
+                                    action.source,
+                                    1,
+                                ),
+                                ctx.provenance,
+                            ),
+                        ),
+                    )
+                },
+            )
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if pending || result.is_err() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if pending { return Ok(EffectOutcome::count(0)); }
+        if pending {
+            return Ok(EffectOutcome::count(0));
+        }
         result
     }
 }

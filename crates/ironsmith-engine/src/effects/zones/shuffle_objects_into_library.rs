@@ -247,6 +247,10 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryPro
 }
 
 impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Shuffled)
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }

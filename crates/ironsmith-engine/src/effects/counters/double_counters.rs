@@ -62,7 +62,7 @@ impl EffectExecutor for DoubleCountersEffect {
                             ctx.cause.clone(),
                         )
                         .with_provenance(ctx.provenance);
-                        outcomes.push(crate::effects::counters::execute_player_counter_placement(
+                        outcomes.push(crate::effects::counters::execute_counter_placement(
                             game, ctx, event,
                         )?);
                         if ctx.decision_maker.awaiting_choice() {
@@ -112,7 +112,7 @@ impl EffectExecutor for DoubleCountersEffect {
                         ctx.cause.clone(),
                     )
                     .with_provenance(ctx.provenance);
-                    let mut outcome = super::execute_object_counter_placement(game, ctx, event)?;
+                    let mut outcome = super::execute_counter_placement(game, ctx, event)?;
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(EffectOutcome::count(0));
                     }
@@ -139,7 +139,10 @@ impl EffectExecutor for DoubleCountersEffect {
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() && result.is_ok() {
                 return Ok(EffectOutcome::count(0));

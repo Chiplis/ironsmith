@@ -1,6 +1,6 @@
 //! Tap effect implementation.
 
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::{EffectOutcome, ObjectSnapshot};
 use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -9,6 +9,100 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::TapEffect;
+
+/// Frozen observation frame shared by effect taps and tap-based costs.
+/// Selection/payment constraints belong to the caller; mutation and receipts
+/// belong here, including one before-state world for the complete batch.
+pub(crate) struct TapAction {
+    before: std::collections::HashMap<crate::ids::ObjectId, ObjectSnapshot>,
+    events: Vec<TriggerEvent>,
+    objects: Vec<crate::ids::ObjectId>,
+    memory: Vec<ObjectSnapshot>,
+    actor: crate::ids::PlayerId,
+    provenance: crate::provenance::ProvNodeId,
+}
+
+impl TapAction {
+    pub(crate) fn new(
+        game: &GameState,
+        actor: crate::ids::PlayerId,
+        provenance: crate::provenance::ProvNodeId,
+    ) -> Self {
+        Self {
+            before: crate::events::other::before_tap_state_snapshots(game),
+            events: Vec::new(),
+            objects: Vec::new(),
+            memory: Vec::new(),
+            actor,
+            provenance,
+        }
+    }
+
+    pub(crate) fn tap(&mut self, game: &mut GameState, id: crate::ids::ObjectId) -> bool {
+        if game.object(id).is_none() || game.is_tapped(id) {
+            return false;
+        }
+        let memory = self
+            .before
+            .get(&id)
+            .cloned()
+            .or_else(|| ObjectSnapshot::from_object_id(game, id));
+        game.tap(id);
+        if !game.is_tapped(id) {
+            return false;
+        }
+        self.objects.push(id);
+        self.memory.extend(memory);
+        self.events.push(TriggerEvent::new_with_provenance(
+            PermanentTappedEvent::capture(game, id, Some(self.actor)),
+            self.provenance,
+        ));
+        true
+    }
+
+    pub(crate) fn finish(mut self, game: &mut GameState) -> EffectOutcome {
+        crate::events::other::bind_before_tap_state_snapshots(&mut self.events, &self.before);
+        crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance);
+        EffectOutcome::count(self.objects.len() as i32)
+            .with_events(self.events)
+            .with_action_objects(
+                crate::effect::PriorEffectAction::Tapped,
+                Some(self.actor),
+                self.memory.clone(),
+            )
+            .with_affected_objects(self.objects)
+            .with_affected_object_memory(self.memory)
+    }
+}
+
+/// Commit an already validated cost set, with no fallback selection or partial
+/// payment. Snapshot/event handling is the same action used by TapEffect.
+pub(crate) fn tap_cost_objects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    objects: &[crate::ids::ObjectId],
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut seen = std::collections::HashSet::new();
+    if objects
+        .iter()
+        .any(|id| !seen.insert(*id) || game.object(*id).is_none() || game.is_tapped(*id))
+    {
+        return Err(ExecutionError::Impossible(
+            "Tap cost set is no longer payable".into(),
+        ));
+    }
+    let checkpoint = game.clone();
+    let mut action = TapAction::new(game, ctx.controller, ctx.provenance);
+    for id in objects {
+        if !action.tap(game, *id) {
+            *game = checkpoint;
+            return Err(ExecutionError::Impossible(
+                "Tap cost was not completed".into(),
+            ));
+        }
+    }
+    Ok(action.finish(game))
+}
 
 /// Effect that taps permanents.
 ///
@@ -24,6 +118,9 @@ pub use ironsmith_core::TapEffect;
 /// let effect = TapEffect::all(ObjectFilter::creature());
 /// ```
 impl EffectExecutor for TapEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Tapped)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -39,10 +136,7 @@ impl EffectExecutor for TapEffect {
             .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
             .transpose()?
             .unwrap_or(ctx.controller);
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
-        let mut tapped_objects = Vec::new();
-        let mut tapped_object_memory = Vec::new();
+        let mut action = TapAction::new(game, actor, ctx.provenance);
         let result_policy = if self.target.is_target() && self.target.is_single() {
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
         } else {
@@ -55,36 +149,11 @@ impl EffectExecutor for TapEffect {
             ctx,
             &self.target,
             result_policy,
-            |game, _ctx, object_id| {
-                if game.object(object_id).is_some() && !game.is_tapped(object_id) {
-                    let memory = OutcomeObjectMemory::from_object_id(game, object_id);
-                    game.tap(object_id);
-                    if !game.is_tapped(object_id) {
-                        return Ok(false);
-                    }
-                    tapped_objects.push(object_id);
-                    if let Some(memory) = memory {
-                        tapped_object_memory.push(memory);
-                    }
-                    events.push(TriggerEvent::new_with_provenance(
-                        PermanentTappedEvent::capture(game, object_id, Some(actor)),
-                        provenance,
-                    ));
-                    Ok(true)
-                } else {
-                    Ok(false)
-                }
-            },
+            |game, _ctx, object_id| Ok(action.tap(game, object_id)),
         )?;
+        let taps = action.finish(game);
+        let outcome = EffectOutcome::aggregate_with_primary_result(apply_result.outcome, [taps]);
 
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, provenance);
-        let mut outcome = apply_result.outcome.with_events(events);
-        if !tapped_objects.is_empty() {
-            outcome = outcome
-                .with_affected_objects(tapped_objects)
-                .with_affected_object_memory(tapped_object_memory);
-        }
         Ok(outcome)
     }
 

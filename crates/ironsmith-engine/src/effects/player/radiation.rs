@@ -25,9 +25,14 @@ impl EffectExecutor for RadiationEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let checkpoint = game.clone();
+        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = self.resolve(game, ctx);
         if ctx.decision_maker.awaiting_choice() || result.is_err() {
-            *game = checkpoint;
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
+            context.restore(ctx);
         }
         result
     }
@@ -48,18 +53,21 @@ impl RadiationEffect {
         }
 
         let outcome =
-            MillEffect::new(rad_count, PlayerFilter::Specific(player)).execute(game, ctx)?;
+            MillEffect::new(rad_count, PlayerFilter::Specific(player)).execute_child(game, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let nonland_cards_milled = outcome.affected_object_memory().map_or(0, |memory| {
-            memory
-                .iter()
-                .filter(|card| !card.card_types.contains(&CardType::Land))
-                .count()
-        });
+        let nonland_cards_milled = outcome
+            .instruction_result()
+            .affected_object_memory()
+            .map_or(0, |memory| {
+                memory
+                    .iter()
+                    .filter(|card| !card.card_types.contains(&CardType::Land))
+                    .count()
+            });
 
-        let milled_summary = outcome.value.clone();
+        let primary = outcome.summary_projection();
         let mut outcomes = vec![outcome];
         for _ in 0..nonland_cards_milled {
             // CR 614.1a: the radiation life loss is a life-loss event.
@@ -67,7 +75,8 @@ impl RadiationEffect {
                 game,
                 ctx,
                 crate::events::Event::new_with_provenance(
-                    LifeLossEvent::from_radiation(player, 1), ctx.provenance,
+                    LifeLossEvent::from_radiation(player, 1),
+                    ctx.provenance,
                 ),
             )?;
             if ctx.decision_maker.awaiting_choice() {
@@ -81,9 +90,9 @@ impl RadiationEffect {
             outcomes.push(loss);
         }
 
-        let mut outcome = EffectOutcome::aggregate(outcomes);
-        outcome.value = milled_summary;
-        Ok(outcome)
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            primary, outcomes,
+        ))
     }
 }
 

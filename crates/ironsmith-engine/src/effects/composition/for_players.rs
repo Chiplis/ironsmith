@@ -1747,7 +1747,7 @@ impl ForPlayersActionState {
                                     let scopes =
                                         program_path_scopes(path, &program_groups, player_index);
                                     with_program_scope(ctx, &scopes, |ctx| {
-                                        effect.0.prepare_simultaneous_player_action(game, ctx)
+                                        effect.prepare_simultaneous_player_action(game, ctx)
                                     })
                                 },
                             )?;
@@ -3750,35 +3750,41 @@ mod tests {
 
         let alice_card = game.new_object_id();
         let bob_card = game.new_object_id();
-        let alice_memory = crate::effect::OutcomeObjectMemory {
-            object_id: alice_card,
-            stable_id: crate::ids::StableId::from(alice_card),
-            name: "Alice Card".to_string(),
-            controller: alice,
-            owner: alice,
-            zone: crate::zone::Zone::Library,
-            power: None,
-            toughness: None,
-            mana_value: 1,
-            card_types: vec![crate::types::CardType::Creature],
-            colors: crate::color::ColorSet::COLORLESS,
-            subtypes: Vec::new(),
-            is_token: false,
+        let alice_memory = {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                alice_card,
+                crate::ids::StableId::from(alice_card),
+                alice,
+                alice,
+                crate::zone::Zone::Library,
+            );
+            snapshot.name = "Alice Card".to_string();
+            snapshot.power = None;
+            snapshot.toughness = None;
+            snapshot.linked_face_mana_value = Some((1) as u32);
+            snapshot.card_types = vec![crate::types::CardType::Creature];
+            snapshot.colors = crate::color::ColorSet::COLORLESS;
+            snapshot.subtypes = Vec::new();
+            snapshot.is_token = false;
+            snapshot
         };
-        let bob_memory = crate::effect::OutcomeObjectMemory {
-            object_id: bob_card,
-            stable_id: crate::ids::StableId::from(bob_card),
-            name: "Bob Card".to_string(),
-            controller: bob,
-            owner: bob,
-            zone: crate::zone::Zone::Library,
-            power: None,
-            toughness: None,
-            mana_value: 2,
-            card_types: vec![crate::types::CardType::Instant],
-            colors: crate::color::ColorSet::COLORLESS,
-            subtypes: Vec::new(),
-            is_token: false,
+        let bob_memory = {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                bob_card,
+                crate::ids::StableId::from(bob_card),
+                bob,
+                bob,
+                crate::zone::Zone::Library,
+            );
+            snapshot.name = "Bob Card".to_string();
+            snapshot.power = None;
+            snapshot.toughness = None;
+            snapshot.linked_face_mana_value = Some((2) as u32);
+            snapshot.card_types = vec![crate::types::CardType::Instant];
+            snapshot.colors = crate::color::ColorSet::COLORLESS;
+            snapshot.subtypes = Vec::new();
+            snapshot.is_token = false;
+            snapshot
         };
 
         let result = EffectOutcome::aggregate_summing_counts(vec![

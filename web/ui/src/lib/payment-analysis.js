@@ -1,6 +1,11 @@
-// Each slice is a separate worker request. User input invalidates the generation
-// synchronously; an in-flight slice can finish but cannot publish its result.
+// Browser ranking owns an isolated worker. Native callers can use slices.
+// User input invalidates the generation before any suggestion can be applied.
 export async function improvePayment({ game, token, isCurrent, yieldTask = () => new Promise(resolve => setTimeout(resolve, 0)) }) {
+  if (game.analyzePayment) {
+    if (!isCurrent()) return null;
+    const result = await game.analyzePayment(token);
+    return isCurrent() ? result || null : null;
+  }
   if (!isCurrent() || !await game.beginPaymentAnalysis(token)) return null;
   while (isCurrent()) {
     await yieldTask();

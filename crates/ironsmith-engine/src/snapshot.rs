@@ -308,6 +308,9 @@ impl CopiableValues {
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct ObjectSnapshot {
+    /// Independent stack-object kind at capture time.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub stack_kind: Option<crate::filter::StackObjectKind>,
     /// Noncopiable choices needed by abilities after this exact object leaves.
     pub chosen_subtype: Option<Subtype>,
     pub chosen_object: Option<Box<ObjectSnapshot>>,
@@ -473,6 +476,12 @@ mod counter_pairs {
 }
 
 impl ObjectSnapshot {
+    /// Capture immutable characteristics before an instruction changes identity or state.
+    pub fn from_object_id(game: &crate::game_state::GameState, id: ObjectId) -> Option<Self> {
+        game.object(id)
+            .map(|object| Self::from_object_with_calculated_characteristics(object, game))
+    }
+
     /// A snapshot carrying only what every peer knows about an object whose
     /// identity is hidden from some player: its identity, ownership, zone
     /// and public status. Every characteristic is left empty, exactly as a
@@ -485,6 +494,7 @@ impl ObjectSnapshot {
         zone: Zone,
     ) -> Self {
         Self {
+            stack_kind: None,
             chosen_subtype: None,
             chosen_object: None,
             secret_chosen_subtype: None,
@@ -608,6 +618,11 @@ impl ObjectSnapshot {
             })
         });
         Self {
+            stack_kind: if obj.zone == Zone::Stack {
+                Some(crate::filter::StackObjectKind::Spell)
+            } else {
+                None
+            },
             // Identity
             object_id: obj.id,
             stable_id: obj.stable_id,
@@ -1009,7 +1024,13 @@ impl ObjectSnapshot {
         }
         self.mana_cost
             .as_ref()
-            .map(|mc| mc.mana_value())
+            .map(|mc| {
+                if self.zone == Zone::Stack {
+                    mc.mana_value_with_x(self.x_value.unwrap_or(0))
+                } else {
+                    mc.mana_value()
+                }
+            })
             .unwrap_or(0)
     }
 
@@ -1020,6 +1041,7 @@ impl ObjectSnapshot {
     #[cfg(test)]
     pub fn for_testing(object_id: ObjectId, controller: PlayerId, name: &str) -> Self {
         Self {
+            stack_kind: None,
             object_id,
             stable_id: object_id.into(),
             chosen_subtype: None,

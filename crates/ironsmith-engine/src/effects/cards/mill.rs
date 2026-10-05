@@ -1,6 +1,6 @@
 //! Mill effect implementation.
 
-use crate::effect::{EffectOutcome, OutcomeObjectMemory, Value};
+use crate::effect::{EffectOutcome, ObjectSnapshot, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value_wide};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
@@ -30,6 +30,9 @@ use crate::zone::Zone;
 pub type MillEffect = ironsmith_core::MillEffect;
 
 impl EffectExecutor for MillEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Milled)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -78,7 +81,7 @@ impl EffectExecutor for MillEffect {
 #[derive(Debug)]
 struct MillProposal {
     player: PlayerId,
-    cards: Vec<(ObjectId, Option<OutcomeObjectMemory>)>,
+    cards: Vec<(ObjectId, Option<ObjectSnapshot>)>,
 }
 impl crate::effects::SimultaneousEffectProposal for MillProposal {
     fn commit_original(
@@ -103,53 +106,18 @@ fn prepare_mill(
 ) -> Result<MillProposal, ExecutionError> {
     let player = resolve_player_filter(game, &effect.player, ctx)?;
     let requested = resolve_value_wide(game, &effect.count, ctx)?.max(0) as u64;
-    let count = requested.min(game.player(player).map_or(0, |player| player.library.len()) as u64) as usize;
+    let count =
+        requested.min(game.player(player).map_or(0, |player| player.library.len()) as u64) as usize;
     let cards = game
         .player(player)
         .into_iter()
         .flat_map(|player| player.library.iter().rev())
         .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
         .take(count)
-        .map(|&id| (id, OutcomeObjectMemory::from_object_id(game, id)))
+        .map(|&id| (id, ObjectSnapshot::from_object_id(game, id)))
         .collect();
     Ok(MillProposal { player, cards })
 }
-struct MillCompletion {
-    receipts: Option<
-        Vec<(
-            ObjectId,
-            crate::events::processing::PreparedEventOutcome<
-                crate::effects::zones::AppliedZoneChange,
-            >,
-        )>,
-    >,
-    frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
-}
-impl SimultaneousEffectCompletion for MillCompletion {
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        let receipts = self.receipts.take().ok_or_else(|| {
-            ExecutionError::InternalError("mill receipts were already frozen".into())
-        })?;
-        self.frozen = Some(crate::effects::zones::freeze_zone_change_receipts(
-            game, receipts,
-        ));
-        Ok(())
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let frozen = self.frozen.ok_or_else(|| {
-            ExecutionError::InternalError(
-                "mill completion requires the completed original batch".into(),
-            )
-        })?;
-        crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)
-    }
-}
-
 fn execute_prepared_mill(
     proposal: MillProposal,
     game: &mut GameState,
@@ -163,121 +131,104 @@ fn execute_prepared_mill(
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
         let player_id = proposal.player;
-        let mut actual_mills = Vec::new();
-        let mut milled = Vec::new();
-        let mut milled_memory = Vec::new();
-        let mut any_prevented = false;
-        let mut receipts = Vec::new();
-
-        // CR 701.17a / 603.2c: the cards are milled at the same time, as one
-        // event ("whenever one or more cards are put into your graveyard").
-        let opened_batch = game.open_simultaneous_action();
-        for (card_id, pre_memory) in proposal.cards {
-            // A prior replacement cannot substitute a different current top
-            // card for the exact incarnation chosen before the action.
-            if !game
-                .object(card_id)
-                .is_some_and(|object| object.zone == Zone::Library)
-                || !game
-                    .player(player_id)
-                    .is_some_and(|player| player.library.contains(&card_id))
-            {
-                continue;
-            }
-            let from_zone = Zone::Library;
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-            let receipt = apply_zone_change_with_context_and_additional_effects(
-                game,
-                card_id,
-                from_zone,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                ctx,
-                &additional_effects,
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
-            }
-            match &receipt.original {
-                EventOutcome::Proceed(change) => {
-                    if let Some(new_id) = change.new_object_id {
-                        actual_mills.push((card_id, new_id, change.final_zone));
-                    }
-                    if change.final_zone.is_public()
-                        && let Some(new_id) = change.new_object_id
-                    {
-                        milled.push(new_id);
-                        if let Some(memory) = pre_memory {
-                            milled_memory.push(memory);
-                        }
-                    }
-                }
-                EventOutcome::Prevented => {
-                    any_prevented = true;
-                }
-                EventOutcome::Replaced | EventOutcome::NotApplicable => {}
-            }
-            receipts.push((card_id, receipt));
-        }
-        // This notification belongs to the keyword action, not every library
-        // zone change. Public replacements (for example exile) still carry the
-        // milled card; hidden replacements reveal no characteristics (701.17c).
-        // Capture completed-state characteristics after every member moved.
-        if !actual_mills.is_empty() {
-            let batch = game
-                .simultaneous_action_batch()
-                .expect("mill opened an action");
-            for (original_card, card, destination) in actual_mills {
-                let snapshot = game.object(card).filter(|object| destination.is_public() && !game.is_face_down(object.id))
-                    .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
-                let event = crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardMilledEvent {
-                        player: player_id,
-                        original_card,
-                        card,
-                        snapshot,
-                    },
-                    ctx.provenance,
-                )
-                .with_simultaneous_batch(batch);
-                game.queue_trigger_event(ctx.provenance, event);
-            }
-        }
-        game.close_simultaneous_action(opened_batch);
-
-        let original_outcome = if !milled.is_empty() {
-            EffectOutcome::with_objects(milled.clone())
-                .with_affected_objects(milled)
-                .with_affected_object_memory(milled_memory)
-        } else if any_prevented {
-            EffectOutcome::prevented()
-        } else {
-            EffectOutcome::count(0)
-        };
-        if defer_additions {
-            let completion = receipts
-                .iter()
-                .any(|(_, receipt)| !receipt.programs.is_empty())
-                .then(|| {
-                    Box::new(MillCompletion {
-                        receipts: Some(receipts),
-                        frozen: None,
-                    }) as Box<dyn SimultaneousEffectCompletion>
-                });
-            Ok(SimultaneousEffectCommit {
-                outcome: original_outcome,
-                completion,
+        let memories = proposal
+            .cards
+            .iter()
+            .filter_map(|(id, snapshot)| snapshot.clone().map(|snapshot| (*id, snapshot)))
+            .collect::<std::collections::HashMap<_, _>>();
+        let moves = proposal
+            .cards
+            .into_iter()
+            .filter(|(id, _)| {
+                game.object(*id)
+                    .is_some_and(|object| object.zone == Zone::Library)
+                    && game
+                        .player(player_id)
+                        .is_some_and(|player| player.library.contains(id))
             })
-        } else {
-            crate::effects::zones::finish_zone_change_receipts(
-                game,
-                ctx,
-                original_outcome,
-                receipts,
-            )
-            .map(SimultaneousEffectCommit::finished)
-        }
+            .map(|(id, snapshot)| {
+                crate::effects::zones::PreparedZoneMove::capture(
+                    game,
+                    id,
+                    Zone::Library,
+                    Zone::Graveyard,
+                    ctx.cause.clone(),
+                    snapshot,
+                )
+            })
+            .collect();
+        let opened_batch = game.open_simultaneous_action();
+        crate::effects::zones::commit_zone_moves(
+            game,
+            ctx,
+            moves,
+            defer_additions,
+            |game, ctx, receipts| {
+                let mut actual_mills = Vec::new();
+                let mut milled = Vec::new();
+                let mut milled_memory = Vec::new();
+                let mut any_prevented = false;
+                for (card_id, receipt) in receipts {
+                    let card_id = *card_id;
+                    let pre_memory = memories.get(&card_id).cloned();
+                    match &receipt.original {
+                        EventOutcome::Proceed(change) => {
+                            if let Some(new_id) = change.new_object_id {
+                                actual_mills.push((card_id, new_id, change.final_zone));
+                            }
+                            if change.final_zone.is_public()
+                                && let Some(new_id) = change.new_object_id
+                            {
+                                milled.push(new_id);
+                                if let Some(memory) = pre_memory {
+                                    milled_memory.push(memory);
+                                }
+                            }
+                        }
+                        EventOutcome::Prevented => {
+                            any_prevented = true;
+                        }
+                        EventOutcome::Replaced | EventOutcome::NotApplicable => {}
+                    }
+                }
+                // This notification belongs to the keyword action, not every library
+                // zone change. Public replacements (for example exile) still carry the
+                // milled card; hidden replacements reveal no characteristics (701.17c).
+                // Capture completed-state characteristics after every member moved.
+                if !actual_mills.is_empty() {
+                    let batch = game
+                        .simultaneous_action_batch()
+                        .expect("mill opened an action");
+                    for (original_card, card, destination) in actual_mills {
+                        let snapshot = game.object(card).filter(|object| destination.is_public() && !game.is_face_down(object.id))
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+                        let event = crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::CardMilledEvent {
+                                player: player_id,
+                                original_card,
+                                card,
+                                snapshot,
+                            },
+                            ctx.provenance,
+                        )
+                        .with_simultaneous_batch(batch);
+                        game.queue_trigger_event(ctx.provenance, event);
+                    }
+                }
+                game.close_simultaneous_action(opened_batch);
+
+                let original_outcome = if !milled.is_empty() {
+                    EffectOutcome::with_objects(milled.clone())
+                        .with_affected_objects(milled)
+                        .with_affected_object_memory(milled_memory)
+                } else if any_prevented {
+                    EffectOutcome::prevented()
+                } else {
+                    EffectOutcome::count(0)
+                };
+                Ok(original_outcome)
+            },
+        )
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         *game = checkpoint;
@@ -302,11 +253,14 @@ impl CostExecutableEffect for MillEffect {
             _ => controller,
         };
         if matches!(self.count, Value::X) {
-            return Err(crate::effects::CostValidationError::Other("dynamic X mill costs are not supported".into()));
+            return Err(crate::effects::CostValidationError::Other(
+                "dynamic X mill costs are not supported".into(),
+            ));
         }
         let ctx = crate::effects::ExecutionContext::new_default(source, controller);
         let count = resolve_value_wide(game, &self.count, &ctx)
-            .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?.max(0) as u64;
+            .map_err(|err| crate::effects::CostValidationError::Other(format!("{err:?}")))?
+            .max(0) as u64;
         let available = game.player(player_id).map_or(0, |p| p.library.len());
         if (available as u64) >= count {
             Ok(())

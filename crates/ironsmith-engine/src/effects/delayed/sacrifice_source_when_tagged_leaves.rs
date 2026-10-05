@@ -36,6 +36,6 @@ impl EffectExecutor for SacrificeSourceWhenTaggedLeavesEffect {
             self.controller.clone(),
         )
         .with_current_source_as_ability_source()
-        .execute(game, ctx)
+        .execute_child(game, ctx)
     }
 }

@@ -26,3 +26,5 @@ pub(crate) mod resources;
 pub use resources::TokenCreationLimits;
 
 pub(crate) use lifecycle::{execute_token_instruction_atomically, execute_resource_transaction_atomically};
+
+pub(crate) use create_token::create_tokens_with_entry_counters;

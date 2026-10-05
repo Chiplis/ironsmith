@@ -310,10 +310,29 @@ pub fn execute_effect(
     let checkpoint = root.then(|| game.clone());
     let context_checkpoint =
         root.then(|| crate::effects::context::ExecutionContextCheckpoint::capture(ctx));
+    game.effect_store
+        .instruction_result_records
+        .push(Vec::new());
     let mut result = match game.token_resource_failure() {
         Some(error) => Err(error),
         None => execute_effect_with_resource_scope(game, effect, ctx),
     };
+    let recorded = game
+        .effect_store
+        .instruction_result_records
+        .pop()
+        .unwrap_or_default();
+    if let Ok(outcome) = &mut result {
+        if !ctx.decision_maker.awaiting_choice() {
+            crate::effects::outcome_recording::complete_outcome(
+                game,
+                effect.0.result_action(),
+                Some(ctx.controller),
+                outcome,
+                recorded,
+            );
+        }
+    }
     if let Err(error) = &result {
         game.record_token_resource_failure(error);
     }

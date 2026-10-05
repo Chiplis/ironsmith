@@ -72,7 +72,7 @@ impl EffectExecutor for BecomeColorChoiceEffect {
             self.duration.clone(),
         );
 
-        apply.execute(game, ctx)
+        apply.execute_child(game, ctx)
     }
 }
 

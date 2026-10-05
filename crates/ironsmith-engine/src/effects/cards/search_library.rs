@@ -2,7 +2,7 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
-use crate::effect::{EffectOutcome, OutcomeObjectMemory, SearchSelectionMode};
+use crate::effect::{EffectOutcome, SearchSelectionMode};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_player_filter, resolve_value, view_hidden_candidate_objects,
@@ -158,7 +158,7 @@ impl EffectExecutor for SearchLibraryEffect {
                             true,
                         );
                     }
-                    let chosen_memory = OutcomeObjectMemory::from_object_id(game, card_id);
+                    let chosen_memory = ObjectSnapshot::from_object_id(game, card_id);
                     // For "put on top of library" effects (like Vampiric Tutor), we need to:
                     // 1. Remove the card from the library
                     // 2. Shuffle the library

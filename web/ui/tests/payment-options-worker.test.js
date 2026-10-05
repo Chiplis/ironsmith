@@ -51,3 +51,22 @@ test('payment worker incrementally replays definitions and restores the canonica
   assert.deepEqual(registered, ['definition', 'definition']);
   assert.equal(messages[2].result.state.value, 'third');
 });
+
+
+test('payment ranking executes every planner slice on the isolated replica', async () => {
+  const messages = [];
+  let slices = 0;
+  const command = { type: 'mana_payment', response: { action: 'replan' } };
+  const isolated = {
+    beginPaymentAnalysis: () => true,
+    stepPaymentAnalysis: () => ++slices < 3 ? null : command,
+  };
+  const code = readFileSync(new URL('../src/workers/paymentOptionsWorker.js', import.meta.url), 'utf8')
+    .replace(/^import[^\n]+\n/gm, '');
+  const self = { postMessage: message => messages.push(message) };
+  vm.runInNewContext(code, { performance, self, setTimeout, WasmGame: class {}, initWasm: async () => {},
+    createLocalAnalysisReplica: () => ({ hydrate: async () => isolated }) });
+  await self.onmessage({ data: { token: 1, kind: 'ranking', localReplay: {} } });
+  assert.equal(slices, 3);
+  assert.equal(messages[0].result, command);
+});

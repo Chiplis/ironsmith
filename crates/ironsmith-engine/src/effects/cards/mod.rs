@@ -21,6 +21,7 @@ mod mill;
 mod put_tagged_remainder_on_library_bottom;
 mod rearrange_looked_cards_in_library;
 mod reorder_top_planar_deck;
+mod reveal;
 mod reveal_from_hand;
 mod reveal_tagged;
 mod reveal_top;
@@ -71,7 +72,18 @@ pub(crate) use draw_cards::{
 };
 
 // Internal receipt consumers share the same discard observation/commit boundary.
-pub(crate) use discard::{completed_discard_events,finish_discard_receipts};
+pub(crate) use discard::{completed_discard_events, finish_discard_receipts};
 pub(crate) use discard_hand::discard_hand_cards;
 
 pub(crate) use draw_cards::execute_turn_draw_proposal;
+
+pub(crate) use reveal::reveal_objects;
+
+mod library_arrangement;
+pub(crate) use library_arrangement::arrange_library_cards;
+
+mod look;
+pub(crate) use library_arrangement::{
+    execute_library_instruction_atomically, order_library_cards_top_to_bottom,
+};
+pub(crate) use look::look_at_cards;

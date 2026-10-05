@@ -96,8 +96,9 @@ fn counter_one_stack_object_of_kind_inner(
     };
     if let Some(index) = ability_index {
         let entry = game.stack.remove(index);
+        let outcome = countered_ability_outcome(game, &entry);
         super::copy_spell::discard_departed_ability_copy_object(game, &entry);
-        return Ok(EffectOutcome::resolved());
+        return Ok(outcome);
     }
     if matches!(
         kind,
@@ -254,8 +255,9 @@ pub(crate) fn counter_stack_entry_at(
     // "Can't be countered" protects spells; it never reaches an ability,
     // even one whose source is such a spell (a storm trigger).
     let entry = game.stack.remove(index);
+    let outcome = countered_ability_outcome(game, &entry);
     super::copy_spell::discard_departed_ability_copy_object(game, &entry);
-    Ok(EffectOutcome::resolved())
+    Ok(outcome)
 }
 
 /// Effect that counters a target spell on the stack.
@@ -276,7 +278,41 @@ pub(crate) fn counter_stack_entry_at(
 /// // Counter target creature spell
 /// let effect = CounterEffect::new(ChooseSpec::creature_spell());
 /// ```
+fn countered_ability_outcome(
+    game: &GameState,
+    entry: &crate::game_state::StackEntry,
+) -> EffectOutcome {
+    let snapshot = entry
+        .source_snapshot
+        .clone()
+        .or_else(|| crate::snapshot::ObjectSnapshot::from_object_id(game, entry.object_id));
+    let objects = snapshot
+        .map(|mut snapshot| {
+            snapshot.object_id = entry.target_id();
+            snapshot.zone = Zone::Stack;
+            snapshot.controller = entry.controller;
+            snapshot.stack_kind = Some(if entry.triggering_event.is_some() {
+                crate::filter::StackObjectKind::TriggeredAbility
+            } else {
+                crate::filter::StackObjectKind::ActivatedAbility
+            });
+            snapshot
+        })
+        .into_iter()
+        .collect::<Vec<_>>();
+    EffectOutcome::resolved()
+        .with_action_objects(
+            crate::effect::PriorEffectAction::Countered,
+            Some(entry.controller),
+            objects.clone(),
+        )
+        .with_affected_object_memory(objects)
+}
+
 impl EffectExecutor for CounterEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Countered)
+    }
     fn execute(
         &self,
         game: &mut GameState,

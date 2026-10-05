@@ -58,6 +58,7 @@ pub mod counters;
 pub mod damage;
 pub mod delayed;
 mod executor_trait;
+pub(crate) mod outcome_recording;
 pub mod helpers;
 pub mod life;
 pub mod mana;

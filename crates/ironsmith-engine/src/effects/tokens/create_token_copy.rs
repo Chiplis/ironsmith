@@ -64,7 +64,9 @@ pub(super) fn attack_targets_for_player(
     }
 
     for &object_id in &game.battlefield {
-        if game.is_phased_out(object_id) { continue; }
+        if game.is_phased_out(object_id) {
+            continue;
+        }
         if let Some(object) = game.object(object_id) {
             if game.controller_of(object) == player_id
                 && game.current_has_card_type(object_id, CardType::Planeswalker)
@@ -258,8 +260,10 @@ struct TokenCopyProposal {
 }
 impl std::fmt::Debug for TokenCopyProposal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TokenCopyProposal").field("controller", &self.controller)
-            .field("count", &self.count).finish_non_exhaustive()
+        f.debug_struct("TokenCopyProposal")
+            .field("controller", &self.controller)
+            .field("count", &self.count)
+            .finish_non_exhaustive()
     }
 }
 fn prepare_token_copy_proposal(
@@ -268,12 +272,24 @@ fn prepare_token_copy_proposal(
     ctx: &ExecutionContext,
 ) -> Result<TokenCopyProposal, ExecutionError> {
     let controller_id = resolve_player_filter(game, &effect.controller, ctx)?;
-    if !game.player(controller_id).is_some_and(|player| player.is_in_game()) {
+    if !game
+        .player(controller_id)
+        .is_some_and(|player| player.is_in_game())
+    {
         return Ok(TokenCopyProposal {
-            effect: effect.clone(), token_preview: None, controller: controller_id, count: 0,
-            configured_attack_player: None, attack_player_only: false, required_attack_player: None,
-            cleanup: TokenCleanupOptions::default(), original_attack_targets: Vec::new(),
-            additional_attack_targets: Vec::new(), prepared: None, charge_instruction: false, instruction: None,
+            effect: effect.clone(),
+            token_preview: None,
+            controller: controller_id,
+            count: 0,
+            configured_attack_player: None,
+            attack_player_only: false,
+            required_attack_player: None,
+            cleanup: TokenCleanupOptions::default(),
+            original_attack_targets: Vec::new(),
+            additional_attack_targets: Vec::new(),
+            prepared: None,
+            charge_instruction: false,
+            instruction: None,
         });
     }
     let base_count = resolve_value(game, &effect.count, ctx)?.max(0) as u32;
@@ -299,7 +315,8 @@ fn prepare_token_copy_proposal(
     let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
         snapshot.object_id
     } else {
-        let resolved = crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx);
+        let resolved =
+            crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx);
         match resolved.as_ref().ok().and_then(|ids| ids.first()) {
             Some(id) => *id,
             None => {
@@ -435,10 +452,19 @@ fn prepare_token_copy_proposal(
         &static_abilities_to_grant,
     )?;
     Ok(TokenCopyProposal {
-        effect: effect.clone(), token_preview: Some(token_preview), controller: controller_id,
-        count: base_count, configured_attack_player, attack_player_only, required_attack_player,
-        cleanup: cleanup_options, original_attack_targets: Vec::new(), additional_attack_targets: Vec::new(),
-        prepared: None, charge_instruction: false, instruction: None,
+        effect: effect.clone(),
+        token_preview: Some(token_preview),
+        controller: controller_id,
+        count: base_count,
+        configured_attack_player,
+        attack_player_only,
+        required_attack_player,
+        cleanup: cleanup_options,
+        original_attack_targets: Vec::new(),
+        additional_attack_targets: Vec::new(),
+        prepared: None,
+        charge_instruction: false,
+        instruction: None,
     })
 }
 
@@ -455,14 +481,17 @@ fn prepare_copy_attack_targets(
     player_only: bool,
 ) -> Result<Vec<Option<AttackTarget>>, ExecutionError> {
     let mut targets = super::resources::buffer(count as usize)?;
-    if count == 0 { return Ok(targets); }
+    if count == 0 {
+        return Ok(targets);
+    }
     let mut preview_game = game.clone();
     let preview_id = preview_game.new_object_id();
     let mut preview = Object::token_copy_of(token, preview_id, controller);
     preview.zone = Zone::Command;
     preview_game.add_object(preview);
     let prospective = crate::events::EnterBattlefieldEvent::new(preview_id, Zone::Command)
-        .try_prospective_game_state(&preview_game).map_err(ExecutionError::ContinuousDiscovery)?
+        .try_prospective_game_state(&preview_game)
+        .map_err(ExecutionError::ContinuousDiscovery)?
         .ok_or_else(|| ExecutionError::InternalError("copy attack preview disappeared".into()))?;
     if !crate::effects::combat::can_enter_attacking(&prospective, preview_id) {
         targets.resize(count as usize, None);
@@ -471,33 +500,58 @@ fn prepare_copy_attack_targets(
     for _ in 0..count {
         let target = if let Some(player) = configured_player {
             if player_only {
-                game.player(player).is_some_and(|player| player.is_in_game())
+                game.player(player)
+                    .is_some_and(|player| player.is_in_game())
                     .then_some(AttackTarget::Player(player))
             } else {
                 let options = attack_targets_for_player(game, player);
-                if options.is_empty() { None } else { choose_attack_target(game, ctx, player, &options) }
+                if options.is_empty() {
+                    None
+                } else {
+                    choose_attack_target(game, ctx, player, &options)
+                }
             }
         } else {
             crate::effects::combat::choose_enters_attacking_target(&prospective, ctx, preview_id)
         };
-        if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
         targets.push(target);
     }
     Ok(targets)
 }
 
 impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
-    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
-        if self.prepared.is_some() { return Ok(()); }
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.prepared.is_some() {
+            return Ok(());
+        }
         if self.charge_instruction && self.instruction.is_none() {
             let (_, meter) = game.begin_token_resource_scope();
             self.instruction = Some(super::resources::TokenInstructionPermit::charge(meter)?);
         }
-        let _phase = self.instruction.as_ref().map(|permit| permit.enter_phase()).transpose()?;
+        let _phase = self
+            .instruction
+            .as_ref()
+            .map(|permit| permit.enter_phase())
+            .transpose()?;
         game.clear_pending_decision_controllers();
         let prepared = crate::events::processing::prepare_token_creation_deferred(
-            game, self.controller, self.count, self.token_preview.clone(), ctx.cause.clone(), ctx)?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            game,
+            self.controller,
+            self.count,
+            self.token_preview.clone(),
+            ctx.cause.clone(),
+            ctx,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
         if let crate::events::processing::PreparedTokenCreation::Proceed { event, .. } = &prepared {
             // Reserve once, before allocating per-token choice buffers. The
             // original phase consumes these slots rather than reserving again.
@@ -505,13 +559,26 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
             if self.effect.enters_attacking || self.configured_attack_player.is_some() {
                 use crate::events::tokens::TokenGroupKey;
                 self.additional_attack_targets = super::resources::buffer(
-                    (event.total_count() - u128::from(event.count)) as usize)?;
+                    (event.total_count() - u128::from(event.count)) as usize,
+                )?;
                 for key in event.group_keys() {
-                    let token = event.group_object(key).ok_or_else(||
-                        ExecutionError::InternalError("copy creation group lost its template".into()))?;
-                    let choices = prepare_copy_attack_targets(game, ctx, &token, event.controller,
-                        event.group_count(key), self.configured_attack_player, self.attack_player_only)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+                    let token = event.group_object(key).ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "copy creation group lost its template".into(),
+                        )
+                    })?;
+                    let choices = prepare_copy_attack_targets(
+                        game,
+                        ctx,
+                        &token,
+                        event.controller,
+                        event.group_count(key),
+                        self.configured_attack_player,
+                        self.attack_player_only,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(());
+                    }
                     match key {
                         TokenGroupKey::Original => self.original_attack_targets = choices,
                         _ => self.additional_attack_targets.extend(choices),
@@ -522,56 +589,74 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
         self.prepared = Some(prepared);
         Ok(())
     }
-    fn commit_original(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
         commit_token_copy_proposal(*self, game, ctx, true)
     }
-    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         commit_token_copy_proposal(*self, game, ctx, false).map(|commit| commit.outcome)
     }
 }
 
-struct TokenCopyCompletion {
-    instruction: Option<super::resources::TokenInstructionPermit>,
-    entries: Option<Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>>,
-    frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
-    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+fn execute_token_instruction(
+    effect: &CreateTokenCopyEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    commit_token_copy_proposal(
+        prepare_token_copy_proposal(effect, game, ctx)?,
+        game,
+        ctx,
+        false,
+    )
+    .map(|commit| commit.outcome)
 }
-impl crate::effects::SimultaneousEffectCompletion for TokenCopyCompletion {
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        let entries = self.entries.take().ok_or_else(|| ExecutionError::InternalError("copy entries already frozen".into()))?;
-        self.frozen = Some(crate::effects::zones::freeze_zone_change_receipts(game, entries));
-        Ok(())
-    }
-    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext, original: EffectOutcome)
-        -> Result<EffectOutcome, ExecutionError> {
-        let _phase = self.instruction.as_ref().map(|permit| permit.enter_phase()).transpose()?;
-        let frozen = self.frozen.ok_or_else(|| ExecutionError::InternalError("copy completion requires the original batch".into()))?;
-        let original = crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)?;
-        crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, original, self.programs)
-    }
-}
-fn execute_token_instruction(effect: &CreateTokenCopyEffect, game: &mut GameState, ctx: &mut ExecutionContext)
-    -> Result<EffectOutcome, ExecutionError> {
-    commit_token_copy_proposal(prepare_token_copy_proposal(effect, game, ctx)?, game, ctx, false)
-        .map(|commit| commit.outcome)
-}
-fn commit_token_copy_proposal(mut proposal: TokenCopyProposal, game: &mut GameState, ctx: &mut ExecutionContext,
-    defer_additions: bool) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+fn commit_token_copy_proposal(
+    mut proposal: TokenCopyProposal,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    defer_additions: bool,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
     use crate::effects::SimultaneousEffectProposal;
     use crate::events::processing::PreparedTokenCreation;
-    if proposal.prepared.is_none() { proposal.prepare_original(game, ctx)?; }
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+    if proposal.prepared.is_none() {
+        proposal.prepare_original(game, ctx)?;
     }
-    let phase = proposal.instruction.as_ref().map(|permit| permit.enter_phase()).transpose()?;
-    let mut committed = match proposal.prepared.take().ok_or_else(||
-        ExecutionError::InternalError("copy proposal has no prepared creation".into()))? {
-        PreparedTokenCreation::Finished { outcome, programs } => crate::effects::SimultaneousEffectCommit {
-            outcome, completion: Some(Box::new(TokenCopyCompletion { instruction: proposal.instruction.take(),
-                entries: Some(Vec::new()), frozen: None, programs })),
-        },
-        PreparedTokenCreation::Proceed { event, provenance, programs } => {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::SimultaneousEffectCommit::finished(
+            EffectOutcome::count(0),
+        ));
+    }
+    let phase = proposal
+        .instruction
+        .as_ref()
+        .map(|permit| permit.enter_phase())
+        .transpose()?;
+    let mut committed = match proposal.prepared.take().ok_or_else(|| {
+        ExecutionError::InternalError("copy proposal has no prepared creation".into())
+    })? {
+        PreparedTokenCreation::Finished { outcome, programs } => {
+            crate::effects::SimultaneousEffectCommit {
+                outcome,
+                completion: Some(super::lifecycle::token_instruction_completion(
+                    proposal.instruction.take(),
+                    Vec::new(),
+                    programs,
+                )),
+            }
+        }
+        PreparedTokenCreation::Proceed {
+            event,
+            provenance,
+            programs,
+        } => {
             ctx.provenance = provenance;
             commit_token_copy_original(proposal, game, ctx, event, programs)?
         }
@@ -584,13 +669,19 @@ fn commit_token_copy_proposal(mut proposal: TokenCopyProposal, game: &mut GameSt
     }
     Ok(committed)
 }
-fn commit_token_copy_original(mut proposal: TokenCopyProposal, game: &mut GameState, ctx: &mut ExecutionContext,
+fn commit_token_copy_original(
+    mut proposal: TokenCopyProposal,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
     replacement: crate::events::CreateTokensEvent,
-    programs: Vec<crate::events::processing::PreparedReplacementProgram>)
-    -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
     let effect = &proposal.effect;
     let controller_id = replacement.controller;
-    let token_preview = replacement.token.clone().or(proposal.token_preview.take())
+    let token_preview = replacement
+        .token
+        .clone()
+        .or(proposal.token_preview.take())
         .ok_or_else(|| ExecutionError::InternalError("copy original lost its template".into()))?;
     let count = replacement.count as usize;
     // Attack choices were retained during preparation, so entry cannot prompt
@@ -607,25 +698,50 @@ fn commit_token_copy_original(mut proposal: TokenCopyProposal, game: &mut GameSt
         let token_is_creature = token.is_creature();
         game.commit_token_resource_slot()?;
         game.add_object(token);
-        let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
-            id, Zone::Battlefield, ctx.cause.clone(), &mut ctx.decision_maker, effect.enters_tapped, true,
+        let entry_result = game.move_created_token_with_entry_instructions(
+            id,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+            effect.enters_tapped,
+            true,
+            Vec::new(),
         )?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                EffectOutcome::count(0),
+            ));
         }
-        let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(game, id, entry_result, &mut entry_receipts)? else {
+        let Some(entry_result) = super::lifecycle::retain_token_entry_receipt(
+            game,
+            id,
+            entry_result,
+            &mut entry_receipts,
+        )?
+        else {
             game.remove_object(id);
             continue;
         };
         let entered_id = entry_result.new_id;
         created_ids.push(entered_id);
-        if game.object(entered_id).is_some_and(|obj| obj.zone == Zone::Battlefield) {
+        if game
+            .object(entered_id)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield)
+        {
             let entered_is_creature = game.current_is_creature(entered_id);
-            apply_token_battlefield_entry(game, ctx, entered_id, controller_id,
-                entered_is_creature || token_is_creature, entry_options, Zone::Command,
-                entry_result.enters_tapped, &mut events)?;
+            apply_token_battlefield_entry(
+                game,
+                ctx,
+                entered_id,
+                controller_id,
+                entered_is_creature || token_is_creature,
+                entry_options,
+                Zone::Command,
+                entry_result.enters_tapped,
+                &mut events,
+            )?;
             if let Some(Some(target)) = proposal.original_attack_targets.get(index)
-                && crate::effects::combat::can_enter_attacking(game, entered_id) {
+                && crate::effects::combat::can_enter_attacking(game, entered_id)
+            {
                 game.add_entering_attacker(entered_id, target.clone());
             }
         }
@@ -634,34 +750,56 @@ fn commit_token_copy_original(mut proposal: TokenCopyProposal, game: &mut GameSt
     let mut actual_creation = replacement.clone();
     actual_creation.count = created_ids.len() as u32;
     actual_creation.token = Some(token_preview);
-    let additional_ids = create_replacement_additional_tokens(game, ctx, controller_id, &mut actual_creation,
+    let additional_ids = create_replacement_additional_tokens(
+        game,
+        ctx,
+        controller_id,
+        &mut actual_creation,
         &super::lifecycle::AdditionalTokenInstructions {
-            enters_tapped: effect.enters_tapped, entry: entry_options,
-            prepared_attack_targets: (effect.enters_attacking || proposal.configured_attack_player.is_some())
-                .then_some(proposal.additional_attack_targets),
+            enters_tapped: effect.enters_tapped,
+            entry: entry_options,
+            prepared_attack_targets: (effect.enters_attacking
+                || proposal.configured_attack_player.is_some())
+            .then_some(proposal.additional_attack_targets),
             gains_haste: effect.has_haste && effect.haste_followup_reference_surface.is_some(),
             ..Default::default()
-        }, &mut events, &mut entry_receipts)?;
+        },
+        &mut events,
+        &mut entry_receipts,
+    )?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        return Ok(crate::effects::SimultaneousEffectCommit::finished(
+            EffectOutcome::count(0),
+        ));
     }
     created_ids.extend(additional_ids);
     super::lifecycle::publish_created_token_groups(game, ctx, actual_creation, &mut events);
     // Cleanup belongs to every original, including added/substituted groups,
     // before a completion is allowed to remove the effect's source or a copy.
     for &id in &created_ids {
-        if game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
+        if game
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
             if let Some(player) = proposal.required_attack_player {
-                game.effect_store.attack_player_requirements.push((id, player, game.turn.turn_number));
+                game.effect_store.attack_player_requirements.push((
+                    id,
+                    player,
+                    game.turn.turn_number,
+                ));
             }
             schedule_token_cleanup(game, ctx, id, controller_id, proposal.cleanup.clone())?;
         }
     }
     Ok(crate::effects::SimultaneousEffectCommit {
-        outcome: EffectOutcome::with_objects(created_ids.clone()).with_result_objects(created_ids).with_events(events),
-        completion: Some(Box::new(TokenCopyCompletion {
-            instruction: proposal.instruction.take(), entries: Some(entry_receipts), frozen: None, programs,
-        })),
+        outcome: EffectOutcome::with_objects(created_ids.clone())
+            .with_result_objects(created_ids)
+            .with_events(events),
+        completion: Some(super::lifecycle::token_instruction_completion(
+            proposal.instruction.take(),
+            entry_receipts,
+            programs,
+        )),
     })
 }
 

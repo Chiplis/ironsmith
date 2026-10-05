@@ -1034,6 +1034,8 @@ pub struct EffectStore {
     pub mana_spend_effects: ManaSpendEffectTracker,
     pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    /// Scoped committed-action evidence, independent of trigger queue draining.
+    pub(crate) instruction_result_records: Vec<Vec<crate::effect::ExecutionFact>>,
     /// Trigger matches produced inside a nested rules transaction, such as a
     /// spell cast while another spell or ability is resolving. They wait here
     /// until the outer resolution boundary can put them into its trigger queue.
@@ -1108,6 +1110,7 @@ impl Default for EffectStore {
             mana_spend_effects: ManaSpendEffectTracker::new(),
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
+            instruction_result_records: Vec::new(),
             pending_trigger_entries: Vec::new(),
             pending_reflexive_triggers: Vec::new(),
             next_reflexive_trigger_id: 0,

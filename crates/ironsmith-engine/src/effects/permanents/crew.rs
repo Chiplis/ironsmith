@@ -391,22 +391,19 @@ impl EffectExecutor for CrewCostEffect {
             ));
         }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
+        let taps = super::tap::tap_cost_objects(game, ctx, &chosen)?;
+        let mut events = taps.events.clone();
         let crew_count = chosen.len();
-        for id in chosen.iter() {
-            if game.object(*id).is_some() && !game.is_tapped(*id) {
-                game.tap(*id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, *id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-            }
-        }
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
+
         if self.teamwork {
-            return Ok(EffectOutcome::resolved().with_events(events));
+            return Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::resolved().with_events(events),
+                [{
+                    let mut receipts = taps.clone();
+                    receipts.events.clear();
+                    receipts
+                }],
+            ));
         }
         // CR 702.122d: "becomes crewed" means "a crew ability of this Vehicle
         // resolves", so the Vehicle-level event is deferred to resolution.
@@ -437,7 +434,14 @@ impl EffectExecutor for CrewCostEffect {
             }
         }
 
-        Ok(EffectOutcome::resolved().with_events(events))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved().with_events(events),
+            [{
+                let mut receipts = taps.clone();
+                receipts.events.clear();
+                receipts
+            }],
+        ))
     }
 
     fn cost_description(&self) -> Option<String> {

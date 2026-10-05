@@ -2,16 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::card::LinkedFaceLayout;
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};
-use crate::effect::{
-    Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt,
-    OutcomeObjectMemory,
-};
+use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
-use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::ChooseSpec;
@@ -180,85 +175,8 @@ fn choose_reflexive_targets(
     Some((chosen_targets, assignments))
 }
 
-fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> ObjectSnapshot {
-    let mut snapshot = game
-        .object(memory.object_id)
-        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
-        .unwrap_or_else(|| ObjectSnapshot {
-            chosen_subtype: None,
-            secret_chosen_subtype: None,
-            noted_life_total: None,
-            chosen_object: None,
-            object_id: memory.object_id,
-            stable_id: memory.stable_id,
-            kind: if memory.is_token {
-                ObjectKind::Token
-            } else {
-                ObjectKind::Card
-            },
-            card: None,
-            controller: memory.controller,
-            owner: memory.owner,
-            name: String::new(),
-            first_printed_set_name: None,
-            mana_cost: None,
-            colors: memory.colors,
-            supertypes: Vec::new(),
-            card_types: memory.card_types.clone(),
-            subtypes: memory.subtypes.clone(),
-            compiled_card_text: String::new(),
-            ability_labels: Vec::new(),
-            other_face: None,
-            other_face_name: None,
-            linked_face_layout: LinkedFaceLayout::None,
-            linked_face_mana_value: None,
-            power: memory.power,
-            toughness: memory.toughness,
-            base_power: memory.power,
-            base_toughness: memory.toughness,
-            loyalty: None,
-            defense: None,
-            abilities: std::sync::Arc::new(Vec::new()),
-            aura_attach_filter: None,
-            copiable_values: crate::snapshot::CopiableValues::default(),
-            x_value: None,
-            cast_order_this_turn: None,
-            mana_spent_to_cast: crate::player::ManaPool::default(),
-            caster_mana_spent_to_cast: None,
-            mana_spent_on_x: None,
-            snow_mana_spent_to_cast: crate::player::ManaPool::default(),
-            mana_sources_spent_to_cast: Vec::new(),
-            optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
-            counters: std::collections::BTreeMap::new(),
-            is_token: memory.is_token,
-            tapped: false,
-            attacking: false,
-            goaded: None,
-            ring_bearer: None,
-            flipped: false,
-            face_down: false,
-            transform_count: 0,
-            attached_to: None,
-            attachments: Vec::new(),
-            attachment_snapshots: Vec::new(),
-            was_enchanted: false,
-            is_monstrous: false,
-            is_prepared: false,
-            is_commander: false,
-            zone: memory.zone,
-        });
-
-    snapshot.stable_id = memory.stable_id;
-    snapshot.controller = memory.controller;
-    snapshot.owner = memory.owner;
-    snapshot.zone = memory.zone;
-    snapshot.power = memory.power;
-    snapshot.toughness = memory.toughness;
-    snapshot.card_types = memory.card_types.clone();
-    snapshot.colors = memory.colors;
-    snapshot.subtypes = memory.subtypes.clone();
-    snapshot.is_token = memory.is_token;
-    snapshot
+fn snapshot_from_memory(_game: &GameState, snapshot: &ObjectSnapshot) -> ObjectSnapshot {
+    snapshot.clone()
 }
 
 fn snapshots_from_object_ids(
@@ -323,7 +241,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             .get_outcome(self.condition)
             .cloned()
             .unwrap_or_else(EffectOutcome::impossible);
-        if !self.predicate.evaluate_outcome(&outcome) {
+        if !super::if_effect::predicate_matches_with_context(&self.predicate, &outcome, game, ctx) {
             return Ok(EffectOutcome::resolved());
         }
         if let Some(condition) = &self.intervening_if
@@ -723,7 +641,7 @@ mod tests {
         ChoiceCount, EffectId, EffectMetric, EffectMetricSource, EffectOutcome, Value,
     };
     #[cfg(ironsmith_runtime_parser_tests)]
-    use crate::effect::{Effect, EffectPredicate, OutcomeObjectMemory};
+    use crate::effect::{Effect, EffectPredicate};
     #[cfg(ironsmith_runtime_parser_tests)]
     use crate::effects::EffectExecutor;
     use crate::effects::ExecutionContext;
@@ -845,9 +763,8 @@ mod tests {
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
         ctx.store_outcome(
             condition,
-            EffectOutcome::count(1).with_affected_object_memory(vec![
-                OutcomeObjectMemory::from_snapshot(&tagged_snapshot),
-            ]),
+            EffectOutcome::count(1)
+                .with_affected_object_memory(vec![Clone::clone(&tagged_snapshot)]),
         );
         ctx.x_value = Some(7);
         ctx.combat.defending_player = Some(bob);
@@ -921,9 +838,7 @@ mod pending_reflexive_context_contract_tests {
         ctx.set_tagged_objects("paid", vec![snapshot.clone()]);
         ctx.store_outcome(
             condition,
-            EffectOutcome::count(1).with_affected_object_memory(vec![
-                crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot),
-            ]),
+            EffectOutcome::count(1).with_affected_object_memory(vec![Clone::clone(&snapshot)]),
         );
         let effect = ReflexiveTriggerEffect::new(
             condition,

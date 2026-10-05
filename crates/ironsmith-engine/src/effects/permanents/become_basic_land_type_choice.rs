@@ -34,15 +34,33 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let options = subtype_options().into_iter().filter(|(subtype, _, _)|
-            self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(subtype)).collect::<Vec<_>>();
-        if self.allowed_subtypes.iter().any(|subtype| !subtype.is_basic_land_type()) || options.is_empty() {
-            return Err(ExecutionError::InternalError("invalid basic land subtype choice set".into()));
+        let options = subtype_options()
+            .into_iter()
+            .filter(|(subtype, _, _)| {
+                self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(subtype)
+            })
+            .collect::<Vec<_>>();
+        if self
+            .allowed_subtypes
+            .iter()
+            .any(|subtype| !subtype.is_basic_land_type())
+            || options.is_empty()
+        {
+            return Err(ExecutionError::InternalError(
+                "invalid basic land subtype choice set".into(),
+            ));
         }
-        let (subtype, _, _) = if let Some(subtype) = self.fixed_subtype.or_else(|| (options.len() == 1).then(|| options[0].0)) {
-            options.iter().copied()
+        let (subtype, _, _) = if let Some(subtype) = self
+            .fixed_subtype
+            .or_else(|| (options.len() == 1).then(|| options[0].0))
+        {
+            options
+                .iter()
+                .copied()
                 .find(|(candidate, _, _)| *candidate == subtype)
-                .ok_or_else(|| ExecutionError::InternalError("invalid fixed basic land subtype".into()))?
+                .ok_or_else(|| {
+                    ExecutionError::InternalError("invalid fixed basic land subtype".into())
+                })?
         } else {
             let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(
                 game,
@@ -68,10 +86,14 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
                 return Ok(EffectOutcome::count(0));
             }
             let [chosen] = choices.as_slice() else {
-                return Err(ExecutionError::InternalError("basic land selection must contain exactly one index".into()));
+                return Err(ExecutionError::InternalError(
+                    "basic land selection must contain exactly one index".into(),
+                ));
             };
             let Some(chosen) = Some(*chosen).filter(|idx| *idx < options.len()) else {
-                return Err(ExecutionError::InternalError("invalid basic land type selection".into()));
+                return Err(ExecutionError::InternalError(
+                    "invalid basic land type selection".into(),
+                ));
             };
 
             options[chosen]
@@ -79,15 +101,21 @@ impl EffectExecutor for BecomeBasicLandTypeChoiceEffect {
         // CR305.7 changes only land subtypes, not Creature/Artifact/etc
         // subtypes. Intrinsic basic-land mana is derived at the layer boundary.
         let apply = if self.preserve_other_types {
-            crate::effects::ApplyContinuousEffect::with_spec(self.target.clone(),
-                Modification::AddSubtypes(vec![subtype]), self.duration.clone())
+            crate::effects::ApplyContinuousEffect::with_spec(
+                self.target.clone(),
+                Modification::AddSubtypes(vec![subtype]),
+                self.duration.clone(),
+            )
         } else {
-            crate::effects::ApplyContinuousEffect::with_spec(self.target.clone(),
-                Modification::SetSubtypes(vec![subtype]), self.duration.clone())
-                .with_additional_modification(Modification::RemoveLandRulesTextAbilities)
+            crate::effects::ApplyContinuousEffect::with_spec(
+                self.target.clone(),
+                Modification::SetSubtypes(vec![subtype]),
+                self.duration.clone(),
+            )
+            .with_additional_modification(Modification::RemoveLandRulesTextAbilities)
         };
 
-        apply.execute(game, ctx)
+        apply.execute_child(game, ctx)
     }
 }
 

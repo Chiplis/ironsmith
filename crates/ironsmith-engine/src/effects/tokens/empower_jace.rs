@@ -79,8 +79,9 @@ impl EffectExecutor for EmpowerJaceEffect {
             let mut outcomes = Vec::new();
             let mut candidates = jace_token_candidates(game, ctx.controller);
             if candidates.is_empty() {
-                outcomes
-                    .push(CreateTokenEffect::you(jace_token_definition(), 1).execute(game, ctx)?);
+                outcomes.push(
+                    CreateTokenEffect::you(jace_token_definition(), 1).execute_child(game, ctx)?,
+                );
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
@@ -131,7 +132,7 @@ impl EffectExecutor for EmpowerJaceEffect {
                     amount,
                     ChooseSpec::SpecificObject(chosen),
                 )
-                .execute(game, ctx)?,
+                .execute_child(game, ctx)?,
             );
             // No state-based actions run between the zero-loyalty token's entry
             // and this counter instruction. The enclosing resolution checks

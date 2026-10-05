@@ -19,36 +19,40 @@ impl EffectExecutor for PreventAllCombatDamageEffect {
                 DamageFilter::combat(),
                 self.until.clone(),
             )
-            .execute(game, ctx),
+            .execute_child(game, ctx),
             CombatDamagePreventionTarget::Players => super::PreventAllDamageEffect::new(
                 PreventionTarget::Players,
                 DamageFilter::combat(),
                 self.until.clone(),
             )
-            .execute(game, ctx),
+            .execute_child(game, ctx),
             CombatDamagePreventionTarget::You => super::PreventAllDamageEffect::new(
                 PreventionTarget::You,
                 DamageFilter::combat(),
                 self.until.clone(),
             )
-            .execute(game, ctx),
+            .execute_child(game, ctx),
             CombatDamagePreventionTarget::From(source) => {
                 super::PreventAllCombatDamageFromEffect::new(source.clone(), self.until.clone())
-                    .execute(game, ctx)
+                    .execute_child(game, ctx)
             }
             CombatDamagePreventionTarget::ToAndFrom(object) => {
                 // CR 615.1: two shields — combat damage the object would deal
                 // and combat damage that would be dealt to it.
-                super::PreventAllCombatDamageFromEffect::new(object.clone(), self.until.clone())
-                    .execute(game, ctx)?;
-                super::PreventAllDamageToTargetEffect::new(object.clone(), self.until.clone())
-                    .with_filter(DamageFilter::combat())
-                    .execute(game, ctx)
-                    .or_else(|error| match error {
-                        // The object is gone: nothing left to protect.
-                        ExecutionError::InvalidTarget => Ok(EffectOutcome::resolved()),
-                        other => Err(other),
-                    })
+                let from = super::PreventAllCombatDamageFromEffect::new(
+                    object.clone(),
+                    self.until.clone(),
+                )
+                .execute_child(game, ctx)?;
+                let to =
+                    super::PreventAllDamageToTargetEffect::new(object.clone(), self.until.clone())
+                        .with_filter(DamageFilter::combat())
+                        .execute_child(game, ctx)?;
+                Ok(EffectOutcome::aggregate([from, to])).or_else(|error| match error {
+                    // The object is gone: nothing left to protect.
+                    ExecutionError::InvalidTarget => Ok(EffectOutcome::resolved()),
+                    other => Err(other),
+                })
             }
         }
     }

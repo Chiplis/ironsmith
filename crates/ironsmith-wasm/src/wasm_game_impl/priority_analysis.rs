@@ -359,6 +359,25 @@ mod priority_analysis_tests {
     }
 
     #[test]
+    fn incomplete_priority_pass_does_not_search_unrelated_mana_sources() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut game, player, _, _) = crate::resource_payment_test_fixture();
+            let spell = ironsmith::CardBuilder::new(ironsmith::CardId::new(), "Resource priority spell")
+                .card_types(vec![ironsmith::types::CardType::Creature])
+                .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green])).build();
+            game.create_object_from_card(&spell, player, Zone::Hand);
+            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+            let mut context = ironsmith::decisions::context::PriorityContext::new(&game, player, vec![LegalAction::PassPriority]).unwrap();
+            context.analysis_complete = false;
+            let reference = priority_action_ref(&LegalAction::PassPriority);
+            assert_eq!(resolve_priority_action(&game, &context, None, Some(&reference)).unwrap(), Some(LegalAction::PassPriority));
+            assert_eq!(resolve_priority_action(&game, &context, Some(0), None).unwrap(), Some(LegalAction::PassPriority));
+            assert!(ironsmith::decision::compute_actions_for_source(&game, player, None).is_err(), "fixture must exercise a failing mana search");
+        });
+    }
+
+    #[test]
     fn resource_failed_priority_candidate_never_completes_as_unpayable() {
         with_fixture_stack(|| {
             let _ids = crate::test_id_counter_guard();

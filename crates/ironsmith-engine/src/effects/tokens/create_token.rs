@@ -174,6 +174,8 @@ fn cost_exiled_objects(
 struct TokenProposal {
     effect: CreateTokenEffect,
     resolved_token: CardDefinition,
+    initial_counters: Vec<(crate::object::CounterType, u32)>,
+    completion: Option<(crate::events::KeywordActionKind, u32)>,
     token_preview: Option<crate::object::Object>,
     controller: crate::ids::PlayerId,
     count: u32,
@@ -205,6 +207,8 @@ fn prepare_token_proposal(
         return Ok(TokenProposal {
             effect: effect.clone(),
             resolved_token: effect.token.clone(),
+            initial_counters: Vec::new(),
+            completion: None,
             token_preview: None,
             controller: controller_id,
             count: 0,
@@ -235,6 +239,8 @@ fn prepare_token_proposal(
     Ok(TokenProposal {
         effect: effect.clone(),
         resolved_token,
+        initial_counters: Vec::new(),
+        completion: None,
         token_preview: Some(token_preview),
         controller: controller_id,
         count: base_count,
@@ -284,54 +290,21 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
         commit_token_proposal(*self, game, ctx, false).map(|commit| commit.outcome)
     }
 }
-struct TokenCompletion {
-    instruction: Option<super::resources::TokenInstructionPermit>,
-    entries: Option<
-        Vec<(
-            ObjectId,
-            crate::events::processing::PreparedEventOutcome<
-                crate::effects::zones::AppliedZoneChange,
-            >,
-        )>,
-    >,
-    frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
-    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+/// A token creation request with entry-time instructions. This uses the same
+/// prepared creation/entry owner as CreateToken, never a later counter effect.
+pub(crate) fn create_tokens_with_entry_counters(
+    effect: &CreateTokenEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    counters: Vec<(crate::object::CounterType, u32)>,
+    completion: Option<(crate::events::KeywordActionKind, u32)>,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut proposal = prepare_token_proposal(effect, game, ctx)?;
+    proposal.initial_counters = counters;
+    proposal.completion = completion;
+    commit_token_proposal(proposal, game, ctx, false).map(|commit| commit.outcome)
 }
-impl crate::effects::SimultaneousEffectCompletion for TokenCompletion {
-    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
-        let entries = self
-            .entries
-            .take()
-            .ok_or_else(|| ExecutionError::InternalError("token entries already frozen".into()))?;
-        self.frozen = Some(crate::effects::zones::freeze_zone_change_receipts(
-            game, entries,
-        ));
-        Ok(())
-    }
-    fn complete(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        original: EffectOutcome,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let _phase = self
-            .instruction
-            .as_ref()
-            .map(|permit| permit.enter_phase())
-            .transpose()?;
-        let frozen = self.frozen.ok_or_else(|| {
-            ExecutionError::InternalError("token completion requires the original batch".into())
-        })?;
-        let original =
-            crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)?;
-        crate::effects::replacement::execute_deferred_replacement_programs(
-            game,
-            ctx,
-            original,
-            self.programs,
-        )
-    }
-}
+
 fn execute_token_instruction(
     effect: &CreateTokenEffect,
     game: &mut GameState,
@@ -365,12 +338,11 @@ fn commit_token_proposal(
         PreparedTokenCreation::Finished { outcome, programs } => {
             crate::effects::SimultaneousEffectCommit {
                 outcome,
-                completion: Some(Box::new(TokenCompletion {
-                    instruction: proposal.instruction.take(),
-                    entries: Some(Vec::new()),
-                    frozen: None,
+                completion: Some(super::lifecycle::token_instruction_completion(
+                    proposal.instruction.take(),
+                    Vec::new(),
                     programs,
-                })),
+                )),
             }
         }
         PreparedTokenCreation::Proceed {
@@ -385,6 +357,8 @@ fn commit_token_proposal(
             commit_token_original(
                 &proposal.effect,
                 &proposal.resolved_token,
+                &proposal.initial_counters,
+                proposal.completion,
                 preview,
                 game,
                 ctx,
@@ -394,6 +368,26 @@ fn commit_token_proposal(
             )?
         }
     };
+    if let Some((action, amount)) = proposal.completion {
+        if !committed.outcome.events.iter().any(|event| {
+            event
+                .downcast::<crate::events::KeywordActionEvent>()
+                .is_some_and(|event| event.action == action)
+        }) {
+            committed
+                .outcome
+                .events
+                .push(crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::KeywordActionEvent::new(
+                        action,
+                        proposal.controller,
+                        ctx.source,
+                        amount,
+                    ),
+                    ctx.provenance,
+                ));
+        }
+    }
     drop(phase);
     if !defer_additions && let Some(mut completion) = committed.completion.take() {
         game.freeze_completed_entry_events(committed.outcome.events.iter_mut())?;
@@ -405,6 +399,8 @@ fn commit_token_proposal(
 fn commit_token_original(
     effect: &CreateTokenEffect,
     resolved_token: &CardDefinition,
+    initial_counters: &[(crate::object::CounterType, u32)],
+    completion: Option<(crate::events::KeywordActionKind, u32)>,
     token_preview: crate::object::Object,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -482,13 +478,13 @@ fn commit_token_original(
 
         game.commit_token_resource_slot()?;
         game.add_object(token_obj);
-        let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
+        let entry_result = game.move_created_token_with_entry_instructions(
             id,
-            Zone::Battlefield,
             ctx.cause.clone(),
             &mut ctx.decision_maker,
             effect.enters_tapped,
             !effect.suppress_aura_attachment_choice,
+            initial_counters.to_vec(),
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -591,6 +587,7 @@ fn commit_token_original(
             blocking_attacker,
             cleanup: Some(cleanup_options.clone()),
             linked_exiles: linked_exiles.clone(),
+            initial_counters: initial_counters.to_vec(),
             ..Default::default()
         },
         &mut events,
@@ -662,18 +659,23 @@ fn commit_token_original(
         );
     }
 
+    if let Some((action, amount)) = completion {
+        events.push(crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(action, controller_id, ctx.source, amount),
+            ctx.provenance,
+        ));
+    }
     let original = EffectOutcome::with_objects(created_ids.clone())
         .with_result_objects(created_ids.clone())
         .with_events(events)
         .with_affected_objects_from_game(game, created_ids);
     Ok(crate::effects::SimultaneousEffectCommit {
         outcome: original,
-        completion: Some(Box::new(TokenCompletion {
+        completion: Some(super::lifecycle::token_instruction_completion(
             instruction,
-            entries: Some(entry_receipts),
-            frozen: None,
+            entry_receipts,
             programs,
-        })),
+        )),
     })
 }
 

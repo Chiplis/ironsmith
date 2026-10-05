@@ -131,8 +131,7 @@ impl EffectExecutor for EvolveEffect {
                 ctx.cause.clone(),
             )
             .with_provenance(ctx.provenance);
-            let placement =
-                crate::effects::counters::execute_object_counter_placement(game, ctx, event)?;
+            let placement = crate::effects::counters::execute_counter_placement(game, ctx, event)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }

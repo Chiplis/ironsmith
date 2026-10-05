@@ -108,16 +108,19 @@ impl EffectExecutor for RepeatEffectsEffect {
                 crate::effects::helpers::distinct_power_values_for_filter(game, power_filter, ctx);
             let mut selected = Vec::new();
             let mut all_events = Vec::new();
-            let mut all_execution_facts = Vec::new();
+            let mut children = Vec::new();
             ctx.clear_object_tag(&choice.tag);
 
             for power in powers {
                 let mut power_choice = choice.clone();
                 power_choice.filter.power = Some(Comparison::Equal(power));
-                let outcome =
-                    SequenceEffect::new(vec![Effect::new(power_choice)]).execute(game, ctx)?;
+                let outcome = SequenceEffect::new(vec![Effect::new(power_choice)])
+                    .execute_child(game, ctx)?;
                 all_events.extend(outcome.events.clone());
-                all_execution_facts.extend(outcome.execution_facts.clone());
+                children.push(outcome.clone());
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
                 if let Some(current) = ctx.get_tagged_all(&choice.tag) {
                     for snapshot in current {
                         if !selected
@@ -132,28 +135,34 @@ impl EffectExecutor for RepeatEffectsEffect {
                 }
                 if outcome.status.is_failure() {
                     ctx.set_tagged_objects(choice.tag.clone(), selected);
-                    return Ok(EffectOutcome::with_details(
-                        outcome.status,
-                        outcome.value,
-                        all_events,
-                        all_execution_facts,
+                    return Ok(EffectOutcome::aggregate_with_primary_result(
+                        EffectOutcome::with_details(
+                            outcome.status,
+                            outcome.value,
+                            Vec::new(),
+                            Vec::new(),
+                        ),
+                        children,
                     ));
                 }
             }
 
             ctx.set_tagged_objects(choice.tag.clone(), selected);
-            return Ok(EffectOutcome::with_details(
-                OutcomeStatus::Succeeded,
-                OutcomeValue::None,
-                all_events,
-                all_execution_facts,
+            return Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::with_details(
+                    OutcomeStatus::Succeeded,
+                    OutcomeValue::None,
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                children,
             ));
         }
 
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         let sequence = SequenceEffect::new(self.effects.clone());
         let mut all_events = Vec::new();
-        let mut all_execution_facts = Vec::new();
+        let mut children = Vec::new();
         let mut all_output_objects = Vec::new();
         // A voter-independent "for each [option] vote, create a token" clause
         // lowers to RepeatEffectsEffect rather than living inside VoteEffect.
@@ -187,11 +196,14 @@ impl EffectExecutor for RepeatEffectsEffect {
                 reported_cursor = all_events.len();
             }
             let previous_operations = std::mem::take(&mut ctx.shared_team_structure_operations);
-            let result = sequence.execute(game, ctx);
+            let result = sequence.execute_child(game, ctx);
             ctx.shared_team_structure_operations = previous_operations;
             let outcome = result?;
             all_events.extend(outcome.events.clone());
-            all_execution_facts.extend(outcome.execution_facts.clone());
+            children.push(outcome.clone());
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if let Some(objects) = outcome.objects() {
                 for object in objects {
                     if !all_output_objects.contains(object) {
@@ -213,11 +225,9 @@ impl EffectExecutor for RepeatEffectsEffect {
                 } else {
                     OutcomeValue::Objects(all_output_objects)
                 };
-                return Ok(EffectOutcome::with_details(
-                    outcome.status,
-                    value,
-                    all_events,
-                    all_execution_facts,
+                return Ok(EffectOutcome::aggregate_with_primary_result(
+                    EffectOutcome::with_details(outcome.status, value, Vec::new(), Vec::new()),
+                    children,
                 ));
             }
         }
@@ -230,15 +240,18 @@ impl EffectExecutor for RepeatEffectsEffect {
                 ctx,
             );
         }
-        Ok(EffectOutcome::with_details(
-            OutcomeStatus::Succeeded,
-            if all_output_objects.is_empty() {
-                OutcomeValue::None
-            } else {
-                OutcomeValue::Objects(all_output_objects)
-            },
-            all_events,
-            all_execution_facts,
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::with_details(
+                OutcomeStatus::Succeeded,
+                if all_output_objects.is_empty() {
+                    OutcomeValue::None
+                } else {
+                    OutcomeValue::Objects(all_output_objects)
+                },
+                Vec::new(),
+                Vec::new(),
+            ),
+            children,
         ))
     }
 }

@@ -108,10 +108,7 @@ impl EffectExecutor for WithIdEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        let inner = self
-            .effect
-            .0
-            .prepare_simultaneous_player_action(game, ctx)?;
+        let inner = self.effect.prepare_simultaneous_player_action(game, ctx)?;
         Ok(Box::new(WithIdProposal { id: self.id, inner }))
     }
 

@@ -162,7 +162,7 @@ impl EffectExecutor for ForEachObject {
                     ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
                         self.effects
                             .iter()
-                            .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
+                            .map(|effect| effect.prepare_simultaneous_player_action(game, ctx))
                             .collect::<Result<Vec<_>, _>>()
                     })
                 })?;

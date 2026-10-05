@@ -1,7 +1,7 @@
 //! Destroy effect implementation.
 
 use crate::effect::{
-    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeStatus,
+    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus,
 };
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{apply_single_target_object_from_spec, resolve_objects_for_effect};
@@ -166,10 +166,10 @@ pub(crate) fn execute_single_target_destroy(
     let result = (|| -> Result<EffectOutcome, ExecutionError> {
     let mut destroyed_memory = None;
     let outcome = apply_single_target_object_from_spec(game, ctx, spec, |game, ctx, object_id| {
-        let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
+        let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
         let status = DestroyEffect::destroy_object(game, ctx, object_id, can_be_regenerated, &mut receipts)?;
         if status.is_none() {
-            destroyed_memory = receipts.last().and_then(|receipt| receipt.snapshot.as_ref()).map(OutcomeObjectMemory::from_snapshot).or(pre_memory);
+            destroyed_memory = receipts.last().and_then(|receipt| receipt.snapshot.as_ref()).map(Clone::clone).or(pre_memory);
         }
         Ok(status)
     })?;
@@ -257,7 +257,7 @@ pub(crate) fn execute_simultaneous_destroy(
         if matches!(result, EventOutcome::Proceed(Zone::Graveyard)) {
             applied_count += 1;
             if let Some(snapshot) = pre_snapshot.as_ref() {
-                destroyed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                destroyed_memory.push(Clone::clone(snapshot));
             }
             let result_objects = staged_game.take_zone_change_results(object_id);
             if let Some(snapshot) = pre_snapshot {
@@ -364,6 +364,7 @@ pub(crate) fn execute_simultaneous_destroy(
 }
 
 impl EffectExecutor for DestroyEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> { Some(crate::effect::PriorEffectAction::Destroyed) }
     fn execute(
         &self,
         game: &mut GameState,

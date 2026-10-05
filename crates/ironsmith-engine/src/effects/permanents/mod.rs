@@ -337,3 +337,5 @@ pub use unattach_objects::UnattachObjectsEffect;
 pub use unearth::UnearthEffect;
 pub use unlock_room_door::UnlockRoomDoorEffect;
 pub use untap::UntapEffect;
+
+pub(crate) mod face_down_entry;

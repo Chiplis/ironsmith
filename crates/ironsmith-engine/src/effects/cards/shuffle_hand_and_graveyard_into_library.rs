@@ -62,30 +62,19 @@ impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
             Vec::new()
         };
 
-        for card_id in hand_cards
+        let objects = hand_cards
             .into_iter()
             .chain(graveyard_cards)
             .chain(owned_permanents)
-        {
-            let destination = ctx
-                .simultaneous_zone_destination(card_id)
-                .unwrap_or(Zone::Library);
-            let _ = game.move_object_with_commander_options(
-                card_id,
-                destination,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            );
-        }
-
-        game.shuffle_player_library(player_id);
-
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-                ctx.provenance,
-            )),
-        )
+            .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, id))
+            .collect();
+        const MOVING: &str = "__shuffle_union";
+        let mut instruction = crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            crate::target::ChooseSpec::Tagged(MOVING.into()),
+            PlayerFilter::Specific(player_id),
+        );
+        instruction.shuffle_subject_library = true;
+        ctx.with_object_tag(MOVING, objects, |ctx| instruction.execute_child(game, ctx))
     }
 }
 

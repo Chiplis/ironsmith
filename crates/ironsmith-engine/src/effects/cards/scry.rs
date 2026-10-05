@@ -1,6 +1,6 @@
 //! Scry and fateseal effect implementation.
 
-use crate::decisions::{ScrySpec, ask_choose_one, context::ViewCardsContext, make_decision};
+use crate::decisions::{ScrySpec, ask_choose_one, make_decision};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -16,19 +16,6 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
-fn normalize_order_response(response: Vec<ObjectId>, original: &[ObjectId]) -> Vec<ObjectId> {
-    let mut remaining = original.to_vec();
-    let mut out = Vec::with_capacity(original.len());
-    for id in response {
-        if let Some(pos) = remaining.iter().position(|candidate| *candidate == id) {
-            out.push(id);
-            remaining.remove(pos);
-        }
-    }
-    out.extend(remaining);
-    out
-}
-
 fn top_library_cards_top_to_bottom(
     game: &GameState,
     player_id: PlayerId,
@@ -37,39 +24,6 @@ fn top_library_cards_top_to_bottom(
     game.player(player_id)
         .map(|player| player.library.iter().rev().take(count).copied().collect())
         .unwrap_or_default()
-}
-
-fn reorder_cards_top_to_bottom(
-    game: &GameState,
-    ctx: &mut ExecutionContext,
-    player_id: PlayerId,
-    description: &str,
-    cards_top_to_bottom: &[ObjectId],
-) -> Vec<ObjectId> {
-    if cards_top_to_bottom.len() <= 1 {
-        return cards_top_to_bottom.to_vec();
-    }
-
-    let items: Vec<(ObjectId, String)> = cards_top_to_bottom
-        .iter()
-        .map(|&id| {
-            let name = game
-                .object(id)
-                .map(|object| object.name.to_string())
-                .unwrap_or_else(|| "Unknown".to_string());
-            (id, name)
-        })
-        .collect();
-    let order_ctx = crate::decisions::context::OrderContext::new(
-        player_id,
-        Some(ctx.source),
-        description,
-        items,
-    );
-    normalize_order_response(
-        ctx.decision_maker.decide_order(game, &order_ctx),
-        cards_top_to_bottom,
-    )
 }
 
 fn choose_fateseal_opponent(
@@ -115,6 +69,7 @@ struct ScryArrangement {
     total_looked: usize,
     top_cards_top_to_bottom: Vec<ObjectId>,
     bottom_cards_top_to_bottom: Vec<ObjectId>,
+    observation: EffectOutcome,
 }
 
 fn choose_scry_arrangement(
@@ -132,19 +87,28 @@ fn choose_scry_arrangement(
             total_looked: 0,
             top_cards_top_to_bottom: Vec::new(),
             bottom_cards_top_to_bottom: Vec::new(),
+            observation: EffectOutcome::count(0),
         };
     }
 
-    let view_ctx = ViewCardsContext::new(
+    let observation = super::look_at_cards(
+        game,
+        ctx,
         viewer_id,
         subject_id,
-        Some(ctx.source),
         crate::zone::Zone::Library,
+        &top_cards_top_to_bottom,
         format!("{action} {} card(s)", top_cards_top_to_bottom.len()),
     );
-    ctx.decision_maker
-        .view_cards(game, viewer_id, &top_cards_top_to_bottom, &view_ctx);
-
+    if ctx.decision_maker.awaiting_choice() {
+        return ScryArrangement {
+            player_id: subject_id,
+            total_looked: 0,
+            top_cards_top_to_bottom: Vec::new(),
+            bottom_cards_top_to_bottom: Vec::new(),
+            observation,
+        };
+    }
     let spec = ScrySpec::new(ctx.source, top_cards_top_to_bottom.clone());
     let bottom_cards_top_to_bottom: Vec<ObjectId> = make_decision(
         game,
@@ -156,20 +120,29 @@ fn choose_scry_arrangement(
     .into_iter()
     .filter(|card| top_cards_top_to_bottom.contains(card))
     .collect();
+    if ctx.decision_maker.awaiting_choice() {
+        return ScryArrangement {
+            player_id: subject_id,
+            total_looked: 0,
+            top_cards_top_to_bottom: Vec::new(),
+            bottom_cards_top_to_bottom: Vec::new(),
+            observation,
+        };
+    }
 
     let kept_on_top: Vec<ObjectId> = top_cards_top_to_bottom
         .iter()
         .filter(|card| !bottom_cards_top_to_bottom.contains(card))
         .copied()
         .collect();
-    let ordered_top_cards = reorder_cards_top_to_bottom(
+    let ordered_top_cards = super::order_library_cards_top_to_bottom(
         game,
         ctx,
         viewer_id,
         "Reorder cards to keep on top of your library",
         &kept_on_top,
     );
-    let ordered_bottom_cards = reorder_cards_top_to_bottom(
+    let ordered_bottom_cards = super::order_library_cards_top_to_bottom(
         game,
         ctx,
         viewer_id,
@@ -182,6 +155,7 @@ fn choose_scry_arrangement(
         total_looked: top_cards_top_to_bottom.len(),
         top_cards_top_to_bottom: ordered_top_cards,
         bottom_cards_top_to_bottom: ordered_bottom_cards,
+        observation,
     }
 }
 
@@ -189,34 +163,11 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
     if arrangement.total_looked == 0 {
         return;
     }
-
-    let looked_set: std::collections::HashSet<_> = arrangement
-        .top_cards_top_to_bottom
-        .iter()
-        .chain(arrangement.bottom_cards_top_to_bottom.iter())
-        .copied()
-        .collect();
-
-    let Some(player) = game.player(arrangement.player_id) else {
-        return;
-    };
-
-    let mut after_order: Vec<ObjectId> = player
-        .library
-        .iter()
-        .copied()
-        .filter(|id| !looked_set.contains(id))
-        .collect();
-
-    for id in &arrangement.bottom_cards_top_to_bottom {
-        after_order.insert(0, *id);
-    }
-    for id in arrangement.top_cards_top_to_bottom.iter().rev() {
-        after_order.push(*id);
-    }
-    game.set_player_library_order_with_audit(
+    super::arrange_library_cards(
+        game,
         arrangement.player_id,
-        after_order,
+        &arrangement.top_cards_top_to_bottom,
+        &arrangement.bottom_cards_top_to_bottom,
         "scry or fateseal arranged library cards",
     );
 }
@@ -248,30 +199,34 @@ impl EffectExecutor for ScryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        super::execute_library_instruction_atomically(game, ctx, |game, ctx| {
+            let player_id = resolve_player_filter(game, &self.player, ctx)?;
+            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-        let arrangement = choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
-        // CR 701.22d: the player still scries (and "whenever you scry"
-        // triggers) even if the library is empty; only scry 0 is no event.
-        apply_scry_arrangement(game, &arrangement);
+            if count == 0 {
+                return Ok(EffectOutcome::count(0));
+            }
+            let arrangement =
+                choose_scry_arrangement(game, ctx, player_id, player_id, count, "Scry");
+            // CR 701.22d: the player still scries (and "whenever you scry"
+            // triggers) even if the library is empty; only scry 0 is no event.
+            apply_scry_arrangement(game, &arrangement);
 
-        Ok(
-            EffectOutcome::count(arrangement.total_looked as i32).with_event(
-                TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Scry,
-                        player_id,
-                        ctx.source,
-                        arrangement.total_looked as u32,
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(arrangement.total_looked as i32).with_event(
+                    TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Scry,
+                            player_id,
+                            ctx.source,
+                            arrangement.total_looked as u32,
+                        ),
+                        ctx.provenance,
                     ),
-                    ctx.provenance,
                 ),
-            ),
-        )
+                [arrangement.observation],
+            ))
+        })
     }
 }
 
@@ -309,36 +264,39 @@ impl EffectExecutor for FatesealEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let fatesealer = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        super::execute_library_instruction_atomically(game, ctx, |game, ctx| {
+            let fatesealer = resolve_player_filter(game, &self.player, ctx)?;
+            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-        let Some(opponent) = choose_fateseal_opponent(game, ctx, fatesealer) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
+            if count == 0 {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(opponent) = choose_fateseal_opponent(game, ctx, fatesealer) else {
+                return Ok(EffectOutcome::count(0));
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let arrangement =
-            choose_scry_arrangement(game, ctx, fatesealer, opponent, count, "Fateseal");
-        apply_scry_arrangement(game, &arrangement);
+            let arrangement =
+                choose_scry_arrangement(game, ctx, fatesealer, opponent, count, "Fateseal");
+            apply_scry_arrangement(game, &arrangement);
 
-        Ok(
-            EffectOutcome::count(arrangement.total_looked as i32).with_event(
-                TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Fateseal,
-                        fatesealer,
-                        ctx.source,
-                        arrangement.total_looked as u32,
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(arrangement.total_looked as i32).with_event(
+                    TriggerEvent::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Fateseal,
+                            fatesealer,
+                            ctx.source,
+                            arrangement.total_looked as u32,
+                        ),
+                        ctx.provenance,
                     ),
-                    ctx.provenance,
                 ),
-            ),
-        )
+                [arrangement.observation],
+            ))
+        })
     }
 }
 
@@ -355,48 +313,60 @@ impl EffectExecutor for EachPlayerScryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        if count == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
+        super::execute_library_instruction_atomically(game, ctx, |game, ctx| {
+            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+            if count == 0 {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        // The execution context's filter context carries the opponent and
-        // teammate lists "each opponent" matches against.
-        let filter_ctx = ctx.filter_context(game);
-        let players: Vec<PlayerId> = players_in_turn_order(game)
-            .into_iter()
-            .filter(|player_id| self.player_filter.matches_player(*player_id, &filter_ctx))
-            .collect();
-        if players.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+            // The execution context's filter context carries the opponent and
+            // teammate lists "each opponent" matches against.
+            let filter_ctx = ctx.filter_context(game);
+            let players: Vec<PlayerId> = players_in_turn_order(game)
+                .into_iter()
+                .filter(|player_id| self.player_filter.matches_player(*player_id, &filter_ctx))
+                .collect();
+            if players.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let mut arrangements = Vec::new();
-        for player_id in players {
-            // CR 701.22d: each player scries even with an empty library.
-            arrangements.push(choose_scry_arrangement(
-                game, ctx, player_id, player_id, count, "Scry",
-            ));
-        }
+            let mut arrangements = Vec::new();
+            for player_id in players {
+                // CR 701.22d: each player scries even with an empty library.
+                arrangements.push(choose_scry_arrangement(
+                    game, ctx, player_id, player_id, count, "Scry",
+                ));
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+            }
 
-        for arrangement in &arrangements {
-            apply_scry_arrangement(game, arrangement);
-        }
+            for arrangement in &arrangements {
+                apply_scry_arrangement(game, arrangement);
+            }
 
-        let total: i64 = arrangements.iter().map(|a| a.total_looked as i64).sum();
-        let events = arrangements.into_iter().map(|arrangement| {
-            TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::Scry,
-                    arrangement.player_id,
-                    ctx.source,
-                    arrangement.total_looked as u32,
-                ),
-                ctx.provenance,
-            )
-        });
+            let total: i64 = arrangements.iter().map(|a| a.total_looked as i64).sum();
+            let observations = arrangements
+                .iter()
+                .map(|arrangement| arrangement.observation.clone())
+                .collect::<Vec<_>>();
+            let events = arrangements.into_iter().map(|arrangement| {
+                TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Scry,
+                        arrangement.player_id,
+                        ctx.source,
+                        arrangement.total_looked as u32,
+                    ),
+                    ctx.provenance,
+                )
+            });
 
-        Ok(EffectOutcome::count(total).with_events(events))
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(total).with_events(events),
+                observations,
+            ))
+        })
     }
 }
 

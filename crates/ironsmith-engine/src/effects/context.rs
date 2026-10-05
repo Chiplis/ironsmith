@@ -1399,6 +1399,26 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Replace any existing object snapshots for a tag.
+    pub(crate) fn with_object_tag<R>(
+        &mut self,
+        tag: impl Into<TagKey>,
+        objects: Vec<ObjectSnapshot>,
+        run: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let tag = tag.into();
+        let previous = self.tagged_objects.insert(tag.clone(), objects);
+        let result = run(self);
+        match previous {
+            Some(objects) => {
+                self.tagged_objects.insert(tag, objects);
+            }
+            None => {
+                self.tagged_objects.remove(&tag);
+            }
+        }
+        result
+    }
+
     pub fn set_tagged_objects(&mut self, tag: impl Into<TagKey>, snapshots: Vec<ObjectSnapshot>) {
         self.tagged_objects.insert(tag.into(), snapshots);
     }

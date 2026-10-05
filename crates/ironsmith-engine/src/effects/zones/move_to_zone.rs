@@ -2,7 +2,7 @@
 
 use crate::combat_state::AttackTarget;
 use crate::decisions::context::{OrderContext, SelectOptionsContext, SelectableOption};
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
 };
@@ -707,8 +707,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         EventOutcome::NotApplicable => {
                             any_unchanged = true;
                             affected_ids.push(object_id);
-                            affected_memory
-                                .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                            affected_memory.push(Clone::clone(&target_lki_before_move));
                             zone_receipts.push((
                                 object_id,
                                 PreparedEventOutcome {
@@ -731,8 +730,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                 }
                                 affected_ids.extend(change.new_object_ids);
                             }
-                            affected_memory
-                                .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                            affected_memory.push(Clone::clone(&target_lki_before_move));
                             zone_receipts.push((
                                 object_id,
                                 PreparedEventOutcome {
@@ -771,7 +769,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             })?;
                             let snapshot = ObjectSnapshot::from_object(arriving, game);
                             if arriving.kind == crate::object::ObjectKind::Card {
-                                let memory = OutcomeObjectMemory::from_snapshot(&snapshot);
+                                let memory = Clone::clone(&snapshot);
                                 authored_facts.push(
                                     crate::effect::ExecutionFact::CardsPutIntoHand {
                                         player: arriving.owner,
@@ -785,8 +783,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     game.record_zone_change_results(object_id, result.new_object_ids.clone());
                     if !result.new_object_ids.is_empty() {
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
-                        affected_memory
-                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                        affected_memory.push(Clone::clone(&target_lki_before_move));
                         if let Some(snapshot) = source_lki_before_move.clone() {
                             moved_source_lki = Some(snapshot);
                         }
@@ -904,8 +901,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         }
                         affected_ids.extend(result.new_object_ids);
                     }
-                    affected_memory
-                        .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                    affected_memory.push(Clone::clone(&target_lki_before_move));
                     zone_receipts.push((
                         object_id,
                         PreparedEventOutcome {
@@ -921,8 +917,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     {
                         any_unchanged = true;
                         affected_ids.push(object_id);
-                        affected_memory
-                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                        affected_memory.push(Clone::clone(&target_lki_before_move));
                     }
                     // Positioning a card within its current library preserves
                     // object identity and does not count as a zone movement.
@@ -1000,8 +995,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             }
                         }
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
-                        affected_memory
-                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                        affected_memory.push(Clone::clone(&target_lki_before_move));
                         if let Some(snapshot) = source_lki_before_move {
                             moved_source_lki = Some(snapshot);
                         }
@@ -1010,8 +1004,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     }
                     BattlefieldEntryOutcome::Redirected(receipt) => {
                         ctx.refresh_target_snapshot(target_lki_before_move.clone());
-                        affected_memory
-                            .push(OutcomeObjectMemory::from_snapshot(&target_lki_before_move));
+                        affected_memory.push(Clone::clone(&target_lki_before_move));
                         if let Some(snapshot) = source_lki_before_move {
                             moved_source_lki = Some(snapshot);
                         }

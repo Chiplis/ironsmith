@@ -164,6 +164,16 @@ const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
   createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
 
+// Even a single resumable planner node can run synchronous replacement
+// simulation. Keep ranking off the authoritative queue, just like options.
+const paymentRankingAnalysis = createPaymentOptionsAnalysis({
+  capture: () => enqueueCall(() => ({
+    kind: 'ranking', request: 'ranking',
+    localReplay: localAnalysisJournal.capture(), module: engineModule,
+  }), { kind: 'payment_ranking_capture' }),
+  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
+});
+
 function nowMs() {
   return performance.now();
 }
@@ -764,7 +774,7 @@ async function handleInit(msg = {}) {
   try {
     clearBackgroundTimer();
     snapshotEncoder.reset();
-    paymentOptionsAnalysis.cancel();
+    paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
     previewWorker?.terminate(); previewWorker = null; targetPreviews.clear();
     game = null;
     pendingCallCount = 0;
@@ -891,6 +901,13 @@ function handleTargetPreview(id, args) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  if (msg.runtimeBranch == null && method === 'analyzePayment') {
+    paymentRankingAnalysis.run().then(result =>
+      postWorkerResult({ type: 'result', id, ok: true, result }), error =>
+      postWorkerResult({ type: 'result', id, ok: false, error: serializeError(error) }));
+    return;
+  }
+  if (msg.runtimeBranch == null && method === 'cancelPaymentAnalysis') paymentRankingAnalysis.cancel();
   if (msg.runtimeBranch == null && method === "getPaymentActivationOptions") {
     paymentOptionsAnalysis.run(...args).then(result =>
       postWorkerResult({ type: "result", id, ok: true, result }), error =>
@@ -957,7 +974,7 @@ function handleCall(msg) {
       return { result, registryStatus: null };
     }
     if (method === 'restoreExactBuildSnapshot') {
-      priorityAnalysis.invalidate(); paymentOptionsAnalysis.cancel();
+      priorityAnalysis.invalidate(); paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
       latestTargetPreview = null; previewWorker?.postMessage({ type: 'cancel' });
       let result;
       try {
@@ -986,7 +1003,7 @@ function handleCall(msg) {
       // Publishing a verified branch may copy the identical visible state.
       // Compare its analysis identity after the copy instead of discarding work.
       if (method !== "copyRuntimeSavepoint") priorityAnalysis.invalidate();
-      paymentOptionsAnalysis.cancel();
+      paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
       game?.cancelPaymentAnalysis?.();
       latestTargetPreview = null;
       previewWorker?.postMessage({ type: "cancel" });
@@ -1061,7 +1078,7 @@ function handleCall(msg) {
     const result = await fn.apply(game, args);
     if (previousViewIdentity !== null && previousViewIdentity !== game.priorityAnalysisIdentity()) {
       priorityAnalysis.invalidate();
-      paymentOptionsAnalysis.cancel();
+      paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
     }
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;

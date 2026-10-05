@@ -31,7 +31,7 @@ impl EffectExecutor for TicketCountersEffect {
             self.count.clone(),
             self.player.clone(),
         )
-        .execute(game, ctx)
+        .execute_child(game, ctx)
     }
 }
 

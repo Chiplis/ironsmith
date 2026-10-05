@@ -1,7 +1,7 @@
 //! Shared token lifecycle helpers.
 
 use crate::ability::Ability;
-use crate::effect::Effect;
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::events::EnterBattlefieldEvent;
@@ -17,7 +17,10 @@ use crate::zone::Zone;
 pub(crate) fn execute_token_instruction_atomically<'a>(
     game: &mut GameState,
     ctx: &mut ExecutionContext<'a>,
-    execute: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+    execute: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
     execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         let (_, meter) = game.begin_token_resource_scope();
@@ -45,8 +48,12 @@ pub(crate) fn execute_resource_transaction_atomically<'a>(
         Some(error) => Err(error),
         None => execute(game, ctx),
     };
-    if let Err(error) = &result { game.record_token_resource_failure(error); }
-    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if let Err(error) = &result {
+        game.record_token_resource_failure(error);
+    }
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(error);
+    }
     let pending = ctx.decision_maker.awaiting_choice();
     if pending || result.is_err() {
         game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
@@ -67,9 +74,7 @@ pub(crate) struct TokenEntryOptions {
 
 impl TokenEntryOptions {
     pub fn new(enters_attacking: bool) -> Self {
-        Self {
-            enters_attacking,
-        }
+        Self { enters_attacking }
     }
 }
 
@@ -80,26 +85,52 @@ pub(crate) fn retain_token_entry_receipt(
     game: &mut GameState,
     provisional: ObjectId,
     entry: crate::game_state::EntryCommitResult,
-    receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    receipts: &mut Vec<(
+        ObjectId,
+        crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    )>,
 ) -> Result<Option<crate::game_state::EntersResult>, ExecutionError> {
     use crate::events::processing::{EventOutcome, PreparedEventOutcome};
-    if entry.pending { return Err(ExecutionError::InternalError("pending token entry reached original commit owner".into())); }
+    if entry.pending {
+        return Err(ExecutionError::InternalError(
+            "pending token entry reached original commit owner".into(),
+        ));
+    }
     let (original, arrival) = match entry.original {
         EventOutcome::Proceed(result) => {
-            let final_zone = game.object(result.new_id).map(|object| object.zone)
-                .ok_or_else(|| ExecutionError::InternalError("token entry arrival missing before authored work".into()))?;
+            let final_zone = game
+                .object(result.new_id)
+                .map(|object| object.zone)
+                .ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "token entry arrival missing before authored work".into(),
+                    )
+                })?;
             let mut ids = game.take_zone_change_results(provisional);
-            if ids.is_empty() { ids.push(result.new_id); }
+            if ids.is_empty() {
+                ids.push(result.new_id);
+            }
             game.record_zone_change_results(provisional, ids.clone());
-            (EventOutcome::Proceed(crate::effects::zones::AppliedZoneChange {
-                final_zone, new_object_id: Some(result.new_id), new_object_ids: ids,
-            }), Some(result))
+            (
+                EventOutcome::Proceed(crate::effects::zones::AppliedZoneChange {
+                    final_zone,
+                    new_object_id: Some(result.new_id),
+                    new_object_ids: ids,
+                }),
+                Some(result),
+            )
         }
         EventOutcome::Prevented => (EventOutcome::Prevented, None),
         EventOutcome::Replaced => (EventOutcome::Replaced, None),
         EventOutcome::NotApplicable => (EventOutcome::NotApplicable, None),
     };
-    receipts.push((provisional, PreparedEventOutcome { original, programs: entry.programs }));
+    receipts.push((
+        provisional,
+        PreparedEventOutcome {
+            original,
+            programs: entry.programs,
+        },
+    ));
     Ok(arrival)
 }
 
@@ -129,72 +160,127 @@ pub(crate) fn create_replacement_additional_tokens(
     creation: &mut crate::events::CreateTokensEvent,
     instructions: &AdditionalTokenInstructions,
     events: &mut Vec<TriggerEvent>,
-    receipts: &mut Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    receipts: &mut Vec<(
+        ObjectId,
+        crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
+    )>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
-    use crate::events::tokens::TokenGroupKey;
     use super::create_token_copy::{attack_targets_for_player, choose_attack_target};
+    use crate::events::tokens::TokenGroupKey;
     let mut created_ids = Vec::new();
     let mut attack_index = 0usize;
     for key in creation.group_keys() {
         let definition = match key {
             TokenGroupKey::Original => continue,
-            TokenGroupKey::Named(index) => crate::events::tokens::additional_token_definition(creation.additional_tokens[index].0),
-            TokenGroupKey::Template(index) => creation.additional_templates[index].definition.clone(),
+            TokenGroupKey::Named(index) => crate::events::tokens::additional_token_definition(
+                creation.additional_tokens[index].0,
+            ),
+            TokenGroupKey::Template(index) => {
+                creation.additional_templates[index].definition.clone()
+            }
         };
         let count = creation.group_count(key) as usize;
         let mut actual = 0u32;
         for _ in 0..count {
-            let prepared_attack = instructions.prepared_attack_targets.as_ref().map(|targets| {
-                targets.get(attack_index).cloned().ok_or_else(||
-                    ExecutionError::InternalError("added token lost its prepared attack destination".into()))
-            }).transpose()?;
+            let prepared_attack = instructions
+                .prepared_attack_targets
+                .as_ref()
+                .map(|targets| {
+                    targets.get(attack_index).cloned().ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "added token lost its prepared attack destination".into(),
+                        )
+                    })
+                })
+                .transpose()?;
             attack_index += 1;
             let id = game.new_object_id();
             let mut token = game.object_from_token_definition(id, &definition, controller_id);
             token.zone = Zone::Command;
             let is_creature = token.is_creature();
             game.commit_token_resource_slot()?;
-        game.add_object(token);
+            game.add_object(token);
             let entry = game.move_created_token_with_entry_instructions(
-                id, ctx.cause.clone(), &mut ctx.decision_maker, instructions.enters_tapped,
-                !instructions.suppress_aura_attachment_choice, instructions.initial_counters.clone(),
+                id,
+                ctx.cause.clone(),
+                &mut ctx.decision_maker,
+                instructions.enters_tapped,
+                !instructions.suppress_aura_attachment_choice,
+                instructions.initial_counters.clone(),
             )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(Vec::new());
+            }
             let Some(entry) = retain_token_entry_receipt(game, id, entry, receipts)? else {
-                game.remove_object(id); continue;
+                game.remove_object(id);
+                continue;
             };
             let entered = entry.new_id;
-            actual += 1; created_ids.push(entered);
-            for &exiled in &instructions.linked_exiles { game.add_exiled_with_source_link(entered, exiled); }
-            if game.object(entered).is_some_and(|object| object.zone == Zone::Battlefield) {
-                apply_token_battlefield_entry(game, ctx, entered, controller_id, is_creature,
-                    if instructions.prepared_attack_targets.is_some() { TokenEntryOptions::default() } else { instructions.entry },
-                    Zone::Command, entry.enters_tapped, events)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            actual += 1;
+            created_ids.push(entered);
+            for &exiled in &instructions.linked_exiles {
+                game.add_exiled_with_source_link(entered, exiled);
+            }
+            if game
+                .object(entered)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+            {
+                apply_token_battlefield_entry(
+                    game,
+                    ctx,
+                    entered,
+                    controller_id,
+                    is_creature,
+                    if instructions.prepared_attack_targets.is_some() {
+                        TokenEntryOptions::default()
+                    } else {
+                        instructions.entry
+                    },
+                    Zone::Command,
+                    entry.enters_tapped,
+                    events,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(Vec::new());
+                }
                 if let Some(target) = prepared_attack {
                     if let Some(target) = target
-                        && crate::effects::combat::can_enter_attacking(game, entered) {
+                        && crate::effects::combat::can_enter_attacking(game, entered)
+                    {
                         game.add_entering_attacker(entered, target);
                     }
                 } else if let Some(player) = instructions.attack_player
                     && crate::effects::combat::can_enter_attacking(game, entered)
                 {
                     let target = if instructions.attack_player_only {
-                        game.player(player).is_some_and(|player| player.is_in_game())
+                        game.player(player)
+                            .is_some_and(|player| player.is_in_game())
                             .then_some(crate::combat_state::AttackTarget::Player(player))
                     } else {
                         let targets = attack_targets_for_player(game, player);
-                        (!targets.is_empty()).then(|| choose_attack_target(game, ctx, player, &targets)).flatten()
+                        (!targets.is_empty())
+                            .then(|| choose_attack_target(game, ctx, player, &targets))
+                            .flatten()
                     };
-                    if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-                    if let Some(target) = target { game.add_entering_attacker(entered, target); }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(Vec::new());
+                    }
+                    if let Some(target) = target {
+                        game.add_entering_attacker(entered, target);
+                    }
                 }
                 if let Some(attacker) = instructions.blocking_attacker {
                     crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
                 }
-                if instructions.gains_haste { grant_token_static_abilities(game, ctx, entered, &[StaticAbility::haste()])?; }
-                if let Some(cleanup) = &instructions.cleanup { schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?; }
-                if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+                if instructions.gains_haste {
+                    grant_token_static_abilities(game, ctx, entered, &[StaticAbility::haste()])?;
+                }
+                if let Some(cleanup) = &instructions.cleanup {
+                    schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?;
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(Vec::new());
+                }
             }
         }
         *creation.group_count_mut(key) = actual;
@@ -202,7 +288,12 @@ pub(crate) fn create_replacement_additional_tokens(
     Ok(created_ids)
 }
 
-pub(crate) fn publish_created_token_groups(_game: &mut GameState, ctx: &ExecutionContext, creation: crate::events::CreateTokensEvent, reported: &mut Vec<TriggerEvent>) {
+pub(crate) fn publish_created_token_groups(
+    _game: &mut GameState,
+    ctx: &ExecutionContext,
+    creation: crate::events::CreateTokensEvent,
+    reported: &mut Vec<TriggerEvent>,
+) {
     if creation.total_count() > 0 {
         let event = TriggerEvent::new_with_provenance(creation, ctx.provenance);
         reported.push(event);
@@ -646,4 +737,63 @@ mod tests {
         assert!(has_haste, "token should gain haste");
         assert!(has_flying, "token should gain flying");
     }
+}
+
+struct TokenInstructionCompletion {
+    instruction: Option<super::resources::TokenInstructionPermit>,
+    entries: Option<
+        Vec<(
+            ObjectId,
+            crate::events::processing::PreparedEventOutcome<
+                crate::effects::zones::AppliedZoneChange,
+            >,
+        )>,
+    >,
+    frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+}
+impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        let entries = self
+            .entries
+            .take()
+            .ok_or_else(|| ExecutionError::InternalError("token entries already frozen".into()))?;
+        self.frozen = Some(crate::effects::zones::freeze_zone_change_receipts(
+            game, entries,
+        ));
+        Ok(())
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let _phase = self
+            .instruction
+            .as_ref()
+            .map(|permit| permit.enter_phase())
+            .transpose()?;
+        let frozen = self.frozen.ok_or_else(|| {
+            ExecutionError::InternalError("token completion requires the original batch".into())
+        })?;
+        let original =
+            crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)?;
+        crate::effects::replacement::execute_deferred_replacement_programs(
+            game,
+            ctx,
+            original,
+            self.programs,
+        )
+    }
+}
+
+/// Creation and copy-template adapters share original-entry freezing,
+/// resource permits, and deferred creation-program completion.
+pub(crate) fn token_instruction_completion(
+    instruction: Option<super::resources::TokenInstructionPermit>,
+    entries: Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+) -> Box<dyn crate::effects::SimultaneousEffectCompletion> {
+    Box::new(TokenInstructionCompletion { instruction, entries: Some(entries), frozen: None, programs })
 }

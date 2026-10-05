@@ -6,102 +6,21 @@
 
 use std::collections::HashMap;
 
-use crate::card::LinkedFaceLayout;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_execution_context,
-};
+use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
-use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::EmitKeywordActionEffect;
 
-use super::mechanic_actions::execute_keyword_action_replacement_effects;
+use super::keyword_programs::forage_payments;
 
-fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> ObjectSnapshot {
-    let mut snapshot = game
-        .object(memory.object_id)
-        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
-        .unwrap_or_else(|| ObjectSnapshot {
-            chosen_subtype: None,
-            secret_chosen_subtype: None,
-            noted_life_total: None,
-            chosen_object: None,
-            object_id: memory.object_id,
-            stable_id: memory.stable_id,
-            kind: if memory.is_token {
-                ObjectKind::Token
-            } else {
-                ObjectKind::Card
-            },
-            card: None,
-            controller: memory.controller,
-            owner: memory.owner,
-            name: String::new(),
-            first_printed_set_name: None,
-            mana_cost: None,
-            colors: memory.colors,
-            supertypes: Vec::new(),
-            card_types: memory.card_types.clone(),
-            subtypes: memory.subtypes.clone(),
-            compiled_card_text: String::new(),
-            ability_labels: Vec::new(),
-            other_face: None,
-            other_face_name: None,
-            linked_face_layout: LinkedFaceLayout::None,
-            linked_face_mana_value: None,
-            power: memory.power,
-            toughness: memory.toughness,
-            base_power: memory.power,
-            base_toughness: memory.toughness,
-            loyalty: None,
-            defense: None,
-            abilities: std::sync::Arc::new(Vec::new()),
-            aura_attach_filter: None,
-            copiable_values: crate::snapshot::CopiableValues::default(),
-            x_value: None,
-            cast_order_this_turn: None,
-            mana_spent_to_cast: crate::player::ManaPool::default(),
-            caster_mana_spent_to_cast: None,
-            mana_spent_on_x: None,
-            snow_mana_spent_to_cast: crate::player::ManaPool::default(),
-            mana_sources_spent_to_cast: Vec::new(),
-            optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
-            counters: std::collections::BTreeMap::new(),
-            is_token: memory.is_token,
-            tapped: false,
-            attacking: false,
-            goaded: None,
-            ring_bearer: None,
-            flipped: false,
-            face_down: false,
-            transform_count: 0,
-            attached_to: None,
-            attachments: Vec::new(),
-            attachment_snapshots: Vec::new(),
-            was_enchanted: false,
-            is_monstrous: false,
-            is_prepared: false,
-            is_commander: false,
-            zone: memory.zone,
-        });
-
-    snapshot.stable_id = memory.stable_id;
-    snapshot.controller = memory.controller;
-    snapshot.owner = memory.owner;
-    snapshot.zone = memory.zone;
-    snapshot.power = memory.power;
-    snapshot.toughness = memory.toughness;
-    snapshot.card_types = memory.card_types.clone();
-    snapshot.colors = memory.colors;
-    snapshot.subtypes = memory.subtypes.clone();
-    snapshot.is_token = memory.is_token;
-    snapshot
+fn snapshot_from_memory(_game: &GameState, snapshot: &ObjectSnapshot) -> ObjectSnapshot {
+    snapshot.clone()
 }
 
 fn object_tags_from_config(
@@ -136,23 +55,6 @@ fn object_tags_from_config(
     Ok(tags)
 }
 
-fn forage_payments(exclude_source: bool) -> [crate::effect::Effect; 2] {
-    use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-    let mut graveyard = ObjectFilter::default()
-        .owned_by(PlayerFilter::You)
-        .in_zone(crate::zone::Zone::Graveyard);
-    graveyard.other = exclude_source;
-    [
-        crate::effect::Effect::new(crate::effects::ExileEffect::with_spec(
-            ChooseSpec::Object(graveyard).with_count(crate::effect::ChoiceCount::exactly(3)),
-        )),
-        crate::effect::Effect::new(crate::effects::SacrificeEffect::you(
-            ObjectFilter::default().with_subtype(crate::types::Subtype::Food),
-            1,
-        )),
-    ]
-}
-
 impl EffectExecutor for EmitKeywordActionEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -170,155 +72,62 @@ impl EffectExecutor for EmitKeywordActionEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        if self.action == KeywordActionKind::Forage {
-            let mut outcomes = Vec::new();
-            for _ in 0..self.amount {
-                let payments = forage_payments(false);
-                let options: Vec<_> = payments
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, effect)| {
-                        effect
-                            .0
-                            .can_execute_as_cost(game, ctx.source, ctx.controller)
-                            .is_ok()
-                    })
-                    .map(|(index, _)| {
-                        (
-                            if index == 0 {
-                                "Exile three cards from your graveyard"
-                            } else {
-                                "Sacrifice a Food"
-                            }
-                            .to_string(),
-                            index,
-                        )
-                    })
-                    .collect();
-                if options.is_empty() {
-                    return Err(ExecutionError::Impossible("cannot forage".into()));
-                }
-                let choice = crate::decisions::ask_choose_one(
+            if matches!(
+                self.action,
+                KeywordActionKind::Forage
+                    | KeywordActionKind::AssembleContraption
+                    | KeywordActionKind::Planeswalk
+                    | KeywordActionKind::SetSchemeInMotion
+                    | KeywordActionKind::AbandonScheme
+            ) {
+                return super::keyword_programs::execute_keyword_program(
                     game,
-                    &mut ctx.decision_maker,
-                    ctx.controller,
-                    ctx.source,
-                    &options,
+                    ctx,
+                    self.action,
+                    self.amount,
                 );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let index = choice.unwrap_or(options[0].1);
-                let outcome = crate::effects::execute_effect(game, &payments[index], ctx)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(outcome);
-                }
-                if outcome.status.is_failure() {
-                    return Ok(outcome);
-                }
-                outcomes.push(outcome);
-                outcomes.push(EffectOutcome::count(1).with_event(
-                    TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(self.action, ctx.controller, ctx.source, 1),
-                        ctx.provenance,
-                    ),
-                ));
             }
-            let mut outcome = EffectOutcome::aggregate(outcomes);
-            outcome.value = crate::effect::OutcomeValue::Count(i64::from(self.amount));
-            return Ok(outcome);
-        }
-        if self.action == KeywordActionKind::AssembleContraption {
-            // CR 701.45a deliberately does not define the Unstable Contraption
-            // procedure. Keep the action typed and observable for an external
-            // profile, but never pretend ordinary CR-only play can execute it.
-            return Err(ExecutionError::ExternalRulesProfileRequired {
-                action: "assembling a Contraption",
-                specification: "the Unstable FAQ",
-            });
-        }
-        if self.action == KeywordActionKind::Planeswalk {
-            if let Some(planar_roll) = ctx
-                .triggering_event
-                .as_ref()
-                .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
-                .filter(|event| event.is_planar)
-                && !game.is_face_up_planar_object(planar_roll.source)
+            if self.action == KeywordActionKind::Harness
+                && !super::keyword_programs::commit_harness(game, ctx.source)
             {
-                // CR 901.9a: this sourceless ability leaves the plane that was
-                // face up when the die was rolled. If that plane has already
-                // left the planar zone, the ability does nothing on resolution.
                 return Ok(EffectOutcome::count(0));
             }
-            // CR 701.31a: a player may planeswalk only during a Planechase
-            // game, and only the planar controller may. Otherwise the
-            // instruction does nothing.
-            let may_planeswalk = if game.grand_melee().is_some() {
-                game.planar_controllers().contains(&ctx.controller)
-            } else {
-                game.planar_controller_acting_for(ctx.controller).is_some()
-            };
-            if !may_planeswalk {
-                return Ok(EffectOutcome::count(0));
-            }
-            let mut outcomes = Vec::with_capacity(self.amount as usize);
-            for _ in 0..self.amount {
-                let would_event = Event::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Planeswalk,
-                        ctx.controller,
-                        ctx.source,
-                        1,
-                    ),
-                    ctx.provenance,
-                );
-                let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
-                let outcome = crate::effects::replacement::execute_event_expansion(game, ctx, replacement_result, |game, ctx, original| {
-                    match original {
-                        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
-                            execute_keyword_action_replacement_effects(game, ctx, effects, source, controller, &context, None)
-                        }
-                        TraitEventResult::Prevented => Ok(EffectOutcome::prevented()),
-                        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
-                            if ctx.decision_maker.awaiting_choice() { Ok(EffectOutcome::count(0)) }
-                            else { Err(ExecutionError::InternalError("planeswalk replacement suspended without a captured decision".into())) }
-                        }
-                        TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-                            let action = crate::events::downcast_event::<KeywordActionEvent>(event.inner())
-                                .filter(|action| action.action == KeywordActionKind::Planeswalk)
-                                .ok_or_else(|| ExecutionError::Impossible("planeswalk replacement produced a non-planeswalk event".into()))?;
-                            let destination = game.planeswalk(action.player, action.source).map_err(ExecutionError::Impossible)?;
-                            Ok(EffectOutcome::count(1).with_affected_objects(vec![destination]))
-                        }
-                        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError("planeswalk commit received an unflattened result".into())),
-                    }
-                })?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                outcomes.push(outcome);
-            }
-            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+            KeywordActionCompletion(self.clone()).execute_child(game, ctx)
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
         }
-        if self.action == KeywordActionKind::SetSchemeInMotion {
-            let mut schemes = Vec::with_capacity(self.amount as usize);
-            for _ in 0..self.amount {
-                schemes.push(
-                    game.set_scheme_in_motion(ctx.controller)
-                        .map_err(ExecutionError::Impossible)?,
-                );
-            }
-            return Ok(EffectOutcome::resolved().with_affected_objects(schemes));
-        }
-        if self.action == KeywordActionKind::AbandonScheme {
-            let scheme = game
-                .abandon_scheme(ctx.source)
-                .map_err(ExecutionError::Impossible)?;
-            return Ok(EffectOutcome::resolved().with_affected_objects(vec![scheme]));
-        }
-        if self.action == KeywordActionKind::Harness && !game.harness(ctx.source) {
+        if pending {
             return Ok(EffectOutcome::count(0));
         }
-        let object_tags = object_tags_from_config(self, game, ctx)?;
-        if self.action == KeywordActionKind::Exploit {
+        result
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        if self.action == KeywordActionKind::Forage {
+            return Some("Forage".into());
+        }
+        // Internal scaffolding effect used to emit trigger-visible events from costs.
+        // This should not show up as part of the printed/visible cost.
+        Some(String::new())
+    }
+}
+
+/// Pure completion publication, separated from executable keyword programs.
+/// The compatibility façade retains the existing compiler vocabulary.
+#[derive(Debug, Clone)]
+struct KeywordActionCompletion(EmitKeywordActionEffect);
+impl EffectExecutor for KeywordActionCompletion {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let config = &self.0;
+        let object_tags = object_tags_from_config(config, game, ctx)?;
+        if config.action == KeywordActionKind::Exploit {
             // CR 702.110b: "when this exploits a creature" looks back in time.
             // A creature that exploited itself is gone by now, so carry its
             // last-known information for the source filter and its own trigger.
@@ -331,7 +140,8 @@ impl EffectExecutor for EmitKeywordActionEffect {
             // Only a source sacrificed by this exploit ability gets lookback.
             // An ETB-time snapshot must not revive an ability whose source left
             // before this sacrifice (CR 603.10a, 702.110b).
-            let exploited_itself = object_tags.get(crate::tag::EXPLOITED_TAG)
+            let exploited_itself = object_tags
+                .get(crate::tag::EXPLOITED_TAG)
                 .is_some_and(|objects| objects.iter().any(|object| object.object_id == ctx.source));
             let lookback = if on_battlefield.is_none() && exploited_itself {
                 source_snapshot.iter().cloned().collect()
@@ -339,7 +149,7 @@ impl EffectExecutor for EmitKeywordActionEffect {
                 Vec::new()
             };
             let event = TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
+                KeywordActionEvent::new(config.action, ctx.controller, ctx.source, config.amount)
                     .with_object_tags(object_tags)
                     .with_snapshot(source_snapshot),
                 ctx.provenance,
@@ -349,33 +159,16 @@ impl EffectExecutor for EmitKeywordActionEffect {
         }
         // CR 702.29: a cycling ability's announced X (paid as part of the
         // cycling cost) is the X of its "when you cycle this card" trigger.
-        let x_value = (self.action == KeywordActionKind::Cycle)
+        let x_value = (config.action == KeywordActionKind::Cycle)
             .then_some(ctx.x_value)
             .flatten();
         let event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(self.action, ctx.controller, ctx.source, self.amount)
+            KeywordActionEvent::new(config.action, ctx.controller, ctx.source, config.amount)
                 .with_object_tags(object_tags)
                 .with_x_value(x_value),
             ctx.provenance,
         );
         Ok(EffectOutcome::resolved().with_event(event))
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending { return Ok(EffectOutcome::count(0)); }
-        result
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        if self.action == KeywordActionKind::Forage {
-            return Some("Forage".into());
-        }
-        // Internal scaffolding effect used to emit trigger-visible events from costs.
-        // This should not show up as part of the printed/visible cost.
-        Some(String::new())
     }
 }
 
@@ -437,20 +230,23 @@ mod tests {
         let effect_id = EffectId(7);
         ctx.store_outcome(
             effect_id,
-            EffectOutcome::resolved().with_affected_object_memory(vec![OutcomeObjectMemory {
-                object_id: sacrificed,
-                stable_id: StableId::from(sacrificed),
-                name: "Sacrificed Creature".to_string(),
-                controller: bob,
-                owner: bob,
-                zone: Zone::Battlefield,
-                power: Some(3),
-                toughness: Some(5),
-                mana_value: 2,
-                card_types: vec![CardType::Creature],
-                colors: ColorSet::default(),
-                subtypes: Vec::new(),
-                is_token: true,
+            EffectOutcome::resolved().with_affected_object_memory(vec![{
+                let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                    sacrificed,
+                    StableId::from(sacrificed),
+                    bob,
+                    bob,
+                    Zone::Battlefield,
+                );
+                snapshot.name = "Sacrificed Creature".to_string();
+                snapshot.power = Some(3);
+                snapshot.toughness = Some(5);
+                snapshot.linked_face_mana_value = Some((2) as u32);
+                snapshot.card_types = vec![CardType::Creature];
+                snapshot.colors = ColorSet::default();
+                snapshot.subtypes = Vec::new();
+                snapshot.is_token = true;
+                snapshot
             }]),
         );
 

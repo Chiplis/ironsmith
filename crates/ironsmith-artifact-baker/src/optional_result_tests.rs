@@ -381,3 +381,125 @@ fn puppet_return_requires_payment_after_the_creature_returns() {
         );
     }
 }
+
+const BALIN: &str = r#"Mana cost: {3}{R}{R}
+Type: Legendary Creature — Dwarf Bard
+Power/Toughness: 4/4
+Storied (If you control three or more artifacts, legendaries, and/or Sagas, you have an enduring story for the rest of the game.)
+Whenever Balin or another Dwarf you control enters, you may discard your hand. Draw X cards, where X is the number of cards discarded this way. If you have an enduring story, Balin deals X damage to each opponent."#;
+
+const GOLGARI_THUG: &str = r#"Mana cost: {1}{B}
+Type: Creature — Human Warrior
+Power/Toughness: 1/1
+When this creature dies, put target creature card from your graveyard on top of your library.
+Dredge 4 (If you would draw a card, you may mill four cards instead. If you do, return this card from your graveyard to your hand.)"#;
+
+struct BalinChoices {
+    discard: bool,
+    dredge: bool,
+    replacement_prompts: usize,
+}
+impl DecisionMaker for BalinChoices {
+    fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+        self.discard
+    }
+    fn decide_options(
+        &mut self,
+        _: &GameState,
+        ctx: &engine::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        assert_eq!(ctx.description, "Choose which replacement effect to apply");
+        self.replacement_prompts += 1;
+        let option = ctx
+            .options
+            .iter()
+            .find(|option| {
+                option.legal && option.description.starts_with("Do not apply") != self.dredge
+            })
+            .expect("dredge must offer both accept and decline");
+        vec![option.index]
+    }
+}
+
+#[test]
+fn balin_counts_discarded_cards_for_draws_and_damage_even_when_dredged() {
+    let definition = compile("Balin, Loremaster", BALIN);
+    let thug = compile("Golgari Thug", GOLGARI_THUG);
+    let ability = trigger(&definition, 0);
+    for (discard, dredge, thug_in_hand, story) in [
+        (false, false, false, true),
+        (true, false, false, true),
+        (true, true, false, true),
+        (true, true, true, true),
+        (true, true, false, false),
+    ] {
+        let mut game = game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let thug_id = game.create_object_from_definition(
+            &thug,
+            alice,
+            if thug_in_hand {
+                Zone::Hand
+            } else {
+                Zone::Graveyard
+            },
+        );
+        let filler = engine::card::CardBuilder::new(engine::ids::CardId::new(), "Hand filler")
+            .card_types(vec![engine::types::CardType::Instant])
+            .build();
+        for _ in 0..if thug_in_hand { 1 } else { 2 } {
+            game.create_object_from_card(&filler, alice, Zone::Hand);
+        }
+        for _ in 0..12 {
+            game.create_object_from_card(&filler, alice, Zone::Library);
+        }
+        if story {
+            game.grant_enduring_story(alice);
+        }
+        let mut choices = BalinChoices {
+            discard,
+            dredge,
+            replacement_prompts: 0,
+        };
+        game.push_to_stack(StackEntry::ability(source, alice, ability.effects.clone()));
+        engine::game_loop::resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+        let player = game.player(alice).unwrap();
+        assert_eq!(player.hand.len(), 2, "discard={discard}, dredge={dredge}");
+        assert_eq!(
+            player.library.len(),
+            if !discard {
+                12
+            } else if dredge {
+                7
+            } else {
+                10
+            }
+        );
+        assert_eq!(
+            game.player(bob).unwrap().life,
+            if discard && story { 18 } else { 20 }
+        );
+        assert_eq!(
+            choices.replacement_prompts,
+            if !discard {
+                0
+            } else if dredge {
+                1
+            } else {
+                2
+            }
+        );
+        if discard && dredge {
+            assert!(
+                player
+                    .hand
+                    .iter()
+                    .any(|id| game.object(*id).unwrap().name == "Golgari Thug")
+            );
+        } else if !thug_in_hand {
+            assert!(player.graveyard.contains(&thug_id));
+        }
+    }
+}

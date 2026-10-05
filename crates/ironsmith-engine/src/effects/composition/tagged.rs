@@ -57,14 +57,17 @@ pub(crate) fn apply_outcome_tags(
 ) {
     let outcome = outcome.instruction_result();
     runtime.outcome_only = effect.outcome_only;
-    let drawn_snapshots = outcome
-        .events_of_type::<crate::events::CardsDrawnEvent>()
-        .flat_map(|event| event.cards.iter().copied())
-        .filter_map(|object_id| {
-            game.object(object_id)
-                .map(|object| ObjectSnapshot::from_object(object, game))
-        })
-        .collect::<Vec<_>>();
+    let drawn_snapshots = crate::effects::outcome_recording::action_objects(
+        outcome,
+        crate::effect::PriorEffectAction::Drawn,
+        None,
+    )
+    .unwrap_or_else(|| {
+        outcome
+            .events_of_type::<crate::events::CardsDrawnEvent>()
+            .flat_map(|event| event.snapshots.iter().cloned())
+            .collect()
+    });
     for damage in outcome.events_of_type::<DamageEvent>() {
         if damage.amount == 0 {
             continue;
@@ -207,10 +210,7 @@ impl EffectExecutor for TaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
-        let inner = self
-            .effect
-            .0
-            .prepare_simultaneous_player_action(game, ctx)?;
+        let inner = self.effect.prepare_simultaneous_player_action(game, ctx)?;
         Ok(Box::new(TaggedProposal {
             effect: self.clone(),
             inner,

@@ -1,10 +1,9 @@
 //! Put onto battlefield effect implementation.
 
 use super::battlefield_entry::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
-    resolve_battlefield_entry_counters,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome, resolve_battlefield_entry_counters,
 };
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -60,40 +59,38 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
-        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-        if object_ids.is_empty() {
-            return Ok(EffectOutcome::target_invalid());
-        }
+            let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
+            let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+            if object_ids.is_empty() {
+                return Ok(EffectOutcome::target_invalid());
+            }
 
-        let entries = object_ids
-            .into_iter()
-            .map(|object_id| {
-                let Some(object) = game.object(object_id) else {
-                    return Ok(None);
-                };
-                let memory =
-                    OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(object, game));
-                let counters = resolve_battlefield_entry_counters(
-                    game,
-                    ctx,
-                    object_id,
-                    &self.enters_with_counters,
-                )?;
-                Ok(Some((object_id, memory, counters)))
-            })
-            .collect::<Result<Vec<_>, ExecutionError>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-        let outcomes = move_to_battlefield_batch_with_options(
-            game,
-            ctx,
-            entries
+            let entries = object_ids
+                .into_iter()
+                .map(|object_id| {
+                    let Some(object) = game.object(object_id) else {
+                        return Ok(None);
+                    };
+                    let memory = Clone::clone(&ObjectSnapshot::from_object(object, game));
+                    let counters = resolve_battlefield_entry_counters(
+                        game,
+                        ctx,
+                        object_id,
+                        &self.enters_with_counters,
+                    )?;
+                    Ok(Some((object_id, memory, counters)))
+                })
+                .collect::<Result<Vec<_>, ExecutionError>>()?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            let requests = entries
                 .iter()
                 .map(|(object, _, counters)| {
                     (
@@ -102,41 +99,43 @@ impl EffectExecutor for PutOntoBattlefieldEffect {
                             .with_initial_counters(counters.clone()),
                     )
                 })
-                .collect(),
-        )?;
-
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        if outcomes.len() != entries.len() { return Err(ExecutionError::InternalError("battlefield batch lost an entry receipt".into())); }
-        let mut receipts = Vec::new();
-        let mut moved_ids = Vec::new();
-        let mut affected_memory = Vec::new();
-        let mut prevented = false;
-        for ((object_id, memory, _), outcome) in entries.into_iter().zip(outcomes) {
-            match &outcome.outcome {
-                BattlefieldEntryOutcome::Moved(new_id) => {
-                    moved_ids.push(*new_id);
-                    affected_memory.push(memory);
+                .collect();
+            super::execute_battlefield_entries(game, ctx, requests, false, |_, _, receipts| {
+                let mut moved_ids = Vec::new();
+                let mut affected_memory = Vec::new();
+                let mut prevented = false;
+                for ((_, memory, _), receipt) in entries.into_iter().zip(receipts) {
+                    match &receipt.outcome {
+                        BattlefieldEntryOutcome::Moved(id) => {
+                            moved_ids.push(*id);
+                            affected_memory.push(memory);
+                        }
+                        BattlefieldEntryOutcome::Redirected(change) => {
+                            moved_ids.extend(change.new_object_ids.iter().copied());
+                            affected_memory.push(memory);
+                        }
+                        BattlefieldEntryOutcome::Prevented => prevented = true,
+                    }
                 }
-                BattlefieldEntryOutcome::Redirected(receipt) => {
-                    moved_ids.extend(receipt.new_object_ids.iter().copied());
-                    affected_memory.push(memory);
-                }
-                BattlefieldEntryOutcome::Prevented => prevented = true,
-            }
-            let (original, receipt) = outcome.into_zone_receipt();
-            if original != object_id { return Err(ExecutionError::InternalError("battlefield receipt changed original identity".into())); }
-            receipts.push((original, receipt));
-        }
-
-        let original = if !moved_ids.is_empty() {
-            EffectOutcome::with_objects(moved_ids).with_affected_object_memory(affected_memory)
-        } else if prevented { EffectOutcome::impossible() }
-        else { EffectOutcome::target_invalid() };
-        super::finish_zone_change_receipts(game, ctx, original, receipts)
+                Ok(if !moved_ids.is_empty() {
+                    EffectOutcome::with_objects(moved_ids)
+                        .with_affected_object_memory(affected_memory)
+                } else if prevented {
+                    EffectOutcome::impossible()
+                } else {
+                    EffectOutcome::target_invalid()
+                })
+            })
+            .map(|commit| commit.outcome)
         })();
         let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+        if pending || instruction.is_err() {
+            *game = checkpoint;
+            context_checkpoint.restore(ctx);
+        }
+        if pending {
+            return instruction.map(|_| EffectOutcome::count(0));
+        }
         instruction
     }
 

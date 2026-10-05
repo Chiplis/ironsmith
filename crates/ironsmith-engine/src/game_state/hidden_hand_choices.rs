@@ -356,31 +356,58 @@ fn public_claim_outcome(
     outcome: &crate::effect::EffectOutcome,
     hidden_match: bool,
 ) -> crate::effect::EffectOutcome {
-    use crate::effect::{ExecutionFact, OutcomeObjectMemory};
-    let memory = |memory: &OutcomeObjectMemory| {
-        if !(hidden_match && memory.zone.is_hidden()) {
-            return memory.clone();
-        }
-        OutcomeObjectMemory {
-            object_id: memory.object_id,
-            stable_id: memory.stable_id,
-            name: String::new(),
-            controller: memory.controller,
-            owner: memory.owner,
-            zone: memory.zone,
-            power: None,
-            toughness: None,
-            mana_value: 0,
-            card_types: Vec::new(),
-            colors: crate::color::ColorSet::default(),
-            subtypes: Vec::new(),
-            is_token: memory.is_token,
-        }
-    };
+    use crate::effect::ExecutionFact;
+    fn public_snapshot(
+        snapshot: &crate::snapshot::ObjectSnapshot,
+        hidden: bool,
+    ) -> crate::snapshot::ObjectSnapshot {
+        let mut public = if hidden && (snapshot.zone.is_hidden() || snapshot.face_down) {
+            let mut public = crate::snapshot::ObjectSnapshot::public_placeholder(
+                snapshot.object_id,
+                snapshot.stable_id,
+                snapshot.owner,
+                snapshot.controller,
+                snapshot.zone,
+            );
+            public.kind = snapshot.kind;
+            public.is_token = snapshot.is_token;
+            public.face_down = snapshot.face_down;
+            public.tapped = snapshot.tapped;
+            public.attacking = snapshot.attacking;
+            public.counters = snapshot.counters.clone();
+            public.attached_to = snapshot.attached_to;
+            public.attachments = snapshot.attachments.clone();
+            public.is_commander = snapshot.is_commander;
+            public
+        } else {
+            snapshot.clone()
+        };
+        public.strip_to_public_claim_form();
+        public.chosen_object = public
+            .chosen_object
+            .take()
+            .map(|snapshot| Box::new(public_snapshot(&snapshot, hidden)));
+        public.attachment_snapshots = public
+            .attachment_snapshots
+            .iter()
+            .map(|snapshot| public_snapshot(snapshot, hidden))
+            .collect();
+        public.mana_sources_spent_to_cast = public
+            .mana_sources_spent_to_cast
+            .iter()
+            .map(|snapshot| public_snapshot(snapshot, hidden))
+            .collect();
+        public
+    }
+    let memory =
+        |snapshot: &crate::snapshot::ObjectSnapshot| public_snapshot(snapshot, hidden_match);
     let execution_facts = outcome
         .execution_facts
         .iter()
         .map(|fact| match fact {
+            ExecutionFact::ResultObjectMemory(memories) => {
+                ExecutionFact::ResultObjectMemory(memories.iter().map(memory).collect())
+            }
             ExecutionFact::ChosenObjectMemory(memories) => {
                 ExecutionFact::ChosenObjectMemory(memories.iter().map(memory).collect())
             }
@@ -395,6 +422,19 @@ fn public_claim_outcome(
                         .collect(),
                 )
             }
+            ExecutionFact::ActionObjects {
+                action,
+                player,
+                objects,
+            } => ExecutionFact::ActionObjects {
+                action: *action,
+                player: *player,
+                objects: objects.iter().map(memory).collect(),
+            },
+            ExecutionFact::CardsPutIntoHand { player, cards } => ExecutionFact::CardsPutIntoHand {
+                player: *player,
+                cards: cards.iter().map(memory).collect(),
+            },
             other => other.clone(),
         })
         .collect();
@@ -2035,17 +2075,28 @@ impl GameState {
 #[cfg(test)]
 mod replacement_public_claim_contract_tests {
     use super::*;
-    use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+    use crate::effect::EffectOutcome;
     #[test]
     fn public_claim_sanitizes_original_and_auxiliary_hidden_memories() {
         let id = crate::ids::ObjectId::from_raw(941);
         let player = crate::ids::PlayerId::from_index(0);
-        let memory = OutcomeObjectMemory {
-            object_id: id, stable_id: crate::ids::StableId::from(id),
-            name: "Private card identity".into(), controller: player, owner: player,
-            zone: crate::zone::Zone::Hand, power: Some(8), toughness: Some(9),
-            mana_value: 7, card_types: vec![crate::types::CardType::Creature],
-            colors: crate::color::ColorSet::COLORLESS, subtypes: Vec::new(), is_token: false,
+        let memory = {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                id,
+                crate::ids::StableId::from(id),
+                player,
+                player,
+                crate::zone::Zone::Hand,
+            );
+            snapshot.name = "Private card identity".into();
+            snapshot.power = Some(8);
+            snapshot.toughness = Some(9);
+            snapshot.linked_face_mana_value = Some((7) as u32);
+            snapshot.card_types = vec![crate::types::CardType::Creature];
+            snapshot.colors = crate::color::ColorSet::COLORLESS;
+            snapshot.subtypes = Vec::new();
+            snapshot.is_token = false;
+            snapshot
         };
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
             EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()]),
@@ -2057,12 +2108,12 @@ mod replacement_public_claim_contract_tests {
         assert!(original.name.is_empty());
         assert_eq!(original.power, None);
         assert_eq!(original.toughness, None);
-        assert_eq!(original.mana_value, 0);
+        assert_eq!(original.mana_value(), 0);
         assert!(original.card_types.is_empty());
         for fact in &claim.execution_facts {
             if let crate::effect::ExecutionFact::ChosenObjectMemory(memories) = fact {
                 assert!(memories[0].name.is_empty());
-                assert_eq!(memories[0].mana_value, 0);
+                assert_eq!(memories[0].mana_value(), 0);
             }
         }
         assert!(claim.events.is_empty());

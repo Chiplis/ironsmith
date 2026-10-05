@@ -68,6 +68,9 @@ fn return_object_to_hand(
 }
 
 impl EffectExecutor for ReturnToHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Returned)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

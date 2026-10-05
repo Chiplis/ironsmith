@@ -56,7 +56,7 @@ impl EffectExecutor for DrawForEachTaggedMatchingEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        DrawCardsEffect::new(count as i32, PlayerFilter::Specific(player)).execute(game, ctx)
+        DrawCardsEffect::new(count as i32, PlayerFilter::Specific(player)).execute_child(game, ctx)
     }
 }
 

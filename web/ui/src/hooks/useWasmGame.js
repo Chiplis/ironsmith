@@ -68,6 +68,7 @@ const WORKER_METHODS = [
   "getPaymentDisclosureForCommand",
   "retainPaymentDisclosure",
   "beginPaymentAnalysis",
+  "analyzePayment",
   "stepPaymentAnalysis",
   "cancelPaymentAnalysis",
   "previewCustomCard",

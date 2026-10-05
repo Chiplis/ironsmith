@@ -68,7 +68,7 @@ impl EffectExecutor for UnearthEffect {
             outcome.instruction_result = instruction_result;
             return Ok(outcome);
         };
-        let events = move_outcome.events;
+        let mut outcome = move_outcome;
 
         // CR 702.84a gives the returned permanent haste without a duration.
         // It remains if the delayed exile trigger is countered.
@@ -105,7 +105,8 @@ impl EffectExecutor for UnearthEffect {
         );
         let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
 
-        Ok(EffectOutcome::with_objects(vec![new_id]).with_events(events))
+        outcome.set_value(crate::effect::OutcomeValue::Objects(vec![new_id]));
+        Ok(outcome)
     }
 }
 

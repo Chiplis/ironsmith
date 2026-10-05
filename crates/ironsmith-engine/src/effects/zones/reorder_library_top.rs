@@ -85,25 +85,13 @@ impl EffectExecutor for ReorderLibraryTopEffect {
         }
         let ordered = normalize_order_response(ordered, &current_top_to_bottom);
 
-        if let Some(player) = game.player(library_owner) {
-            // Remove the affected cards from the library, preserving other cards.
-            let mut after_order: Vec<_> = player
-                .library
-                .iter()
-                .copied()
-                .filter(|id| !current_top_to_bottom.contains(id))
-                .collect();
-
-            // Decision order is top-to-bottom; internal library is bottom-to-top.
-            for id in ordered.iter().rev() {
-                after_order.push(*id);
-            }
-            game.set_player_library_order_with_audit(
-                library_owner,
-                after_order,
-                "reordered top of library",
-            );
-        }
+        crate::effects::cards::arrange_library_cards(
+            game,
+            library_owner,
+            &ordered,
+            &[],
+            "reordered top of library",
+        );
 
         Ok(EffectOutcome::resolved())
     }

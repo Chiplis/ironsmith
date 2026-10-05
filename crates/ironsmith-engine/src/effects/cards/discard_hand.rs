@@ -1,6 +1,6 @@
 //! Discard hand effect implementation.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ObjectSnapshot};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -43,6 +43,9 @@ impl crate::effects::SimultaneousEffectProposal for DiscardHandProposal {
 /// let effect = DiscardHandEffect::new(PlayerFilter::Any);
 /// ```
 impl EffectExecutor for DiscardHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Discarded)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -182,43 +185,11 @@ fn discard_hand_cards_inner(
     player: PlayerId,
     cards: Vec<ObjectId>,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let mut count = 0;
-    let mut successful_discards = Vec::new();
-    let mut receipts = Vec::new();
-    for card in cards {
-        if !game.player(player).is_some_and(|p| p.hand.contains(&card)) {
-            continue;
-        }
-        let receipt = crate::events::processing::execute_discard_with_scope(
-            game,
-            card,
-            player,
-            ctx.cause.clone(),
-            false,
-            ctx.provenance,
-            &mut *ctx.decision_maker,
-            &ctx.replacement,
-            ctx.source_snapshot.as_ref(),
-        )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        if !receipt.result.prevented && receipt.result.new_id.is_some() {
-            count += 1;
-            let event = receipt.resolved_event.as_ref()
-                .ok_or_else(|| ExecutionError::InternalError("completed discard has no resolved event".into()))?;
-            // Discard currently does not support target/player redirection.
-            // Refuse an incompatible result rather than publishing an authored
-            // player/cause that differs from the actual committed event.
-            if event.player != player || event.cause != ctx.cause {
-                return Err(ExecutionError::InternalError("discard-hand receipt changed its batch player or cause".into()));
-            }
-            successful_discards.push((event.card, receipt.discarded_snapshot.clone(), receipt.result.final_zone, receipt.result.new_id));
-        }
-        receipts.push(receipt);
-    }
-    let events = super::discard::completed_discard_events(
-        game, player, ctx.cause.clone(), ctx.provenance, successful_discards,
-    );
-    super::discard::finish_discard_receipts(game, ctx, EffectOutcome::count(count).with_events(events), receipts)
+    let cards = cards
+        .into_iter()
+        .filter(|card| game.player(player).is_some_and(|p| p.hand.contains(card)))
+        .collect();
+    super::discard::discard_selected_cards(game, ctx, player, cards, None, true)
 }
 
 impl CostExecutableEffect for DiscardHandEffect {
@@ -283,10 +254,11 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
 
-        // Add 3 cards to hand
-        add_card_to_hand(&mut game, "Card 1", alice);
-        add_card_to_hand(&mut game, "Card 2", alice);
-        add_card_to_hand(&mut game, "Card 3", alice);
+        let discarded = [
+            add_card_to_hand(&mut game, "Card 1", alice),
+            add_card_to_hand(&mut game, "Card 2", alice),
+            add_card_to_hand(&mut game, "Card 3", alice),
+        ];
 
         assert_eq!(game.player(alice).unwrap().hand.len(), 3);
 
@@ -296,6 +268,20 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(3));
         assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(result.affected_objects(), Some(discarded.as_slice()));
+        let memory = result
+            .affected_object_memory()
+            .expect("discarded-card memory");
+        assert_eq!(memory.len(), 3);
+        assert!(memory.iter().all(|card| card.zone == Zone::Hand));
+        assert_eq!(
+            memory
+                .iter()
+                .map(|card| card.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Card 1", "Card 2", "Card 3"]
+        );
+        assert!(discarded.iter().all(|id| game.object(*id).is_none()));
     }
 
     #[test]
@@ -353,6 +339,7 @@ mod tests {
         let later_card = add_card_to_hand(&mut game, "Arrived after preparation", alice);
         let outcome = proposal.commit(&mut game, &mut ctx).unwrap();
         assert_eq!(outcome.count_or_zero(), 2);
+        assert_eq!(outcome.affected_object_memory().unwrap().len(), 2);
         assert_eq!(game.player(alice).unwrap().hand.as_slice(), &[later_card]);
     }
 
@@ -375,7 +362,58 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .unwrap();
         assert_eq!(outcome.count_or_zero(), 0);
+        assert!(outcome.affected_objects().unwrap_or_default().is_empty());
+        assert!(
+            outcome
+                .affected_object_memory()
+                .unwrap_or_default()
+                .is_empty()
+        );
         assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+    }
+
+    #[test]
+    fn discard_hand_remembers_only_successful_discards_after_they_move_again() {
+        use crate::effect::{
+            EffectId, EffectMetric, EffectMetricSource, PriorEffectMetricQuery, Value,
+        };
+        use crate::effects::helpers::resolve_value;
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let retained = add_card_to_hand(&mut game, "Retained", alice);
+        let discarded = add_card_to_hand(&mut game, "Discarded", alice);
+        game.effect_store.replacement_effects.add_effect(
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::WouldDiscardMatcher::you()
+                    .with_card_filter(crate::target::ObjectFilter::specific(retained)),
+                crate::replacement::ReplacementAction::Prevent,
+            ),
+        );
+        let outcome = {
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            DiscardHandEffect::you()
+                .execute(&mut game, &mut ctx)
+                .unwrap()
+        };
+        assert_eq!(outcome.count_or_zero(), 1);
+        assert_eq!(outcome.affected_objects(), Some([discarded].as_slice()));
+        let arrival = game.current_object_id_after_zone_change(discarded).unwrap();
+        game.move_object_by_effect(arrival, Zone::Hand).unwrap();
+        assert!(game.object(discarded).is_none());
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.store_outcome(EffectId(0), outcome);
+        let query =
+            PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+                .with_action(ironsmith_core::PriorEffectAction::Discarded)
+                .with_filter(crate::target::ObjectFilter::default());
+        let x = Value::PriorEffectMetric {
+            effect_id: EffectId(0),
+            query,
+        };
+        assert_eq!(resolve_value(&game, &x, &ctx).unwrap(), 1);
     }
 
     #[test]

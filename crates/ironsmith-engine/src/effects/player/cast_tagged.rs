@@ -19,6 +19,9 @@ use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_even
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Cast)
+    }
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         if let Some(cost) = &self.alternative_cost {
             crate::ability::visit_total_cost_owned_effects(cost, visitor);

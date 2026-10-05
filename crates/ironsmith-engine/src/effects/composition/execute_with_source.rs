@@ -129,7 +129,7 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         let binding = finish_source_binding(self, game, ctx, resolved);
         let inner = match &binding {
             Some(binding) => Some(with_source_binding(ctx, binding, |ctx| {
-                self.effect.0.prepare_simultaneous_player_action(game, ctx)
+                self.effect.prepare_simultaneous_player_action(game, ctx)
             })?),
             None => None,
         };

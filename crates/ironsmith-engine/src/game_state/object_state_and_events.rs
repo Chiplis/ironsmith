@@ -3603,6 +3603,16 @@ impl GameState {
         use crate::events::permanents::SacrificeEvent;
         use crate::events::zones::ZoneChangeEvent;
 
+        if let Some(draw) = event.downcast::<crate::events::CardsDrawnEvent>()
+            && draw.snapshots.is_empty()
+        {
+            let snapshots = draw
+                .cards
+                .iter()
+                .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(self, *id))
+                .collect();
+            event = event.with_inner_event(draw.clone().with_snapshots(snapshots));
+        }
         if let Some(targeted) = event.downcast::<crate::events::BecomesTargetedEvent>() {
             event = event.with_inner_event(targeted.clone().with_participant_snapshots(self));
         }
@@ -3724,6 +3734,12 @@ impl GameState {
             .turn_history
             .remove_staged_event(initial_provenance);
         self.stage_turn_history_event(&event);
+        if !self.effect_store.instruction_result_records.is_empty() {
+            let facts = crate::effects::outcome_recording::event_facts(self, &event);
+            if let Some(record) = self.effect_store.instruction_result_records.last_mut() {
+                record.extend(facts);
+            }
+        }
         self.effect_store.pending_trigger_events.push(event);
     }
 

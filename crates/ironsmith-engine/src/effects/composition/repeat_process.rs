@@ -22,8 +22,7 @@ impl EffectExecutor for RepeatProcessEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let sequence = SequenceEffect::new(self.effects.clone());
-        let mut all_events = Vec::new();
-        let mut all_execution_facts = Vec::new();
+        let mut children = Vec::new();
         let mut continuation_count = 0i64;
         let (status, value) = loop {
             // A failed result may itself be the authored continuation gate
@@ -32,9 +31,11 @@ impl EffectExecutor for RepeatProcessEffect {
             // earlier gate cannot accidentally drive a later iteration that
             // failed before reaching the condition.
             ctx.effect_outcomes.remove(&self.condition);
-            let outcome = sequence.execute(game, ctx)?;
-            all_events.extend(outcome.events.clone());
-            all_execution_facts.extend(outcome.execution_facts.clone());
+            let outcome = sequence.execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            children.push(outcome.clone());
 
             let should_continue = ctx.get_outcome(self.condition).is_some_and(|outcome| {
                 if self.predicate == crate::effect::EffectPredicate::Happened
@@ -59,19 +60,22 @@ impl EffectExecutor for RepeatProcessEffect {
             break (outcome.status, outcome.value);
         };
 
-        Ok(EffectOutcome::with_details(
-            if continuation_count > 0 {
-                crate::effect::OutcomeStatus::Succeeded
-            } else {
-                status
-            },
-            if continuation_count > 0 || value.as_count().is_none() {
-                crate::effect::OutcomeValue::Count(continuation_count)
-            } else {
-                value
-            },
-            all_events,
-            EffectOutcome::merge_execution_facts(all_execution_facts),
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::with_details(
+                if continuation_count > 0 {
+                    crate::effect::OutcomeStatus::Succeeded
+                } else {
+                    status
+                },
+                if continuation_count > 0 || value.as_count().is_none() {
+                    crate::effect::OutcomeValue::Count(continuation_count)
+                } else {
+                    value
+                },
+                Vec::new(),
+                Vec::new(),
+            ),
+            children,
         ))
     }
 }

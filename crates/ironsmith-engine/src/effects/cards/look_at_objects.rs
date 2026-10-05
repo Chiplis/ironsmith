@@ -1,7 +1,7 @@
 //! Look at objects matching a filter.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter_to_list, view_hidden_candidate_objects};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
@@ -93,7 +93,7 @@ impl EffectExecutor for LookAtObjectsEffect {
                 game.object(*id)
                     .map(|object| ObjectSnapshot::from_object(object, game))
             })
-            .map(|snapshot| OutcomeObjectMemory::from_snapshot(&snapshot))
+            .map(|snapshot| Clone::clone(&snapshot))
             .collect::<Vec<_>>();
         Ok(EffectOutcome::count(viewed.len() as i32)
             .with_chosen_object_memory(memory.clone())

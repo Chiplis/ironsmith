@@ -12,8 +12,8 @@ use crate::cost::OptionalCostsPaid;
 use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{
-    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeObjectMemory,
-    OutcomeStatus, PriorEffectMetricQuery, Value,
+    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeStatus,
+    PriorEffectMetricQuery, Value,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
@@ -581,67 +581,26 @@ pub fn get_optional_costs_paid<'a>(
     &ctx.optional_costs_paid
 }
 
-fn memories_from_object_ids(game: &GameState, ids: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
-    ids.iter()
-        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
-        .collect()
-}
-
 fn effect_metric_memory(
-    game: &GameState,
+    _game: &GameState,
     outcome: &EffectOutcome,
     source: EffectMetricSource,
-) -> Vec<OutcomeObjectMemory> {
+) -> Vec<ObjectSnapshot> {
+    let outcome = outcome.instruction_result();
     match source {
         EffectMetricSource::AffectedObjects => outcome
             .affected_object_memory()
-            .map(<[OutcomeObjectMemory]>::to_vec)
-            .unwrap_or_else(|| {
-                outcome
-                    .affected_objects()
-                    .map(|ids| memories_from_object_ids(game, ids))
-                    .unwrap_or_default()
-            }),
-        EffectMetricSource::ChosenObjects => outcome
-            .chosen_object_memory()
-            .map(<[OutcomeObjectMemory]>::to_vec)
-            .unwrap_or_else(|| {
-                outcome
-                    .chosen_objects()
-                    .map(|ids| memories_from_object_ids(game, ids))
-                    .unwrap_or_default()
-            }),
-        EffectMetricSource::Outcome => {
-            if let Some(ids) = outcome.explicit_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            if let Some(memory) = outcome.chosen_object_memory()
-                && !memory.is_empty()
-            {
-                return memory.to_vec();
-            }
-            if let Some(ids) = outcome.chosen_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            if let Some(memory) = outcome.affected_object_memory()
-                && !memory.is_empty()
-            {
-                return memory.to_vec();
-            }
-            if let Some(ids) = outcome.affected_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            Vec::new()
+            .unwrap_or_default()
+            .to_vec(),
+        EffectMetricSource::ChosenObjects => {
+            outcome.chosen_object_memory().unwrap_or_default().to_vec()
         }
+        EffectMetricSource::Outcome => outcome
+            .result_object_memory()
+            .or_else(|| outcome.chosen_object_memory())
+            .or_else(|| outcome.affected_object_memory())
+            .unwrap_or_default()
+            .to_vec(),
     }
 }
 
@@ -701,6 +660,7 @@ fn resolve_effect_metric(
         return Ok(0);
     };
 
+    let outcome = outcome.instruction_result();
     let object_memory = || effect_metric_memory(game, outcome, source);
 
     let resolved = match metric {
@@ -739,7 +699,15 @@ fn resolve_effect_metric(
                 _ => None,
             })
             .sum(),
-        EffectMetric::DamagePrevented => 0,
+        EffectMetric::DamagePrevented => {
+            let receipts = outcome.execution_facts.iter().filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::PreventedDamageReceipt { amount, .. } => Some(i64::from(*amount)),
+                _ => None,
+            }).collect::<Vec<_>>();
+            if receipts.is_empty() {
+                outcome.events_of_type::<crate::events::DamagePreventedEvent>().map(|event| i64::from(event.amount)).sum()
+            } else { receipts.into_iter().sum() }
+        }
         EffectMetric::FirstPower => object_memory()
             .into_iter()
             .find_map(|memory| memory.power.map(i64::from))
@@ -750,7 +718,7 @@ fn resolve_effect_metric(
             .unwrap_or(0),
         EffectMetric::FirstManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .next()
             .unwrap_or(0),
         EffectMetric::TotalPower => object_memory()
@@ -763,7 +731,7 @@ fn resolve_effect_metric(
             .sum(),
         EffectMetric::TotalManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .sum(),
         EffectMetric::GreatestPower => object_memory()
             .into_iter()
@@ -777,7 +745,7 @@ fn resolve_effect_metric(
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => object_memory()
@@ -954,6 +922,7 @@ fn resolve_prior_effect_metric(
     let Some(outcome) = ctx.get_outcome(effect_id) else {
         return Ok(0);
     };
+    let outcome = outcome.instruction_result();
     let filter_ctx = ctx.filter_context(game);
     let selected_players = query
         .player
@@ -968,6 +937,13 @@ fn resolve_prior_effect_metric(
             EffectMetric::Count | EffectMetric::AffectedCount
         )
     {
+        if let Some(objects) = crate::effects::outcome_recording::action_objects(
+            outcome,
+            ironsmith_core::PriorEffectAction::Drawn,
+            selected_players.as_deref(),
+        ) {
+            return Ok(objects.len() as i64);
+        }
         return outcome
             .events_of_type::<crate::events::CardsDrawnEvent>()
             .filter(|event| {
@@ -1020,7 +996,21 @@ fn resolve_prior_effect_metric(
         });
     }
 
-    let mut memory = if let Some(selected_players) = selected_players.as_ref()
+    let action_memory = if query.source == EffectMetricSource::AffectedObjects {
+        query.action.and_then(|action| {
+            crate::effects::outcome_recording::action_objects(
+                outcome,
+                action,
+                selected_players.as_deref(),
+            )
+        })
+    } else {
+        None
+    };
+    let has_action_memory = action_memory.is_some();
+    let mut memory = if let Some(memory) = action_memory {
+        memory
+    } else if let Some(selected_players) = selected_players.as_ref()
         && let Some(partitions) = outcome.player_affected_object_memory()
     {
         partitions
@@ -1033,6 +1023,7 @@ fn resolve_prior_effect_metric(
     };
 
     if let Some(selected_players) = selected_players.as_ref()
+        && !has_action_memory
         && outcome.player_affected_object_memory().is_none()
     {
         memory.retain(|object| selected_players.contains(&object.controller));
@@ -1048,8 +1039,7 @@ fn resolve_prior_effect_metric(
         for branch in &mut filter.any_of {
             branch.zone = None;
         }
-        memory
-            .retain(|object| filter.matches_snapshot(&object.to_snapshot(game), &filter_ctx, game));
+        memory.retain(|object| filter.matches_snapshot(object, &filter_ctx, game));
     }
 
     let resolved = match query.metric {
@@ -1066,7 +1056,7 @@ fn resolve_prior_effect_metric(
             .unwrap_or(0),
         EffectMetric::FirstManaValue => memory
             .first()
-            .map_or(0, |object| i64::from(object.mana_value)),
+            .map_or(0, |object| i64::from(object.mana_value())),
         EffectMetric::TotalPower => memory
             .iter()
             .map(|object| i64::from(object.power.unwrap_or(0)))
@@ -1077,7 +1067,7 @@ fn resolve_prior_effect_metric(
             .sum(),
         EffectMetric::TotalManaValue => memory
             .iter()
-            .map(|object| i64::from(object.mana_value))
+            .map(|object| i64::from(object.mana_value()))
             .sum(),
         EffectMetric::GreatestPower => memory
             .iter()
@@ -1091,7 +1081,7 @@ fn resolve_prior_effect_metric(
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => memory
             .iter()
-            .map(|object| i64::from(object.mana_value))
+            .map(|object| i64::from(object.mana_value()))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => memory
@@ -4479,10 +4469,10 @@ mod tests {
             alice,
             vec![CardType::Creature],
         );
-        let chosen_memory = vec![OutcomeObjectMemory::from_object_id(&game, chosen).unwrap()];
+        let chosen_memory = vec![ObjectSnapshot::from_object_id(&game, chosen).unwrap()];
         let affected_memory = vec![
-            OutcomeObjectMemory::from_object_id(&game, affected_a).unwrap(),
-            OutcomeObjectMemory::from_object_id(&game, affected_b).unwrap(),
+            ObjectSnapshot::from_object_id(&game, affected_a).unwrap(),
+            ObjectSnapshot::from_object_id(&game, affected_b).unwrap(),
         ];
         let effect_id = crate::effect::EffectId(17);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
@@ -4548,10 +4538,7 @@ mod tests {
             .expect("first creature should move");
         game.move_object_by_effect(creature_b, Zone::Exile)
             .expect("second creature should move");
-        let memory = snapshots
-            .iter()
-            .map(OutcomeObjectMemory::from_snapshot)
-            .collect::<Vec<_>>();
+        let memory = snapshots.iter().map(Clone::clone).collect::<Vec<_>>();
         let effect_id = crate::effect::EffectId(18);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.store_outcome(
@@ -4591,8 +4578,8 @@ mod tests {
         let source_id = game.new_object_id();
         let alice_creature = add_custom_creature(&mut game, 422, "Alice Creature", alice, 3, 4, 2);
         let bob_creature = add_custom_creature(&mut game, 423, "Bob Creature", bob, 6, 7, 5);
-        let alice_memory = OutcomeObjectMemory::from_object_id(&game, alice_creature).unwrap();
-        let bob_memory = OutcomeObjectMemory::from_object_id(&game, bob_creature).unwrap();
+        let alice_memory = ObjectSnapshot::from_object_id(&game, alice_creature).unwrap();
+        let bob_memory = ObjectSnapshot::from_object_id(&game, bob_creature).unwrap();
         let effect_id = crate::effect::EffectId(20);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.store_outcome(
@@ -4640,7 +4627,7 @@ mod tests {
         );
         let memory = [artifact_creature, red_enchantment]
             .into_iter()
-            .map(|id| OutcomeObjectMemory::from_object_id(&game, id).unwrap())
+            .map(|id| ObjectSnapshot::from_object_id(&game, id).unwrap())
             .collect::<Vec<_>>();
         let effect_id = crate::effect::EffectId(19);
         let mut ctx = ExecutionContext::new_default(source_id, alice);

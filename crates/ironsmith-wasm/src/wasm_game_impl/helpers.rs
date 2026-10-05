@@ -1237,6 +1237,12 @@ pub(super) fn resolve_priority_action(
 ) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
+        // The live context already establishes who has priority. Passing has
+        // no payment or target requirements, even while the card menu is still
+        // being analyzed. Do not run any affordability query for this action.
+        if matches!(action_ref, PriorityActionRef::PassPriority) {
+            return Ok(priority.actions.iter().find(|action| matches!(action, LegalAction::PassPriority)).cloned());
+        }
         if priority.analysis_complete && let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
             return Ok(Some(action.clone()));
         }

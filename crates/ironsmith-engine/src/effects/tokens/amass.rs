@@ -63,20 +63,87 @@ impl EffectExecutor for AmassEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
-        let amass_subtype = amass_token_subtype(self);
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-        let mut outcomes = Vec::new();
+            let amass_subtype = amass_token_subtype(self);
+            let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+            let mut outcomes = Vec::new();
 
-        let mut army_candidates = army_creature_candidates(game, ctx.controller);
-        if army_candidates.is_empty() {
-            let create_outcome = CreateTokenEffect::you(army_token_definition(amass_subtype), 1)
-                .execute(game, ctx)?;
-            outcomes.push(create_outcome);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-            army_candidates = army_creature_candidates(game, ctx.controller);
-        }
+            let mut army_candidates = army_creature_candidates(game, ctx.controller);
+            if army_candidates.is_empty() {
+                let create_outcome =
+                    CreateTokenEffect::you(army_token_definition(amass_subtype), 1)
+                        .execute_child(game, ctx)?;
+                outcomes.push(create_outcome);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::resolved());
+                }
+                army_candidates = army_creature_candidates(game, ctx.controller);
+            }
 
-        if army_candidates.is_empty() {
+            if army_candidates.is_empty() {
+                let action_event = TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Amass,
+                        ctx.controller,
+                        ctx.source,
+                        amount,
+                    ),
+                    ctx.provenance,
+                );
+                return Ok(EffectOutcome::aggregate(outcomes).with_event(action_event));
+            }
+
+            let chosen_army = if army_candidates.len() == 1 {
+                army_candidates[0]
+            } else {
+                let spec = ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose an Army creature you control for amass",
+                    army_candidates.clone(),
+                    1,
+                    Some(1),
+                );
+                let chosen = make_decision(
+                    game,
+                    ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::resolved());
+                }
+                let selected = normalize_object_selection(chosen, &army_candidates, 1);
+                selected.first().copied().unwrap_or(army_candidates[0])
+            };
+
+            // CR 701.47a places counters before adding the amass subtype. Counter
+            // replacements inspect the Army's characteristics at that earlier step.
+            let counters_outcome = PutCountersEffect::new(
+                CounterType::PlusOnePlusOne,
+                amount,
+                ChooseSpec::SpecificObject(chosen_army),
+            )
+            .execute_child(game, ctx)?;
+            outcomes.push(counters_outcome);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::resolved());
+            }
+
+            // "Amass <Subtype>" causes the chosen Army creature to become that subtype
+            // in addition to its other types if it doesn't already have it. That is
+            // a type-changing (layer 4) effect, not a copiable value (CR 701.47a).
+            if !game
+                .calculated_subtypes(chosen_army)
+                .contains(&amass_subtype)
+            {
+                let become_subtype = crate::effects::ApplyContinuousEffect::with_spec(
+                    ChooseSpec::SpecificObject(chosen_army),
+                    crate::continuous::Modification::AddSubtypes(vec![amass_subtype]),
+                    crate::effect::Until::Forever,
+                );
+                outcomes.push(become_subtype.execute_child(game, ctx)?);
+            }
+
             let action_event = TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(
                     KeywordActionKind::Amass,
@@ -86,64 +153,9 @@ impl EffectExecutor for AmassEffect {
                 ),
                 ctx.provenance,
             );
-            return Ok(EffectOutcome::aggregate(outcomes).with_event(action_event));
-        }
-
-        let chosen_army = if army_candidates.len() == 1 {
-            army_candidates[0]
-        } else {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose an Army creature you control for amass",
-                army_candidates.clone(),
-                1,
-                Some(1),
-            );
-            let chosen = make_decision(
-                game,
-                ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-            );
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-            let selected = normalize_object_selection(chosen, &army_candidates, 1);
-            selected.first().copied().unwrap_or(army_candidates[0])
-        };
-
-        // CR 701.47a places counters before adding the amass subtype. Counter
-        // replacements inspect the Army's characteristics at that earlier step.
-        let counters_outcome = PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            amount,
-            ChooseSpec::SpecificObject(chosen_army),
-        )
-        .execute(game, ctx)?;
-        outcomes.push(counters_outcome);
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-
-        // "Amass <Subtype>" causes the chosen Army creature to become that subtype
-        // in addition to its other types if it doesn't already have it. That is
-        // a type-changing (layer 4) effect, not a copiable value (CR 701.47a).
-        if !game
-            .calculated_subtypes(chosen_army)
-            .contains(&amass_subtype)
-        {
-            let become_subtype = crate::effects::ApplyContinuousEffect::with_spec(
-                ChooseSpec::SpecificObject(chosen_army),
-                crate::continuous::Modification::AddSubtypes(vec![amass_subtype]),
-                crate::effect::Until::Forever,
-            );
-            let _ = become_subtype.execute(game, ctx)?;
-        }
-
-        let action_event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Amass, ctx.controller, ctx.source, amount),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::aggregate(outcomes)
-            .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army]))
-            .with_event(action_event))
+            Ok(EffectOutcome::aggregate(outcomes)
+                .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen_army]))
+                .with_event(action_event))
         })
     }
 }

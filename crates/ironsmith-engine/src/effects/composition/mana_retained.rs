@@ -42,7 +42,7 @@ impl EffectExecutor for ManaRetainedEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let saved = ctx.mana.retention;
         ctx.mana.retention = Some(self.duration);
-        let result = SequenceEffect::new(self.effects.clone()).execute(game, ctx);
+        let result = SequenceEffect::new(self.effects.clone()).execute_child(game, ctx);
         ctx.mana.retention = saved;
         result
     }

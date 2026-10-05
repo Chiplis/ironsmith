@@ -154,8 +154,12 @@ where
 /// if completion pauses for a decision or fails.
 pub trait SimultaneousEffectCompletion: Send {
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError>;
-    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-        original: EffectOutcome) -> Result<EffectOutcome, ExecutionError>;
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError>;
 }
 
 pub struct SimultaneousEffectCommit {
@@ -163,7 +167,12 @@ pub struct SimultaneousEffectCommit {
     pub completion: Option<Box<dyn SimultaneousEffectCompletion>>,
 }
 impl SimultaneousEffectCommit {
-    pub fn finished(outcome: EffectOutcome) -> Self { Self { outcome, completion: None } }
+    pub fn finished(outcome: EffectOutcome) -> Self {
+        Self {
+            outcome,
+            completion: None,
+        }
+    }
 }
 
 /// A fully determined part of one simultaneous multi-player action.
@@ -175,20 +184,30 @@ impl SimultaneousEffectCommit {
 pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
     /// Accepted nominal life payment, before replacements alter its actions.
     /// The batch owner checks shared team affordability once (CR 119.4a).
-    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> { None }
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> {
+        None
+    }
 
     /// Resolve a prepared proposal's replacement choices against the shared
     /// pre-mutation world. Owners run this for every participant before any
     /// commit; immutable choice-free proposals need no further preparation.
-    fn prepare_original(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
-        -> Result<(), ExecutionError> { Ok(()) }
+    fn prepare_original(
+        &mut self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        Ok(())
+    }
 
     /// Separate original mutations from replacement-added programs when the
     /// proposal has them. Existing choice-free proposals finish in one phase.
-    fn commit_original(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<SimultaneousEffectCommit, ExecutionError>
-    {
-        self.commit(game, ctx).map(SimultaneousEffectCommit::finished)
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.commit(game, ctx)
+            .map(SimultaneousEffectCommit::finished)
     }
 
     fn commit(
@@ -226,6 +245,12 @@ impl SimultaneousEffectProposal for DeferredPlayerActionProposal {
 pub trait EffectExecutor:
     std::fmt::Debug + Any + Send + Sync + EffectExecutorClone + 'static
 {
+    /// The authored primitive action whose original result this executor produces.
+    /// Composition executors preserve their children's independently recorded actions.
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        None
+    }
+
     /// Execute this effect, mutating the game state and returning the outcome.
     ///
     /// # Arguments
@@ -297,6 +322,17 @@ pub trait EffectExecutor:
     /// Clone this effect into a boxed trait object.
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         EffectExecutorClone::clone_boxed(self)
+    }
+
+    /// Execute a composed child with the ordinary instruction recording
+    /// contract. Prepared commits and cost validation use their own APIs.
+    fn execute_child(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let child = crate::effect::Effect::from_boxed_executor(self.clone_box());
+        crate::effects::execute_effect(game, &child, ctx)
     }
 
     /// Get the target specification for this effect, if it has one.
@@ -551,7 +587,6 @@ pub trait EffectExecutor:
     /// Visit complete definitions directly owned by this executor. Composition
     /// traversal remains the caller's responsibility through child effects.
     fn visit_card_definitions(&self, _visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {}
-
 
     /// Whether this effect is a resolution prelude that only prepares context
     /// for following effects, such as tagging an object for a self-replacement.

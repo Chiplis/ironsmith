@@ -33,19 +33,27 @@ impl ShuffleGraveyardIntoLibraryEffect {
     }
     fn instruction(&self) -> crate::effects::ShuffleObjectsIntoLibraryEffect {
         crate::effects::ShuffleObjectsIntoLibraryEffect::new(
-            crate::target::ChooseSpec::All(crate::target::ObjectFilter::default()
-                .in_zone(Zone::Graveyard).owned_by(self.player.clone())),
+            crate::target::ChooseSpec::All(
+                crate::target::ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(self.player.clone()),
+            ),
             self.player.clone(),
         )
     }
-
 }
 
 impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
-    fn supports_simultaneous_player_action(&self) -> bool { true }
-    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
-        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        self.instruction().prepare_simultaneous_player_action(game, ctx)
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        self.instruction()
+            .prepare_simultaneous_player_action(game, ctx)
     }
 
     fn execute(
@@ -55,6 +63,6 @@ impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         // Keep zone replacement outcomes, exact receipts, actual move counts,
         // commander destination choices and rollback in the common owner.
-        self.instruction().execute(game, ctx)
+        self.instruction().execute_child(game, ctx)
     }
 }

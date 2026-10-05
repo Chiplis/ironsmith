@@ -464,11 +464,22 @@ impl<'a> ObjectSubject<'a> {
         {
             return None;
         }
-        if has_stack_subject
-            && let Some(kind) = filter.stack_kind
-        {
+        if let Some(kind) = filter.stack_kind {
             if let Some(entry) = entry {
                 if !ObjectFilter::stack_entry_matches_kind(entry, kind) {
+                    return None;
+                }
+            } else if let Self::Snapshot(snapshot) = self
+                && let Some(recorded) = snapshot.stack_kind
+            {
+                let matches = recorded == kind
+                    || kind == StackObjectKind::SpellOrAbility
+                    || (kind == StackObjectKind::Ability
+                        && matches!(
+                            recorded,
+                            StackObjectKind::ActivatedAbility | StackObjectKind::TriggeredAbility
+                        ));
+                if !matches {
                     return None;
                 }
             } else if !((self.zone() == Zone::Stack

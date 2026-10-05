@@ -1,6 +1,6 @@
 //! Discard effect implementation.
 
-use crate::effect::{EffectOutcome, ExecutionFact, OutcomeObjectMemory, Value};
+use crate::effect::{EffectOutcome, ExecutionFact, Value};
 use crate::effects::helpers::{normalize_object_selection, resolve_player_filter, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -347,10 +347,6 @@ impl DiscardEffect {
         } else {
             resolved_count
         };
-        let mut discarded = 0;
-        let mut discarded_cards = Vec::new();
-        let mut discarded_snapshots = Vec::new();
-        let mut successful_discards = Vec::new();
 
         let mut hand_cards: Vec<_> = game
             .player(player_id)
@@ -593,18 +589,37 @@ impl DiscardEffect {
             }
         }
 
-        // Discard each card using the event system. The cause is inherited from
+        discard_selected_cards(game, ctx, player_id, cards_to_discard, self.tag.as_ref(), false)
+
+    }
+}
+
+/// Shared commit for selected discards, including whole-hand and prepared
+/// simultaneous selections. Selection/reveal validation stays with its owner.
+pub(crate) fn discard_selected_cards(
+    game: &mut GameState, ctx: &mut ExecutionContext,
+    player_id: crate::ids::PlayerId,
+    cards_to_discard: Vec<crate::ids::ObjectId>,
+    tag: Option<&TagKey>,
+    require_arrival: bool,
+) -> Result<EffectOutcome, ExecutionError> {
+    use crate::events::processing::execute_discard_with_scope;
+        let mut discarded = 0;
+        let mut discarded_cards = Vec::new();
+        let mut discarded_snapshots = Vec::new();
+        let mut successful_discards = Vec::new();
+        // Commit the frozen selection using the discard action owner. The cause is inherited from
         // the execution context so discard-as-cost stays cost-caused.
         let cause = ctx.cause.clone();
         let chosen_cards = cards_to_discard.clone();
         let chosen_memory: Vec<_> = chosen_cards
             .iter()
-            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+            .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
             .collect();
         let mut affected_memory = Vec::new();
         let mut receipts = Vec::new();
         for card_id in cards_to_discard {
-            let pre_memory = OutcomeObjectMemory::from_object_id(game, card_id);
+            let pre_memory = ObjectSnapshot::from_object_id(game, card_id);
             let pre_discard_snapshot = game
                 .object(card_id)
                 .map(|obj| ObjectSnapshot::from_object(obj, game));
@@ -621,7 +636,7 @@ impl DiscardEffect {
             )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let result = &receipt.result;
-            if !result.prevented {
+            if !result.prevented && (!require_arrival || result.new_id.is_some()) {
                 if card_id == ctx.source
                     && let Some(x) = ctx.x_value
                     && let Some(new_id) = result.new_id
@@ -655,7 +670,7 @@ impl DiscardEffect {
             game, player_id, cause, ctx.provenance, successful_discards,
         );
 
-        if let Some(tag) = &self.tag
+        if let Some(tag) = tag
             && !discarded_snapshots.is_empty()
         {
             ctx.tag_objects(tag.clone(), discarded_snapshots);
@@ -671,10 +686,12 @@ impl DiscardEffect {
         }
 
         finish_discard_receipts(game, ctx, outcome, receipts)
-    }
 }
 
 impl EffectExecutor for DiscardEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Discarded)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         !self.random && !self.any_number && self.card_filter.is_none()
     }

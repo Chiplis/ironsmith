@@ -116,7 +116,7 @@ impl EffectExecutor for BeholdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
+        use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
 
@@ -217,23 +217,27 @@ impl EffectExecutor for BeholdEffect {
             return Ok(EffectOutcome::impossible());
         }
 
-        if !revealed_from_hand.is_empty() {
-            for viewer_idx in 0..game.players.len() {
-                let viewer = PlayerId::from_index(viewer_idx as u8);
-                let view_ctx = ViewCardsContext::new(
-                    viewer,
-                    chooser,
-                    Some(ctx.source),
-                    Zone::Hand,
-                    "Reveal cards from hand",
-                )
-                .with_public(true);
-                ctx.decision_maker
-                    .view_cards(game, viewer, &revealed_from_hand, &view_ctx);
-            }
-        }
-
-        Ok(EffectOutcome::with_objects(chosen))
+        let chosen_memory = chosen
+            .iter()
+            .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
+            .collect::<Vec<_>>();
+        let revealed = chosen_memory
+            .iter()
+            .filter(|snapshot| revealed_from_hand.contains(&snapshot.object_id))
+            .cloned()
+            .collect();
+        let reveal = crate::effects::cards::reveal_objects(
+            game,
+            ctx,
+            revealed,
+            Some(chooser),
+            "Reveal cards from hand",
+            None,
+        )?;
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::with_objects(chosen).with_chosen_object_memory(chosen_memory),
+            [reveal],
+        ))
     }
 
     fn cost_description(&self) -> Option<String> {

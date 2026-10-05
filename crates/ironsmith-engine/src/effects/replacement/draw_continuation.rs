@@ -607,7 +607,7 @@ fn prepare_effect(
         });
     }
     if life_action(effect) {
-        let mut proposal = effect.0.prepare_simultaneous_player_action(game, ctx)?;
+        let mut proposal = effect.prepare_simultaneous_player_action(game, ctx)?;
         proposal.prepare_original(game, ctx)?;
         let committed = proposal.commit_original(game, ctx)?;
         let resume = committed.completion.map(|completion| {

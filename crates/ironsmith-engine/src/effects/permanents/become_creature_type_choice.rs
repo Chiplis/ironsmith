@@ -261,7 +261,7 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
         )
         .with_additional_modification(Modification::AddSubtypes(vec![chosen_subtype]))
         .require_creature_target();
-        apply.execute(game, ctx)
+        apply.execute_child(game, ctx)
     }
 }
 

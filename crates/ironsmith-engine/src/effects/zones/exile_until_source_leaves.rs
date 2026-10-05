@@ -1,16 +1,15 @@
 //! Exile-until effect implementation.
 
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
-
 
 /// Duration for "exile ... until ..." effects.
 pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
@@ -52,117 +51,126 @@ impl EffectExecutor for ExileUntilEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let mut receipts = Vec::new();
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let original = (|| -> Result<EffectOutcome, ExecutionError> {
-        let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
-            if let Some(watcher_spec) = &self.leave_watcher {
-                let watchers = match resolve_objects_for_effect(game, ctx, watcher_spec) {
-                    Ok(watchers) => watchers,
-                    Err(ExecutionError::InvalidTarget) => {
+            let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+                if let Some(watcher_spec) = &self.leave_watcher {
+                    let watchers = match resolve_objects_for_effect(game, ctx, watcher_spec) {
+                        Ok(watchers) => watchers,
+                        Err(ExecutionError::InvalidTarget) => {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        Err(error) => return Err(error),
+                    };
+                    if ctx.decision_maker.awaiting_choice() {
                         return Ok(EffectOutcome::count(0));
                     }
-                    Err(error) => return Err(error),
-                };
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                let Some(&watcher) = watchers.first() else {
-                    return Ok(EffectOutcome::count(0));
-                };
-                if object_not_on_battlefield(game, watcher) {
-                    return Ok(EffectOutcome::count(0));
+                    let Some(&watcher) = watchers.first() else {
+                        return Ok(EffectOutcome::count(0));
+                    };
+                    if object_not_on_battlefield(game, watcher) {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    watcher
+                } else {
+                    let Some(watcher) = current_source_watcher(game, ctx) else {
+                        return Ok(EffectOutcome::count(0));
+                    };
+                    watcher
                 }
-                watcher
             } else {
-                let Some(watcher) = current_source_watcher(game, ctx) else {
-                    return Ok(EffectOutcome::count(0));
-                };
-                watcher
-            }
-        } else {
-            ctx.source
-        };
-
-        let objects = resolve_objects_for_effect(game, ctx, &self.spec)?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let mut exiled_count = 0_i32;
-        let mut monarch_duration_stable_ids = Vec::new();
-        for object_id in objects {
-            let Some(obj) = game.object(object_id) else {
-                continue;
+                ctx.source
             };
-            let from_zone = obj.zone;
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            let result = apply_zone_change_with_context_and_additional_effects(
-    game,
-    object_id,
-    from_zone,
-    Zone::Exile,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-
-            let original = result.original.clone();
-            receipts.push((object_id, result));
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            if let EventOutcome::Proceed(result) = original
-                && result.final_zone == Zone::Exile
-            {
-                for &new_id in &result.new_object_ids {
-                    if self.face_down {
-                        game.set_face_down(new_id);
-                    }
-                    if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
-                        game.add_exiled_with_source_link_returning_to(
-                            leave_watcher,
-                            new_id,
-                            from_zone,
-                        );
-                    } else {
-                        game.add_exiled_with_source_link(ctx.source, new_id);
-                    }
-                    if (self.duration != ExileUntilDuration::SourceLeavesBattlefield
-                        || leave_watcher == ctx.source)
-                        && let Some(object) = game.object(new_id)
-                    {
-                        // "Other cards exiled with ~" excludes what this
-                        // resolution exiled with the source.
-                        let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
-                        ctx.tag_object(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG, snapshot);
-                    }
-                    if self.duration == ExileUntilDuration::OpponentBecomesMonarch
-                        && let Some(exiled) = game.object(new_id)
-                    {
-                        monarch_duration_stable_ids.push(exiled.stable_id);
-                    }
-                    exiled_count += 1;
-                }
+            let objects = resolve_objects_for_effect(game, ctx, &self.spec)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-        }
+            let source_zones = objects
+                .iter()
+                .filter_map(|id| game.object(*id).map(|object| (*id, object.zone)))
+                .collect::<std::collections::HashMap<_, _>>();
+            let moves = objects
+                .into_iter()
+                .filter_map(|id| {
+                    source_zones.get(&id).map(|from| {
+                        super::PreparedZoneMove::capture(
+                            game,
+                            id,
+                            *from,
+                            Zone::Exile,
+                            ctx.cause.clone(),
+                            None,
+                        )
+                    })
+                })
+                .collect();
+            super::execute_zone_moves(game, ctx, moves, |game, ctx, receipts| {
+                let mut exiled_count = 0_i32;
+                let mut monarch_duration_stable_ids = Vec::new();
+                for (object_id, receipt) in receipts {
+                    let from_zone = source_zones[object_id];
+                    if let EventOutcome::Proceed(result) = &receipt.original
+                        && result.final_zone == Zone::Exile
+                    {
+                        for &new_id in &result.new_object_ids {
+                            if self.face_down {
+                                game.set_face_down(new_id);
+                            }
+                            if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+                                game.add_exiled_with_source_link_returning_to(
+                                    leave_watcher,
+                                    new_id,
+                                    from_zone,
+                                );
+                            } else {
+                                game.add_exiled_with_source_link(ctx.source, new_id);
+                            }
+                            if (self.duration != ExileUntilDuration::SourceLeavesBattlefield
+                                || leave_watcher == ctx.source)
+                                && let Some(object) = game.object(new_id)
+                            {
+                                // "Other cards exiled with ~" excludes what this
+                                // resolution exiled with the source.
+                                let snapshot =
+                                    crate::snapshot::ObjectSnapshot::from_object(object, game);
+                                ctx.tag_object(
+                                    ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG,
+                                    snapshot,
+                                );
+                            }
+                            if self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                                && let Some(exiled) = game.object(new_id)
+                            {
+                                monarch_duration_stable_ids.push(exiled.stable_id);
+                            }
+                            exiled_count += 1;
+                        }
+                    }
+                }
 
-        if exiled_count > 0 && self.duration == ExileUntilDuration::SourceLeavesBattlefield {
-            game.mark_return_exiled_when_source_leaves(leave_watcher);
-        }
-        if !monarch_duration_stable_ids.is_empty()
-            && self.duration == ExileUntilDuration::OpponentBecomesMonarch
-        {
-            game.track_exiled_until_opponent_becomes_monarch(
-                ctx.controller,
-                monarch_duration_stable_ids,
-                self.return_zone,
-            );
-        }
-        Ok(EffectOutcome::count(exiled_count))
-        })()?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        super::finish_zone_change_receipts(game, ctx, original, receipts)
+                if exiled_count > 0 && self.duration == ExileUntilDuration::SourceLeavesBattlefield
+                {
+                    game.mark_return_exiled_when_source_leaves(leave_watcher);
+                }
+                if !monarch_duration_stable_ids.is_empty()
+                    && self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                {
+                    game.track_exiled_until_opponent_becomes_monarch(
+                        ctx.controller,
+                        monarch_duration_stable_ids,
+                        self.return_zone,
+                    );
+                }
+                Ok(EffectOutcome::count(exiled_count))
+            })
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             *game = checkpoint;
             context_checkpoint.restore(ctx);
         }
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         result
     }
 

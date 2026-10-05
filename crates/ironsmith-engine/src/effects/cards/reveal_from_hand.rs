@@ -101,6 +101,9 @@ fn required_reveal_count(
 }
 
 impl EffectExecutor for RevealFromHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Revealed)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -212,62 +215,19 @@ impl EffectExecutor for RevealFromHandEffect {
             return Ok(EffectOutcome::impossible());
         }
 
-        for viewer_idx in 0..game.players.len() {
-            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-            let view_ctx = ViewCardsContext::new(
-                viewer,
-                ctx.controller,
-                Some(ctx.source),
-                crate::zone::Zone::Hand,
-                "Reveal cards from hand",
-            )
-            .with_public(true);
-            ctx.decision_maker
-                .view_cards(game, viewer, &cards_to_reveal, &view_ctx);
-        }
-
-        let revealed_snapshots: Vec<_> = cards_to_reveal
+        let revealed = cards_to_reveal
             .iter()
-            .filter_map(|&id| {
-                game.object(id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game))
-            })
+            .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
             .collect();
-        if !revealed_snapshots.is_empty() {
-            let entry = ctx
-                .tagged_objects
-                .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
-                .or_default();
-            for snapshot in revealed_snapshots {
-                if !entry
-                    .iter()
-                    .any(|existing| existing.object_id == snapshot.object_id)
-                {
-                    entry.push(snapshot);
-                }
-            }
-        }
-
-        let reveal_events = cards_to_reveal
-            .iter()
-            .filter_map(|&id| {
-                let snapshot = game
-                    .object(id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game))?;
-                Some(crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardRevealedEvent::new(
-                        ctx.controller,
-                        id,
-                        crate::zone::Zone::Hand,
-                        Some(ctx.source),
-                        Some(snapshot),
-                    ),
-                    ctx.provenance,
-                ))
-            })
-            .collect::<Vec<_>>();
-
-        Ok(EffectOutcome::count(cards_to_reveal.len() as i32).with_events(reveal_events))
+        let actor = ctx.controller;
+        super::reveal_objects(
+            game,
+            ctx,
+            revealed,
+            Some(actor),
+            "Reveal cards from hand",
+            None,
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -311,6 +271,9 @@ impl CostExecutableEffect for RevealFromHandEffect {
 }
 
 impl EffectExecutor for RevealSourceFromHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Revealed)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -328,54 +291,23 @@ impl EffectExecutor for RevealSourceFromHandEffect {
         }
 
         let source_id = ctx.source;
-        for viewer_idx in 0..game.players.len() {
-            let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-            let view_ctx = ViewCardsContext::new(
-                viewer,
-                ctx.controller,
-                Some(ctx.source),
-                Zone::Hand,
-                "Reveal source card from hand",
-            )
-            .with_public(true);
-            ctx.decision_maker
-                .view_cards(game, viewer, &[source_id], &view_ctx);
-        }
-
-        let Some(snapshot) = game
-            .object(source_id)
-            .map(|obj| ObjectSnapshot::from_object(obj, game))
-        else {
+        let Some(snapshot) = ObjectSnapshot::from_object_id(game, source_id) else {
             return Ok(EffectOutcome::count(0));
         };
-        let entry = ctx
-            .tagged_objects
-            .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
-            .or_default();
-        if !entry
-            .iter()
-            .any(|existing| existing.object_id == snapshot.object_id)
-        {
-            entry.push(snapshot.clone());
-        }
-
         if self.duration
             == ironsmith_core::RevealSourceFromHandDuration::UntilUpkeepEndsOrLeavesHand
         {
             game.reveal_hand_card_until_upkeep_ends(source_id);
         }
-
-        let event = crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::CardRevealedEvent::new(
-                ctx.controller,
-                source_id,
-                Zone::Hand,
-                Some(ctx.source),
-                Some(snapshot),
-            ),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::count(1).with_events(vec![event]))
+        let actor = ctx.controller;
+        super::reveal_objects(
+            game,
+            ctx,
+            vec![snapshot],
+            Some(actor),
+            "Reveal source card from hand",
+            None,
+        )
     }
 
     fn cost_description(&self) -> Option<String> {

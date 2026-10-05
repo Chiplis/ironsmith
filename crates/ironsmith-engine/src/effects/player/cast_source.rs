@@ -30,6 +30,9 @@ fn restore_other_face_after_failed_cast(
 
 /// Effect that casts the source card immediately.
 impl EffectExecutor for CastSourceEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Cast)
+    }
     fn execute(
         &self,
         game: &mut GameState,

@@ -102,7 +102,7 @@ fn effect_list_mentions_iterated_player(effects: &[crate::effect::Effect]) -> bo
 }
 
 fn result_memories_share_characteristic(
-    memories: &[&crate::effect::OutcomeObjectMemory],
+    memories: &[&crate::effect::ObjectSnapshot],
     required_count: usize,
     characteristic: crate::ObjectCharacteristic,
 ) -> bool {
@@ -162,7 +162,7 @@ fn result_memories_share_characteristic(
         crate::ObjectCharacteristic::ManaValue => memories.iter().any(|candidate| {
             memories
                 .iter()
-                .filter(|memory| memory.mana_value == candidate.mana_value)
+                .filter(|memory| memory.mana_value() == candidate.mana_value())
                 .count()
                 >= required_count
         }),
@@ -170,11 +170,13 @@ fn result_memories_share_characteristic(
             candidate
                 .name
                 .split(" // ")
+                .chain(candidate.split_other_half_name())
                 .filter(|name| !crate::filter::name_is_nameless(name))
                 .any(|name| {
                     memories
                         .iter()
-                        .filter(|memory| crate::filter::names_match(name, &memory.name))
+                        .filter(|memory| crate::filter::names_match(name, &memory.name)
+                            || memory.split_other_half_name().is_some_and(|other| crate::filter::names_match(name, other)))
                         .count()
                         >= required_count
                 })
@@ -192,7 +194,7 @@ pub(super) fn predicate_matches_with_context(
         let Some(all_memory) = outcome.affected_object_memory() else {
             return false;
         };
-        let Some(greatest) = all_memory.iter().map(|memory| memory.mana_value).max() else {
+        let Some(greatest) = all_memory.iter().map(|memory| memory.mana_value()).max() else {
             return false;
         };
         let Some(partitions) = outcome.player_affected_object_memory() else {
@@ -201,7 +203,7 @@ pub(super) fn predicate_matches_with_context(
         let filter_ctx = ctx.filter_context(game);
         return partitions.iter().any(|(affected_player, memory)| {
             player_filter_matches_game(player, *affected_player, game, &filter_ctx)
-                && memory.iter().any(|object| object.mana_value == greatest)
+                && memory.iter().any(|object| object.mana_value() == greatest)
         });
     }
 
@@ -220,10 +222,12 @@ pub(super) fn predicate_matches_with_context(
     }
     if surface.action == crate::effect::PriorEffectAction::Died {
         let filter_ctx = ctx.filter_context(game);
-        let matching = outcome.affected_object_memory().unwrap_or_default().iter()
+        let recorded = crate::effects::outcome_recording::action_objects(outcome, surface.action, None);
+        let known = recorded.is_some();
+        let matching = recorded.as_deref().or_else(|| outcome.affected_object_memory()).unwrap_or_default().iter()
             .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
-                && surface.filter.matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
-                && (outcome.execution_facts.iter().any(|fact|
+                && surface.filter.matches_snapshot(memory, &filter_ctx, game)
+                && (known || outcome.execution_facts.iter().any(|fact|
                                 matches!(fact, crate::effect::ExecutionFact::ObjectsDied(ids) if ids.contains(&memory.object_id)))
                             || outcome.events_of_type::<crate::events::ZoneChangeEvent>().any(|event|
                     event.from == crate::zone::Zone::Battlefield
@@ -271,11 +275,7 @@ pub(super) fn predicate_matches_with_context(
                     .then_some(cards)
             })
             .flatten()
-            .filter(|card| {
-                surface
-                    .filter
-                    .matches_snapshot(&card.to_snapshot(game), &filter_ctx, game)
-            })
+            .filter(|card| surface.filter.matches_snapshot(card, &filter_ctx, game))
             .collect::<Vec<_>>();
         if cards.len() < surface.required_count.unwrap_or(1) as usize {
             return false;
@@ -303,7 +303,15 @@ pub(super) fn predicate_matches_with_context(
             crate::effect::PriorEffectResultActor::Passive => None,
             crate::effect::PriorEffectResultActor::It => return false,
         };
+        if let Some(objects) = crate::effects::outcome_recording::action_objects(
+            outcome,
+            surface.action,
+            player.as_ref().map(std::slice::from_ref),
+        ) {
+            return objects.len() >= surface.required_count.unwrap_or(1) as usize;
+        }
         let drawn: u32 = outcome
+            .instruction_result()
             .events_of_type::<crate::events::CardsDrawnEvent>()
             .filter(|event| player.is_none_or(|player| event.player == player))
             .map(|event| event.amount())
@@ -314,10 +322,48 @@ pub(super) fn predicate_matches_with_context(
         && surface.required_count.is_none()
         && surface.shared_characteristic.is_none()
     {
-        return predicate.evaluate_outcome(outcome);
+        let player = match surface.actor {
+            crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
+            crate::effect::PriorEffectResultActor::ThatPlayer => {
+                let Some(player) = ctx.iteration.iterated_player else {
+                    return false;
+                };
+                Some(player)
+            }
+            crate::effect::PriorEffectResultActor::Passive => None,
+            crate::effect::PriorEffectResultActor::It => return false,
+        };
+        if let Some(objects) = crate::effects::outcome_recording::action_objects(
+            outcome,
+            surface.action,
+            player.as_ref().map(std::slice::from_ref),
+        ) {
+            return !objects.is_empty();
+        }
+        return predicate.evaluate_outcome(outcome.instruction_result());
     }
 
-    let Some(memories) = outcome.affected_object_memory() else {
+    let actor = match surface.actor {
+        crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
+        crate::effect::PriorEffectResultActor::ThatPlayer => {
+            let Some(player) = ctx.iteration.iterated_player else {
+                return false;
+            };
+            Some(player)
+        }
+        crate::effect::PriorEffectResultActor::Passive => None,
+        crate::effect::PriorEffectResultActor::It => return false,
+    };
+    let players = actor.map(|actor| vec![actor]);
+    let recorded = crate::effects::outcome_recording::action_objects(
+        outcome,
+        surface.action,
+        players.as_deref(),
+    );
+    let Some(memories) = recorded
+        .as_deref()
+        .or_else(|| outcome.affected_object_memory())
+    else {
         return false;
     };
     let filter_ctx = ctx.filter_context(game);
@@ -330,11 +376,7 @@ pub(super) fn predicate_matches_with_context(
             surface.action != crate::effect::PriorEffectAction::Milled
                 || (memory.zone == crate::zone::Zone::Library && !memory.is_token)
         })
-        .filter(|memory| {
-            surface
-                .filter
-                .matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
-        })
+        .filter(|memory| surface.filter.matches_snapshot(memory, &filter_ctx, game))
         .collect::<Vec<_>>();
     if surface
         .required_count
@@ -786,20 +828,23 @@ mod tests {
                 .enumerate()
                 .map(|(i, ty)| {
                     let id = crate::ids::ObjectId::from_raw(1000 + i as u64);
-                    crate::effect::OutcomeObjectMemory {
-                        object_id: id,
-                        stable_id: crate::ids::StableId::from(id),
-                        name: "Revealed Probe".into(),
-                        controller: alice,
-                        owner: alice,
-                        zone: crate::zone::Zone::Library,
-                        power: None,
-                        toughness: None,
-                        mana_value: 1,
-                        card_types: vec![*ty],
-                        colors: crate::color::ColorSet::default(),
-                        subtypes: vec![],
-                        is_token: false,
+                    {
+                        let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                            id,
+                            crate::ids::StableId::from(id),
+                            alice,
+                            alice,
+                            crate::zone::Zone::Library,
+                        );
+                        snapshot.name = "Revealed Probe".into();
+                        snapshot.power = None;
+                        snapshot.toughness = None;
+                        snapshot.linked_face_mana_value = Some((1) as u32);
+                        snapshot.card_types = vec![*ty];
+                        snapshot.colors = crate::color::ColorSet::default();
+                        snapshot.subtypes = vec![];
+                        snapshot.is_token = false;
+                        snapshot
                     }
                 })
                 .collect();
@@ -825,22 +870,25 @@ mod tests {
             id: u64,
             card_type: crate::types::CardType,
             colors: crate::color::ColorSet,
-        ) -> crate::effect::OutcomeObjectMemory {
+        ) -> crate::effect::ObjectSnapshot {
             let object_id = crate::ids::ObjectId::from_raw(id);
-            crate::effect::OutcomeObjectMemory {
-                object_id,
-                stable_id: crate::ids::StableId::from(object_id),
-                name: format!("Card {id}"),
-                controller: PlayerId::from_index(0),
-                owner: PlayerId::from_index(0),
-                zone: crate::zone::Zone::Library,
-                power: None,
-                toughness: None,
-                mana_value: id as i32,
-                card_types: vec![card_type],
-                colors,
-                subtypes: Vec::new(),
-                is_token: false,
+            {
+                let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                    object_id,
+                    crate::ids::StableId::from(object_id),
+                    PlayerId::from_index(0),
+                    PlayerId::from_index(0),
+                    crate::zone::Zone::Library,
+                );
+                snapshot.name = format!("Card {id}");
+                snapshot.power = None;
+                snapshot.toughness = None;
+                snapshot.linked_face_mana_value = Some((id as i32) as u32);
+                snapshot.card_types = vec![card_type];
+                snapshot.colors = colors;
+                snapshot.subtypes = Vec::new();
+                snapshot.is_token = false;
+                snapshot
             }
         }
 
@@ -955,27 +1003,19 @@ mod tests {
 
     #[test]
     fn participant_discard_extremum_executes_on_a_tie_but_not_a_strict_loss() {
-        fn memory(
-            id: u64,
-            player: PlayerId,
-            mana_value: i32,
-        ) -> crate::effect::OutcomeObjectMemory {
+        fn memory(id: u64, player: PlayerId, mana_value: i32) -> crate::effect::ObjectSnapshot {
             let object_id = crate::ids::ObjectId::from_raw(id);
-            crate::effect::OutcomeObjectMemory {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
                 object_id,
-                stable_id: crate::ids::StableId::from(object_id),
-                name: format!("Discarded {id}"),
-                controller: player,
-                owner: player,
-                zone: crate::zone::Zone::Hand,
-                power: None,
-                toughness: None,
-                mana_value,
-                card_types: vec![crate::types::CardType::Sorcery],
-                colors: crate::color::ColorSet::default(),
-                subtypes: Vec::new(),
-                is_token: false,
-            }
+                crate::ids::StableId::from(object_id),
+                player,
+                player,
+                crate::zone::Zone::Hand,
+            );
+            snapshot.name = format!("Discarded {id}");
+            snapshot.linked_face_mana_value = Some(mana_value as u32);
+            snapshot.card_types = vec![crate::types::CardType::Sorcery];
+            snapshot
         }
 
         fn run_case(your_mana_value: i32, their_mana_value: i32) -> u32 {
@@ -1196,7 +1236,7 @@ mod replacement_original_if_adapter_contract_tests {
                 snapshot.linked_face_layout = crate::card::LinkedFaceLayout::Split;
                 snapshot.other_face_name = Some(right.into());
             }
-            crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot)
+            Clone::clone(&snapshot)
         };
         let ab = memory("Alpha", Some("Beta"));
         let bc = memory("Beta", Some("Gamma"));

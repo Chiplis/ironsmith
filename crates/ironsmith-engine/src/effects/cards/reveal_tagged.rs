@@ -3,16 +3,20 @@
 //! Reveals currently update player-facing visibility and carry that visibility
 //! through tagged contexts when later stack objects still need it.
 
-use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+
+#[cfg(test)]
 use crate::tag::TagKey;
 pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
 impl EffectExecutor for RevealTaggedEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Revealed)
+    }
     fn is_read_only_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -30,61 +34,8 @@ impl EffectExecutor for RevealTaggedEffect {
             .get_tagged_all(self.tag.clone())
             .cloned()
             .unwrap_or_default();
-        let count = tagged.len();
-        if let Some(first) = tagged.first() {
-            let card_ids = tagged.iter().map(|obj| obj.object_id).collect::<Vec<_>>();
-            for viewer_idx in 0..game.players.len() {
-                let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                let view_ctx = ViewCardsContext::new(
-                    viewer,
-                    first.owner,
-                    Some(ctx.source),
-                    first.zone,
-                    "Reveal cards",
-                )
-                .with_public(true);
-                ctx.decision_maker
-                    .view_cards(game, viewer, &card_ids, &view_ctx);
-            }
-        }
-        if !tagged.is_empty() {
-            let entry = ctx
-                .tagged_objects
-                .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
-                .or_default();
-            for snapshot in tagged.iter().cloned() {
-                if !entry
-                    .iter()
-                    .any(|existing| existing.object_id == snapshot.object_id)
-                {
-                    entry.push(snapshot);
-                }
-            }
-        }
-        let reveal_events = tagged
-            .iter()
-            .map(|snapshot| {
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardRevealedEvent::new(
-                        snapshot.owner,
-                        snapshot.object_id,
-                        snapshot.zone,
-                        Some(ctx.source),
-                        Some(snapshot.clone()),
-                    ),
-                    ctx.provenance,
-                )
-            })
-            .collect::<Vec<_>>();
+        super::reveal_objects(game, ctx, tagged, None, "Reveal cards", None)
 
-        let memory = tagged
-            .iter()
-            .map(OutcomeObjectMemory::from_snapshot)
-            .collect::<Vec<_>>();
-        Ok(EffectOutcome::count(count as i32)
-            .with_events(reveal_events)
-            .with_chosen_object_memory(memory.clone())
-            .with_affected_object_memory(memory))
     }
 }
 

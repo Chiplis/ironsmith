@@ -310,6 +310,9 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
 impl EffectExecutor for DrawCardsEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Drawn)
+    }
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -370,7 +373,23 @@ fn finish_direct_draw_segment(
             player, std::mem::take(drawn), is_first, step_context.0, step_context.1,
         ), draw_provenance,
     );
-    let draw = event.downcast::<CardsDrawnEvent>().expect("draw notification is typed");
+    let snapshots = event
+        .downcast::<CardsDrawnEvent>()
+        .expect("draw notification is typed")
+        .cards
+        .iter()
+        .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
+        .collect();
+    let event = event.with_inner_event(
+        event
+            .downcast::<CardsDrawnEvent>()
+            .expect("draw notification is typed")
+            .clone()
+            .with_snapshots(snapshots),
+    );
+    let draw = event
+        .downcast::<CardsDrawnEvent>()
+        .expect("draw notification is typed");
     game.record_cards_drawn_in_current_draw_step(player, draw.amount());
     game.note_hidden_draw_for_reveal_window(&event);
     let reveals = automatic_reveal_events_for_draw(
@@ -496,6 +515,7 @@ fn execute_draw_instruction(
     let mut replacement_count = 0;
     let mut events = Vec::new();
     let mut replacement_facts = Vec::new();
+    let mut original_draw_facts = Vec::new();
     let mut direct_drawn = Vec::new();
     let mut direct_draw_is_first = false;
     let mut direct_draw_step_context = (false, 0);
@@ -532,15 +552,40 @@ fn execute_draw_instruction(
             // Earlier cards were already drawn. Their event-time subjects
             // cannot observe changes made by this later draw's replacement.
             // Keep the physical receipts while recording their matched proof.
-            events.extend(finish_direct_draw_segment(
-                game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
-                direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
-            ));
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            crate::effects::capture_triggers_before_added_program(game, ctx, None, events.iter_mut())?;
+            let segment = finish_direct_draw_segment(
+                game,
+                ctx,
+                player_id,
+                &mut direct_drawn,
+                direct_draw_is_first,
+                direct_draw_step_context,
+                direct_draws_before,
+                HiddenDrawRevealMode::Inline,
+            );
+            original_draw_facts.extend(
+                segment
+                    .iter()
+                    .flat_map(|event| crate::effects::outcome_recording::event_facts(game, event)),
+            );
+            events.extend(segment);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            crate::effects::capture_triggers_before_added_program(
+                game,
+                ctx,
+                None,
+                events.iter_mut(),
+            )?;
         }
         if !programs.is_empty() {
             let original = commit_expanded_draw_original(game, ctx, player_id, processed)?;
+            original_draw_facts.extend(
+                original
+                    .events
+                    .iter()
+                    .flat_map(|event| crate::effects::outcome_recording::event_facts(game, event)),
+            );
             let completed = crate::effects::replacement::execute_deferred_replacement_programs(
                 game, ctx, original, programs,
             )?;
@@ -568,6 +613,15 @@ fn execute_draw_instruction(
                     return Ok(EffectOutcome::count(0));
                 }
                 replacement_count += replacement_outcome.count_or_zero();
+                original_draw_facts.extend(
+                    replacement_outcome
+                        .instruction_result()
+                        .events
+                        .iter()
+                        .flat_map(|event| {
+                            crate::effects::outcome_recording::event_facts(game, event)
+                        }),
+                );
                 events.extend(replacement_outcome.events);
                 replacement_facts.extend(replacement_outcome.execution_facts);
                 continue;
@@ -613,6 +667,10 @@ fn execute_draw_instruction(
                     if drawn.is_empty() {
                         continue;
                     }
+                    let snapshots = drawn
+                        .iter()
+                        .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
+                        .collect();
                     let event = TriggerEvent::new_with_provenance(
                         CardsDrawnEvent::new_with_step_context(
                             redirected_player,
@@ -620,7 +678,8 @@ fn execute_draw_instruction(
                             redirected_is_first,
                             redirected_in_draw_step,
                             redirected_previous,
-                        ),
+                        )
+                        .with_snapshots(snapshots),
                         ctx.provenance,
                     );
                     let drawn_count = event
@@ -632,6 +691,8 @@ fn execute_draw_instruction(
                         drawn_count,
                     );
                     game.note_hidden_draw_for_reveal_window(&event);
+                    original_draw_facts
+                        .extend(crate::effects::outcome_recording::event_facts(game, &event));
                     events.push(event);
                     continue;
                 }
@@ -661,13 +722,68 @@ fn execute_draw_instruction(
         }
     }
 
-    events.extend(finish_direct_draw_segment(
-        game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
-        direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
-    ));
-
-    Ok(EffectOutcome::count(total_drawn + replacement_count).with_events(events)
-        .with_execution_facts(EffectOutcome::merge_execution_facts(replacement_facts)))
+    let segment = finish_direct_draw_segment(
+        game,
+        ctx,
+        player_id,
+        &mut direct_drawn,
+        direct_draw_is_first,
+        direct_draw_step_context,
+        direct_draws_before,
+        HiddenDrawRevealMode::Inline,
+    );
+    original_draw_facts.extend(
+        segment
+            .iter()
+            .flat_map(|event| crate::effects::outcome_recording::event_facts(game, event)),
+    );
+    events.extend(segment);
+    original_draw_facts.retain(|fact| {
+        matches!(
+            fact,
+            crate::effect::ExecutionFact::ActionObjects {
+                action: crate::effect::PriorEffectAction::Drawn,
+                ..
+            }
+        )
+    });
+    if original_draw_facts.is_empty() {
+        original_draw_facts.push(crate::effect::ExecutionFact::ActionObjects {
+            action: crate::effect::PriorEffectAction::Drawn,
+            player: Some(player_id),
+            objects: Vec::new(),
+        });
+    }
+    // Added programs remain observable but do not supply the original draw's
+    // subjects, even when they happen to draw more cards themselves.
+    replacement_facts.retain(|fact| {
+        !matches!(
+            fact,
+            crate::effect::ExecutionFact::ActionObjects {
+                action: crate::effect::PriorEffectAction::Drawn,
+                ..
+            }
+        )
+    });
+    let primary = EffectOutcome::count(0).with_execution_facts(original_draw_facts.clone());
+    let snapshots = crate::effects::outcome_recording::action_objects(&primary, crate::effect::PriorEffectAction::Drawn, None).unwrap_or_default();
+    let original_count = crate::effects::outcome_recording::action_objects(&primary, crate::effect::PriorEffectAction::Drawn, Some(&[player_id])).unwrap_or_default().len() as i64;
+    let ids = snapshots.iter().map(|snapshot| snapshot.object_id).collect::<Vec<_>>();
+    let original_events = events.iter().filter(|event| event.downcast::<CardsDrawnEvent>()
+        .is_some_and(|draw| draw.cards.iter().all(|id| ids.contains(id))))
+        .cloned().collect::<Vec<_>>();
+    let original = EffectOutcome::count(original_count)
+        .with_result_objects(ids)
+        .with_affected_object_memory(snapshots.clone())
+        .with_execution_fact(crate::effect::ExecutionFact::ResultObjectMemory(snapshots))
+        .with_execution_facts(original_draw_facts.clone())
+        .with_events(original_events);
+    replacement_facts.extend(original_draw_facts);
+    let mut observed = EffectOutcome::count(total_drawn + replacement_count)
+        .with_events(events)
+        .with_execution_facts(EffectOutcome::merge_execution_facts(replacement_facts));
+    observed.instruction_result = Some(Box::new(original));
+    Ok(observed)
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_bounded_nonnegative_u32};
+use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -21,7 +21,6 @@ impl EffectExecutor for MoveCountersEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-
             // Targeted moves read the two resolved targets; untargeted moves
             // (graft: this permanent onto the entering creature, CR 702.58a)
             // resolve `from`/`to` through their specs.
@@ -60,38 +59,46 @@ impl EffectExecutor for MoveCountersEffect {
                 .unwrap_or(0);
 
             let to_move = match &self.count {
-                ironsmith_core::effect::CounterMoveAmount::Exact(value) => resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
+                ironsmith_core::effect::CounterMoveAmount::Exact(value) => {
+                    resolve_bounded_nonnegative_u32(game, value, ctx, available)?
+                }
                 ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
-                    let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
-                        format!("Choose how many {} counters to move", self.counter_type.description()));
-                    let chosen = crate::decisions::make_decision_with_fallback(game, &mut ctx.decision_maker,
-                        ctx.controller, Some(ctx.source), spec, crate::decision::FallbackStrategy::Maximum);
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    let spec = crate::decisions::NumberSpec::up_to(
+                        ctx.source,
+                        available,
+                        format!(
+                            "Choose how many {} counters to move",
+                            self.counter_type.description()
+                        ),
+                    );
+                    let chosen = crate::decisions::make_decision_with_fallback(
+                        game,
+                        &mut ctx.decision_maker,
+                        ctx.controller,
+                        Some(ctx.source),
+                        spec,
+                        crate::decision::FallbackStrategy::Maximum,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                     chosen
                 }
-            }.min(available);
+            }
+            .min(available);
 
             if to_move == 0 {
                 return Ok(EffectOutcome::count(0));
             }
 
-            let mut outcome = super::remove_moved_counters(game, ctx, from_id, self.counter_type, to_move)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            // Putting the moved counters is an ordinary placement (CR 122.5).
-            let placed = super::put_moved_counters(game, ctx, to_id, self.counter_type, to_move)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            outcome = EffectOutcome::aggregate([outcome, placed]);
-            outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(to_move)));
-
-            Ok(outcome)
+            let source = game.object(from_id).map(|object| (from_id, object.zone));
+            super::transfer_counters(game, ctx, source, to_id, self.counter_type, to_move)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() && result.is_ok() {
                 return Ok(EffectOutcome::count(0));

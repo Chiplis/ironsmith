@@ -106,7 +106,7 @@ impl EffectExecutor for CollectEvidenceEffect {
                 ChoiceAggregateConstraint::total_mana_value_at_least(required as i32),
             );
             ctx.tagged_objects.remove(CHOSEN_EVIDENCE);
-            let choice = choose.execute(game, ctx)?;
+            let choice = choose.execute_child(game, ctx)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
@@ -138,7 +138,7 @@ impl EffectExecutor for CollectEvidenceEffect {
             if !ids.is_empty() {
                 outcomes.push(
                     ExileEffect::with_spec(ChooseSpec::Tagged(CHOSEN_EVIDENCE.into()))
-                        .execute(game, ctx)?,
+                        .execute_child(game, ctx)?,
                 );
             }
             if ctx.decision_maker.awaiting_choice() {

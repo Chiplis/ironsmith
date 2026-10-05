@@ -150,18 +150,12 @@ impl EffectExecutor for RearrangeLookedCardsInLibraryEffect {
             .collect();
         game.shuffle_slice(&mut to_bottom);
 
-        let mut rebuilt_library: Vec<ObjectId> = player
-            .library
-            .iter()
-            .copied()
-            .filter(|id| !current_top_to_bottom.contains(id))
-            .collect();
-        rebuilt_library.splice(0..0, to_bottom);
-        rebuilt_library.extend(chosen_top_to_bottom.iter().rev().copied());
-
-        game.set_player_library_order_with_audit(
+        to_bottom.reverse();
+        super::arrange_library_cards(
+            game,
             library_owner,
-            rebuilt_library,
+            &chosen_top_to_bottom,
+            &to_bottom,
             "rearranged looked-at library cards",
         );
 
