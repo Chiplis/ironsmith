@@ -172,7 +172,9 @@ impl GameState {
             .as_mut()
             .expect("Grand Melee state was checked")
             .focused_marker = marker_number;
+        let global_skips = self.turn_store.clone();
         self.load_grand_melee_lane(&lane);
+        self.turn_store.copy_global_scheduled_skips_from(&global_skips);
         if let Some(holder) = self.focused_grand_melee_holder() {
             self.focus_planar_controller_for_grand_melee(holder);
         }
@@ -241,6 +243,7 @@ impl GameState {
                 let holder = live_seats[index * 4];
                 let mut lane = base_lane.clone();
                 lane.turn = TurnState::new(holder);
+                lane.turn_store.continuous_control_turn_started = None;
                 lane.turn_store.turn_order = seats.clone();
                 lane.stack.clear();
                 lane.combat = None;
@@ -321,10 +324,12 @@ impl GameState {
                     } else {
                         marker.lane.turn.clone()
                     },
-                    turn_store: if marker.number == state.focused_marker {
-                        self.turn_store.clone()
-                    } else {
-                        marker.lane.turn_store.clone()
+                    turn_store: {
+                        let mut store = if marker.number == state.focused_marker {
+                            self.turn_store.clone()
+                        } else { marker.lane.turn_store.clone() };
+                        store.copy_global_scheduled_skips_from(&self.turn_store);
+                        store
                     },
                     stack: if marker.number == state.focused_marker {
                         self.stack.to_vec()

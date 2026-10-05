@@ -570,6 +570,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             decode_as::<T, ironsmith_core::SkipCombatPhasesThisTurnEffect>(effect)
         }
         "SkipDrawStepEffect" => decode_as::<T, ironsmith_core::SkipDrawStepEffect>(effect),
+        "SkipScheduledEffect" => decode_as::<T, ironsmith_core::SkipScheduledEffect>(effect),
         "SkipMainPhasesThisTurnEffect" => {
             decode_as::<T, ironsmith_core::SkipMainPhasesThisTurnEffect>(effect)
         }

@@ -109,7 +109,9 @@ pub fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
 pub fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_words = TokenWordView::new(tokens);
     let clause_refs = clause_words.to_word_refs();
-    let prefix_start = parse_equal_to_start(&clause_refs)?.after;
+    // Composable value terms have already consumed their enclosing "equal
+    // to". Use the same typed aggregate reader for either complete surface.
+    let prefix_start = parse_equal_to_start(&clause_refs).map_or(0, |prefix| prefix.after);
     let suffix_refs = clause_refs.get(prefix_start..)?;
     let matched = value_helper_shapes::parse_aggregate_prefix(suffix_refs)?;
     let aggregate = matched.aggregate;

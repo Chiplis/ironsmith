@@ -40,6 +40,22 @@ fn resolve_fraction(
     })
 }
 
+fn canonical_maximum_operands<'a>(
+    sum: &'a Value,
+    subtract: &'a Value,
+) -> Option<(&'a Value, &'a Value)> {
+    let Value::Add(left, right) = sum else {
+        return None;
+    };
+    let Value::Scaled(minimum, -1) = subtract else {
+        return None;
+    };
+    let Value::Min(first, second) = minimum.as_ref() else {
+        return None;
+    };
+    (left == first && right == second).then_some((left.as_ref(), right.as_ref()))
+}
+
 pub(crate) fn resolve(
     value: &Value,
     context: &EvaluationContext<'_, '_>,
@@ -48,6 +64,13 @@ pub(crate) fn resolve(
     match value {
         Value::SurfaceHinted { value, .. } => resolve(value, context),
         Value::Fixed(n) => Ok(*n),
+        // `max(a,b)` is canonically encoded as a+b-min(a,b). Recognize
+        // that exact algebra before evaluating its potentially overflowing
+        // intermediate sum. This does not grant semantics to surface hints.
+        Value::Add(sum, subtract) if canonical_maximum_operands(sum, subtract).is_some() => {
+            let (left, right) = canonical_maximum_operands(sum, subtract).expect("guarded maximum");
+            Ok(resolve(left, context)?.max(resolve(right, context)?))
+        }
         Value::Add(left, right) => Ok(resolve(left, context)? + resolve(right, context)?),
         Value::X => context.x(),
         Value::XTimes(multiplier) => Ok(context.x()? * *multiplier),

@@ -114,7 +114,8 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(target, source_filter);
             retarget_it_filter_for_counter_followup(source, source_filter);
         }
-        Restriction::BeTargetedPlayerFrom(_, source) => {
+        Restriction::PreventDamageFrom { sources: source, .. }
+        | Restriction::BeTargetedPlayerFrom(_, source) => {
             retarget_it_filter_for_counter_followup(source, source_filter);
         }
         _ => {}

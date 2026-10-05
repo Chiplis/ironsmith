@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "17d6261058c28883f53ba5a8b1ecc1e472d2b639",
+  "source_implementation_commit": "2a5999062aa23a371cf1710d500aca3436c05aaf",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 415,
-    "additional_proposed_compile_entries": 415,
+    "additional_proposed_unique_cards": 433,
+    "additional_proposed_compile_entries": 433,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 4
@@ -1202,6 +1202,66 @@
       "semantic_scope": [
         "Actual mill keyword events, exact identities and public completed-state snapshots; unrelated library movement does not match.",
         "Grouped matching-filter event quantities and target caps preserve exact scope; all simultaneous originals and receipt snapshots precede replacement additions."
+      ]
+    },
+    {
+      "id": "scheduled-turn-skips",
+      "stage": 36,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/scheduled_turn_skips.json.fixture",
+      "baseline_entries": [
+        "Avizoa",
+        "Blinding Angel",
+        "Brine Elemental",
+        "Dovin, Architect of Law",
+        "Eater of Days",
+        "Revenant Patriarch",
+        "Shisato, Whispering Hunter",
+        "Stonehorn Dignitary",
+        "Yosei, the Morning Star"
+      ],
+      "implementation_commit": "743a3e9e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete typed next-step/phase/turn quantities; persistent independent skips consumed by actual scheduler.",
+        "Actual-turn continuous-control boundary, skipped untap phasing/events, shared future skips and saved lane transport."
+      ]
+    },
+    {
+      "id": "filtered-unpreventability",
+      "stage": 36,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/filtered_unpreventability.json.fixture",
+      "baseline_entries": [
+        "Excruciator",
+        "Questing Beast"
+      ],
+      "implementation_commit": "743a3e9e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed source/combat/controller prevention restrictions in native damage and simultaneous allocation paths.",
+        "Damage-source LKI is distinct from the restriction host lifetime; no-redirection and Malignus CDA remain partial."
+      ]
+    },
+    {
+      "id": "aggregate-damage-quantities",
+      "stage": 36,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/aggregate_damage_quantities.json.fixture",
+      "baseline_entries": [
+        "Barret Wallace",
+        "Beacon Bolt",
+        "Ral, Izzet Viceroy",
+        "Runebound Wolf",
+        "Summon: Esper Ramuh",
+        "Triumphant Chomp",
+        "Burn at the Stake"
+      ],
+      "implementation_commit": "2a5999062aa23a371cf1710d500aca3436c05aaf",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed scalar damage counts, owned zone unions and plural equipped-host predicates.",
+        "Overflow-safe canonical maxima and exact historical tap-payment counts, preserving local producer precedence."
       ]
     }
   ],
@@ -2985,8 +3045,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Awakening of Vitu-Ghazi",
@@ -3387,8 +3449,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Barroom Brawl",
@@ -3491,8 +3555,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Beacon of Tomorrows",
@@ -3977,8 +4043,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Blinding Beam",
@@ -4471,8 +4539,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Bring the Ending",
@@ -4613,8 +4683,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Burn the Impure",
@@ -8380,8 +8452,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Dovin, Hand of Control",
@@ -8942,8 +9016,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Ebondeath, Dracolich",
@@ -9966,8 +10042,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-unpreventability"
+      ]
     },
     {
       "card_name": "Exiled Doomsayer",
@@ -22872,8 +22950,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-unpreventability"
+      ]
     },
     {
       "card_name": "Quick Sliver",
@@ -23146,8 +23226,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Rally the Horde",
@@ -23826,8 +23908,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Reversal of Fortune",
@@ -24508,8 +24592,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Runed Halo",
@@ -25900,8 +25986,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Shivan Sand-Mage",
@@ -27582,8 +27670,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "Stonework Packbeast",
@@ -27900,8 +27990,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Summon: Esper Valigarmanda",
@@ -30867,8 +30959,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "aggregate-damage-quantities"
+      ]
     },
     {
       "card_name": "Tromokratis",
@@ -34068,8 +34162,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scheduled-turn-skips"
+      ]
     },
     {
       "card_name": "You Cannot Pass!",

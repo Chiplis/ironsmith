@@ -1547,6 +1547,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::PlayFromGraveyardUntilEot)
         | SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { .. })
         | SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn { .. })
@@ -2580,7 +2581,8 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
             });
     }
     let maybe_filter = match restriction {
-        Restriction::Attack(filter)
+        Restriction::PreventDamageFrom { sources: filter, .. }
+        | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::Untap(filter)

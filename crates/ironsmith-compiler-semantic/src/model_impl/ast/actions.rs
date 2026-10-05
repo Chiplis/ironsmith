@@ -2479,6 +2479,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn) => {
                 f.write_str("SkipCombatPhasesThisTurn")
             }
+            Self::TurnStructure(TurnStructureActionAst::SkipScheduled { kind, count }) => {
+                f.debug_struct("SkipScheduled").field("kind", kind).field("count", count).finish()
+            }
             Self::TurnStructure(TurnStructureActionAst::SkipDrawStep) => {
                 f.write_str("SkipDrawStep")
             }

@@ -1967,6 +1967,9 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipScheduledEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SkipScheduledEffect { player: payload.player.clone(), kind: payload.kind, count: payload.count }));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipDrawStepEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SkipDrawStepEffect::new(
             payload.player.clone(),

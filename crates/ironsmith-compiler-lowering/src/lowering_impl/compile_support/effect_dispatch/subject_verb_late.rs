@@ -135,6 +135,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipMainPhasesThisTurn)
             | SubjectVerbActionAst::TurnStructure(
                 TurnStructureActionAst::SkipNextCombatPhaseThisTurn
@@ -2334,6 +2335,11 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_combat_phases_this_turn_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipScheduled { kind, count }) => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::new(ironsmith_core::SkipScheduledEffect { player: subject.into_player_filter(), kind: *kind, count: *count })
             })
         }
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep) => {

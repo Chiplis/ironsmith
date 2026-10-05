@@ -347,3 +347,54 @@ fn fractional_rounding_uses_a_wide_intermediate_for_representable_results() {
         .is_err()
     );
 }
+
+#[test]
+fn canonical_maximum_evaluates_without_overflowing_its_algebraic_intermediates() {
+    let (game, source, alice) = fixture();
+    let exec = ExecutionContext::new_default(source, alice);
+    for a in [i32::MIN, -3, 0, 2, i32::MAX] {
+        for b in [i32::MIN, -5, 0, 7, i32::MAX] {
+            let value = Value::Add(
+                Box::new(Value::Add(
+                    Box::new(Value::Fixed(a)),
+                    Box::new(Value::Fixed(b)),
+                )),
+                Box::new(Value::Scaled(
+                    Box::new(Value::Min(
+                        Box::new(Value::Fixed(a)),
+                        Box::new(Value::Fixed(b)),
+                    )),
+                    -1,
+                )),
+            );
+            assert_eq!(
+                resolve(&value, &EvaluationContext::execution_context(&game, &exec)).unwrap(),
+                a.max(b)
+            );
+            assert_eq!(continuous(&value, &game, source, alice), a.max(b));
+        }
+    }
+    // A mismatched minimum is ordinary arithmetic, even with that prose hint.
+    let mismatched = Value::Add(
+        Box::new(Value::Add(
+            Box::new(Value::Fixed(4)),
+            Box::new(Value::Fixed(9)),
+        )),
+        Box::new(Value::Scaled(
+            Box::new(Value::Min(
+                Box::new(Value::Fixed(3)),
+                Box::new(Value::Fixed(8)),
+            )),
+            -1,
+        )),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhicheverIsGreater);
+    assert_eq!(
+        resolve(
+            &mismatched,
+            &EvaluationContext::execution_context(&game, &exec)
+        )
+        .unwrap(),
+        10
+    );
+}
