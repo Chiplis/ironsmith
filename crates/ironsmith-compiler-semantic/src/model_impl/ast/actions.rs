@@ -1570,6 +1570,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("card_types", card_types)
                 .field("duration", duration)
                 .finish(),
+            Self::StatChanges(StatChangeActionAst::RemoveSupertypes {target,supertypes,duration}) => f
+                .debug_struct("RemoveSupertypes").field("target",target).field("supertypes",supertypes).field("duration",duration).finish(),
             Self::StatChanges(StatChangeActionAst::RemoveCardTypes {
                 target,
                 card_types,

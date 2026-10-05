@@ -823,6 +823,21 @@ impl TurnHistory {
         })
     }
 
+    /// A true departure receipt for an exact object incarnation. Phasing does
+    /// not make a new object or freeze later noncopiable choices on that object.
+    pub fn source_departure_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.projected_records().rev().find_map(|record| {
+            if let Some(event) = record
+                .event
+                .downcast::<crate::events::zones::ObjectLeavesGameEvent>()
+            {
+                return (event.object == object).then_some(&event.snapshot);
+            }
+            let event = record.event.downcast::<ZoneChangeEvent>()?;
+            event.snapshots().iter().find(|snapshot| snapshot.object_id == object)
+        })
+    }
+
     /// Characteristics immediately before this source left its zone, left the
     /// game, or phased out this turn. Timed programs can outlive these transitions.
     pub fn source_last_known_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
@@ -1168,6 +1183,13 @@ impl TurnHistory {
         })
     }
 
+    pub fn creature_was_blocked_this_turn(&self, creature: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record.event.downcast::<crate::events::CreatureBecameBlockedEvent>().is_some_and(|event| event.attacker == creature)
+                || record.event.downcast::<CreatureBlockedEvent>().is_some_and(|event| event.attacker == creature)
+        })
+    }
+
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
         self.projected_records().any(|record| {
             record
@@ -1446,6 +1468,50 @@ fn snapshot_is_permanent_card(snapshot: &ObjectSnapshot) -> bool {
             .any(|card_type| PERMANENT_CARD_TYPES.contains(card_type))
 }
 
+/// One entry can publish a zone notification and an ETB notification. Prefer
+/// the latter's completed characteristics and count its exact destination
+/// incarnation once. A later leave/reenter has a new ID and counts again.
+fn completed_entry_snapshots(history: &TurnHistory) -> Vec<&ObjectSnapshot> {
+    let mut entries: HashMap<ObjectId, (bool, &ObjectSnapshot)> = HashMap::new();
+    for record in history.projected_records() {
+        if let Some(event) = record.event.downcast::<EnterBattlefieldEvent>() {
+            if let Some(snapshot) = event.completed_snapshot.as_ref().or(record.object_snapshot.as_ref())
+                .filter(|snapshot| snapshot.zone == Zone::Battlefield && snapshot.object_id == event.object) {
+                match entries.entry(event.object) {
+                    std::collections::hash_map::Entry::Vacant(entry) => { entry.insert((true, snapshot)); }
+                    std::collections::hash_map::Entry::Occupied(mut entry) if !entry.get().0 => { entry.insert((true, snapshot)); }
+                    _ => {}
+                }
+            }
+        } else if let Some(event) = record.event.downcast::<ZoneChangeEvent>().filter(|event| event.is_etb()) {
+            let destinations = if event.result_objects.is_empty() { &event.objects } else { &event.result_objects };
+            if let Some(snapshot) = record.object_snapshot.as_ref().filter(|snapshot|
+                snapshot.zone == Zone::Battlefield && destinations.contains(&snapshot.object_id)) {
+                entries.entry(snapshot.object_id).or_insert((false, snapshot));
+            }
+        }
+    }
+    entries.into_values().map(|(_, snapshot)| snapshot).collect()
+}
+
+fn historical_cause_matches(
+    requested: &crate::events::cause::CauseFilter,
+    actual: &crate::events::cause::EventCause,
+    source_snapshot: Option<&ObjectSnapshot>,
+    game: &GameState,
+    ctx: &crate::target::FilterContext,
+) -> bool {
+    use crate::events::cause::CauseFilterRuntimeExt;
+    let Some(you) = ctx.you else { return false; };
+    // Never reopen a later live incarnation to satisfy a historical cause.
+    if let Some(filter) = &requested.source_filter
+        && !source_snapshot.is_some_and(|snapshot| filter.matches_snapshot(snapshot, ctx, game)) {
+        return false;
+    }
+    let mut without_source = requested.clone(); without_source.source_filter = None;
+    without_source.matches_with_context_controller(actual, game, you, you)
+}
+
 /// Resolve a typed turn-history count against event snapshots.  This is shared
 /// by ordinary effect values and continuous/static values so both paths use the
 /// same retained-event semantics.
@@ -1458,6 +1524,48 @@ pub(crate) fn resolve_turn_history_count(
     let history = &game.turn_store.turn_history;
 
     match query {
+        TurnHistoryCount::LibrarySearches { player, own_library_only } => history.projected_records()
+            .filter_map(|record| record.event.downcast::<SearchLibraryEvent>())
+            .filter(|event| player.matches_player(event.player, filter_ctx)
+                && (!*own_library_only || event.library_owner == Some(event.player)))
+            .count() as i32,
+        TurnHistoryCount::MaxEnteredBattlefieldByController { player, filter } => {
+            let mut historical_filter = filter.clone(); historical_filter.zone = None;
+            let mut counts: HashMap<PlayerId, i32> = HashMap::new();
+            for snapshot in completed_entry_snapshots(history) {
+                if player.matches_player(snapshot.controller, filter_ctx)
+                    && historical_filter.matches_snapshot(snapshot, filter_ctx, game) {
+                    let count = counts.entry(snapshot.controller).or_default();
+                    *count = count.saturating_add(1);
+                }
+            }
+            counts.into_values().max().unwrap_or(0)
+        }
+        TurnHistoryCount::DestroyedBy { filter, cause } => {
+            history.projected_records().filter(|record| {
+                let Some(event) = record.event.downcast::<crate::events::DestroyEvent>() else { return false; };
+                event.final_zone.is_some()
+                    && event.snapshot.as_ref().is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+                    && event.cause.as_ref().is_some_and(|actual| historical_cause_matches(cause, actual, record.source_snapshot.as_ref(), game, filter_ctx))
+            }).count() as i32
+        }
+        TurnHistoryCount::CastSpellsCounteredBy { caster, filter, cause } => {
+            let mut casts = HashSet::new(); let mut countered = HashSet::new();
+            for record in history.projected_records() {
+                if let Some(event) = record.event.downcast::<SpellCastEvent>() {
+                    if caster.matches_player(event.caster, filter_ctx) { casts.insert(event.spell); }
+                    continue;
+                }
+                let Some(event) = record.event.downcast::<crate::events::SpellCounteredEvent>() else { continue; };
+                if casts.contains(&event.spell)
+                    && event.snapshot.as_ref().or(record.object_snapshot.as_ref()).is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+                    && event.cause.as_ref().is_some_and(|actual| historical_cause_matches(cause, actual, record.source_snapshot.as_ref(), game, filter_ctx)) {
+                    countered.insert(event.spell);
+                }
+            }
+            countered.len() as i32
+        }
+
         TurnHistoryCount::Died { filter, .. } => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;
@@ -1470,34 +1578,8 @@ pub(crate) fn resolve_turn_history_count(
                 .count() as i32
         }
         TurnHistoryCount::EnteredBattlefield(filter) => {
-            let mut historical_filter = filter.clone();
-            historical_filter.zone = None;
-            history
-                .projected_records()
-                .filter_map(|record| {
-                    if let Some(event) = record.event.downcast::<ZoneChangeEvent>() {
-                        if !event.is_etb() {
-                            return None;
-                        }
-                        if !event.snapshots().is_empty() {
-                            return Some(event.snapshots().to_vec());
-                        }
-                        return record
-                            .object_snapshot
-                            .clone()
-                            .map(|snapshot| vec![snapshot]);
-                    }
-
-                    if record.event.downcast::<EnterBattlefieldEvent>().is_some() {
-                        return record
-                            .object_snapshot
-                            .clone()
-                            .map(|snapshot| vec![snapshot]);
-                    }
-
-                    None
-                })
-                .flatten()
+            let mut historical_filter = filter.clone(); historical_filter.zone = None;
+            completed_entry_snapshots(history).into_iter()
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
@@ -2260,4 +2342,25 @@ fn snapshot_had_subtype(snapshot: &ObjectSnapshot, subtype: Subtype) -> bool {
         || (subtype.is_creature_type()
             && snapshot.card_types.contains(&CardType::Creature)
             && snapshot.has_static_ability_id(crate::static_abilities::StaticAbilityId::Changeling))
+}
+
+#[cfg(test)]
+mod passive_blocked_history_tests {
+    use super::*;
+    #[test]
+    fn passive_history_uses_attacker_identity_and_expires_at_turn_boundary() {
+        let mut history = TurnHistory::default();
+        let attacker = ObjectId::from_raw(101); let blocker = ObjectId::from_raw(102);
+        let event = TriggerEvent::new_with_provenance(CreatureBlockedEvent::new(blocker, attacker), ProvNodeId::default());
+        history.record_event(&event, None, None);
+        assert!(history.creature_was_blocked_this_turn(attacker));
+        assert!(!history.creature_was_blocked_this_turn(blocker));
+        assert!(history.creature_blocked_this_turn(blocker));
+        assert!(!history.creature_was_blocked_this_turn(ObjectId::from_raw(103)), "new incarnation has no earlier block");
+        history.clear_for_new_turn();
+        assert!(!history.creature_was_blocked_this_turn(attacker));
+        let event = TriggerEvent::new_with_provenance(crate::events::CreatureBecameBlockedEvent::new(attacker, 0), ProvNodeId::default());
+        history.record_event(&event, None, None);
+        assert!(history.creature_was_blocked_this_turn(attacker), "an effect can make an attacker blocked without a blocker");
+    }
 }

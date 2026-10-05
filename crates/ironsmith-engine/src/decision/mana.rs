@@ -3165,9 +3165,10 @@ pub(crate) fn can_cast_spell_with_context(
             .or_else(|| spell.cast_alternative_method_owned()),
         _ => spell.cast_alternative_method_owned(),
     } && let Some(condition) = method.cast_condition()
-        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
             game,
             spell.id,
+            player,
             condition,
             &[],
         )
@@ -3545,9 +3546,10 @@ pub(crate) fn can_cast_with_cost_with_context(
             .or_else(|| spell.cast_alternative_method_owned()),
         _ => spell.cast_alternative_method_owned(),
     } && let Some(condition) = method.cast_condition()
-        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
             game,
             spell_id,
+            player,
             condition,
             &[],
         )
@@ -4100,9 +4102,10 @@ pub(crate) fn can_cast_with_alternative_with_context(
         });
     let free_plot_cost = crate::mana::ManaCost::new();
     if let Some(condition) = method.cast_condition()
-        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+        && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
             game,
             spell.id,
+            player,
             condition,
             &[],
         )
@@ -4333,9 +4336,10 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
             let casting_method = provisional_casting_method_for_alternative(spell, method);
             let mana_cost = Some(method.mana_cost().unwrap_or(&zero_cost).clone());
             if let Some(condition) = method.cast_condition()
-                && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                && !crate::static_abilities::this_spell_cost_condition_is_active_for_player(
                     game,
                     spell_id,
+                    player,
                     condition,
                     &[],
                 )
@@ -5263,9 +5267,10 @@ pub(crate) fn collect_spell_cost_modifiers(
                 casting_method_matches_alternative_kind(game, player, spell, casting_method, kind)
             });
             if casting_method_matches
-                && crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+                && crate::static_abilities::this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                     game,
                     spell.id,
+                    player,
                     &reduction.condition,
                     chosen_targets,
                     Some(&spell.optional_costs_paid),
@@ -5279,9 +5284,10 @@ pub(crate) fn collect_spell_cost_modifiers(
             }
         }
         if let Some(reduction) = static_ability.this_spell_cost_reduction_mana_cost()
-            && crate::static_abilities::this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
+            && crate::static_abilities::this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 game,
                 spell.id,
+                player,
                 &reduction.condition,
                 chosen_targets,
                 Some(&spell.optional_costs_paid),

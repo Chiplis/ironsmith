@@ -2330,6 +2330,11 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_remove_supertypes(target: TargetAst, supertypes: Vec<Supertype>, duration: Until) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, supertypes, duration }))
+    }
+
     pub fn subject_verb_remove_card_types(
         target: TargetAst,
         card_types: Vec<CardType>,

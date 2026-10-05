@@ -1415,6 +1415,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         display: String,
     },
     RedirectMatchingDamage(StaticDamageRedirectionSpec),
+    NoMaximumHandSizeFor(PlayerFilter),
+    MaximumHandSizeFromSourceCounters { player: PlayerFilter, counter_type: CounterType },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2184,6 +2186,9 @@ where
             StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbilityPayload::SetChosenColor { filter, display }
             }
+            StaticAbilityPayload::NoMaximumHandSizeFor(player) => StaticAbilityPayload::NoMaximumHandSizeFor(player),
+            StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } =>
+                StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type },
             StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
                 StaticAbilityPayload::SetMaximumHandSize { player, amount }
             }
@@ -6281,6 +6286,14 @@ impl<
             label: "additional land plays".to_string(),
             payload: StaticAbilityPayload::AdditionalLandPlays(count),
         }
+    }
+    pub fn no_maximum_hand_size_for(player: PlayerFilter) -> Self {
+        Self { id: Some(StaticAbilityId::NoMaximumHandSize), label: "scoped no maximum hand size".into(),
+            payload: StaticAbilityPayload::NoMaximumHandSizeFor(player) }
+    }
+    pub fn maximum_hand_size_from_source_counters(player: PlayerFilter, counter_type: CounterType) -> Self {
+        Self { id: Some(StaticAbilityId::SetMaximumHandSize), label: "maximum hand size from source counters".into(),
+            payload: StaticAbilityPayload::MaximumHandSizeFromSourceCounters { player, counter_type } }
     }
     pub fn no_maximum_hand_size() -> Self {
         Self {

@@ -644,7 +644,7 @@ impl CostPayer for CostEffect {
             // while freezing triggers before the next payment instruction.
             crate::effects::capture_triggers_before_added_program(
                 game, &exec_ctx, None, outcome.events.iter_mut(),
-            );
+            )?;
             Ok::<_, crate::effects::ExecutionError>(outcome)
         }).map_err(CostPaymentError::ExecutionFailed)?;
         if let Some(move_to_zone) =

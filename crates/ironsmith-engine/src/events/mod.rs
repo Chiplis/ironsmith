@@ -329,6 +329,7 @@ impl Event {
         Self::new_with_provenance(
             EnterBattlefieldEvent {
                 object,
+            completed_snapshot: None,
                 from,
                 enters_tapped,
                 enters_with_counters,

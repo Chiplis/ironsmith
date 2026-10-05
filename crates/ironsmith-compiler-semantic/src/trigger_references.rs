@@ -82,6 +82,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     if let Some(tag) = phase_step_trigger_object_reference_tag(trigger) {
         return Some(tag);
     }
+    if matches!(trigger, TriggerSpec::PlayerBecomesTargeted { .. }) { return None; }
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
     }

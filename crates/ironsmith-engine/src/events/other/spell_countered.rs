@@ -12,6 +12,7 @@ pub struct SpellCounteredEvent {
     pub spell: ObjectId,
     pub controller: PlayerId,
     pub snapshot: Option<ObjectSnapshot>,
+    pub cause: Option<crate::events::cause::EventCause>,
 }
 
 impl SpellCounteredEvent {
@@ -20,7 +21,12 @@ impl SpellCounteredEvent {
             spell,
             controller,
             snapshot,
+            cause: None,
         }
+    }
+    pub fn with_cause(mut self, cause: crate::events::cause::EventCause) -> Self {
+        self.cause = Some(cause);
+        self
     }
 }
 
@@ -47,6 +53,10 @@ impl GameEventType for SpellCounteredEvent {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn source_object(&self) -> Option<ObjectId> {
+        self.cause.as_ref().and_then(|cause| cause.source)
     }
 
     fn object_id(&self) -> Option<ObjectId> {

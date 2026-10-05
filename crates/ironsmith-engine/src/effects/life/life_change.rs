@@ -60,7 +60,7 @@ pub(crate) fn execute_life_changes(
         if committed.iter().any(|receipt| receipt.completion.is_some()) {
             crate::effects::runtime::capture_triggers_before_added_program(
                 game, ctx, None, committed.iter_mut().flat_map(|receipt| receipt.outcome.events.iter_mut()),
-            );
+            )?;
         }
         let mut outcomes = Vec::new();
         for receipt in committed {

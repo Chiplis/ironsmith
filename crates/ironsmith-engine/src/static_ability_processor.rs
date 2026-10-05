@@ -1351,6 +1351,41 @@ mod checked_discovery_tests {
         }
     }
 
+    #[derive(Debug, Clone)]
+    struct EnterWithUnboundedDiscovery;
+    impl crate::effects::EffectExecutor for EnterWithUnboundedDiscovery {
+        fn execute(&self, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext)
+            -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+            let card = CardBuilder::new(CardId::new(), "Checked entry receipt")
+                .card_types(vec![CardType::Artifact]).build();
+            let id = game.create_object_from_card(&card, ctx.controller, Zone::Battlefield);
+            game.object_mut(id).unwrap().abilities_mut().push(Ability::static_ability(
+                StaticAbility::new(RegrantParent(Arc::new(AtomicUsize::new(0))))));
+            Ok(crate::effect::EffectOutcome::with_objects(vec![id]).with_events(vec![
+                crate::events::Event::new_with_provenance(
+                    crate::events::EnterBattlefieldEvent::new(id, Zone::Command), ctx.provenance),
+            ]))
+        }
+    }
+
+    #[test]
+    fn completed_entry_discovery_failure_rolls_back_the_original_instruction_and_history() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let next = game.next_object_id_counter();
+        let before_provenance = game.provenance_graph().node_count();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(ObjectId::from_raw(9001), PlayerId(0), &mut dm);
+        let result = crate::effects::execute_effect(&mut game,
+            &crate::effect::Effect::new(EnterWithUnboundedDiscovery), &mut ctx);
+        assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(_))), "{result:?}");
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.next_object_id_counter(), next);
+        assert_eq!(game.provenance_graph().node_count(), before_provenance);
+        assert!(game.turn_store.turn_history.event_records.is_empty());
+        assert!(game.turn_store.turn_history.staged_event_records.is_empty());
+        assert!(game.effect_store.pending_trigger_events.is_empty());
+    }
+
     #[test]
     fn checked_discovery_returns_typed_failure_without_publishing_a_partial_graph() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);

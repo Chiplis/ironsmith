@@ -1938,6 +1938,9 @@ fn compile_compiler_control_flow(
                         | SubjectVerbActionAst::StatChanges(
                             StatChangeActionAst::RemoveCardTypes { duration, .. },
                         )
+                        | SubjectVerbActionAst::StatChanges(
+                            StatChangeActionAst::RemoveSupertypes { duration, .. },
+                        )
                         | SubjectVerbActionAst::Characteristics(
                             CharacteristicActionAst::AddSubtypes { duration, .. },
                         )

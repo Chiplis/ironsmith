@@ -2548,13 +2548,40 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
     chosen_targets: &[crate::game_state::Target],
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
+    let Some(object) = game.object(source) else { return false; };
+    this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+        game, source, game.controller_of(object), condition, chosen_targets, optional_costs_paid,
+    )
+}
+
+/// Announcement-time conditions use the prospective caster, who need not own
+/// or currently control the card in the permitted source zone.
+pub fn this_spell_cost_condition_is_active_for_player(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    caster: crate::ids::PlayerId,
+    condition: &ThisSpellCostCondition,
+    chosen_targets: &[crate::game_state::Target],
+) -> bool {
+    this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+        game, source, caster, condition, chosen_targets, None,
+    )
+}
+
+pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+    game: &crate::game_state::GameState,
+    source: crate::ids::ObjectId,
+    controller: crate::ids::PlayerId,
+    condition: &ThisSpellCostCondition,
+    chosen_targets: &[crate::game_state::Target],
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> bool {
     if matches!(condition, ThisSpellCostCondition::Always) {
         return true;
     }
     let Some(source_obj) = game.object(source) else {
         return false;
     };
-    let controller = game.controller_of(source_obj);
 
     match condition {
         ThisSpellCostCondition::Always => true,

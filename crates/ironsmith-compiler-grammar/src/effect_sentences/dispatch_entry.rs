@@ -12636,6 +12636,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 ..
             })

@@ -1748,6 +1748,10 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 clauses.push(format!("{loses} all creature types"));
             }
         }
+        crate::continuous::Modification::RemoveSupertypes(supertypes) => {
+            let names = supertypes.iter().map(|kind|kind.name().to_lowercase()).collect::<Vec<_>>();
+            if !names.is_empty() { clauses.push(format!("{} {}", if plural_target { "aren't" } else { "isn't" }, join_with_or(&names))); }
+        }
         crate::continuous::Modification::RemoveCardTypes(card_types) => {
             let words = card_types
                 .iter()

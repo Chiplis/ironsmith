@@ -518,6 +518,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ControlChanged(trigger) => Trigger::control_changed(trigger),
         TriggerSpec::RingBearerChosen(player) => Trigger::ring_bearer_chosen(player),
+        TriggerSpec::PlayerBecomesTargeted { player, source_controller, source_kind } => Trigger::player_becomes_targeted(player, source_controller, source_kind),
         TriggerSpec::AttachmentChanged { attachment, recipient, attached } => Trigger::attachment_changed(attachment, recipient, attached),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
@@ -541,6 +542,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBecomesUntapped => Trigger::becomes_untapped(),
         TriggerSpec::ThisTurnedFaceUp => Trigger::this_is_turned_face_up(),
         TriggerSpec::TurnedFaceUp(filter) => Trigger::turned_face_up(filter),
+        TriggerSpec::BecomesTargetedByAbilitySource { target, source } => Trigger::becomes_targeted_by_ability_source(target, source),
         TriggerSpec::ThisBecomesTargeted => Trigger::becomes_targeted(),
         TriggerSpec::BecomesTargeted(filter) => Trigger::becomes_targeted_object(filter),
         TriggerSpec::ThisBecomesTargetedBySpell(filter) => {
@@ -1479,6 +1481,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::WinsClash { .. }
         | TriggerSpec::Expend { .. } => true,
         TriggerSpec::StateBased { .. } => false,
+        TriggerSpec::PlayerBecomesTargeted { .. } => true,
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         }

@@ -5000,8 +5000,9 @@ pub fn pt_component_is_x(text: &str) -> bool {
 pub fn parse_no_maximum_hand_size_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if is_no_maximum_hand_size_line_lexed(tokens) {
-        return Ok(Some(StaticAbility::no_maximum_hand_size()));
+    if let Some(player) = crate::grammar::abilities::no_maximum_hand_size_player(tokens) {
+        return Ok(Some(if player == PlayerFilter::You { StaticAbility::no_maximum_hand_size() }
+            else { StaticAbility::no_maximum_hand_size_for(player) }));
     }
     Ok(None)
 }
@@ -5025,6 +5026,7 @@ pub fn parse_reduced_maximum_hand_size_line(
         keyword_static_lines::HandSizePlayerKind::You => PlayerFilter::You,
         keyword_static_lines::HandSizePlayerKind::Opponent => PlayerFilter::Opponent,
         keyword_static_lines::HandSizePlayerKind::Any => PlayerFilter::Any,
+        keyword_static_lines::HandSizePlayerKind::Chosen => PlayerFilter::ChosenPlayer,
     };
     let min_card_types_condition = if let Some(condition_tokens) = spec.condition_tokens {
         let Some((metric, threshold)) =
@@ -5048,6 +5050,9 @@ pub fn parse_reduced_maximum_hand_size_line(
         }
         keyword_static_lines::HandSizeOperation::Set(amount) => {
             StaticAbility::set_maximum_hand_size(player, amount)
+        }
+        keyword_static_lines::HandSizeOperation::SourceCounters(counter_type) => {
+            StaticAbility::maximum_hand_size_from_source_counters(player, counter_type)
         }
         keyword_static_lines::HandSizeOperation::SevenMinusGraveyardCardTypes => {
             StaticAbility::max_hand_size_seven_minus_your_graveyard_card_types(
@@ -7660,5 +7665,23 @@ mod scoped_counter_replacement_tests {
         let ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement { filter, counter_type, actor, effect_only, .. } = ability.payload else { panic!() };
         assert_eq!(counter_type, None); assert_eq!(actor, None); assert!(!effect_only);
         assert_eq!(filter.any_of.len(), 3, "mixed type/subtype alternatives must not become an intersection");
+    }
+}
+
+#[cfg(test)]
+mod scoped_hand_size_tests {
+    use super::*;
+    #[test]
+    fn complete_player_scope_and_source_counter_are_typed_without_ignored_tails() {
+        for text in ["Players have no maximum hand size.","The chosen player's maximum hand size is four.","Your maximum hand size is equal to the number of hour counters on this enchantment."] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_no_maximum_hand_size_line(&tokens).unwrap().is_some() || parse_reduced_maximum_hand_size_line(&tokens).unwrap().is_some(),"{text}");
+        }
+        for text in ["Players have no maximum hand size and draw a card.","Your maximum hand size is equal to the number of hour counters on target artifact.","The chosen player's maximum hand size is four and you gain 3 life."] {
+            let tokens=crate::lexer::lex_line(text,0).unwrap();
+            assert!(parse_no_maximum_hand_size_line(&tokens).unwrap().is_none());assert!(parse_reduced_maximum_hand_size_line(&tokens).unwrap().is_none());
+        }
+        let tokens=crate::lexer::lex_line("Your maximum hand size is equal to the number of hour counters on this enchantment.",0).unwrap();
+        assert!(matches!(parse_reduced_maximum_hand_size_line(&tokens).unwrap().unwrap().payload,ironsmith_core::StaticAbilityPayload::MaximumHandSizeFromSourceCounters{counter_type:crate::object::CounterType::Hour,..}));
     }
 }

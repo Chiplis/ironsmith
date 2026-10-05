@@ -64,4 +64,10 @@ pub enum StatChangeActionAst {
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
     },
+    RemoveSupertypes {
+        target: TargetAst,
+        supertypes: Vec<Supertype>,
+        duration: Until,
+    },
+
 }

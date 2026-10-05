@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "6ed87f1732e93763450684c69333ff5a4bdd4eeb",
+  "source_implementation_commit": "48bbcca9545cb1f01d200acb8603fb810b9e2ce6",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 677,
-    "additional_proposed_compile_entries": 678,
+    "additional_proposed_unique_cards": 713,
+    "additional_proposed_compile_entries": 714,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 0,
+    "known_runtime_partial_previous_proposals": 1,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 8,
-    "source_proposals_excluding_identified_runtime_gaps": 669,
+    "source_proposals_excluding_identified_runtime_gaps": 705,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -2250,7 +2250,8 @@
         },
         {
           "card_name": "Thermal Flux",
-          "remaining_blocker": "Full followup body remains partial: Irencrag optional grant/removal composition; Thermal Flux negative-supertype mode and delayed draw."
+          "remaining_blocker": "Source-addressed by stage46 followup; all runtime validation remains deferred.",
+          "resolved_by_family": "negative-characteristics-and-snow"
         }
       ],
       "implementation_commit": "31d1a73b",
@@ -2400,21 +2401,20 @@
         "Malignus",
         "Psychic Transfer",
         "Resolute Archangel",
-        "Scourge of the Skyclaves"
+        "Scourge of the Skyclaves",
+        "Sigarda's Splendor"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Sigarda's Splendor",
-          "remaining_blocker": "Exact departed noted-life receipt and note imperative dispatch followup is still in progress, no source completion claim."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "8260a0ab64500557cb9e7096c97c2ba2a2df5f62",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Scoped maximum and below-half-starting counts preserve negative/empty values and exact rational comparisons; continuous/execution same-player relations.",
         "Psychic Transfer announces one authored numeric target outside its conditional, rejects separately authored repeated targets, and reevaluates life atresolution. Resolute keeps intervening-if capturedcontroller.",
-        "Independent review corrected team-opponent scope mismatch; odd/negative/extreme totals, controller changes and full bodies have authored/unrun scenarios."
-      ]
+        "Independent review corrected team-opponent scope mismatch; odd/negative/extreme totals, controller changes and full bodies have authored/unrun scenarios.",
+        "Sigarda imperative dispatch, exact noted-life receipts and pending source LKI retain latest same-incarnation note across foreign-owner departure and history pruning. Required reads fail explicitly when unknown; retained Ring-history rejection remains intact. Independent source review complete, authored scenarios unrun."
+      ],
+      "sigarda_followup_commit": "d0a6d39c",
+      "sigarda_stage": 46
     },
     {
       "id": "ring-bearer-event-and-designation-references",
@@ -2445,6 +2445,191 @@
         "Recorded Ring choice retains actor and exact incarnation independently of the unique current bearer; no-choice and reselection are explicit.",
         "Current filters/quantities and historical protection bind correct live/LKI evidence; source phasing does not count as currently present.",
         "Independent review corrected phased-source predicate and unknown historical designation; old incomplete retained schemas reject recursively before restoration. Delayed Sauron predicate remains in scheduled body."
+      ]
+    },
+    {
+      "id": "negative-characteristics-and-snow",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/negative_characteristics.json.fixture",
+      "baseline_entries": [
+        "Arcum's Weathervane",
+        "Glittering Frost",
+        "Melting",
+        "Neurok Transmuter",
+        "Thermal Flux"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Snowfall",
+          "remaining_blocker": "Conditional alternative mana plus cumulative-upkeep-only spending restriction remains unsupported."
+        }
+      ],
+      "implementation_commit": "1ba647db94ab56870c827be805120cc646760568",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact complete negative supertype/card-type assertions retain target, source, reference and duration through typed lowering.",
+        "Neurok color and artifact loss share one affected identity; Thermal keeps both temporary modes and next-turn one-shot draw.",
+        "Glittering Frost and Melting use live static source scope; existing mana provenance captures production-time Snow. Independent source review clear."
+      ]
+    },
+    {
+      "id": "scoped-maximum-hand-size",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/scoped_hand_size.json.fixture",
+      "baseline_entries": [
+        "Anvil of Bogardan",
+        "Cursed Rack",
+        "Folio of Fancies",
+        "Midnight Oil",
+        "Price of Knowledge"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Inspired Idea",
+          "remaining_blocker": "Separate persistent-duration, accepted-draw restriction or compound-body prerequisite remains outside this bounded source proposal."
+        },
+        {
+          "card_name": "Marina Vendrell's Grimoire",
+          "remaining_blocker": "Separate persistent-duration, accepted-draw restriction or compound-body prerequisite remains outside this bounded source proposal."
+        },
+        {
+          "card_name": "The Second Doctor",
+          "remaining_blocker": "Separate persistent-duration, accepted-draw restriction or compound-body prerequisite remains outside this bounded source proposal."
+        }
+      ],
+      "implementation_commit": "42ea5270",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Scoped unlimited rules, source-bound chosen-player limits and live source counter limits preserve CR613.11 timestamp order.",
+        "Unlimited hand size is preserved under numeric adjustments; actual cleanup, draw/discard, double-X/tap cost, player-specific mill and damage bodies have direct/artifact scenarios.",
+        "Independent bounded source review complete."
+      ]
+    },
+    {
+      "id": "heroic-and-target-participants",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/target_event_participants.json.fixture",
+      "baseline_entries": [
+        "Anthousa, Setessan Hero",
+        "Brigone, Soldier of Meletis",
+        "Cleon, Merry Champion",
+        "Rosnakht, Heir of Rohgahh"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Amulet of Safekeeping",
+          "remaining_blocker": "Target transitions require pre-cost observer/participant capture, exact rollback and retained first-target history where relevant."
+        },
+        {
+          "card_name": "Dormant Gomazoa",
+          "remaining_blocker": "Target transitions require pre-cost observer/participant capture, exact rollback and retained first-target history where relevant."
+        },
+        {
+          "card_name": "Kira, Great Glass-Spinner",
+          "remaining_blocker": "Target transitions require pre-cost observer/participant capture, exact rollback and retained first-target history where relevant."
+        },
+        {
+          "card_name": "Skophos Maze-Warden",
+          "remaining_blocker": "Target transitions require pre-cost observer/participant capture, exact rollback and retained first-target history where relevant."
+        }
+      ],
+      "implementation_commit": "985e0d00f",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Four Heroic full-body adjacencies to existing named-source SpellCast target context.",
+        "Land animation, counter-removal draw, exile/play permission and named-token/battle-cry have full scenarios.",
+        "Shared exact stack/ability/copy target identities and player participants implemented, but four actual transition-based cards remain partial until pre-cost ownership closes. Independent bounded review of four proposed bodies complete."
+      ]
+    },
+    {
+      "id": "ability-loss-object-templates",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/ability_loss_templates.json.fixture",
+      "baseline_entries": [
+        "Gift of Tusks",
+        "Polymorphist's Jest",
+        "Snakeform",
+        "Turn to Frog"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Azure Beastbinder",
+          "remaining_blocker": "Distinct split/Fuse, modal-choice, static named-template or conditional-target body remains outside the bounded four-card proposal."
+        },
+        {
+          "card_name": "Honest Work",
+          "remaining_blocker": "Distinct split/Fuse, modal-choice, static named-template or conditional-target body remains outside the bounded four-card proposal."
+        },
+        {
+          "card_name": "Mercurial Transformation",
+          "remaining_blocker": "Distinct split/Fuse, modal-choice, static named-template or conditional-target body remains outside the bounded four-card proposal."
+        },
+        {
+          "card_name": "Turn // Burn",
+          "remaining_blocker": "Distinct split/Fuse, modal-choice, static named-template or conditional-target body remains outside the bounded four-card proposal."
+        }
+      ],
+      "implementation_commit": "e8d97c699",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete ability-loss template uses one target/resolution object set and continuous registration group.",
+        "Unauthored card types/supertypes remain unchanged while explicit creature subtype, color and base power/toughness changes are retained.",
+        "Polymorphist retains one player target and resolution-locked creature set; Snakeform retains draw and target-legality semantics. Independent bounded review complete."
+      ]
+    },
+    {
+      "id": "trap-alternative-costs",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/trap_alternative_costs.json.fixture",
+      "baseline_entries": [
+        "Archive Trap",
+        "Arrow Volley Trap",
+        "Baloth Cage Trap",
+        "Cobra Trap",
+        "Lethargy Trap",
+        "Nemesis Trap",
+        "Permafrost Trap",
+        "Pitfall Trap",
+        "Slingbow Trap",
+        "Summoning Trap",
+        "Whiplash Trap"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "4808f4b9b",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Prospective caster conditions use exact own/opponent history and captured cause/turn facts; payment locks the selected alternative.",
+        "Completed destination snapshots freeze only after all simultaneous originals and before entry/creation additions, including returned permanents and tokens; original LKI is separate.",
+        "One token work charge per participant, bounded nesting and direct/dispatcher transaction rollback preserve typed discovery/resource failures.",
+        "Independent isolated and combined source review clear at48bbcca95; all runtime/corpus validation remains deferred."
+      ]
+    },
+    {
+      "id": "triggered-object-predicates",
+      "stage": 46,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/triggered_object_predicates.json.fixture",
+      "baseline_entries": [
+        "Sigil Captain",
+        "Unstoppable Slasher",
+        "Wilhelt, the Rotcleaver",
+        "Jason Bright, Glowing Prophet",
+        "Dawn Evangel",
+        "Tom, Bert, and William",
+        "Fyndhorn Druid"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "4808f4b9b",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Current and historical object predicates retain exact incarnations; ETB uses completed destination evidence while LTB keeps origin LKI.",
+        "Typed counters, abilities, power/base comparison, historical attachment/controller and passive blocked history preserve complete bodies.",
+        "Independent isolated and combined source review clear at48bbcca95; all runtime/corpus validation remains deferred."
       ]
     }
   ],
@@ -3138,8 +3323,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Amy Pond",
@@ -3368,8 +3556,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Anti-Magic Aura",
@@ -3400,8 +3590,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Anya, Merciless Angel",
@@ -3656,8 +3848,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Archmage's Newt",
@@ -3676,8 +3870,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "negative-characteristics-and-snow"
+      ]
     },
     {
       "card_name": "Arcum's Whistle",
@@ -3776,8 +3972,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Artifact Ward",
@@ -4348,8 +4546,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Baba Lysaga, Night Witch",
@@ -4496,8 +4697,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Balthor the Defiled",
@@ -5760,8 +5963,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Brilliance Unleashed",
@@ -6409,7 +6614,8 @@
         "token-template-follow-ups"
       ],
       "source_runtime_prerequisites": [
-        "token-resources-source-reviewed-validation-deferred"
+        "token-resources-source-reviewed-validation-deferred",
+        "case-solved-static-guard"
       ]
     },
     {
@@ -7134,8 +7340,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Cleopatra, Exiled Pharaoh",
@@ -7308,8 +7516,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Code of Constraint",
@@ -8417,8 +8627,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Curtain of Light",
@@ -8756,8 +8968,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Dawnhand Dissident",
@@ -9747,8 +9961,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Dosan the Falling Leaf",
@@ -11470,9 +11687,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
-      "source_families": [
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
         "scoped-action-prohibitions"
+      ],
+      "source_runtime_prerequisites": [
+        "pending-announcement-private-top-visibility"
       ]
     },
     {
@@ -12557,8 +12778,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Font of Agonies",
@@ -12993,8 +13216,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Gabriel Angelfire",
@@ -13586,8 +13811,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Gift of the Deity",
@@ -13747,8 +13974,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "negative-characteristics-and-snow"
+      ]
     },
     {
       "card_name": "Glittering Lion",
@@ -15506,8 +15735,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Honor Troll",
@@ -16414,8 +16646,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Inspired Tethermage",
@@ -17011,8 +17246,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Jaws of Defeat",
@@ -17913,8 +18150,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Kitesail Larcenist",
@@ -18643,8 +18883,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Leviathan",
@@ -19881,8 +20123,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Mariposa Military Base",
@@ -20166,8 +20411,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "negative-characteristics-and-snow"
+      ]
     },
     {
       "card_name": "Memories Returning",
@@ -20230,8 +20477,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Merieke Ri Berit",
@@ -20294,8 +20544,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Midnight Pathlighter",
@@ -21616,8 +21868,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Neonate's Rush",
@@ -21686,8 +21940,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "negative-characteristics-and-snow"
+      ]
     },
     {
       "card_name": "Neverwinter Hydra",
@@ -23180,8 +23436,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Perplex",
@@ -23519,8 +23777,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Pitiless Horde",
@@ -23743,8 +24003,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Porphyry Nodes",
@@ -23987,8 +24249,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "Primal Clay",
@@ -26108,8 +26372,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Rowan Kenrith",
@@ -27826,9 +28092,8 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
         "scoped-life-total-quantities"
       ]
     },
@@ -27849,8 +28114,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Signal the Clans",
@@ -28163,8 +28430,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "heroic-and-target-participants"
+      ]
     },
     {
       "card_name": "Skulking Killer",
@@ -28299,8 +28569,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Slippery Bogbonder",
@@ -28401,8 +28673,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Snort",
@@ -28431,8 +28705,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "negative-characteristics-and-snow"
+      ]
     },
     {
       "card_name": "So Tiny",
@@ -29767,8 +30044,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Sunbird's Invocation",
@@ -31582,8 +31861,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "scoped-maximum-hand-size"
+      ]
     },
     {
       "card_name": "The Serpent Society",
@@ -31850,10 +32132,9 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "compound-characteristic-transitions"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "negative-characteristics-and-snow"
       ]
     },
     {
@@ -32379,8 +32660,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Tomb Tyrant",
@@ -32907,8 +33190,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Turn the Tables",
@@ -32931,8 +33217,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "ability-loss-object-templates"
+      ]
     },
     {
       "card_name": "Turncoat Kunoichi",
@@ -33307,8 +33595,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Unwanted Remake",
@@ -35176,8 +35466,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "trap-alternative-costs"
+      ]
     },
     {
       "card_name": "Whippoorwill",
@@ -35375,8 +35667,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "triggered-object-predicates"
+      ]
     },
     {
       "card_name": "Willie Lumpkin, Postman",
@@ -36540,6 +36834,30 @@
       "source_review_commit": "e226c7e9",
       "behavior": "Retained runtime restrictions reject incomplete wire export; explicit empty carrier required before import. Exact native analysis branches and authenticated full-genesis replay retain actual rules.",
       "completion_gate": "Deferred native/peer/runtime regression validation."
+    },
+    {
+      "id": "case-solved-static-guard",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "affected_card_names": [
+        "Case of the Pilfered Proof"
+      ],
+      "held_new_cards": [
+        "Case of the Locked Hothouse"
+      ],
+      "source_location": "Solved static labels lack executable is_case_solved condition; triggered/activated owners already gate separately.",
+      "completion_gate": "Shared static guard and source review, then eventual solved/unsolved direct+artifact runtime scenarios.",
+      "source_review_commit": "d8a7da37b",
+      "behavior": "All Solved static members are guarded by the source designation; native nested wrappers conjoin inner conditions; solve invalidates derived characteristics. Exact Pilfered Proof may return to source-proposed with all scenarios unrun."
+    },
+    {
+      "id": "pending-announcement-private-top-visibility",
+      "status": "confirmed_source_gap_remediation_in_progress",
+      "affected_card_names": [
+        "Experimental Frenzy"
+      ],
+      "scope": "Only currently proposed identity confirmed by matrix inventory; new library-permission cohort remains uncounted.",
+      "source_location": "can_view_own_library_top receives current GameState only, which exposes a newly uncovered top card during pending announcement/payment.",
+      "completion_gate": "Native/UI/opening authorization must retain original-top visibility until announcement completion, with rollback/savepoint and permission source scope; source review then deferred execution."
     }
   ]
 }

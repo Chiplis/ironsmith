@@ -869,3 +869,49 @@ fn sigarda_copied_pending_trigger_uses_latest_same_incarnation_note_and_cannot_f
         }
     }
 }
+
+#[test]
+fn sigarda_owned_by_a_departing_player_preserves_another_players_pending_latest_note() {
+    for definition in definitions("Sigarda's Splendor") {
+        for prune_departure_history in [false, true] {
+            for phased_out in [false, true] {
+                let mut game = game();
+                library(&mut game, 4);
+                let setup = witness(&mut game);
+                let source = game.create_object_from_definition(&definition, B, Zone::Battlefield);
+                game.set_current_controller(source, A).unwrap();
+                sigarda_upkeep(&mut game);
+                let original = game.stack.last().unwrap().ability_id.unwrap();
+                apply(
+                    &mut game,
+                    setup,
+                    Effect::copy_spell(ChooseSpec::SpecificObject(original)),
+                );
+                if phased_out {
+                    game.phase_out(source);
+                }
+                set_life(&mut game, setup, A, 18);
+                resolve(&mut game, &mut Choices::default());
+                assert_eq!(game.noted_life_total_for_source(source), Some(18));
+                assert!(game.leave_game(B));
+                assert!(game.object(source).is_none());
+                assert_eq!(game.noted_life_total_for_source(source), None);
+                let pending = game.stack.last().unwrap();
+                assert_eq!(pending.controller, A);
+                assert_eq!(
+                    pending.source_snapshot.as_ref().unwrap().noted_life_total,
+                    Some(18)
+                );
+                if prune_departure_history {
+                    // Pin the retained owner's fallback independently of the
+                    // turn-history receipt, as needed by persisted continuations.
+                    game.turn_store.turn_history.clear_for_new_turn();
+                }
+                set_life(&mut game, setup, A, 19);
+                resolve_all(&mut game, &mut Choices::default());
+                assert_eq!(game.player(A).unwrap().hand.len(), 1);
+                assert_eq!(game.noted_life_total_for_source(source), Some(19));
+            }
+        }
+    }
+}

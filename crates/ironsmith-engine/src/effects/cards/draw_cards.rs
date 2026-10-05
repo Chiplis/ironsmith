@@ -537,7 +537,7 @@ fn execute_draw_instruction(
                 direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
             ));
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            crate::effects::capture_triggers_before_added_program(game, ctx, None, events.iter_mut());
+            crate::effects::capture_triggers_before_added_program(game, ctx, None, events.iter_mut())?;
         }
         if !programs.is_empty() {
             let original = commit_expanded_draw_original(game, ctx, player_id, processed)?;

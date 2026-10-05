@@ -167,7 +167,10 @@ impl ModifyDamageAmountReplacement {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -1199,7 +1202,10 @@ impl Grants {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }
@@ -1335,6 +1341,56 @@ impl StaticAbilityKind for NoMaximumHandSize {
     }
 }
 
+/// Player scope belongs to the rule source, including its chosen player.
+fn hand_size_players(game: &GameState, player: &PlayerFilter, source: ObjectId, controller: PlayerId) -> Vec<PlayerId> {
+    let context = game.filter_context_for(controller, Some(source));
+    game.players.iter().filter(|p| p.is_in_game() && crate::filter::player_filter_matches_game(player, p.id, game, &context)).map(|p| p.id).collect()
+}
+fn hand_size_possessive(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "Your".into(),
+        PlayerFilter::Opponent => "Each opponent's".into(),
+        PlayerFilter::Any => "Each player's".into(),
+        PlayerFilter::ChosenPlayer => "The chosen player's".into(),
+        _ => format!("{}'s", capitalize_first(&player.description())),
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopedNoMaximumHandSize { pub player: PlayerFilter }
+impl StaticAbilityKind for ScopedNoMaximumHandSize {
+    fn may_generate_continuous_effects(&self) -> bool { false }
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::NoMaximumHandSize }
+    fn display(&self) -> String {
+        match &self.player {
+            PlayerFilter::You => "You have no maximum hand size.".into(),
+            PlayerFilter::Any => "Players have no maximum hand size.".into(),
+            PlayerFilter::Opponent => "Your opponents have no maximum hand size.".into(),
+            player => format!("{} has no maximum hand size.", capitalize_first(&player.description())),
+        }
+    }
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        for id in hand_size_players(game, &self.player, source, controller) {
+            if let Some(player)=game.players.get_mut_for_derived_update().get_mut(id.index()) { player.max_hand_size=i32::MAX; }
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaximumHandSizeFromSourceCounters { pub player: PlayerFilter, pub counter_type: CounterType }
+impl StaticAbilityKind for MaximumHandSizeFromSourceCounters {
+    fn may_generate_continuous_effects(&self) -> bool { false }
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::SetMaximumHandSize }
+    fn display(&self) -> String {
+        format!("{} maximum hand size is equal to the number of {} counters on this permanent.", hand_size_possessive(&self.player), self.counter_type.description())
+    }
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        // Finite source counters are queried in the current rule-source frame.
+        let amount=game.counter_count(source,self.counter_type).min(i32::MAX as u32) as i32;
+        for id in hand_size_players(game,&self.player,source,controller) {
+            if let Some(player)=game.players.get_mut_for_derived_update().get_mut(id.index()) { player.max_hand_size=amount; }
+        }
+    }
+}
+
 /// "Your/Each opponent's maximum hand size is N."
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetMaximumHandSize {
@@ -1365,14 +1421,14 @@ impl StaticAbilityKind for SetMaximumHandSize {
                 format!("Each opponent's maximum hand size is {amount}.")
             }
             PlayerFilter::Any => format!("Each player's maximum hand size is {amount}."),
-            _ => format!("Maximum hand size is {amount}."),
+            _ => format!("{} maximum hand size is {amount}.",hand_size_possessive(&self.player)),
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        for player_id in player_ids_for_filter(game, self.player.clone(), controller) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        for player_id in hand_size_players(game, &self.player, source, controller) {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = self.amount as i32;
+                player.max_hand_size = self.amount.min(i32::MAX as u32) as i32;
             }
         }
     }
@@ -1421,30 +1477,13 @@ impl StaticAbilityKind for ReduceMaximumHandSize {
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        use crate::game_loop::player_matches_filter_with_combat;
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let affected = hand_size_players(game, &self.player, source, controller);
 
-        let combat = game.combat.as_ref();
-        let affected: Vec<PlayerId> = game
-            .players
-            .iter()
-            .filter(|player| {
-                player.is_in_game()
-                    && player_matches_filter_with_combat(
-                        player.id,
-                        &self.player,
-                        game,
-                        controller,
-                        combat,
-                    )
-            })
-            .map(|player| player.id)
-            .collect();
-
-        let reduction = self.amount as i32;
+        let reduction = self.amount.min(i32::MAX as u32) as i32;
         for player_id in affected {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = player.max_hand_size.saturating_sub(reduction);
+                if player.max_hand_size != i32::MAX { player.max_hand_size = player.max_hand_size.saturating_sub(reduction); }
             }
         }
     }
@@ -1486,30 +1525,13 @@ impl StaticAbilityKind for IncreaseMaximumHandSize {
         }
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        use crate::game_loop::player_matches_filter_with_combat;
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let affected = hand_size_players(game, &self.player, source, controller);
 
-        let combat = game.combat.as_ref();
-        let affected: Vec<PlayerId> = game
-            .players
-            .iter()
-            .filter(|player| {
-                player.is_in_game()
-                    && player_matches_filter_with_combat(
-                        player.id,
-                        &self.player,
-                        game,
-                        controller,
-                        combat,
-                    )
-            })
-            .map(|player| player.id)
-            .collect();
-
-        let increase = self.amount as i32;
+        let increase = self.amount.min(i32::MAX as u32) as i32;
         for player_id in affected {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
-                player.max_hand_size = player.max_hand_size.saturating_add(increase);
+                if player.max_hand_size != i32::MAX { player.max_hand_size = player.max_hand_size.saturating_add(increase); }
             }
         }
     }

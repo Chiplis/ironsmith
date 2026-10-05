@@ -339,3 +339,84 @@ fn captured_program_keeps_the_future_event_instead_of_the_registration_event() {
     draw(&mut game, source, b(), 1);
     assert!(game.player(b()).unwrap().hand.is_empty());
 }
+
+
+#[test]
+fn words_waste_keeps_its_team_scope_and_teammate_choice_handles_empty_sets() {
+    use ironsmith::effects::ChoosePlayerEffect;
+    use ironsmith::target::PlayerFilter;
+    let teammate = PlayerId::from_index(1);
+    let bob = PlayerId::from_index(2);
+    let charlie = PlayerId::from_index(3);
+    for definition in definitions("Words of Waste") {
+        for teams in [false, true] {
+            let mut game = GameState::new(
+                vec![
+                    "Alice".into(),
+                    "Teammate".into(),
+                    "Bob".into(),
+                    "Charlie".into(),
+                ],
+                20,
+            );
+            game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+            game.turn.step = None;
+            game.turn.active_player = a();
+            if teams {
+                game.set_teams(vec![vec![a(), teammate], vec![bob, charlie]])
+                    .unwrap();
+            }
+            fill_library(&mut game, a(), 2);
+            let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+            for player in [a(), teammate, bob, charlie] {
+                card(
+                    &mut game,
+                    player,
+                    "First discard witness",
+                    CardType::Artifact,
+                    Zone::Hand,
+                );
+                card(
+                    &mut game,
+                    player,
+                    "Second discard witness",
+                    CardType::Artifact,
+                    Zone::Hand,
+                );
+            }
+            activate(&mut game, host, None);
+            game.set_current_controller(host, bob).unwrap();
+            assert_eq!(draw(&mut game, host, a(), 1), 0);
+            assert_eq!(game.player(a()).unwrap().hand.len(), 2);
+            assert_eq!(
+                game.player(teammate).unwrap().hand.len(),
+                if teams { 2 } else { 1 }
+            );
+            for player in [bob, charlie] {
+                assert_eq!(game.player(player).unwrap().hand.len(), 1);
+                assert_eq!(game.player(player).unwrap().graveyard.len(), 1);
+            }
+            let mut dm = SelectFirstDecisionMaker;
+            let mut ctx = EffectContext::new(host, a(), &mut dm);
+            ChoosePlayerEffect::new(PlayerFilter::You, PlayerFilter::Teammate, "team-choice")
+                .execute(&mut game, &mut ctx)
+                .unwrap();
+            assert_eq!(
+                ctx.get_tagged_players("team-choice").unwrap(),
+                &if teams { vec![teammate] } else { vec![] }
+            );
+            assert_eq!(
+                game.player(teammate).unwrap().hand.len(),
+                if teams { 2 } else { 1 }
+            );
+            assert_eq!(
+                game.player(teammate).unwrap().graveyard.len(),
+                usize::from(!teams)
+            );
+            assert_eq!(game.player(a()).unwrap().hand.len(), 2);
+            for player in [bob, charlie] {
+                assert_eq!(game.player(player).unwrap().hand.len(), 1);
+            }
+        }
+    }
+}

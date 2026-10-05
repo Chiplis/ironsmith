@@ -324,6 +324,11 @@ fn continuous_effect_scope_and_duration(
             duration,
             ..
         })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+            target,
+            duration,
+            ..
+        })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
             target,
             duration,

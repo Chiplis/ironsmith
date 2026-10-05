@@ -87,6 +87,9 @@ pub(crate) fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    let event = if let Some(targeted) = event.downcast::<BecomesTargetedEvent>() {
+        event.with_inner_event(targeted.clone().with_participant_snapshots(game))
+    } else { event };
     game.record_turn_history_event(&event);
     queue_triggers_for_event(game, trigger_queue, event.clone());
 

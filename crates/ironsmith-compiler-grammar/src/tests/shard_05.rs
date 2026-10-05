@@ -4381,3 +4381,42 @@ pub(super) fn chroma_full_cards_keep_filtered_mana_symbol_aggregates() {
         "{bombardment}"
     );
 }
+
+#[test]
+pub(super) fn player_only_target_events_keep_target_actor_and_stack_kind_separate() -> Result<(), CardTextError> {
+    for (tail, kind, controller) in [
+        ("a spell", "Spell", "Any"),
+        ("a spell or ability an opponent controls", "SpellOrAbility", "Opponent"),
+        ("an ability you control", "Ability", "You"),
+    ] {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Player observer").card_types(vec![CardType::Artifact]);
+        let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+            format!("Whenever you become the target of {tail}, draw a card."), false)?;
+        let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+        let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+        let debug = format!("{trigger:?}");
+        assert!(debug.contains("PlayerBecomesTargeted") && debug.contains("player: You")
+            && debug.contains(&format!("source_kind: {kind}")) && debug.contains(&format!("source_controller: {controller}")), "{debug}");
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn target_event_source_qualification_is_a_physical_source_filter() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Source observer").card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(builder.split_face().0,
+        "Whenever another creature becomes the target of an ability of a land you control named Test Location, draw a card.".into(), false)?;
+    let [item] = doc.items.as_slice() else { panic!("one trigger"); };
+    let (trigger, _, _) = rewrite_direct_triggered_chunk(item).unwrap();
+    let debug = format!("{trigger:?}");
+    assert!(debug.contains("BecomesTargetedByAbilitySource") && debug.contains("other: true")
+        && debug.contains("Land") && debug.contains("controller: Some(You)") && debug.contains("Test Location"), "{debug}");
+    for text in [
+        "Whenever another creature becomes the target of an ability of, draw a card.",
+        "Whenever an unknown participant becomes the target of an ability of a land, draw a card.",
+    ] {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Invalid observer").card_types(vec![CardType::Creature]);
+        assert!(parse_text_to_semantic_document(builder.split_face().0, text.into(), false).is_err(), "{text}");
+    }
+    Ok(())
+}

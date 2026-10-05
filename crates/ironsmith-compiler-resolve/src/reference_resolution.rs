@@ -2619,6 +2619,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { target, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { target, .. })
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { target, .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { target, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeAuraEnchantment { target, .. })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasicLandType { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "typed")?;
@@ -6628,6 +6629,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 ..
             })
@@ -8314,6 +8316,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
+                target,
+                ..
+            })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
                 target,
                 ..
             })

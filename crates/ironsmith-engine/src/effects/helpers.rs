@@ -3604,15 +3604,12 @@ pub(crate) fn resolve_player_filter_to_list(
                 .collect();
             Ok(others)
         }
-        PlayerFilter::Opponent => {
-            let opponents: Vec<PlayerId> = game
-                .players
-                .iter()
-                .filter(|p| p.id != ctx.controller && p.is_in_game())
-                .map(|p| p.id)
-                .collect();
-            Ok(opponents)
-        }
+        PlayerFilter::Opponent => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && game.are_opponents(ctx.controller, player.id))
+            .map(|player| player.id)
+            .collect()),
         PlayerFilter::Specific(id) => Ok(vec![*id]),
         PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
             Ok(vec![resolve_player_filter(game, filter, ctx)?])
@@ -3852,9 +3849,12 @@ pub(crate) fn resolve_player_filter_to_list(
         PlayerFilter::OwnerOf(object_ref) | PlayerFilter::AliasedOwnerOf(object_ref) => {
             Ok(vec![resolve_owner_of(game, ctx, object_ref)?])
         }
-        PlayerFilter::Teammate => Err(ExecutionError::UnresolvableValue(
-            "Teammate filter not supported".to_string(),
-        )),
+        PlayerFilter::Teammate => Ok(game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game() && game.are_teammates(ctx.controller, player.id))
+            .map(|player| player.id)
+            .collect()),
     }?;
     if let Some(players_in_range) = &_filter_ctx.players_in_range {
         players.retain(|player| players_in_range.contains(player));
@@ -5887,5 +5887,57 @@ mod aura_source_incarnation_tests {
         game.object_mut(graveyard).unwrap().subtypes.clear();
         let ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot).with_triggering_event(trigger(host));
         assert_eq!(resolve_source_object_id(&game, &ctx), Some(graveyard));
+    }
+}
+#[cfg(test)]
+mod shared_player_list_team_tests {
+    use super::*;
+    #[test]
+    fn team_lists_keep_not_you_targets_iteration_and_range_distinct() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Teammate".into(),
+                "Bob".into(),
+                "Charlie".into(),
+            ],
+            20,
+        );
+        let [alice, teammate, bob, charlie] = std::array::from_fn(|i| game.players[i].id);
+        game.set_teams(vec![vec![alice, teammate], vec![bob, charlie]])
+            .unwrap();
+        let mut ctx = ExecutionContext::new_default(ObjectId::from_raw(999), alice)
+            .with_targets(vec![ResolvedTarget::Player(teammate)]);
+        ctx.iteration.iterated_player = Some(charlie);
+        let filter_ctx = ctx.filter_context(&game);
+        for (filter, expected) in [
+            (PlayerFilter::Opponent, vec![bob, charlie]),
+            (PlayerFilter::Teammate, vec![teammate]),
+            (PlayerFilter::NotYou, vec![teammate, bob, charlie]),
+            (PlayerFilter::target_player(), vec![teammate]),
+            (PlayerFilter::IteratedPlayer, vec![charlie]),
+            (
+                PlayerFilter::Excluding {
+                    base: Box::new(PlayerFilter::Any),
+                    excluded: Box::new(PlayerFilter::Opponent),
+                },
+                vec![alice, teammate],
+            ),
+        ] {
+            assert_eq!(
+                resolve_player_filter_to_list(&game, &filter, &filter_ctx, &ctx).unwrap(),
+                expected
+            );
+        }
+        let mut range = filter_ctx;
+        range.players_in_range = Some(vec![alice, teammate, bob]);
+        assert_eq!(
+            resolve_player_filter_to_list(&game, &PlayerFilter::Opponent, &range, &ctx).unwrap(),
+            vec![bob]
+        );
+        assert_eq!(
+            resolve_player_filter_to_list(&game, &PlayerFilter::Teammate, &range, &ctx).unwrap(),
+            vec![teammate]
+        );
     }
 }

@@ -3676,6 +3676,12 @@ impl StaticAbility {
         Self::new(Improvise)
     }
 
+    pub fn no_maximum_hand_size_for(player: crate::target::PlayerFilter) -> Self {
+        Self::new(ScopedNoMaximumHandSize { player })
+    }
+    pub fn maximum_hand_size_from_source_counters(player: crate::target::PlayerFilter, counter_type: crate::object::CounterType) -> Self {
+        Self::new(MaximumHandSizeFromSourceCounters { player, counter_type })
+    }
     pub fn no_maximum_hand_size() -> Self {
         Self::new(NoMaximumHandSize)
     }

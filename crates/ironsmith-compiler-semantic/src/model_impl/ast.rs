@@ -184,6 +184,8 @@ pub enum TriggerSpec {
     ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger),
     ControlChanged(ironsmith_core::trigger_model::ControlChangeTrigger),
     RingBearerChosen(PlayerFilter),
+    PlayerBecomesTargeted { player: PlayerFilter, source_controller: PlayerFilter, source_kind: ironsmith_core::filter_model::StackObjectKind },
+    BecomesTargetedByAbilitySource { target: ObjectFilter, source: ObjectFilter },
     ThisPhasesOut,
     PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
     CardsMilled { player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool },

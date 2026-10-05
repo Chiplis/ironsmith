@@ -120,3 +120,13 @@ correct older incarnation's latest note. Shared interpreter coverage proves
 actual-departure-versus-earlier-snapshot selection and rejects wrong-identity
 receipts. All are authored and unrun. This source proposal does not claim a new
 general system for arbitrary linked annotations or unbounded numeric values.
+
+
+The owner-departure follow-up retains the exact source snapshot for pending
+stack and pending-trigger owners before all CR800.4a removals, including
+phased-out owned objects. Ordinary zone departure reuses the same identity-
+and-zone guarded helper. LastNotedLifeTotal consults true departure receipts
+(ZoneChange or ObjectLeavesGame), not a stale phase-out snapshot, then the
+retained source receipt. A three-player borrowed-Sigarda regression resolves a
+copied trigger's newer note before its owner leaves and verifies the remaining
+controller's draw both with and without departure history and phasing.

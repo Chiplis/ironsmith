@@ -5471,6 +5471,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.ring_bearer
         || filter.attacking
         || filter.attacked_this_turn
+        || filter.was_blocked_this_turn
         || filter.didnt_attack_this_turn
         || filter.could_have_attacked_this_turn
         || filter
@@ -5514,6 +5515,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.last_drawn_this_turn.is_some()
         || filter.power_parity.is_some()
         || filter.power_greater_than_base_power
+        || filter.power_comparison_to_base.is_some()
         || filter.total_power_toughness.is_some()
         || filter.mana_value_parity.is_some()
         || filter.mana_value_eq_counters_on_source.is_some()

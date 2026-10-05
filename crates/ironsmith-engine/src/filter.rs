@@ -423,6 +423,8 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
+    /// Frozen attached objects for a historical subject, including an empty set.
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { None }
     fn tail_has_alternative_cast_kind(
         &self,
         kind: AlternativeCastKind,
@@ -723,6 +725,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 }
 
 impl TailMatchSubject for ObjectSnapshot {
+    fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> { Some(&self.attachment_snapshots) }
     fn tail_object_id(&self) -> ObjectId {
         self.object_id
     }
@@ -3530,10 +3533,13 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(with_attached_filter) = &self.with_attached_object {
-            let has_matching_attachment = subject.subject_attachments().iter().any(|&id| {
-                game.object(id)
-                    .is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
-            });
+            let has_matching_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                snapshots.iter().any(|attachment| with_attached_filter.matches_snapshot(attachment, ctx, game))
+            } else {
+                subject.subject_attachments().iter().any(|&id| {
+                    game.object(id).is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
+                })
+            };
             if !has_matching_attachment {
                 return false;
             }
@@ -3547,11 +3553,18 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if let Some(without_attached_filter) = &self.without_attached_object {
-            let has_forbidden_attachment = subject.subject_attachments().iter().any(|&id| {
-                game.object(id).is_some_and(|attachment| {
-                    without_attached_filter.matches(attachment, ctx, game)
+            let has_forbidden_attachment = if let Some(snapshots) = subject.tail_attachment_snapshots() {
+                if subject.subject_attachments().iter().any(|id| !snapshots.iter().any(|snapshot| snapshot.object_id == *id)) {
+                    // A raw/legacy snapshot names an attachment but has no
+                    // historical characteristics for it. Unknown does not prove absence.
+                    return false;
+                }
+                snapshots.iter().any(|attachment| without_attached_filter.matches_snapshot(attachment, ctx, game))
+            } else {
+                subject.subject_attachments().iter().any(|&id| {
+                    game.object(id).is_some_and(|attachment| without_attached_filter.matches(attachment, ctx, game))
                 })
-            });
+            };
             if has_forbidden_attachment {
                 return false;
             }
@@ -4680,6 +4693,7 @@ impl ObjectFilterExt for ObjectFilter {
         if self.blocked_this_turn {
             post_noun_qualifiers.push("that blocked this turn".to_string());
         }
+        if self.was_blocked_this_turn { post_noun_qualifiers.push("that was blocked this turn".to_string()); }
         if self.didnt_attack_this_turn {
             let clause = if self.could_have_attacked_this_turn {
                 "that didn't attack this turn, except for creatures that couldn't attack"
@@ -5244,6 +5258,17 @@ impl ObjectFilterExt for ObjectFilter {
             }
             if self.power_greater_than_base_power {
                 parts.push("with power greater than its base power".to_string());
+            }
+            if let Some(operator) = self.power_comparison_to_base {
+                let relation = match operator {
+                    crate::effect::ValueComparisonOperator::GreaterThan => "greater than",
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual => "greater than or equal to",
+                    crate::effect::ValueComparisonOperator::Equal => "equal to",
+                    crate::effect::ValueComparisonOperator::LessThan => "less than",
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                    crate::effect::ValueComparisonOperator::NotEqual => "different from",
+                };
+                parts.push(format!("with power {relation} its base power"));
             }
             if let Some(relation) = self.power_toughness_relation {
                 match relation {

@@ -3,9 +3,11 @@
 mod ability_activated;
 mod ability_triggered;
 mod becomes_targeted;
+mod becomes_targeted_by_ability_source;
 mod becomes_targeted_by_source_controller;
 mod becomes_targeted_by_spell;
 mod becomes_targeted_object;
+mod player_becomes_targeted;
 mod spell_cast;
 mod spell_copied;
 mod spell_countered;
@@ -15,6 +17,7 @@ mod you_cast_this_spell;
 pub use ability_activated::AbilityActivatedTrigger;
 pub use ability_triggered::AbilityTriggeredTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
+pub use becomes_targeted_by_ability_source::BecomesTargetedByAbilitySourceTrigger;
 pub use becomes_targeted_by_source_controller::{
     BecomesTargetedBySourceControllerTrigger,
     PlayerOrObjectBecomesTargetedBySourceControllerTrigger,
@@ -24,6 +27,7 @@ pub use becomes_targeted_by_spell::{
     BecomesTargetedObjectByStackObjectTrigger,
 };
 pub use becomes_targeted_object::BecomesTargetedObjectTrigger;
+pub use player_becomes_targeted::PlayerBecomesTargetedTrigger;
 pub use spell_cast::SpellCastTrigger;
 pub use spell_copied::SpellCopiedTrigger;
 pub use spell_countered::SpellCounteredTrigger;

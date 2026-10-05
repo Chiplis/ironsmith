@@ -3041,7 +3041,10 @@ impl Anthem {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 
@@ -3951,7 +3954,10 @@ impl RemoveAbilityForFilter {
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
-        self.condition = Some(condition);
+        self.condition = Some(match self.condition.take() {
+            Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
+            None => condition,
+        });
         self
     }
 }

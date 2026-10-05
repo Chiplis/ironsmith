@@ -556,6 +556,10 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 target,
                 ..
             })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+                target,
+                ..
+            })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 target,
                 ..
@@ -1743,6 +1747,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSubtypes { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes {

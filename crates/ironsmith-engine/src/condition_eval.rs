@@ -788,16 +788,11 @@ mod tests {
                 game.object(land).expect("triggering land should exist"),
                 &game,
             );
-            let event = TriggerEvent::new_with_provenance(
-                crate::events::ZoneChangeEvent::with_cause(
-                    land,
-                    Zone::Hand,
-                    Zone::Battlefield,
-                    EventCause::effect(),
-                    Some(snapshot),
-                ),
-                ProvNodeId::default(),
+            let mut change = crate::events::ZoneChangeEvent::with_cause(
+                land, Zone::Hand, Zone::Battlefield, EventCause::effect(), Some(snapshot.clone()),
             );
+            change.destination_snapshots = vec![snapshot];
+            let event = TriggerEvent::new_with_provenance(change, ProvNodeId::default());
             let filter = crate::target::ObjectFilter::default().with_subtype(Subtype::Plains);
             let mut ctx = ExecutionContext::new_default(source, alice);
             // Stack construction normally seeds both fields, but wrapper and
@@ -2198,15 +2193,48 @@ fn triggering_event_object_matches_with_filter_context(
     filter: &crate::target::ObjectFilter,
     filter_ctx: &crate::filter::FilterContext,
 ) -> bool {
-    if let Some(snapshot) = event.snapshot()
-        && filter.matches_snapshot(snapshot, filter_ctx, game)
+    // ETB is a post-transition test. Its ordinary ZoneChange snapshot is
+    // origin LKI, so only the exact completed destination receipt can prove
+    // entry characteristics (including entry counters and static effects).
+    if let Some(change) = event.downcast::<crate::events::ZoneChangeEvent>()
+        && change.to == Zone::Battlefield
     {
-        return true;
+        return change.destination_objects().first()
+            .and_then(|id| change.destination_snapshot(*id))
+            .is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game));
+    }
+    // Other event snapshots retain their original event frame, notably LTB.
+    if let Some(snapshot) = event.snapshot() {
+        return filter.matches_snapshot(snapshot, filter_ctx, game);
     }
     event
         .object_id()
         .and_then(|id| game.object(id))
         .is_some_and(|object| filter.matches(object, filter_ctx, game))
+}
+
+fn triggering_event_object_matches_at_resolution(
+    game: &GameState,
+    event: &TriggerEvent,
+    filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+) -> bool {
+    let entry = event.downcast::<crate::events::ZoneChangeEvent>().filter(|change| change.to == Zone::Battlefield);
+    let id = entry.and_then(|change| change.destination_objects().first().copied())
+        .or_else(|| event.object_id())
+        .or_else(|| event.snapshot().map(|snapshot| snapshot.object_id));
+    let Some(id) = id else { return false; };
+    if let Some(object) = game.object(id) {
+        // A current predicate rechecks the actual referenced incarnation.
+        // Its earlier successful event snapshot cannot override a failed recheck.
+        return filter.matches(object, filter_ctx, game);
+    }
+    if let Some(departure) = crate::effects::helpers::latest_zone_change_snapshot_for_object(game, id) {
+        return filter.matches_snapshot(&departure, filter_ctx, game);
+    }
+    let snapshot = if let Some(entry) = entry { entry.destination_snapshot(id) } else { event.snapshot() };
+    snapshot.filter(|snapshot| snapshot.object_id == id)
+        .is_some_and(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
 }
 
 fn triggering_event_object_matched_last_known(
@@ -4569,7 +4597,7 @@ fn evaluate_condition_in_context(
             if tag.as_str() == "triggering"
                 && let Some(event) = ctx.triggering_event.as_ref()
             {
-                return Ok(triggering_event_object_matches_with_filter_context(
+                return Ok(triggering_event_object_matches_at_resolution(
                     game,
                     event,
                     filter,
@@ -4898,6 +4926,7 @@ fn evaluate_condition_in_context(
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
             .is_some_and(|activation| activation.mana_spent_total >= *amount)),
+        Condition::SourceCaseSolved => Ok(game.is_case_solved(shared.source)),
         Condition::SourceClassLevelAtLeast(level) => {
             Ok(game.class_level(shared.source) >= *level)
         }
@@ -5859,5 +5888,77 @@ mod half_starting_life_boundary_tests {
         assert!(
             compare_resolved_values(&game, &negative, Op::Equal, &Value::Fixed(-2), &ctx).unwrap()
         );
+    }
+}
+
+#[cfg(test)]
+mod referenced_characteristic_frame_tests {
+    use super::*;
+    use crate::events::EventCause;
+    use crate::provenance::ProvNodeId;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    use crate::filter::{FilterContext, ObjectFilter, ObjectFilterExt as _};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::types::CardType;
+    fn creature(game: &mut GameState, player: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Characteristic subject")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 1)).build();
+        game.create_object_from_card(&card, player, Zone::Battlefield)
+    }
+    #[test]
+    fn a_current_recheck_cannot_be_satisfied_by_an_earlier_snapshot_or_a_blinked_incarnation() {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let a = PlayerId::from_index(0);
+        let subject = creature(&mut game, a);
+        let before = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        let mut change = crate::events::ZoneChangeEvent::with_cause(subject, Zone::Hand, Zone::Battlefield, EventCause::effect(), Some(before.clone()));
+        change.destination_snapshots = vec![before.clone()];
+        let event = TriggerEvent::new_with_provenance(change, ProvNodeId::default());
+        let filter = ObjectFilter { power: Some(crate::filter::Comparison::Equal(1)), toughness: Some(crate::filter::Comparison::Equal(1)), ..Default::default() };
+        let context = FilterContext::new(a);
+        assert!(triggering_event_object_matches_at_resolution(&game, &event, &filter, &context));
+        game.add_counters(subject, crate::object::CounterType::PlusOnePlusOne, 1).unwrap();
+        game.refresh_continuous_state().unwrap();
+        assert!(triggering_event_object_matches_with_filter_context(&game, &event, &filter, &context), "trigger-time snapshot remains 1/1");
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context), "current 2/2 fails");
+        let exiled = game.move_object(subject, Zone::Exile, EventCause::effect()).unwrap();
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context), "departure LKI was 2/2");
+        let returned = game.move_object(exiled, Zone::Battlefield, EventCause::effect()).unwrap();
+        assert_ne!(returned, subject);
+        assert_eq!(game.calculated_power(returned), Some(1));
+        assert!(!triggering_event_object_matches_at_resolution(&game, &event, &filter, &context));
+        assert!(filter.matches_snapshot(&before, &context, &game), "past-tense condition stays at its captured frame");
+    }
+    #[test]
+    fn effective_vs_base_comparison_uses_one_snapshot_for_growth_and_shrinkage() {
+        let mut game = GameState::new(vec!["Alice".into()], 20);
+        let a = PlayerId::from_index(0);
+        let subject = creature(&mut game, a);
+        let mut snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        let filter = ObjectFilter { power_comparison_to_base: Some(crate::effect::ValueComparisonOperator::NotEqual), ..Default::default() };
+        let context = FilterContext::new(a);
+        for (power, expected) in [(0, true), (1, false), (2, true)] {
+            snapshot.power = Some(power);
+            snapshot.base_power = Some(1);
+            assert_eq!(filter.matches_snapshot(&snapshot, &context, &game), expected);
+        }
+    }
+    #[test]
+    fn attached_aura_controller_comes_from_the_death_snapshot_after_both_objects_leave() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let a = PlayerId::from_index(0); let b = PlayerId::from_index(1);
+        let subject = creature(&mut game, b);
+        let aura_card = CardBuilder::new(CardId::new(), "Captured Aura").card_types(vec![CardType::Enchantment]).subtypes(vec![crate::types::Subtype::Aura]).build();
+        let aura = game.create_object_from_card(&aura_card, a, Zone::Battlefield);
+        assert!(game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(subject)));
+        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(game.object(subject).unwrap(), &game);
+        assert_eq!(snapshot.attachment_snapshots.len(), 1);
+        let filter = ObjectFilter { with_attached_object: Some(Box::new(ObjectFilter::default().with_subtype(crate::types::Subtype::Aura).you_control())), ..Default::default() };
+        let context = FilterContext::new(a);
+        game.move_object(subject, Zone::Graveyard, EventCause::effect()).unwrap();
+        if game.object(aura).is_some() { game.move_object(aura, Zone::Graveyard, EventCause::effect()).unwrap(); }
+        assert!(filter.matches_snapshot(&snapshot, &context, &game));
+        assert!(!filter.matches_snapshot(&snapshot, &FilterContext::new(b), &game));
     }
 }

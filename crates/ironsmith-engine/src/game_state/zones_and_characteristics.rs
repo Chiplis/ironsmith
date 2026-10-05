@@ -956,27 +956,8 @@ impl GameState {
                         }
                     }
                 }
-                if entry.is_ability
-                    && (entry.object_id == old_id
-                        || entry
-                            .source_snapshot
-                            .as_ref()
-                            .is_some_and(|source| source.object_id == old_id))
-                {
-                    let should_update_source_lki = entry
-                        .source_snapshot
-                        .as_ref()
-                        .is_none_or(|source_snapshot| source_snapshot.zone == snapshot.zone);
-                    if !should_update_source_lki {
-                        continue;
-                    }
-                    entry.source_stable_id = Some(snapshot.stable_id);
-                    entry
-                        .source_name
-                        .get_or_insert_with(|| snapshot.name.to_string());
-                    entry.source_snapshot = Some(snapshot.clone());
-                }
             }
+            self.refresh_pending_ability_source_lki(snapshot);
         }
 
         if self.object(old_id).is_some_and(|object| object.zone == Zone::Battlefield)

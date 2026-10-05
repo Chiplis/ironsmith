@@ -78,6 +78,10 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
                     duration: effect_duration,
                     ..
                 })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+                    duration: effect_duration,
+                    ..
+                })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration: effect_duration,
                     ..

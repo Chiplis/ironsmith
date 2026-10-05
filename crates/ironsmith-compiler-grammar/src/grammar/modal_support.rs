@@ -992,6 +992,7 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes { .. })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 ..
             })

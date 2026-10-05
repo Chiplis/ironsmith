@@ -175,12 +175,14 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     ctx: &ExecutionContext,
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
-) -> bool {
-    if game.effect_store.trigger_matching_holds > 0
+) -> Result<bool, ExecutionError> {
+    if game.has_open_simultaneous_action()
+        || game.effect_store.trigger_matching_holds > 0
         || ctx.decision_maker.awaiting_choice()
         || next.is_some_and(effect_chooses_new_targets_for_copy)
-    { return false; }
+    { return Ok(false); }
     let mut reported: Vec<_> = reported.into_iter().collect();
+    game.freeze_completed_entry_events(reported.iter_mut().map(|event| &mut **event))?;
     let mut seen = std::collections::HashSet::new();
     let fresh = reported.iter().filter(|event| !outcome_event_already_matched(game, event))
         .filter(|event| seen.insert(event.occurrence_key())).map(|event| (**event).clone()).collect::<Vec<_>>();
@@ -194,7 +196,7 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
     game.defer_trigger_entries(matched.take_all());
     for event in &mut reported { event.mark_triggers_captured(); }
-    true
+    Ok(true)
 }
 
 /// Whether a boundary inside the current resolution already matched `event`.
@@ -298,7 +300,7 @@ pub fn execute_effect(
     };
     if let Err(error) = &result { game.record_token_resource_failure(error); }
     if let Some(error) = game.token_resource_failure() { result = Err(error); }
-    if matches!(&result, Err(ExecutionError::ResourceLimitExceeded { .. } | ExecutionError::ResourceAllocationFailed { .. })) {
+    if matches!(&result, Err(ExecutionError::ResourceLimitExceeded { .. } | ExecutionError::ResourceAllocationFailed { .. } | ExecutionError::ContinuousDiscovery(_))) {
         if let Some(checkpoint) = checkpoint { game.restore_execution_checkpoint(checkpoint, false); }
         if let Some(checkpoint) = context_checkpoint { checkpoint.restore(ctx); }
     }
@@ -447,6 +449,7 @@ fn execute_effect_with_resource_scope(
                 event.set_provenance(node);
             }
         }
+        game.freeze_completed_entry_events(outcome.events.iter_mut())?;
         for event in &outcome.events {
             game.stage_turn_history_event(event);
         }

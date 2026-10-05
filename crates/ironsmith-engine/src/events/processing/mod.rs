@@ -2502,7 +2502,7 @@ fn process_destroy_scoped_inner(
         || !game.can_be_destroyed(permanent) {
         return Ok(Some(DestroyExecutionReceipt::terminal(permanent, EventOutcome::Prevented, snapshot)));
     }
-    let mut destroy_event = crate::events::DestroyEvent::new(permanent, source);
+    let mut destroy_event = crate::events::DestroyEvent::new(permanent, source).with_cause(ctx.cause.clone());
     destroy_event.snapshot = snapshot.clone();
     let event = game.ensure_event_provenance(Event::new_with_provenance(destroy_event, ctx.provenance));
     let mut additional = ctx.additional_replacement_effects_snapshot();
@@ -2555,12 +2555,20 @@ fn process_destroy_scoped_inner(
                 if zone_ctx.decision_maker.awaiting_choice() { return Ok(None); }
                 receipt.result = match &zone_receipt.original {
                     EventOutcome::Proceed(applied) => {
-                        if applied.final_zone == Zone::Graveyard && !applied.new_object_ids.is_empty() {
+                        if applied.final_zone != Zone::Battlefield && !applied.new_object_ids.is_empty() {
                             if let Some(snapshot) = receipt.snapshot.clone() {
-                                game.record_ui_battlefield_transition(UiBattlefieldTransitionKind::Destroyed, snapshot.stable_id);
-                                let trigger = crate::triggers::TriggerEvent::new_with_provenance(
+                                if applied.final_zone == Zone::Graveyard {
+                                    game.record_ui_battlefield_transition(UiBattlefieldTransitionKind::Destroyed, snapshot.stable_id);
+                                }
+                                let mut trigger = crate::triggers::TriggerEvent::new_with_provenance(
                                     crate::events::DestroyEvent::new(destroyed.permanent, destroyed.source)
+                                        .with_cause(zone_ctx.cause.clone())
                                         .with_successful_result(snapshot, applied.final_zone), final_event.provenance());
+                                if destroyed.source == Some(zone_ctx.source)
+                                    && game.object(zone_ctx.source).is_none()
+                                    && let Some(snapshot) = zone_ctx.source_snapshot.clone() {
+                                    trigger = trigger.with_source_snapshot(snapshot);
+                                }
                                 game.queue_trigger_event(trigger.provenance(), trigger);
                             }
                         }
@@ -5955,21 +5963,40 @@ pub fn process_token_creation_for_token_with_event(
     result
 }
 
+/// Prepared original plus appended programs, retained by a simultaneous owner.
+pub(crate) enum PreparedTokenCreation {
+    Proceed { event: crate::events::CreateTokensEvent, provenance: crate::provenance::ProvNodeId,
+        programs: Vec<PreparedReplacementProgram> },
+    Finished { outcome: crate::effect::EffectOutcome, programs: Vec<PreparedReplacementProgram> },
+}
+
 fn prepare_token_creation(
+    game: &mut GameState, controller: PlayerId, count: u32,
+    token: Option<crate::object::Object>, cause: crate::events::cause::EventCause,
+    ctx: &mut crate::effects::ExecutionContext,
+) -> Result<TokenCreationReplacementResult, crate::effects::ExecutionError> {
+    match prepare_token_creation_deferred(game, controller, count, token, cause, ctx)? {
+        PreparedTokenCreation::Proceed { event, provenance, programs } =>
+            Ok(TokenCreationReplacementResult::Proceed { event, provenance, programs }),
+        PreparedTokenCreation::Finished { outcome, programs } =>
+            crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, outcome, programs)
+                .map(TokenCreationReplacementResult::Finished),
+    }
+}
+
+pub(crate) fn prepare_token_creation_deferred(
     game: &mut GameState,
     controller: PlayerId,
     count: u32,
     token: Option<crate::object::Object>,
     cause: crate::events::cause::EventCause,
     ctx: &mut crate::effects::ExecutionContext,
-) -> Result<TokenCreationReplacementResult, crate::effects::ExecutionError> {
+) -> Result<PreparedTokenCreation, crate::effects::ExecutionError> {
     use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
     use crate::effects::ExecutionError;
     use crate::events::{CreateTokensEvent, downcast_event};
     if count == 0 || ctx.decision_maker.awaiting_choice() {
-        return Ok(TokenCreationReplacementResult::Finished(
-            EffectOutcome::with_objects(Vec::new()),
-        ));
+        return Ok(PreparedTokenCreation::Finished { outcome: EffectOutcome::with_objects(Vec::new()), programs: Vec::new() });
     }
     let proposal = match token {
         Some(token) => CreateTokensEvent::with_token_cause(controller, count, token, cause),
@@ -5978,9 +6005,7 @@ fn prepare_token_creation(
     let event = Event::new_with_provenance(proposal, ctx.provenance);
     let result = process_trait_event_with_execution_context(game, event, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(TokenCreationReplacementResult::Finished(
-            EffectOutcome::with_objects(Vec::new()),
-        ));
+        return Ok(PreparedTokenCreation::Finished { outcome: EffectOutcome::with_objects(Vec::new()), programs: Vec::new() });
     }
     let (result, programs) = result.into_expansion();
     match result {
@@ -5991,7 +6016,7 @@ fn prepare_token_creation(
                         "token replacement returned an incompatible event".into(),
                     )
                 })?;
-            Ok(TokenCreationReplacementResult::Proceed {
+            Ok(PreparedTokenCreation::Proceed {
                 event: token_event.clone(),
                 provenance: event.provenance(),
                 programs,
@@ -6010,18 +6035,12 @@ fn prepare_token_creation(
             let mut original = EffectOutcome::replaced();
             original.set_value(OutcomeValue::Count(0));
             let outcome = EffectOutcome::aggregate_replacement_outcomes(original, [outcome]);
-            let outcome = crate::effects::replacement::execute_deferred_replacement_programs(
-                game, ctx, outcome, programs,
-            )?;
-            Ok(TokenCreationReplacementResult::Finished(outcome))
+            Ok(PreparedTokenCreation::Finished { outcome, programs })
         }
         TraitEventResult::Prevented => {
             let mut outcome = EffectOutcome::prevented();
             outcome.value = OutcomeValue::Count(0);
-            let outcome = crate::effects::replacement::execute_deferred_replacement_programs(
-                game, ctx, outcome, programs,
-            )?;
-            Ok(TokenCreationReplacementResult::Finished(outcome))
+            Ok(PreparedTokenCreation::Finished { outcome, programs })
         }
         TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError(
             "token replacement expansion did not flatten to an original result".into(),
@@ -6418,6 +6437,7 @@ fn prepare_etb_replacements_inner(
     let mut current_event = Event::new_with_provenance(
         EnterBattlefieldEvent {
             object,
+            completed_snapshot: None,
             from,
             enters_tapped,
             enters_with_counters,

@@ -14,42 +14,62 @@ use crate::target::ChooseSpec;
 pub type ReturnAllToBattlefieldEffect = ironsmith_core::ReturnAllToBattlefieldEffect;
 
 impl EffectExecutor for ReturnAllToBattlefieldEffect {
-    fn supports_simultaneous_player_action(&self) -> bool {
-        true
+    fn supports_simultaneous_player_action(&self) -> bool { true }
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(ReturnAllProposal { effect: self.clone(),
+            objects: resolve_objects_from_spec(game, &ChooseSpec::all(self.filter.clone()), ctx)? }))
     }
-
-    fn prepare_simultaneous_player_action(
-        &self,
-        _game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Choice-free and scoped to the iterated player's own cards; defer to
-        // commit so the whole each-player action lands as one batch.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        let objects = resolve_objects_from_spec(game, &ChooseSpec::all(self.filter.clone()), ctx)?;
+        commit_return_all(self, objects, game, ctx, false).map(|commit| commit.outcome)
     }
+}
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let spec = ChooseSpec::all(self.filter.clone());
-        let objects = resolve_objects_from_spec(game, &spec, ctx)?;
-
+#[derive(Debug)]
+struct ReturnAllProposal { effect: ReturnAllToBattlefieldEffect, objects: Vec<crate::ids::ObjectId> }
+impl crate::effects::SimultaneousEffectProposal for ReturnAllProposal {
+    fn commit_original(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        commit_return_all(&self.effect, self.objects, game, ctx, true)
+    }
+    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        commit_return_all(&self.effect, self.objects, game, ctx, false).map(|commit| commit.outcome)
+    }
+}
+struct ReturnAllCompletion {
+    receipts: Option<Vec<(crate::ids::ObjectId, crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>)>>,
+    frozen: Option<super::FrozenZoneChangeReceipts>,
+}
+impl crate::effects::SimultaneousEffectCompletion for ReturnAllCompletion {
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        let receipts = self.receipts.take().ok_or_else(|| ExecutionError::InternalError("return receipts already frozen".into()))?;
+        self.frozen = Some(super::freeze_zone_change_receipts(game, receipts));
+        Ok(())
+    }
+    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext, original: EffectOutcome)
+        -> Result<EffectOutcome, ExecutionError> {
+        let frozen = self.frozen.ok_or_else(|| ExecutionError::InternalError("return completion requires the completed original batch".into()))?;
+        super::finish_zone_change_receipts_frozen(game, ctx, original, frozen)
+    }
+}
+fn commit_return_all(effect: &ReturnAllToBattlefieldEffect, objects: Vec<crate::ids::ObjectId>,
+    game: &mut GameState, ctx: &mut ExecutionContext, defer_additions: bool)
+    -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    use crate::effects::SimultaneousEffectCommit;
+    if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+    let checkpoint = game.clone();
+    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let instruction = (|| -> Result<SimultaneousEffectCommit, ExecutionError> {
         let mut entries = Vec::new();
         for object_id in objects {
-            let options = match self.battlefield_controller {
-                BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(self.tapped),
-                BattlefieldController::Owner => BattlefieldEntryOptions::owner(self.tapped),
+            let options = match effect.battlefield_controller {
+                BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(effect.tapped),
+                BattlefieldController::Owner => BattlefieldEntryOptions::owner(effect.tapped),
                 BattlefieldController::You => {
-                    BattlefieldEntryOptions::specific(ctx.controller, self.tapped)
+                    BattlefieldEntryOptions::specific(ctx.controller, effect.tapped)
                 }
             };
             let Some(object) = game.object(object_id) else {
@@ -57,7 +77,7 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
             };
             let memory =
                 OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(object, game));
-            if self.face_down
+            if effect.face_down
                 && let Some(card) = game.object_mut(object_id)
             {
                 card.apply_face_down_cast_overlay();
@@ -73,7 +93,7 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                 .map(|(object, options, _)| (*object, options.clone()))
                 .collect(),
         )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() { return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
         if outcomes.len() != entries.len() { return Err(ExecutionError::InternalError("battlefield batch lost an entry receipt".into())); }
         let mut receipts = Vec::new();
         let mut returned_count = 0;
@@ -92,7 +112,7 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                     affected_memory.push(memory);
                 }
                 BattlefieldEntryOutcome::Prevented => {
-                    if self.face_down
+                    if effect.face_down
                         && let Some(card) = game.object_mut(object_id)
                     {
                         card.end_face_down_cast_overlay();
@@ -108,13 +128,17 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
         if !affected_memory.is_empty() {
             outcome = outcome.with_affected_object_memory(affected_memory);
         }
-        super::finish_zone_change_receipts(game, ctx, outcome, receipts)
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
-        instruction
-    }
+
+        if defer_additions {
+            Ok(SimultaneousEffectCommit { outcome, completion: Some(Box::new(ReturnAllCompletion { receipts: Some(receipts), frozen: None })) })
+        } else {
+            super::finish_zone_change_receipts(game, ctx, outcome, receipts).map(SimultaneousEffectCommit::finished)
+        }
+    })();
+    let pending = ctx.decision_maker.awaiting_choice();
+    if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
+    if pending { return instruction.map(|_| SimultaneousEffectCommit::finished(EffectOutcome::count(0))); }
+    instruction
 }
 
 #[cfg(test)]

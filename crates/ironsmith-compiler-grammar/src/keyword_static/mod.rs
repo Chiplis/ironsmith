@@ -1,3 +1,5 @@
+mod characteristic_assertions;
+use characteristic_assertions::parse_supertype_assertion_line;
 use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
@@ -496,6 +498,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("player"),
             StaticAbilityLineHeadHint::Single("players"),
             StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("the", "chosen"),
         ],
         "parse_can_be_attached_only_to_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
@@ -658,7 +661,10 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         ],
         "parse_no_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
-            StaticAbilityLineHeadHint::Pair("you", "have"),
+            StaticAbilityLineHeadHint::Single("players"),
+            StaticAbilityLineHeadHint::Single("each"),
+            StaticAbilityLineHeadHint::Single("your"),
+            StaticAbilityLineHeadHint::Pair("the", "chosen"),
         ],
         "parse_opponents_must_target_flagbearers_line" => {
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
@@ -1557,6 +1563,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_land_type_addition_line),
         multi_static_ability_ast_rule!(parse_lands_are_pt_creatures_still_lands_line),
         single_static_ability_ast_rule!(parse_remove_snow_line),
+        single_static_ability_ast_rule!(parse_supertype_assertion_line),
         multi_static_ability_ast_rule!(parse_attached_is_legendary_gets_and_has_keywords_line),
         single_static_ability_ast_rule!(parse_landwalk_as_though_block_override_line),
         multi_static_ability_ast_passthrough_rule!(parse_granted_keyword_static_line),
@@ -6564,6 +6571,7 @@ fn parse_target_whose_controller_has_cards_in_graveyard_cost_condition(
 }
 
 mod spell_cost_condition_readings;
+mod spell_cost_event_conditions;
 
 pub fn parse_this_spell_cost_condition(
     tokens: &[OwnedLexToken],

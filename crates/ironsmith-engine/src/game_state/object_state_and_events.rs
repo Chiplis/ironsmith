@@ -622,7 +622,7 @@ impl GameState {
     pub fn solve_case(&mut self, id: ObjectId) -> bool {
         let changed = self.battlefield_flags_mut().solved_cases.insert(id);
         if changed {
-            self.mark_object_characteristics_dirty(id);
+            self.mark_source_designation_changed(id, Self::condition_reads_case_solved);
         }
         changed
     }
@@ -3295,12 +3295,12 @@ impl GameState {
         let object_snapshot = event
             .downcast::<crate::events::zones::ZoneChangeEvent>()
             .filter(|zone_change| zone_change.to == Zone::Battlefield)
-            .and_then(|zone_change| {
+            .and_then(|zone_change| zone_change.destination_snapshots.first().cloned().or_else(|| {
                 zone_change.objects.first().copied().and_then(|id| {
                     self.object(id)
                         .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, self))
                 })
-            })
+            }))
             .or_else(|| event.snapshot().cloned())
             .or_else(|| {
                 // Attack-history characteristics are fixed after attackers
@@ -3418,6 +3418,73 @@ impl GameState {
         for (index, event) in updates { self.effect_store.pending_trigger_events[index] = event; }
     }
 
+    /// Freeze actual entry characteristics at the completed original-operation
+    /// boundary. Both reported and queued events use this owner. Simultaneous
+    /// callers supply the entire batch after timestamps, before added programs.
+    pub(crate) fn freeze_completed_entry_events<'a>(
+        &mut self,
+        events: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        if self.effect_store.trigger_matching_holds > 0
+            || self.auxiliary_tracking.simultaneous_action_scope.is_some() { return Ok(()); }
+        let mut reported = events.into_iter().collect::<Vec<_>>();
+        let mut pending = std::mem::take(&mut self.effect_store.pending_trigger_events);
+        let result = (|| {
+            let mut all = reported.iter_mut().map(|event| &mut **event).chain(pending.iter_mut()).collect::<Vec<_>>();
+            let mut entries = all.iter_mut().map(|event| &mut **event).filter(|event|
+                event.downcast::<crate::events::EnterBattlefieldEvent>().is_some_and(|entry|
+                    entry.completed_snapshot.is_none()
+                        && self.object(entry.object).is_some_and(|object| object.zone == Zone::Battlefield)))
+                .collect::<Vec<_>>();
+            if entries.is_empty() { return Ok(()); }
+            // Reported token events may still share their effect's provenance.
+            // Give every actual entry a row, then stage the whole batch before
+            // calculating any completed characteristics (including entry counts).
+            for event in &mut entries {
+                let parent = event.provenance();
+                let provenance = if self.provenance_graph().node(parent).is_some() {
+                    self.alloc_child_event_provenance(parent, event.kind())
+                } else { self.provenance_graph_mut().alloc_root_event(event.kind()) };
+                self.turn_store.turn_history.remove_staged_event(parent);
+                event.set_provenance(provenance);
+                self.stage_turn_history_event(event);
+            }
+            let observed = self.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let effects = observed.try_all_continuous_effects_arc().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let snapshots = entries.iter().map(|event| {
+                let entry = event.downcast::<crate::events::EnterBattlefieldEvent>().unwrap();
+                observed.object(entry.object).map(|object|
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(object, &observed, &effects))
+            }).collect::<Vec<_>>();
+            let destinations = snapshots.iter().flatten().cloned().collect::<Vec<_>>();
+            for (event, snapshot) in entries.iter_mut().zip(snapshots) {
+                let mut entry = event.downcast::<crate::events::EnterBattlefieldEvent>().unwrap().clone();
+                entry.completed_snapshot = snapshot;
+                **event = event.with_inner_event(entry);
+                self.stage_turn_history_event(event);
+            }
+            drop(entries);
+            // Preserve origin LKI and attach the same exact destination receipt
+            // to zone notifications, including reported and queued token events.
+            for event in &mut all {
+                let Some(zone) = event.downcast::<crate::events::ZoneChangeEvent>() else { continue; };
+                if zone.to != Zone::Battlefield { continue; }
+                let mut zone = zone.clone();
+                for snapshot in &destinations {
+                    if zone.destination_objects().contains(&snapshot.object_id)
+                        && zone.destination_snapshot(snapshot.object_id).is_none() {
+                        zone.destination_snapshots.push(snapshot.clone());
+                    }
+                }
+                **event = event.with_inner_event(zone);
+                self.stage_turn_history_event(event);
+            }
+            Ok(())
+        })();
+        self.effect_store.pending_trigger_events = pending;
+        result
+    }
+
     pub fn queue_trigger_event(
         &mut self,
         parent: ProvNodeId,
@@ -3428,6 +3495,9 @@ impl GameState {
         use crate::events::permanents::SacrificeEvent;
         use crate::events::zones::ZoneChangeEvent;
 
+        if let Some(targeted) = event.downcast::<crate::events::BecomesTargetedEvent>() {
+            event = event.with_inner_event(targeted.clone().with_participant_snapshots(self));
+        }
         if let Some(damage) = event.downcast::<DamageEvent>()
             && let DamageTarget::Object(object_id) = damage.target
             && let Some(obj) = self.object(object_id)
@@ -3559,6 +3629,7 @@ impl GameState {
         &mut self,
         source: ObjectId,
         by_ability: bool,
+        stack_ability: Option<ObjectId>,
         final_targets: &[crate::game_state::Target],
     ) {
         use crate::events::spells::BecomesTargetedEvent;
@@ -3570,6 +3641,7 @@ impl GameState {
                 .is_some_and(|targeted| {
                     targeted.source == source
                         && targeted.by_ability == by_ability
+                        && targeted.stack_ability == stack_ability
                         && !final_targets.contains(&targeted.target)
                 });
             if stale {

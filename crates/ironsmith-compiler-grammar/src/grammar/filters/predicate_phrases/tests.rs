@@ -4251,3 +4251,73 @@ fn ring_bearer_control_predicate_keeps_the_typed_designation() {
     assert!(debug.contains("ring_bearer: true"), "{debug}");
     assert!(debug.contains("PlayerControlsNo"), "{debug}");
 }
+
+#[test]
+fn referenced_characteristics_keep_current_and_historical_frames_distinct() -> Result<(), CardTextError> {
+    let cases = [
+        ("that creature is 1/1", false),
+        ("it had no counters on it", true),
+        ("it didn't have decayed", true),
+        ("its power was different from its base power", true),
+        ("an Aura you controlled was attached to it", true),
+        ("they were a creature", true),
+    ];
+    for (text, past) in cases {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&tokens)?;
+        let filter = match (&parsed, past) {
+            (PredicateAst::ItMatches(filter), false) | (PredicateAst::ItMatchedLastKnown(filter), true) => filter,
+            _ => panic!("wrong time frame for {text}: {parsed:?}"),
+        };
+        if text.contains("1/1") {
+            assert_eq!(filter.power, Some(crate::filter::Comparison::Equal(1)));
+            assert_eq!(filter.toughness, Some(crate::filter::Comparison::Equal(1)));
+        } else if text.contains("no counters") {
+            assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+        } else if text.contains("decayed") {
+            assert_eq!(filter.excluded_ability_markers, vec!["decayed".to_string()]);
+        } else if text.contains("base power") {
+            assert_eq!(filter.power_comparison_to_base, Some(ValueComparisonOperator::NotEqual));
+        } else if text.contains("Aura") {
+            let attachment = filter.with_attached_object.as_ref().unwrap();
+            assert_eq!(attachment.controller, Some(PlayerFilter::You));
+            assert!(attachment.subtypes.contains(&Subtype::Aura));
+        }
+    }
+    for text in ["that creature is 1/unknown", "its power was different from their life", "they were a player"] {
+        let tokens = lex_line(text, 0)?;
+        assert!(parse_predicate(&tokens).is_err(), "{text}");
+    }
+    Ok(())
+}
+
+#[test]
+fn passive_was_blocked_history_does_not_mean_the_object_declared_a_block() -> Result<(), CardTextError> {
+    let tokens = lex_line("it was blocked this turn", 0)?;
+    let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else { panic!("past combat query") };
+    assert!(filter.was_blocked_this_turn);
+    assert!(!filter.blocked_this_turn);
+    assert!(!filter.blocked, "current combat state is insufficient after combat ends");
+    Ok(())
+}
+
+#[test]
+fn untyped_counter_absence_preserves_present_or_past_tense() -> Result<(), CardTextError> {
+    for (text, frame) in [
+        ("it has no counters on it", "current"),
+        ("this creature has no counters on it", "source"),
+        ("it had no counters on it", "past"),
+        ("that creature had no counters on it", "past"),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let predicate = parse_predicate(&tokens)?;
+        let filter = match (&predicate, frame) {
+            (PredicateAst::ItMatches(filter), "current")
+            | (PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)), "source")
+            | (PredicateAst::ItMatchedLastKnown(filter), "past") => filter,
+            _ => panic!("wrong frame for {text}: {predicate:?}"),
+        };
+        assert_eq!(filter.without_counter, Some(crate::filter::CounterConstraint::Any));
+    }
+    Ok(())
+}

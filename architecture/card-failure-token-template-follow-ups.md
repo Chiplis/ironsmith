@@ -21,7 +21,12 @@ Both arms use the existing typed native event paths: battlefield entry and
 query maps both arms to the triggering object, and the native face-up event's
 object ID is that permanent. The counter body therefore names that current
 Detective incarnation, never the Case. Solving uses the existing end-step
-condition/solve machinery; the template matcher receives its live Solved gate.
+condition/solve machinery. A later source review found that the original
+proposal retained the Solved presentation but had no executable static guard.
+The shared Case static-condition correction now lowers that typed label to
+`SourceCaseSolved` on every static member. Until deferred execution, the earlier
+unrun scenario is evidence of intended behavior rather than proof that the
+original implementation gated the matcher.
 
 Authored direct/restored-artifact scenarios use actual creation and face-up
 operations, then the normal trigger queue/stack. They cover both event arms,

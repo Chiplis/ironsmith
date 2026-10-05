@@ -309,6 +309,7 @@ fn finish_battlefield_entry(
     old_object: ObjectId,
     old_zone: Zone,
     result: crate::game_state::EntersResult,
+    notifications: &mut Vec<TriggerEvent>,
 ) -> Result<BattlefieldEntryOutcome, ExecutionError> {
     let new_id = result.new_id;
     let destination = game.object(new_id)
@@ -344,7 +345,7 @@ fn finish_battlefield_entry(
             ProvNodeId::default(),
         )
     };
-    game.queue_trigger_event(ctx.provenance, event);
+    notifications.push(event);
     Ok(BattlefieldEntryOutcome::Moved(new_id))
 }
 
@@ -566,6 +567,7 @@ fn move_to_battlefield_batch_with_options_inner(
         proposals[index] = Some((old_zone, result));
     }
 
+    let mut notifications = Vec::new();
     let mut prepared_entries = vec![None; requests.len()];
     for index in preparation_order {
         let Some((old_zone, proposal)) = proposals[index].take() else {
@@ -653,7 +655,7 @@ fn move_to_battlefield_batch_with_options_inner(
                 provisional_effects.retain(|id| !effects.contains(id));
             }
         }
-        outcomes[index] = finish_battlefield_entry(&mut working, ctx, *object, old_zone, result)?;
+        outcomes[index] = finish_battlefield_entry(&mut working, ctx, *object, old_zone, result, &mut notifications)?;
     }
 
     // CR 613.7j: objects that receive timestamps simultaneously get them in an
@@ -695,7 +697,11 @@ fn move_to_battlefield_batch_with_options_inner(
         working.effect_store.continuous_effects.remove_effect(id);
     }
     working.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    // The complete original batch and its simultaneous timestamps are now
+    // fixed. Freeze every entry before any deferred replacement program runs.
     working.close_simultaneous_action(opened_batch);
+    working.freeze_completed_entry_events(notifications.iter_mut())?;
+    for event in notifications { working.queue_trigger_event(ctx.provenance, event); }
     *game = working;
     Ok(outcomes.into_iter().enumerate().map(|(index, outcome)| {
         use crate::events::processing::{EventOutcome, PreparedEventOutcome};

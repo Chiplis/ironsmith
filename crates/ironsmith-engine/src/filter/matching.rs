@@ -902,6 +902,7 @@ pub(super) fn matches_subject(
     if filter.blocked_this_turn && !game.creature_blocked_this_turn(subject.object_id()) {
         return false;
     }
+    if filter.was_blocked_this_turn && !game.creature_was_blocked_this_turn(subject.object_id()) { return false; }
     if filter.didnt_attack_this_turn && game.creature_attacked_this_turn(subject.object_id()) {
         return false;
     }
@@ -1089,7 +1090,7 @@ pub(super) fn matches_subject(
             return false;
         }
     }
-    if filter.power_greater_than_base_power {
+    if filter.power_greater_than_base_power || filter.power_comparison_to_base.is_some() {
         let Some(effective_power) = subject.power(
             calculated_chars_ref,
             game,
@@ -1106,7 +1107,9 @@ pub(super) fn matches_subject(
         ) else {
             return false;
         };
-        if effective_power <= base_power {
+        if (filter.power_greater_than_base_power && effective_power <= base_power)
+            || filter.power_comparison_to_base.is_some_and(|operator| !operator.evaluate(effective_power, base_power))
+        {
             return false;
         }
     }

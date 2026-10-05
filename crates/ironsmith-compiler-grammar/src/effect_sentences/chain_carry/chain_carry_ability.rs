@@ -42,6 +42,9 @@ pub(super) fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Opt
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveCardTypes {
                     duration, ..
                 })
+            | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveSupertypes {
+                    duration, ..
+                })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                     duration,
                     ..

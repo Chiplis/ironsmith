@@ -544,9 +544,10 @@ fn library_search_alternative_condition_allows(
     method: &AlternativeCastingMethod,
 ) -> bool {
     if let Some(condition) = method.cast_condition() {
-        crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+        crate::static_abilities::this_spell_cost_condition_is_active_for_player(
             game,
             spell.id,
+            caster,
             condition,
             &[],
         )

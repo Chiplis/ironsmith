@@ -2096,7 +2096,9 @@ fn trigger_provides_stack_object(trigger: &TriggerSpec) -> bool {
         // Becomes-targeted triggers record the TARGETING spell or ability as
         // the triggering event object ("counter that spell", "choose new
         // targets for that spell").
-        TriggerSpec::ThisBecomesTargeted
+        TriggerSpec::BecomesTargetedByAbilitySource { .. }
+        | TriggerSpec::PlayerBecomesTargeted { .. }
+        | TriggerSpec::ThisBecomesTargeted
         | TriggerSpec::BecomesTargeted(_)
         | TriggerSpec::ThisBecomesTargetedBySpell(_)
         | TriggerSpec::ThisBecomesTargetedByStackObject(_)

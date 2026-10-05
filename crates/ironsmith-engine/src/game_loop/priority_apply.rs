@@ -640,8 +640,6 @@ fn apply_priority_response_with_dm_inner(
                 && game.object(entry.new_id).is_some_and(|object| object.zone == Zone::Battlefield)
             {
                 let new_id = entry.new_id;
-                // Drain pending ZoneChangeEvent emitted by ETB move processing.
-                drain_pending_trigger_events(game, trigger_queue);
 
                 let etb_event_provenance = game
                     .provenance_graph_mut()
@@ -657,7 +655,10 @@ fn apply_priority_response_with_dm_inner(
                         etb_event_provenance,
                     )
                 };
-                let etb_event = game.ensure_trigger_event_provenance(etb_event);
+                let mut etb_event = game.ensure_trigger_event_provenance(etb_event);
+                game.freeze_completed_entry_events(std::iter::once(&mut etb_event))
+                    .map_err(GameLoopError::ExecutionFailed)?;
+                drain_pending_trigger_events(game, trigger_queue);
                 let etb_triggers = check_triggers(game, &etb_event);
                 for trigger in etb_triggers {
                     trigger_queue.add(trigger);

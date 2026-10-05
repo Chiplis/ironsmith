@@ -4226,6 +4226,10 @@ impl GameState {
             .retain(|group| key.is_some() && group.first().map(delayed_alternative_key) != key);
     }
 
+    pub(crate) fn has_open_simultaneous_action(&self) -> bool {
+        self.auxiliary_tracking.simultaneous_action_scope.is_some()
+    }
+
     /// Open one simultaneous action for the zone changes (and damage)
     /// performed until [`Self::close_simultaneous_action`] (CR 603.2c).
     /// Returns whether this call opened it; an enclosing action is reused.
