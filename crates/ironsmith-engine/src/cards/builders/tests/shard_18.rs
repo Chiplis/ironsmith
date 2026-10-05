@@ -3502,6 +3502,7 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
     game.player_mut(alice)
         .expect("alice exists")
         .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Blue,
             source: peeper_id,
             source_chosen_creature_type: None,
@@ -3701,6 +3702,7 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
     game.player_mut(alice)
         .expect("alice exists")
         .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Blue,
             source: peeper_id,
             source_chosen_creature_type: None,

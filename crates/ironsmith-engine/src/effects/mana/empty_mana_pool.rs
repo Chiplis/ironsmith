@@ -83,6 +83,7 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
         let restricted = RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Red,
             source: ObjectId::from_raw(99),
             source_chosen_creature_type: None,

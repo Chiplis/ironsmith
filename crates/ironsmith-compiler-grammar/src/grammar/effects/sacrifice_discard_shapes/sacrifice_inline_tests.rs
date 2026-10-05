@@ -212,3 +212,24 @@ fn sacrifice_all_except_shape_preserves_filter_and_keep_count() {
         );
     }
 }
+
+#[test]
+fn sacrifice_fraction_can_take_its_rounding_from_the_following_sentence() {
+    for (text, up) in [
+        ("half the creatures they control of their choice", false),
+        (
+            "half the nonland permanents they control of their choice, rounded down",
+            false,
+        ),
+        (
+            "half the creatures they control of their choice, rounded up",
+            true,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let shape = parse_sacrifice_fraction_rounded_shape(&tokens).unwrap();
+        assert_eq!(shape.denominator, 2);
+        assert_eq!(shape.rounded_up, up);
+        assert!(!parser_token_word_refs(shape.filter_tokens).contains(&"choice"));
+    }
+}

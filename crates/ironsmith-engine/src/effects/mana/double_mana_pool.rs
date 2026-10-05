@@ -105,6 +105,7 @@ mod tests {
 
         let mana_source = ObjectId::from_raw(777);
         let restricted = RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Red,
             source: mana_source,
             source_chosen_creature_type: None,

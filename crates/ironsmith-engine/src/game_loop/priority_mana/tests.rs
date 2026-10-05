@@ -1438,6 +1438,7 @@ fn u078_transaction_predicates_cover_cumulative_upkeep_and_costs_containing_x() 
     let alice = PlayerId::from_index(0);
     let source = game.new_object_id();
     let cumulative = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Blue,
         source,
         source_chosen_creature_type: None,
@@ -1470,6 +1471,7 @@ fn u078_transaction_predicates_cover_cumulative_upkeep_and_costs_containing_x() 
 
     let mut game = setup_game();
     let contains_x = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Colorless,
         source,
         source_chosen_creature_type: None,
@@ -1523,6 +1525,7 @@ fn typed_mana_spend_predicates_preserve_negative_cast_and_source_activation_sema
         game.create_object_from_definition(&creature_definition, alice, Zone::Battlefield);
 
     let nonartifact_cast_forbidden = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Blue,
         source: mana_source,
         source_chosen_creature_type: None,
@@ -1575,6 +1578,7 @@ fn typed_mana_spend_predicates_preserve_negative_cast_and_source_activation_sema
     game.set_cast_origin_snapshot(graveyard_spell, graveyard_origin);
 
     let hand_cast_forbidden = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Colorless,
         source: mana_source,
         source_chosen_creature_type: None,
@@ -1609,6 +1613,7 @@ fn typed_mana_spend_predicates_preserve_negative_cast_and_source_activation_sema
     ));
 
     let artifact_source_activations_only = RestrictedManaUnit {
+        source_controller: None,
         symbol: ManaSymbol::Blue,
         source: mana_source,
         source_chosen_creature_type: None,
@@ -1671,6 +1676,7 @@ fn u078_pool_doubling_publishes_each_spend_without_copying_the_old_payload() {
     game.player_mut(alice)
         .expect("alice")
         .add_restricted_mana(RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Green,
             source: mana_source,
             source_chosen_creature_type: None,
@@ -1738,6 +1744,7 @@ fn u078_on_spend_predicate_does_not_restrict_ordinary_use_or_trigger_on_mismatch
     game.player_mut(alice)
         .expect("alice")
         .add_restricted_mana(RestrictedManaUnit {
+            source_controller: None,
             symbol: ManaSymbol::Red,
             source,
             source_chosen_creature_type: None,

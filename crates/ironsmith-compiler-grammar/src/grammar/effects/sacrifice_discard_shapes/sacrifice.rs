@@ -269,7 +269,10 @@ pub fn parse_sacrifice_fraction_rounded_shape(
     {
         (false, stripped)
     } else {
-        return None;
+        // A subsequent "Round up/down each time" scopes over the whole
+        // instruction. Unstated fractions start rounded down; the dispatcher
+        // applies an explicit sentence-wide upward rounding to this count.
+        (false, rest)
     };
     let object = parse_sacrifice_object_shape(before_rounding);
     (!object.filter_tokens.is_empty()).then_some(SacrificeFractionRoundedShape {

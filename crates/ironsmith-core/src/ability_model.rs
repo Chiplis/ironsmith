@@ -315,6 +315,10 @@ pub struct RestrictedManaUnit<E> {
     pub source: ObjectId,
     pub source_chosen_creature_type: Option<Subtype>,
     pub restrictions: Vec<ManaUsageRestriction<E>>,
+    /// Controller of the producing ability/effect, fixed when mana is added.
+    /// Old checkpoints retain the legacy live-source fallback.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub source_controller: Option<crate::ids::PlayerId>,
 }
 
 impl<E: PartialEq> Eq for RestrictedManaUnit<E> {}

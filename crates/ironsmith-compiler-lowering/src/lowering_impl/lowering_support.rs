@@ -4005,6 +4005,18 @@ pub fn stage_owned_triggered_effects_for_lowering(
         || intervening_if
             .as_ref()
             .is_some_and(predicate_counts_creature_deaths);
+    // Promoting the leading condition to an intervening-if must retain its
+    // operands for a consequent such as "draw cards equal to the difference".
+    if let Some(predicate) = intervening_if.as_ref() {
+        let env = ReferenceEnv::from_imports(&imports, false, allow_life_event_value, false, None);
+        if let Some(values) =
+            ironsmith_compiler_resolve::reference_resolution::predicate_comparison_operands(
+                predicate, &env,
+            )
+        {
+            imports.last_value_comparison = Some(values);
+        }
+    }
     let mut prepared = stage_effects_from_normalized(
         body_effects,
         imports,

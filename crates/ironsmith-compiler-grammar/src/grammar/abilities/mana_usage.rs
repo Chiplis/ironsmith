@@ -102,6 +102,7 @@ pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     parse_generic_mana_transaction(tokens)
+        .or_else(|| mana_usage_payment_branches::parse(tokens))
         .or_else(|| parse_cast_unlock_turn_face_up(tokens))
         .or_else(|| parse_cast_or_activate_source(tokens))
         .or_else(|| parse_cast_or_activate_any_ability(tokens))
@@ -868,3 +869,6 @@ use mana_usage_permission_programs::parse_alternative_cast_spell_with_origin;
 #[path = "mana_usage/mana_usage_condition.rs"]
 mod mana_usage_condition_programs;
 use mana_usage_condition_programs::classify_spec;
+
+#[path = "mana_usage/payment_branches.rs"]
+mod mana_usage_payment_branches;

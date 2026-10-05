@@ -209,3 +209,19 @@ fn chosen_untap_and_attachment_tap_costs_preserve_count_scope_and_identity() {
         assert!(if text.starts_with("Untap") { parse_untap_chosen_segment_tokens(&tokens).is_err() } else { parse_tap_chosen_segment_tokens(&tokens).is_err() });
     }
 }
+
+#[test]
+fn complete_discard_selectors_preserve_color_historic_x_and_other() {
+    let parse = |text| parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).unwrap();
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(nonblack), .. } = parse("discard a nonblack card") else { panic!("missing nonblack filter") };
+    assert!(nonblack.excluded_colors.contains(crate::color::Color::Black));
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(historic), .. } = parse("discard a historic card") else { panic!("missing historic filter") };
+    assert!(historic.historic);
+    let ActivationCostSegmentCst::DiscardFiltered { filter: Some(mana), count: 1, .. } = parse("discard a card with mana value x") else { panic!("missing X filter") };
+    assert!(matches!(mana.mana_value, Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.unhinted(), crate::effect::Value::X)));
+    assert!(matches!(parse("discard x cards"), ActivationCostSegmentCst::DiscardValue { count: crate::effect::Value::X, .. }));
+    assert!(matches!(parse("discard another card"), ActivationCostSegmentCst::DiscardFiltered { other: true, .. }));
+    for text in ["discard a card with mana value", "discard three cards with different names", "discard a creature from your graveyard", "discard a card and draw a card"] {
+        assert!(parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).is_err(), "{text}");
+    }
+}

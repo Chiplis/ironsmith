@@ -267,3 +267,17 @@ fn excess_damage_result_accepts_bare_and_permanent_scopes() {
         );
     }
 }
+
+#[test]
+fn fewer_discarded_cards_preserves_actual_result_action_and_threshold() {
+    let tokens = lex_line("fewer than two cards were discarded this way", 0).unwrap();
+    let Some(IfResultPredicate::PriorEffectResult(surface)) =
+        parse_if_result_predicate_lexed_tokens(&tokens)
+    else {
+        panic!("typed result")
+    };
+    assert_eq!(surface.action, PriorEffectAction::Discarded);
+    assert_eq!(surface.required_count, Some(2));
+    assert!(surface.negated);
+    assert!(surface.shared_characteristic.is_none());
+}
