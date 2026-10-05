@@ -1779,8 +1779,8 @@ fn test_prevent_damage_to_self_remove_counter_generates_replacement() {
         .generate_replacement_effect(src, alice)
         .expect("should generate replacement effect");
 
-    let ReplacementAction::Instead(effects) = &replacement.replacement else {
-        panic!("expected replacement to use Instead action");
+    let ReplacementAction::PreventDamageThenFromProposedAmount(effects) = &replacement.replacement else {
+        panic!("expected replacement to retain prevention and proposed damage");
     };
     assert_eq!(effects.len(), 1, "expected one removal effect");
     let remove = effects[0]
@@ -1797,8 +1797,8 @@ fn test_prevent_damage_to_self_remove_counter_generates_replacement() {
     let replacement = dynamic
         .generate_replacement_effect(src, alice)
         .expect("dynamic prevention should generate replacement effect");
-    let ReplacementAction::Instead(effects) = &replacement.replacement else {
-        panic!("expected dynamic replacement to use Instead action");
+    let ReplacementAction::PreventDamageThenFromProposedAmount(effects) = &replacement.replacement else {
+        panic!("expected dynamic replacement to retain prevention and proposed damage");
     };
     let remove = effects[0]
         .downcast_ref::<crate::effects::RemoveCountersEffect>()
@@ -1886,7 +1886,7 @@ fn counter_prevention_followup_uses_actual_removed_count_for_each_player() {
     let replacement = ability
         .generate_replacement_effect(source, alice)
         .expect("prevention should generate a replacement");
-    let ReplacementAction::Instead(effects) = replacement.replacement else {
+    let ReplacementAction::PreventDamageThenFromProposedAmount(effects) = replacement.replacement else {
         panic!("expected replacement effects");
     };
     assert_eq!(effects.len(), 2);

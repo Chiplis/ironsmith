@@ -5389,6 +5389,11 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
         Event::unpreventable_damage(source, target, amount, is_combat, cause.clone())
     };
 
+    // Keep supplied damage-source LKI on the event envelope as well as the
+    // matcher context, so prevention follow-ups retain the same source identity.
+    let event = if let Some(snapshot) = source_snapshot {
+        event.with_source_snapshot(snapshot.clone())
+    } else { event };
     // Process through the trait-based system, retaining event provenance for
     // replacement-generated effect execution.
     let event = game.ensure_event_provenance(event);
@@ -5642,6 +5647,9 @@ fn execute_prevention_follow_ups(
         let follow_up = pending.follow_up;
         let prevented_event =
             crate::events::RawEvent::new(pending.damage.clone(), pending.provenance);
+        let prevented_event = if let Some(snapshot) = pending.damage_source_snapshot {
+            prevented_event.with_source_snapshot(snapshot)
+        } else { prevented_event };
         let mut exec_ctx =
             crate::effects::ExecutionContext::new(follow_up.source, follow_up.controller, &mut *dm)
                 .with_triggering_event(prevented_event)

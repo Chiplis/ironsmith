@@ -220,6 +220,11 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        // An unconstrained source predicate requires no characteristics or LKI.
+        // The source of damage may already have left its former zone.
+        if self.source_filter == ObjectFilter::default() {
+            return true;
+        }
         // Use LKI only when the source no longer exists. A still-live source
         // may have changed controller or types since its ability was put on
         // the stack; an older snapshot cannot make it match again.
@@ -4556,6 +4561,44 @@ impl StaticAbilityKind for PreventMatchingDamage {
                 maximum_damage: self.spec.maximum_damage,
             },
             ReplacementAction::PreventDamageByRule(self.spec.amount.clone()),
+        ))
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventMatchingDamageWithFollowUp {
+    pub spec: ironsmith_core::StaticDamagePreventionFollowUp<Effect>,
+}
+
+impl StaticAbilityKind for PreventMatchingDamageWithFollowUp {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::PreventMatchingDamage }
+    fn display(&self) -> String { self.spec.display.clone() }
+
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let mut effects = Vec::new();
+        if let Some(tag) = &self.spec.damage_source_tag {
+            effects.push(Effect::tag_triggering_source(tag.clone()));
+        }
+        effects.extend(self.spec.effects.iter().cloned());
+        Some(ReplacementEffect::with_matcher(
+            source, controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition: None,
+                combat_only: self.spec.combat_only,
+                noncombat_only: self.spec.noncombat_only,
+                amount_less_than: None,
+                maximum_damage: None,
+            },
+            match self.spec.amount_basis {
+                ironsmith_core::PreventionFollowUpAmount::Prevented =>
+                    ReplacementAction::PreventDamageThen(effects),
+                ironsmith_core::PreventionFollowUpAmount::Proposed =>
+                    ReplacementAction::PreventDamageThenFromProposedAmount(effects),
+            },
         ))
     }
 }

@@ -304,6 +304,8 @@ pub struct PreventionFollowUp {
 pub struct PendingPreventionFollowUp {
     pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    /// LKI of the damage source, distinct from the prevention ability's source.
+    pub damage_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     pub follow_up: PreventionFollowUp,
     pub damage: crate::events::DamageEvent,
     pub provenance: crate::provenance::ProvNodeId,
@@ -361,6 +363,11 @@ impl PreventionEffectManager {
         }
         for pending in &state.pending_follow_ups {
             check_assignments(&pending.follow_up.targets, &pending.follow_up.target_assignments)?;
+            if pending.damage_source_snapshot.as_ref().is_some_and(|snapshot|
+                snapshot.object_id != pending.damage.source)
+            {
+                return Err("prevention follow-up damage source LKI has the wrong identity".into());
+            }
         }
         let mut totals = HashMap::new();
         for (id, amount) in state.prevented_totals {
@@ -473,9 +480,21 @@ impl PreventionEffectManager {
         provenance: crate::provenance::ProvNodeId,
         source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     ) {
+        self.queue_follow_up_with_snapshots(follow_up, damage, provenance, source_snapshot, None);
+    }
+
+    pub(crate) fn queue_follow_up_with_snapshots(
+        &mut self,
+        follow_up: PreventionFollowUp,
+        damage: crate::events::DamageEvent,
+        provenance: crate::provenance::ProvNodeId,
+        source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+        damage_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    ) {
         self.pending_follow_ups.push(PendingPreventionFollowUp {
             replacement_scope: self.follow_up_replacement_scopes.last().cloned().unwrap_or_default(),
             source_snapshot,
+            damage_source_snapshot,
             follow_up,
             damage,
             provenance,

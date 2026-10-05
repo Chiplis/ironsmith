@@ -2569,13 +2569,14 @@ fn stage_effects_from_normalized(
         imports.last_object_tag = Some(tag.clone());
     }
 
-    let initial_env = ReferenceEnv::from_imports(
+    let mut initial_env = ReferenceEnv::from_imports(
         &imports,
         config.initial_iterated_player,
         config.allow_life_event_value,
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
+    initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()
@@ -3349,6 +3350,9 @@ pub fn stage_effects_with_trigger_context_for_lowering(
         imports,
         EffectReferenceResolutionConfig {
             allow_life_event_value,
+            allow_excess_damage_event_value: trigger.is_some_and(
+                ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount,
+            ),
             ..Default::default()
         },
         trigger.and_then(inferred_trigger_player_filter),
@@ -4006,6 +4010,10 @@ pub fn stage_owned_triggered_effects_for_lowering(
         imports,
         EffectReferenceResolutionConfig {
             allow_life_event_value,
+            allow_excess_damage_event_value:
+                ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount(
+                    &trigger,
+                ),
             ..Default::default()
         },
         inferred_trigger_player_filter(&trigger),

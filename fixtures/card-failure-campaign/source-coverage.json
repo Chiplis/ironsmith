@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "1850943fb662aa93edb777b5dba4ec1c5c047385",
+  "source_implementation_commit": "c1b2bd5b368b27a9f9d75e2138de88249139b43e",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 266,
-    "additional_proposed_compile_entries": 266,
+    "additional_proposed_unique_cards": 282,
+    "additional_proposed_compile_entries": 282,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -418,10 +418,6 @@
           "remaining_blocker": "Separate optional behold-as-entry replacement is the frozen first diagnostic."
         },
         {
-          "card_name": "Violent Echoes",
-          "remaining_blocker": "Separate excess-damage conditional and where-X binding is the frozen first diagnostic."
-        },
-        {
           "card_name": "Way of the Mind Sculptor",
           "remaining_blocker": "Separate intervening-if predicate inspects loyalty counters paid to activate the triggering ability."
         }
@@ -646,6 +642,51 @@
         "Explicit actor distinct from recipient/controller; shared complete pre/post instruction snapshots.",
         "Actual turn untaps and convoke/improvise payment producers; separate cost instructions remain separate groups.",
         "Comma-grouped numbers preserve literal spans; Calendar state threshold uses existing nonintervening state-trigger machinery."
+      ]
+    },
+    {
+      "id": "static-prevention-follow-up-values",
+      "stage": 27,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/static_damage_prevention.json.fixture",
+      "baseline_entries": [
+        "Plated Pegasus",
+        "Vigor",
+        "Phyrexian Hydra",
+        "Purity",
+        "Swans of Bryn Argoll",
+        "Hostility",
+        "Angel of Suffering",
+        "The Mindskinner",
+        "Unbreathing Horde"
+      ],
+      "implementation_commit": "c1b2bd5b368b27a9f9d75e2138de88249139b43e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Source versus prevention-host exact LKI; actual prevented amount distinct from proposed damage.",
+        "Genuine damage replacement distinct from prevention plus independent additional actions; unpreventable damage preserved.",
+        "Shared additive entry-counter groups retain zone and owner/controller filters."
+      ]
+    },
+    {
+      "id": "excess-damage-result-binding",
+      "stage": 27,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/excess_damage_values.json.fixture",
+      "baseline_entries": [
+        "Bolg of the North",
+        "Contest of Claws",
+        "Fall of Cair Andros",
+        "Violent Echoes",
+        "Goblin Negotiation",
+        "Hell to Pay",
+        "Windswift Slice"
+      ],
+      "implementation_commit": "c1b2bd5b368b27a9f9d75e2138de88249139b43e",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Action-qualified prior excess damage and typed ambient excess-trigger amount; ordinary damage/life rejected.",
+        "No numeric placeholder or card-name special casing; Violent Echoes closes prior Empower partial."
       ]
     }
   ],
@@ -1439,8 +1480,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Angel of Vitality",
@@ -3609,8 +3652,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Bomb Squad",
@@ -5739,8 +5784,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Contractual Safeguard",
@@ -9642,8 +9689,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Fallaji Wayfarer",
@@ -11787,8 +11836,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Goblin Plate Mail",
@@ -12927,8 +12978,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Hellcarver Demon",
@@ -13397,8 +13450,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Hot Pursuit",
@@ -20945,8 +21000,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Phyrexian Ingester",
@@ -21241,8 +21298,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Pledge of Loyalty",
@@ -21989,8 +22048,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Pygmy Hippo",
@@ -27365,8 +27426,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Swarming Goblins",
@@ -28775,8 +28838,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "The Moment",
@@ -30410,8 +30475,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Unctus, Grand Metatect",
@@ -31177,8 +31244,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "static-prevention-follow-up-values"
+      ]
     },
     {
       "card_name": "Vincent's Limit Break",
@@ -31207,8 +31276,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ],
       "partial_source_families": [
         "empower-jace-action"
       ]
@@ -32639,8 +32710,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "excess-damage-result-binding"
+      ]
     },
     {
       "card_name": "Wingnut, Bat on the Belfry",

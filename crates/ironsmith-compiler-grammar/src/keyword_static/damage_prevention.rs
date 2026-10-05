@@ -3,7 +3,7 @@ use ironsmith_core::{PreventMatchingDamageSpec, StaticDamagePreventionAmount};
 
 /// The event's recipient is a player, an object, or an authored union of both.
 /// This reuses ordinary object filtering rather than a finite card-name table.
-fn prevention_recipient_filters(
+pub(super) fn prevention_recipient_filters(
     tokens: &[OwnedLexToken],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
     let words = parser_token_word_refs(tokens);
@@ -28,6 +28,11 @@ fn prevention_recipient_filters(
     Ok((None, Some(filter)))
 }
 
+pub(super) fn needs_shared_recipient_allocation(tokens: &[OwnedLexToken]) -> bool {
+    parser_token_word_refs(tokens).windows(3).any(|words| words == ["one", "or", "more"])
+        || tokens.iter().any(|token| token.is_word("and/or"))
+}
+
 pub fn parse_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -36,14 +41,30 @@ pub fn parse_filtered_damage_prevention_line(
     // Quantified simultaneous recipients can share ONE prevention budget
     // (Cover of Winter), which needs a player-chosen batch allocation. The
     // single-recipient runtime action must not apply that budget once per target.
-    let recipient_words = parser_token_word_refs(shape.damaged_tokens);
-    if recipient_words.windows(3).any(|words| words == ["one", "or", "more"])
-        || shape.damaged_tokens.iter().any(|token| token.is_word("and/or"))
-    {
+    if needs_shared_recipient_allocation(shape.damaged_tokens) {
         return Ok(None);
     }
     let (target_player_filter, target_object_filter) =
         prevention_recipient_filters(shape.damaged_tokens)?;
+    let source_filter = damage_source_filter_from_shape(shape.source)?;
+    if let Some(repeated) = shape.repeated_spell_target_tokens {
+        // The repeated spell and recipient must refer to the event just read;
+        // neither a different source kind nor a narrowed recipient is omitted.
+        let source_words = parser_token_word_refs(shape.source.filter_tokens);
+        if source_filter.zone != Some(Zone::Stack)
+            || !source_words.contains(&"spell")
+            || repeated.iter().any(|token| token.kind == TokenKind::Period)
+            || needs_shared_recipient_allocation(repeated)
+        {
+            return Ok(None);
+        }
+        let repeated_filters = prevention_recipient_filters(repeated)?;
+        if repeated_filters.0 != target_player_filter
+            || repeated_filters.1 != target_object_filter
+        {
+            return Ok(None);
+        }
+    }
     let amount = match shape.amount {
         keyword_static_lines::FilteredPreventionAmountShape::All =>
             StaticDamagePreventionAmount::All,
@@ -64,7 +85,7 @@ pub fn parse_filtered_damage_prevention_line(
         }
     };
     Ok(Some(StaticAbility::prevent_matching_damage(PreventMatchingDamageSpec {
-        source_filter: damage_source_filter_from_shape(shape.source)?,
+        source_filter,
         target_player_filter,
         target_object_filter,
         combat_only: shape.combat_only,
@@ -105,6 +126,71 @@ mod tests {
         let ability = parse("If a source would deal damage to equipped creature, prevent X of that damage, where X is the number of creatures you control.").unwrap();
         let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else { panic!() };
         assert!(matches!(spec.amount, StaticDamagePreventionAmount::Amount(ref value) if matches!(value.unhinted(), Value::Count(_))));
+    }
+
+    #[test]
+    fn repeated_spell_prevention_tail_preserves_both_event_operands() {
+        let ability = parse("If a spell would deal damage to a permanent or player, prevent 1 damage that spell would deal to that permanent or player.").unwrap();
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else { panic!() };
+        assert_eq!(spec.source_filter.zone, Some(Zone::Stack));
+        assert_eq!(spec.target_player_filter, Some(PlayerFilter::Any));
+        assert_eq!(spec.target_object_filter, Some(ObjectFilter::permanent()));
+        assert_eq!(spec.amount, StaticDamagePreventionAmount::Amount(Value::Fixed(1)));
+        for text in [
+            "If a creature would deal damage to a player, prevent 1 damage that spell would deal to that player.",
+            "If a spell would deal damage to a permanent or player, prevent 1 damage that spell would deal to that player.",
+            "If a spell would deal damage to a permanent or player, prevent 1 damage that spell would deal to that permanent or player. Draw a card.",
+        ] {
+            assert!(!matches!(parse_filtered_damage_prevention_line(&lex_line(text, 0).unwrap()), Ok(Some(_))), "{text}");
+        }
+    }
+
+    #[test]
+    fn subject_first_self_prevention_keeps_fixed_counter_removal() {
+        use crate::grammar::attached_object_static_lines::{
+            parse_remove_counter_prevention_tokens, RemoveCounterPreventionAmount,
+        };
+        let tokens = lex_line("If this creature would be dealt damage, prevent that damage and remove a +1/+1 counter from it.", 0).unwrap();
+        let spec = parse_remove_counter_prevention_tokens(&tokens).unwrap();
+        assert_eq!(spec.counter_type, CounterType::PlusOnePlusOne);
+        assert_eq!(spec.amount, RemoveCounterPreventionAmount::Fixed(1));
+        assert!(!spec.one_damage_per_counter);
+        for text in [
+            "If another creature would be dealt damage, prevent that damage and remove a +1/+1 counter from it.",
+            "If this creature would be dealt damage, prevent that damage and remove a +1/+1 counter from it. Draw a card.",
+        ] {
+            assert!(parse_remove_counter_prevention_tokens(&lex_line(text, 0).unwrap()).is_none());
+        }
+    }
+
+    #[test]
+    fn counter_shapes_keep_prevention_separate_from_genuine_replacement() {
+        use crate::grammar::attached_object_static_lines::{parse_put_counter_prevention_tokens, PutCounterPreventionSpec};
+        for (text, expected_prevention) in [
+            ("If damage would be dealt to this creature, put that many +1/+1 counters on it instead.", false),
+            ("If damage would be dealt to this creature, prevent that damage and put that many +1/+1 counters on it.", true),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let Some(PutCounterPreventionSpec::General { prevents_damage, .. }) =
+                parse_put_counter_prevention_tokens(&tokens) else { panic!("{text}") };
+            assert_eq!(prevents_damage, expected_prevention);
+        }
+    }
+
+    #[test]
+    fn counter_followups_keep_sign_and_whole_sentence_scope() {
+        use crate::grammar::attached_object_static_lines::{
+            parse_put_counter_prevention_tokens, PutCounterPreventionSpec,
+        };
+        let tokens = lex_line("If damage would be dealt to this creature, prevent that damage. Put a -1/-1 counter on this creature for each 1 damage prevented this way.", 0).unwrap();
+        assert!(matches!(parse_put_counter_prevention_tokens(&tokens),
+            Some(PutCounterPreventionSpec::PerPreventedAmount { counter_type: CounterType::MinusOneMinusOne })));
+        for text in [
+            "If damage would be dealt to this creature, prevent that damage. Put a -1/-1 counter on that creature for each 1 damage prevented this way.",
+            "If damage would be dealt to this creature, prevent that damage. Put a -1/-1 counter on this creature for each 1 damage prevented this way. Draw a card.",
+        ] {
+            assert!(parse_put_counter_prevention_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
     }
 
     #[test]

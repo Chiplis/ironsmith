@@ -143,8 +143,7 @@
     "name": "Violent Echoes",
     "oracle_id": "e8ecec61-cc47-4051-a599-0e7470764488",
     "text": "Mana cost: {2}{R}{R}\nType: Instant\nViolent Echoes deals 6 damage to target creature or planeswalker. If excess damage was dealt to that permanent this way, empower Jace X, where X is that excess damage. (Put that many loyalty counters on a Jace token you control. If you don't control one, first create a blue Jace planeswalker token with \"[−1]: Surveil 1\" and \"[−3]: Draw a card.\")",
-    "proposed_coverage": "partial",
-    "remaining_blocker": "Separate excess-damage conditional and where-X binding is the frozen first diagnostic."
+    "proposed_coverage": "complete"
   },
   {
     "name": "Vraska's Final Mercy",

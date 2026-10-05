@@ -1797,6 +1797,9 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) => {
+                StaticAbility::prevent_matching_damage_with_follow_up(spec.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) => {
                 StaticAbility::prevent_matching_damage(spec.clone())
             }

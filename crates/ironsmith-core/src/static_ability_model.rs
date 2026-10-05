@@ -72,6 +72,34 @@ pub struct PreventMatchingDamageSpec {
     pub display: String,
 }
 
+/// The amount referenced by a prevention effect's additional action.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum PreventionFollowUpAmount {
+    /// "The damage prevented this way"; zero when prevention is prohibited.
+    #[default]
+    Prevented,
+    /// "That many" referring to the damage proposed before this prevention.
+    Proposed,
+}
+
+/// A complete all-damage prevention with additional effects. Amount-bearing
+/// follow-ups explicitly distinguish actual prevention from proposed damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct StaticDamagePreventionFollowUp<E> {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub damage_source_tag: Option<crate::tag::TagKey>,
+    pub effects: Vec<E>,
+    pub display: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub amount_basis: PreventionFollowUpAmount,
+}
+
 /// A scoped rule permission to ignore one targeting-protection ability.
 /// The permission changes targeting legality; it does not remove the ability.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1337,6 +1365,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     BlockingAsThoughNoLandwalk(BlockingAsThoughNoLandwalkSpec),
     CanBlockAdditionalForEach { additional: u32, filter: ObjectFilter },
     PreventMatchingDamage(PreventMatchingDamageSpec),
+    PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp<E>),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2600,6 +2629,18 @@ where
             },
             StaticAbilityPayload::PreventMatchingDamage(spec) =>
                 StaticAbilityPayload::PreventMatchingDamage(spec),
+            StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) =>
+                StaticAbilityPayload::PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp {
+                    source_filter: spec.source_filter,
+                    target_player_filter: spec.target_player_filter,
+                    target_object_filter: spec.target_object_filter,
+                    combat_only: spec.combat_only,
+                    noncombat_only: spec.noncombat_only,
+                    damage_source_tag: spec.damage_source_tag,
+                    amount_basis: spec.amount_basis,
+                    effects: spec.effects.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
+                    display: spec.display,
+                }),
             StaticAbilityPayload::PreventHalfDamageReplacement {
                 source_filter,
                 target_player_filter,
@@ -6658,6 +6699,14 @@ impl<
                 noncombat_only: false,
                 display,
             },
+        }
+    }
+
+    pub fn prevent_matching_damage_with_follow_up(spec: StaticDamagePreventionFollowUp<E>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec),
         }
     }
 

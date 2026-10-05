@@ -126,18 +126,88 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ));
     }
 
+    // Explicit "this way" reads the preceding damage instruction's numeric
+    // execution fact, even inside another damage-triggered ability.
     if let Some(used) = prefix_len(
         words,
         &[
+            &[
+                "the", "amount", "of", "excess", "damage", "dealt", "to", "that", "creature",
+                "this", "way",
+            ],
+            &[
+                "the",
+                "amount",
+                "of",
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
+            &[
+                "the", "amount", "of", "excess", "damage", "dealt", "this", "way",
+            ],
+            &[
+                "amount", "of", "excess", "damage", "dealt", "to", "that", "creature", "this",
+                "way",
+            ],
+            &["amount", "of", "excess", "damage", "dealt", "this", "way"],
             &[
                 "the", "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
             ],
             &[
                 "excess", "damage", "dealt", "to", "that", "creature", "this", "way",
             ],
+            &[
+                "the",
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
+            &[
+                "excess",
+                "damage",
+                "dealt",
+                "to",
+                "that",
+                "permanent",
+                "this",
+                "way",
+            ],
             &["the", "excess", "damage", "dealt", "this", "way"],
             &["excess", "damage", "dealt", "this", "way"],
+        ],
+    ) {
+        return Some((
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::ExcessDamage,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::DealtDamage),
+            ),
+            used,
+        ));
+    }
+    // The resolver chooses an actual prior damage result or a typed excess
+    // trigger's ambient amount. It never treats ordinary damage as excess.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["that", "excess", "damage"],
             &["that", "amount", "of", "excess", "damage"],
+            &["that", "much", "excess", "damage"],
+            &["the", "excess", "damage"],
+            &["the", "excess"],
         ],
     ) {
         return Some((
