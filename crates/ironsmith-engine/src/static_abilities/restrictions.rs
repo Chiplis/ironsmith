@@ -13,6 +13,36 @@ use crate::object::CounterType;
 use crate::target::{ObjectFilter, PlayerFilter};
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct BlockingAsThoughNoLandwalk {
+    pub spec: ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec,
+}
+
+impl StaticAbilityKind for BlockingAsThoughNoLandwalk {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::BlockingAsThoughNoLandwalk
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        !game.is_phased_out(source)
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        game.effect_store
+            .cant_effects
+            .blocking_as_though_landwalk_overrides
+            .push(crate::game_state::BlockingAsThoughLandwalkOverride {
+                spec: self.spec.clone(),
+                source,
+                controller,
+            });
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TargetingAsThoughNoAbility {
     pub spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
 }

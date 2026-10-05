@@ -22,7 +22,6 @@ pub enum UnsupportedRewriteLineKind {
     DefendingPlayerChoice,
     SacrificeIslandThisWay,
     AuraCopyAttachment,
-    LandwalkOverride,
     PowerOrToughnessUnblockable,
     DiscardQualifier,
     Predicate,
@@ -59,7 +58,6 @@ impl UnsupportedRewriteLineKind {
                 "unsupported if-you-sacrifice-an-island-this-way clause"
             }
             Self::AuraCopyAttachment => "unsupported aura-copy attachment fanout clause",
-            Self::LandwalkOverride => "unsupported landwalk override clause",
             Self::PowerOrToughnessUnblockable => {
                 "unsupported power-or-toughness cant-be-blocked subject"
             }
@@ -204,23 +202,6 @@ const RULES: &[UnsupportedRule] = &[
             "that", "creature",
         ],
         kind: UnsupportedRewriteLineKind::AuraCopyAttachment,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "with",
-            "islandwalk",
-            "can",
-            "be",
-            "blocked",
-            "as",
-            "though",
-            "they",
-            "didnt",
-            "have",
-            "islandwalk",
-        ],
-        kind: UnsupportedRewriteLineKind::LandwalkOverride,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,

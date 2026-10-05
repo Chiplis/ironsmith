@@ -3964,28 +3964,6 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        if self
-            .abilities
-            .first()
-            .and_then(|ability| match &ability.kind {
-                AbilityKind::Static(ability) => ability.landwalk_kind(),
-                _ => None,
-            })
-            .is_some()
-            && self.filter.card_types.len() == 1
-            && self.filter.card_types[0] == crate::types::CardType::Creature
-            && self
-                .filter
-                .ability_markers
-                .iter()
-                .any(|marker| marker.eq_ignore_ascii_case(&self.display))
-        {
-            return format!(
-                "{} can be blocked as though they didn't have {}",
-                pluralized_subject_text(&self.filter),
-                self.display.to_ascii_lowercase()
-            );
-        }
         let subject = pluralized_subject_text(&self.filter);
         let singular_subject = subject.starts_with("enchanted ")
             || subject.starts_with("equipped ")

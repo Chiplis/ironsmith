@@ -154,6 +154,7 @@ pub struct CantBeBlockedAndHasKeywordsClause<'a> {
 pub struct LandwalkBlockOverrideClause<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
     pub ability_word: &'a str,
+    pub all_landwalk: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1742,6 +1743,24 @@ fn parse_landwalk_block_override_clause_lexed<'a>(
 ) -> WResult<LandwalkBlockOverrideClause<'a>> {
     let subject_tokens = take_until_phrase(input, CAN_BE_BLOCKED_AS_THOUGH_NO_ABILITY_PHRASES)?;
     primitives::any_phrase(CAN_BE_BLOCKED_AS_THOUGH_NO_ABILITY_PHRASES).parse_next(input)?;
+    if opt(primitives::phrase(&["those", "abilities"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        // The plural reference must have the authored landwalk-family antecedent.
+        let base = primitives::strip_lexed_suffix_phrase(
+            subject_tokens,
+            &["with", "landwalk", "abilities"],
+        )
+        .ok_or_else(|| {
+            primitives::backtrack_err("landwalk abilities", "landwalk-family antecedent")
+        })?;
+        return Ok(LandwalkBlockOverrideClause {
+            subject_tokens: base,
+            ability_word: "landwalk",
+            all_landwalk: true,
+        });
+    }
     let ability_token: &'a OwnedLexToken = any.parse_next(input)?;
     let ability_word = ability_token
         .as_word()
@@ -1749,6 +1768,7 @@ fn parse_landwalk_block_override_clause_lexed<'a>(
     Ok(LandwalkBlockOverrideClause {
         subject_tokens: trim_lexed_commas(subject_tokens),
         ability_word,
+        all_landwalk: false,
     })
 }
 

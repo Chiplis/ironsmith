@@ -8366,15 +8366,10 @@ mod tests {
             "Create a token that’s a copy of that Aura attached to that creature.",
         );
 
-        let landwalk_error = diagnose_known_unsupported_rewrite_line(&landwalk.tokens)
-            .expect("expected landwalk override diagnostic");
+        assert!(diagnose_known_unsupported_rewrite_line(&landwalk.tokens).is_none());
         let aura_copy_error = diagnose_known_unsupported_rewrite_line(&aura_copy.tokens)
             .expect("expected aura-copy diagnostic");
 
-        assert_eq!(
-            landwalk_error.to_string(),
-            "unsupported landwalk override clause"
-        );
         assert_eq!(
             aura_copy_error.to_string(),
             "unsupported aura-copy attachment fanout clause"
