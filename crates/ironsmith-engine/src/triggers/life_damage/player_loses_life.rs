@@ -64,15 +64,11 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
         let Some(e) = event.downcast::<LifeLossEvent>() else {
             return false;
         };
-        let player_matches = match &self.player {
-            PlayerFilter::You => e.player == ctx.controller,
-            PlayerFilter::Opponent => e.player != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Active => ctx.game.is_active_player(e.player),
-            PlayerFilter::Specific(id) => e.player == *id,
-            _ => true,
-        };
-        if !player_matches {
+        if e.amount == 0
+            || !crate::filter::player_filter_matches_game(
+                &self.player, e.player, ctx.game, &ctx.filter_ctx,
+            )
+        {
             return false;
         }
         if let Some(exact) = self.exact_amount
@@ -86,6 +82,10 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
             return current_turn_matches_player_filter(during_turn, ctx, Some(e.player));
         }
         true
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::LifeLoss])
     }
 
     fn display(&self) -> String {
@@ -134,4 +134,23 @@ mod tests {
         let trigger = PlayerLosesLifeTrigger::new(PlayerFilter::Any);
         assert!(trigger.display().contains("loses life"));
     }
+    #[test]
+    fn life_loss_filters_preserve_teammates_and_fail_closed_for_unknown_bindings() {
+        let a = crate::ids::PlayerId(0);
+        let b = crate::ids::PlayerId(1);
+        let c = crate::ids::PlayerId(2);
+        let mut game = crate::game_state::GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        game.set_teams(vec![vec![a, b], vec![c]]).unwrap();
+        let ctx = TriggerContext::for_source(crate::ids::ObjectId(99), a, &game);
+        let event = |player, amount| TriggerEvent::new_with_provenance(
+            LifeLossEvent::from_effect(player, amount), crate::provenance::ProvNodeId::default(),
+        );
+        let opponent = PlayerLosesLifeTrigger::new(PlayerFilter::Opponent);
+        assert!(!opponent.matches(&event(b, 2), &ctx));
+        assert!(opponent.matches(&event(c, 2), &ctx));
+        assert!(!opponent.matches(&event(c, 0), &ctx));
+        let missing = PlayerLosesLifeTrigger::new(PlayerFilter::TaggedPlayer("unbound-life-player".into()));
+        assert!(!missing.matches(&event(c, 2), &ctx));
+    }
+
 }

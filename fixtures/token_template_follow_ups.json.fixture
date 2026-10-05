@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Case of the Pilfered Proof",
+    "oracle_id": "68d3084b-0f4b-44a6-8954-6ebaf1db9269",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Case",
+    "oracle_text": "Whenever a Detective you control enters or is turned face up, put a +1/+1 counter on it.\nTo solve — You control three or more Detectives. (If unsolved, solve at the beginning of your end step.)\nSolved — If one or more tokens would be created under your control, those tokens plus a Clue token are created instead. (It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "scryfall_uri": "https://scryfall.com/card/mkm/9/case-of-the-pilfered-proof?utm_source=api"
+  },
+  {
+    "name": "Fisher's Talent",
+    "oracle_id": "44ba2aa5-2bf5-4267-ae82-f0daf8f5e3e8",
+    "mana_cost": "{2}{G}{U}",
+    "type_line": "Enchantment — Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nAt the beginning of your upkeep, look at the top card of your library. You may reveal it if it's a land card. Create a 1/1 blue Fish creature token if you revealed it this way. Then draw a card.\n{G}{U}: Level 2\nIf you would create a Fish token, create a 3/3 blue Shark creature token instead.\n{2}{G}{U}: Level 3\nIf you would create a Shark token, create an 8/8 blue Octopus creature token instead.",
+    "scryfall_uri": "https://scryfall.com/card/blc/36/fishers-talent?utm_source=api"
+  }
+]

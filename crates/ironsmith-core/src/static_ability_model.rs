@@ -209,6 +209,11 @@ pub enum AdditionalTokenKind {
     Squirrel,
 }
 
+/// How complete token templates modify the matching groups of one creation event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TokenCreationTemplateMode { AppendOnce, AppendForEach, ReplaceEach }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum PregameActionKind {
@@ -1367,6 +1372,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     PreventMatchingDamage(PreventMatchingDamageSpec),
     PreventMatchingDamageWithFollowUp(StaticDamagePreventionFollowUp<E>),
     AddLifeGainReplacement { player: PlayerFilter, additional: i32, display: String },
+    TokenCreationTemplates {
+        controller: PlayerFilter,
+        token_filter: ObjectFilter,
+        templates: Vec<E>,
+        mode: TokenCreationTemplateMode,
+        choose_one: bool,
+        optional: bool,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2885,6 +2899,12 @@ where
                 replacement_mana,
                 display,
             },
+            StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } =>
+                StaticAbilityPayload::TokenCreationTemplates {
+                    controller, token_filter,
+                    templates: templates.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
+                    mode, choose_one, optional, display,
+                },
             StaticAbilityPayload::AddLifeGainReplacement { player, additional, display } =>
                 StaticAbilityPayload::AddLifeGainReplacement { player, additional, display },
             StaticAbilityPayload::DoubleLifeChangeReplacement {
@@ -7078,6 +7098,15 @@ impl<
             },
         }
     }
+    pub fn token_creation_templates(
+        controller: PlayerFilter, token_filter: ObjectFilter, templates: Vec<E>,
+        mode: TokenCreationTemplateMode, choose_one: bool, optional: bool, display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::TokenCreationTemplates), label: display.clone(),
+            payload: StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } }
+    }
+
     pub fn add_life_gain_replacement(player: PlayerFilter, additional: i32, display: impl Into<String>) -> Self {
         let display = display.into();
         Self {

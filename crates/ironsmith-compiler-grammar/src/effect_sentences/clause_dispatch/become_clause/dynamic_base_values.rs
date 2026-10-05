@@ -93,19 +93,14 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
     let words = view.word_refs();
     // Pair references share one antecedent: "that creature's power and
     // toughness" is not two unrelated scalar expressions or their sum.
-    if words.ends_with(&["power", "and", "toughness"]) {
-        let power_end = words.len() - 2;
-        let power_tokens = &tokens[view.token_span_for_words(0, power_end)?];
-        if let Some(power) = complete_value(power_tokens) {
-            let mut toughness_tokens = power_tokens.to_vec();
-            toughness_tokens.last_mut()?.replace_word("toughness");
-            let toughness = complete_value(&toughness_tokens)?;
-            return Some(Quantity {
-                power,
-                toughness: Some(toughness),
-                declared_reference: None,
-            });
-        }
+    if let Some((power, toughness)) =
+        crate::grammar::shared_util::value_expr::parse_power_toughness_value_pair_words(&words)
+    {
+        return Some(Quantity {
+            power,
+            toughness: Some(toughness),
+            declared_reference: None,
+        });
     }
     if let Some(value) = complete_value(tokens) {
         return Some(Quantity {
@@ -374,6 +369,119 @@ mod tests {
                     .is_err(),
                 "{rhs}"
             );
+        }
+    }
+}
+
+/// `a Treefolk creature with haste and base power and toughness equal to ...`.
+/// The pre-P/T abilities belong to the same animation and duration.
+pub(super) fn animation_with_preceding_grants(
+    target: TargetAst,
+    tokens: &[OwnedLexToken],
+    duration: Until,
+    duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
+    set_surface: Option<ironsmith_core::SetQuantifierSurface>,
+    preserve_other_types: bool,
+    preserve_other_colors: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let Some(and_base) = words
+        .windows(5)
+        .position(|window| window == ["and", "base", "power", "and", "toughness"])
+    else {
+        return Ok(None);
+    };
+    let Some(with) = words[..and_base].iter().position(|word| *word == "with") else {
+        return Ok(None);
+    };
+    let Some(grant_range) = view.token_span_for_words(with + 1, and_base) else {
+        return Ok(None);
+    };
+    // A quoted granted ability can itself mention base characteristics. Its
+    // words must not be mistaken for the outer animation's characteristic tail.
+    if tokens[..grant_range.end]
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count()
+        % 2
+        != 0
+    {
+        return Ok(None);
+    }
+    let Some(descriptor) = become_grammar::parse_become_creature_descriptor_words(&words[..with])
+    else {
+        return Ok(None);
+    };
+    let mut pt_words = vec!["creature", "with"];
+    pt_words.extend_from_slice(&words[and_base + 1..]);
+    let Some(pt) = become_grammar::parse_become_base_pt_words(&pt_words) else {
+        return Err(CardTextError::ParseError(
+            "unsupported animation base-characteristic tail".into(),
+        ));
+    };
+    let grants_tokens = &tokens[grant_range];
+    let (granted_abilities, is_choice) =
+        parse_granted_abilities_for_gain_clause(grants_tokens, &words, false)?;
+    if is_choice || granted_abilities.is_empty() {
+        return Err(CardTextError::ParseError(
+            "unsupported animation pre-characteristic grants".into(),
+        ));
+    }
+    Ok(Some(
+        EffectAst::subject_verb_become_base_pt_creature(
+            pt.power,
+            pt.toughness,
+            target,
+            descriptor.card_types,
+            descriptor.subtypes,
+            Vec::new(),
+            descriptor.colors,
+            Vec::new(),
+            granted_abilities,
+            preserve_other_types,
+            preserve_other_types
+                .then_some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes),
+            Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
+            duration_surface,
+            duration,
+        )
+        .with_set_quantifier_surface(set_surface)
+        .with_animation_color_retention(preserve_other_colors),
+    ))
+}
+
+#[cfg(test)]
+mod pre_pt_grant_tests {
+    use super::*;
+    #[test]
+    fn paired_animation_keeps_preceding_haste_and_complete_still_land_followup() {
+        let tokens = crate::lexer::lex_line("Untap target land you control. It becomes a Treefolk creature with haste and base power and toughness equal to this creature's power and toughness. It's still a land.", 0).unwrap();
+        let (result, loss) = crate::parse_loss::capture(|| {
+            crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+        });
+        let effects = result.unwrap();
+        assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+        let debug = format!("{effects:?}");
+        for required in [
+            "PowerOf",
+            "ToughnessOf",
+            "Haste",
+            "Treefolk",
+            "preserve_other_types: true",
+        ] {
+            assert!(debug.contains(required), "{required}: {debug}");
+        }
+    }
+    #[test]
+    fn pre_pt_unknown_grants_do_not_disappear_and_unknown_quantity_tails_do_not_truncate() {
+        let subject = crate::lexer::lex_line("it", 0).unwrap();
+        for body in [
+            "a Treefolk creature with mystery and base power and toughness equal to this creature's power and toughness",
+            "a Treefolk creature with haste and base power and toughness equal to this creature's power and toughness plus mystery",
+        ] {
+            let tokens = crate::lexer::lex_line(body, 0).unwrap();
+            assert!(super::super::parse_become_clause(&subject, &tokens).is_err());
         }
     }
 }

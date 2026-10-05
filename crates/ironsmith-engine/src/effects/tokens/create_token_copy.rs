@@ -511,27 +511,21 @@ fn execute_token_instruction(
         }
     }
 
-    let primary_created_count = created_ids.len() as u32;
-    if primary_created_count > 0 {
-        game.queue_trigger_event(
-            ctx.provenance,
-            crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::CreateTokensEvent::with_token_cause(
-                    controller_id,
-                    primary_created_count,
-                    token_preview,
-                    ctx.cause.clone(),
-                ),
-                ctx.provenance,
-            ),
-        );
-    }
+    let mut actual_creation = replacement.clone();
+    actual_creation.count = created_ids.len() as u32;
+    actual_creation.token = Some(token_preview);
 
     let additional_ids = create_replacement_additional_tokens(
         game,
         ctx,
         controller_id,
-        &replacement.additional_tokens,
+        &mut actual_creation,
+        &super::lifecycle::AdditionalTokenInstructions {
+            enters_tapped: effect.enters_tapped, entry: entry_options,
+            attack_player: configured_attack_player, attack_player_only,
+            gains_haste: effect.has_haste && effect.haste_followup_reference_surface.is_some(),
+            ..Default::default()
+        },
         &mut events,
         &mut entry_receipts,
     )?;
@@ -539,6 +533,8 @@ fn execute_token_instruction(
         return Ok(EffectOutcome::with_objects(Vec::new()));
     }
     created_ids.extend(additional_ids);
+    super::lifecycle::publish_created_token_groups(game, ctx, actual_creation);
+
 
     // Follow-up instructions apply to the complete creation event, including
     // additional tokens supplied by replacement effects.

@@ -868,8 +868,7 @@ pub(super) fn compile_become_base_pt_creature_action(
         name_override,
         add_supertypes,
         remove_all_abilities,
-        power,
-        toughness,
+        base_power_toughness,
         target,
         card_types,
         subtypes,
@@ -899,13 +898,15 @@ pub(super) fn compile_become_base_pt_creature_action(
     // results (and other contextual references) in the P/T values like every
     // other value-bearing instruction; an unresolvable reference keeps its
     // authored form.
-    let power = &resolve_value_it_tag(power, &current_reference_env(ctx))
-        .unwrap_or_else(|_| power.clone());
-    let toughness = &resolve_value_it_tag(toughness, &current_reference_env(ctx))
-        .unwrap_or_else(|_| toughness.clone());
+    let resolved_size = base_power_toughness.as_ref().map(|(power, toughness)| (
+        resolve_value_it_tag(power, &current_reference_env(ctx)).unwrap_or_else(|_| power.clone()),
+        resolve_value_it_tag(toughness, &current_reference_env(ctx)).unwrap_or_else(|_| toughness.clone()),
+    ));
     compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
-        let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
-        let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
+        let resolved_size = resolved_size.as_ref().map(|(power, toughness)| (
+            bind_iterated_value_to_choose_spec(power, &spec),
+            bind_iterated_value_to_choose_spec(toughness, &spec),
+        ));
         // CR 205.1b gives "artifact creature" an implicit preservation
         // exception even without an "in addition" clause.
         let implicitly_preserves_card_types =
@@ -928,13 +929,12 @@ pub(super) fn compile_become_base_pt_creature_action(
         .with_type_retention_surface(*type_retention_surface)
         .with_animation_pt_surface(*animation_pt_surface)
         .with_animation_duration_surface(*animation_duration_surface)
-        .with_set_quantifier_surface(*set_quantifier_surface)
-        .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-            power: resolved_power,
-            toughness: resolved_toughness,
-            sublayer: crate::continuous::PtSublayer::Setting,
-        })
-        .resolve_set_pt_values_at_resolution();
+        .with_set_quantifier_surface(*set_quantifier_surface);
+        if let Some((power, toughness)) = resolved_size {
+            apply = apply.with_additional_modification(crate::continuous::Modification::SetPowerToughness {
+                power, toughness, sublayer: crate::continuous::PtSublayer::Setting,
+            }).resolve_set_pt_values_at_resolution();
+        }
         if let Some(name) = name_override {
             apply = apply.with_additional_modification(crate::continuous::Modification::SetName(
                 name.clone(),

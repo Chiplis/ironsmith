@@ -84,9 +84,9 @@ impl GameState {
         // Other zones retain their printed/granted source abilities.
         for effect in effects {
             let decline = effect.optional_decline_effect();
-            self.effect_store
-                .replacement_effects
-                .add_static_ability_effect(effect);
+            for alternative in effect.token_template_alternatives() {
+                self.effect_store.replacement_effects.add_static_ability_effect(alternative);
+            }
             if let Some(decline) = decline {
                 self.effect_store
                     .replacement_effects

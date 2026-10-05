@@ -378,6 +378,7 @@ pub enum StaticAbilityId {
     PlaneswalkersYouControlDontDieAtZeroLoyalty,
     /// Add to one life-gain event; appended for serialized ID compatibility.
     AddLifeGainReplacement,
+    TokenCreationTemplates,
 }
 
 impl StaticAbilityId {
@@ -679,6 +680,7 @@ impl StaticAbilityId {
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
             | AddLifeGainReplacement
+            | TokenCreationTemplates
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement

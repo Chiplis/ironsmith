@@ -672,6 +672,17 @@ pub fn parse_become_clause(
     let base_pt_tokens = if base_pt_words.len() < positions.len() {
         crate::util::trim_edge_punctuation_tokens(&become_body_tokens[..positions[base_pt_words.len()].0])
     } else { become_body_tokens };
+    if let Some(effect) = dynamic_base_values::animation_with_preceding_grants(
+        target.clone(),
+        base_pt_tokens,
+        duration.clone(),
+        animation_duration_surface,
+        set_quantifier_surface,
+        outer_retains_types,
+        preserve_other_colors,
+    )? {
+        return Ok(effect);
+    }
     let base_pt_with_abilities = become_grammar::parse_become_base_pt_words(base_pt_words)
         .map(|pt| (pt, Vec::new()))
         .or_else(|| {

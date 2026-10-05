@@ -121,26 +121,20 @@ fn execute_token_instruction(
             }
         }
 
-        if !incubated_ids.is_empty() {
-            game.queue_trigger_event(
-                ctx.provenance,
-                TriggerEvent::new_with_provenance(
-                    crate::events::CreateTokensEvent::with_token_cause(
-                        controller_id,
-                        incubated_ids.len() as u32,
-                        token_preview,
-                        ctx.cause.clone(),
-                    ),
-                    ctx.provenance,
-                ),
-            );
-        }
+        let mut actual_creation = replacement.clone();
+        actual_creation.count = incubated_ids.len() as u32;
+        actual_creation.token = Some(token_preview);
         let mut iteration_ids = incubated_ids;
         let additional_ids = create_replacement_additional_tokens(
             game,
             ctx,
             controller_id,
-            &replacement.additional_tokens,
+            &mut actual_creation,
+            &super::lifecycle::AdditionalTokenInstructions {
+                entry: entry_options,
+                initial_counters: if amount > 0 { vec![(CounterType::PlusOnePlusOne, amount)] } else { Vec::new() },
+                ..Default::default()
+            },
             &mut events,
         &mut entry_receipts,
         )?;
@@ -148,6 +142,7 @@ fn execute_token_instruction(
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
         iteration_ids.extend(additional_ids);
+        super::lifecycle::publish_created_token_groups(game, ctx, actual_creation);
 
         events.push(TriggerEvent::new_with_provenance(
             KeywordActionEvent::new(

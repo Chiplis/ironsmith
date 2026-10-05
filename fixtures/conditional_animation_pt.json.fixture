@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Behind the Mask",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "As an additional cost to cast this spell, you may collect evidence 6. (Exile cards with total mana value 6 or greater from your graveyard.)\nUntil end of turn, target artifact or creature becomes an artifact creature with base power and toughness 4/3. If evidence was collected, it has base power and toughness 1/1 until end of turn instead."
+  }
+]

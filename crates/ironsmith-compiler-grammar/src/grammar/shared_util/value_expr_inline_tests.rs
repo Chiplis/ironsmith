@@ -806,3 +806,23 @@ fn plural_subtype_union_and_negative_card_types_remain_complete_count_operands()
         }
     }
 }
+
+#[test]
+fn coordinated_characteristic_reference_keeps_distinct_axes_of_one_object() {
+    for prefix in ["this creature's", "that creature's"] {
+        let tokens = lex_line(&format!("{prefix} power and toughness"), 0).unwrap();
+        let view = TokenWordView::new(&tokens);
+        let (power, toughness) = parse_power_toughness_value_pair_words(&view.word_refs()).unwrap();
+        let Value::PowerOf(power) = power.unhinted() else {
+            panic!("power");
+        };
+        let Value::ToughnessOf(toughness) = toughness.unhinted() else {
+            panic!("toughness");
+        };
+        assert_eq!(power, toughness);
+    }
+    assert!(
+        parse_power_toughness_value_pair_words(&["its", "power", "and", "toughness", "plus", "1"])
+            .is_none()
+    );
+}

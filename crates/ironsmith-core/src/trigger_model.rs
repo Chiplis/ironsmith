@@ -730,6 +730,10 @@ pub enum TriggerKind {
         defender: PlayerFilter,
         grouping: PlayerAttackGrouping,
     },
+    PlayerGainsLife {
+        player: PlayerFilter,
+        during_turn: Option<PlayerFilter>,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1739,6 +1743,12 @@ impl Trigger {
         Self::typed(
             "you_gain_life_during_turn",
             TriggerKind::YouGainLifeDuringTurn { during_turn },
+        )
+    }
+    pub fn player_gains_life(player: PlayerFilter, during_turn: Option<PlayerFilter>) -> Self {
+        Self::typed(
+            "player_gains_life",
+            TriggerKind::PlayerGainsLife { player, during_turn },
         )
     }
     pub fn player_loses_life(player: PlayerFilter) -> Self {

@@ -15,6 +15,7 @@ mod lifecycle;
 pub use amass::AmassEffect;
 pub use empower_jace::EmpowerJaceEffect;
 pub use create_token::CreateTokenEffect;
+pub(crate) use create_token::materialize_named_creator_source_in_token;
 pub use create_token_copy::{
     CopyAttackTargetMode, CreateTokenCopyEffect, TokenCopyReferenceSurface,
 };

@@ -2310,3 +2310,18 @@ fn end_combat_directional_object_relations_do_not_widen_to_all_blocked_creatures
     assert!(!blockers.blocked_by_source);
     assert!(!blockers.blocked);
 }
+
+#[test]
+fn entry_or_face_up_retains_the_same_complete_subject_and_object_reference() {
+    use crate::model::ast::TriggerSpec;
+    for text in ["a Detective you control enters or is turned face up", "a green creature with power 2 or greater you control enters or is turned face up"] {
+        let tokens = tokenize_line(text, 0);
+        let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+        let TriggerSpec::Either(left, right) = &parsed else { panic!("{parsed:?}"); };
+        let (TriggerSpec::EntersBattlefield { filter, .. }, TriggerSpec::TurnedFaceUp(face_up)) = (&**left, &**right) else { panic!("{parsed:?}"); };
+        assert_eq!(filter, face_up);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        assert_eq!(ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(&parsed),
+            ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(left));
+    }
+}

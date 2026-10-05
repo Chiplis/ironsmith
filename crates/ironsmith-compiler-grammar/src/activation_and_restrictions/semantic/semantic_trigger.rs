@@ -13,6 +13,8 @@ mod phasing_transitions;
 mod milling_transitions;
 #[path = "player_attack_declarations.rs"]
 mod player_attack_declarations;
+#[path = "life_change_triggers.rs"]
+mod life_change_triggers;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -3972,6 +3974,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 None => TriggerSpec::ThisDealsDamage,
             },
         );
+    }
+
+    if let Some(trigger) = life_change_triggers::parse_life_change_trigger(tokens) {
+        return Ok(trigger);
     }
 
     if trigger_pattern_accepts(&words, YOU_GAIN_LIFE_TRIGGER_PATTERN) {

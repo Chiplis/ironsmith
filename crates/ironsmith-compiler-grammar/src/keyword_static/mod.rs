@@ -801,7 +801,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("the"),
             StaticAbilityLineHeadHint::Pair("the", "legend"),
         ],
-        "parse_lose_game_replacement_line" => {
+        "parse_lose_game_replacement_line" | "parse_token_creation_templates_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
         // "Each nonland permanent you control is all colors." (Leyline of the
@@ -1395,6 +1395,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_double_token_creation_replacement_line),
+        single_static_ability_ast_passthrough_rule!(parse_token_creation_templates_line),
         single_static_ability_ast_rule!(parse_double_counters_replacement_line),
         single_static_ability_ast_passthrough_rule!(parse_lose_game_replacement_line),
         single_static_ability_ast_rule!(parse_keyword_action_replacement_line),

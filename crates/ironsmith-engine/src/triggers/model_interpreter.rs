@@ -530,6 +530,8 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::Trigger::is_dealt_damage(target)
             }
         }
+        TriggerKind::PlayerGainsLife { player, during_turn } => crate::triggers::Trigger::new(
+            crate::triggers::PlayerGainsLifeTrigger { player, during_turn }),
         TriggerKind::YouGainLife => crate::triggers::Trigger::you_gain_life(),
         TriggerKind::YouGainLifeCausedBy { source } => {
             crate::triggers::Trigger::you_gain_life_caused_by(source)
@@ -1065,6 +1067,15 @@ impl super::Trigger {
             ),
             ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand { player, filter } => {
                 Self::player_plays_land(player, filter)
+            }
+            ironsmith_core::DelayedTriggerSpec::LifeChanged { player, gained, during_turn } => {
+                if gained {
+                    Self::new(super::PlayerGainsLifeTrigger { player, during_turn })
+                } else if let Some(turn) = during_turn {
+                    Self::player_loses_life_during_turn(player, turn)
+                } else {
+                    Self::player_loses_life(player)
+                }
             }
             ironsmith_core::DelayedTriggerSpec::PlayerDrawsCard(player) => {
                 Self::player_draws_card(player)

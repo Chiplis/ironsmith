@@ -61,3 +61,7 @@ pub use companion::*;
 #[path = "keyword_static_lines/life_change.rs"]
 mod life_change;
 pub use life_change::*;
+
+#[path = "keyword_static_lines/token_templates.rs"]
+mod token_templates;
+pub use token_templates::*;

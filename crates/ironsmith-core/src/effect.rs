@@ -657,6 +657,12 @@ pub enum DelayedTriggerSpec {
         activation_cost_has_tap: Option<bool>,
     },
     Either(Box<DelayedTriggerSpec>, Box<DelayedTriggerSpec>),
+    /// Each actual life gain/loss while this registration is active.
+    LifeChanged {
+        player: PlayerFilter,
+        gained: bool,
+        during_turn: Option<PlayerFilter>,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.

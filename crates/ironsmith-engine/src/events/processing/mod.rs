@@ -293,6 +293,12 @@ pub(crate) fn replacement_effect_choice_description(
                 replacement_option_description(game, effect.source)
             )
         }
+        ReplacementAction::TokenCreationTemplates { templates, choice_parent: Some(_), .. } => {
+            let names: Vec<_> = templates.iter().filter_map(|template|
+                template.downcast_ref::<crate::effects::CreateTokenEffect>().map(|create| create.token.card.name.clone())
+            ).collect();
+            format!("Apply {}: create {} tokens", replacement_option_description(game, effect.source), names.join(" and "))
+        }
         ReplacementAction::EnterAsCopy { source, .. } => {
             let source_name = game
                 .current_name(*source)
@@ -706,7 +712,9 @@ impl TraitEventProcessingState {
 }
 
 fn quantitative_event_has_been_removed(event: &Event) -> bool {
-    crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+    crate::events::downcast_event::<crate::events::CreateTokensEvent>(event.inner())
+        .is_some_and(|creation| creation.total_count() == 0)
+        || crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
         .is_some_and(|damage| damage.amount == 0)
         || crate::events::downcast_event::<crate::events::PutCountersEvent>(event.inner())
             .is_some_and(|placement| placement.count == 0)

@@ -1484,15 +1484,7 @@ pub(crate) fn resolve_turn_history_count(
             .projected_records()
             .filter_map(|record| record.event.downcast::<CreateTokensEvent>())
             .filter(|event| player_filter.matches_player(event.controller, filter_ctx))
-            .map(|event| {
-                event.count.saturating_add(
-                    event
-                        .additional_tokens
-                        .iter()
-                        .map(|(_, count)| *count)
-                        .sum::<u32>(),
-                )
-            })
+            .map(|event| event.total_count())
             .sum::<u32>() as i32,
         TurnHistoryCount::PutIntoGraveyard { owner, from } => history
             .projected_records()

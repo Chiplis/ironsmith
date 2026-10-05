@@ -4635,3 +4635,32 @@ impl StaticAbilityKind for AddLifeGainReplacement {
         ))
     }
 }
+
+/// Fixed token additions/substitutions retain complete lowered definitions.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TokenCreationTemplates {
+    pub controller: PlayerFilter,
+    pub token_filter: ObjectFilter,
+    pub templates: Vec<crate::effect::Effect>,
+    pub mode: ironsmith_core::TokenCreationTemplateMode,
+    pub optional: bool,
+    pub choose_one: bool,
+    pub display: String,
+    pub condition: Option<crate::ConditionExpr>,
+}
+impl StaticAbilityKind for TokenCreationTemplates {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::TokenCreationTemplates }
+    fn display(&self) -> String { self.display.clone() }
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut next = self.clone();
+        next.condition = Some(match next.condition { Some(old) => crate::ConditionExpr::And(Box::new(old), Box::new(condition)), None => condition });
+        Some(StaticAbility::new(next))
+    }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        let effect = ReplacementEffect::with_matcher(source, controller,
+            crate::events::tokens::matchers::WouldCreateTokensUnderControlMatcher::new(self.controller.clone())
+                .with_token_filter(self.token_filter.clone()).with_condition(self.condition.clone()),
+            ReplacementAction::TokenCreationTemplates { templates: self.templates.clone(), mode: self.mode, choose_one: self.choose_one, choice_parent: None });
+        Some(if self.optional { effect.optional() } else { effect })
+    }
+}
