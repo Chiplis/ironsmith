@@ -83,6 +83,9 @@ pub enum ExecutionError {
         player: PlayerId,
         decision: &'static str,
     },
+    /// Required retained facts are absent or inconsistent. Boolean queries
+    /// must preserve this as incomplete execution, never infer false or zero.
+    IncompleteEvidence(String),
 }
 
 impl ExecutionError {
@@ -98,7 +101,9 @@ impl ExecutionError {
         self.is_resource_exhaustion()
             || matches!(
                 self,
-                Self::ContinuousDiscovery(_) | Self::UnresolvedPlayerDecision { .. }
+                Self::ContinuousDiscovery(_)
+                    | Self::UnresolvedPlayerDecision { .. }
+                    | Self::IncompleteEvidence(_)
             )
     }
 }
@@ -126,6 +131,9 @@ impl std::fmt::Display for ExecutionError {
                 "Incomplete calculation: {decision} requires a decision from player {:?}",
                 player
             ),
+            ExecutionError::IncompleteEvidence(message) => {
+                write!(f, "Incomplete retained evidence: {message}")
+            }
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
             ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),

@@ -1,0 +1,9 @@
+# Recovery on the merged main baseline
+
+Working base is d51f4ee69b500462c8d70354cec324bf6d04677c. The 54 original campaign PRs through 820 have been merged by the user. This main also contains 492c07739's parser, engine and rendering integration repairs: 433 files differ from ced8, so reconstruction must preserve those repairs rather than restore entire old files.
+
+The previously local stages 55–61 checkpoints, last frozen c6c3978f at 1,014 source proposals, and partial stage 62 are absent from the replacement cloud filesystem. The local portable bundle and publication manifests are also absent. Those historical dispositions do not establish current source coverage. The restored main matrix remains 942 unique source proposals/944 entries; exact known owner defects are being rechecked against the new main before any reclassification.
+
+Remote checkpoints a0f90da3 (reconciliation documents) and b1131bf8 (initial dynamic keyword reconstruction before later review corrections) remain available. Source recovery will use those commits, any confirmed uploaded blobs, and reconstructable worker edits. Every reconstructed family needs a fresh source review against the new main. Checkpoints will be published promptly; no source coverage is awarded for a defensive rejection, placeholder or unreviewed partial body.
+
+The frozen dataset and failure identities remain the original e8740178 baseline. Measured results remain 40 compile recoveries and 3,193 unresolved identities; the source-first majority gate remains 1,597. No build, test, compiler probe, formatter or corpus execution has resumed. The new work begins with the narrow IncompleteEvidence error prerequisite: required missing facts reach existing checked query/transaction owners while ordinary UnresolvableValue behavior stays unchanged. This prerequisite alone adds no card coverage.
