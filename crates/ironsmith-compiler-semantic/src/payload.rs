@@ -212,6 +212,9 @@ pub fn describe_soulshift_value(value: &Value) -> String {
 }
 
 impl KeywordAction {
+    /// Whether static grant syntax can carry this keyword. Some entries name
+    /// triggered abilities; lowering expands those through the printed keyword
+    /// builder instead of manufacturing a marker-only static ability.
     pub fn lowers_to_static_ability(&self) -> bool {
         matches!(
             self,
@@ -257,6 +260,9 @@ impl KeywordAction {
                 | Self::Toxic(_)
                 | Self::Poisonous(_)
                 | Self::BattleCry
+                | Self::Melee
+                | Self::Myriad
+                | Self::Afflict(_)
                 | Self::Dethrone
                 | Self::Evolve
                 | Self::Ingest

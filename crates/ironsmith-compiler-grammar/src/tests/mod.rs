@@ -184,3 +184,5 @@ mod shard_06;
 mod shard_07;
 mod shard_08;
 mod target_aggregate_mana_value;
+
+mod keyword_grant_materialization;
