@@ -29,6 +29,9 @@ pub use life_loss::*;
 mod passive_damage;
 pub use passive_damage::*;
 
+mod zone_changes;
+pub use zone_changes::*;
+
 mod keyword_alternatives;
 pub use keyword_alternatives::*;
 

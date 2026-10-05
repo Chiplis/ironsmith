@@ -16,6 +16,21 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
+        // Private-zone possessors name the owner, even when a stolen permanent
+        // was controlled by somebody else immediately before the move.
+        TriggerSpec::ZoneChange(event) => event
+            .filter
+            .as_ref()
+            .and_then(|filter| filter.owner.as_ref())
+            .map(|owner| {
+                if *owner == PlayerFilter::You {
+                    PlayerFilter::You
+                } else {
+                    PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    ))
+                }
+            }),
         TriggerSpec::EntersBattlefield { filter, .. } if filter.source => None,
         // "Whenever a nonland permanent an opponent owns enters under your
         // control, they lose life ...": you are the controller, so the only

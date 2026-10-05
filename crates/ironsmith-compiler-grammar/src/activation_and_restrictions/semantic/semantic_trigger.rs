@@ -1,6 +1,9 @@
 use super::*;
 use crate::cards::builders::PlayerPredicateAst;
 
+#[path = "zone_change_surfaces.rs"]
+mod zone_change_surfaces;
+
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
 fn owned_exile_origin_words(words: &[&str]) -> Option<(usize, Vec<Zone>)> {
@@ -5426,10 +5429,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         _ if trigger_pattern_accepts(words, BEGINNING_COMBAT_TRIGGER_PATTERN) => Ok(
             TriggerSpec::BeginningOfCombat(parse_possessive_clause_player_filter(words)),
         ),
-        _ => Err(CardTextError::ParseError(format!(
-            "unsupported trigger clause (clause: '{}')",
-            words.join(" ")
-        ))),
+        _ => {
+            if let Some(trigger) = zone_change_surfaces::parse_complete_zone_change(tokens)? {
+                Ok(trigger)
+            } else {
+                Err(CardTextError::ParseError(format!(
+                    "unsupported trigger clause (clause: '{}')",
+                    words.join(" ")
+                )))
+            }
+        }
     }
 }
 
