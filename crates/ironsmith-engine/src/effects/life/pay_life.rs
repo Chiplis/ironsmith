@@ -58,6 +58,30 @@ impl EffectExecutor for PayLifeEffect {
         "player to pay life"
     }
 
+    fn references_cost_x(&self) -> bool {
+        matches!(self.amount.unhinted(), Value::X)
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let ctx = ExecutionContext::new_default(source, controller);
+        let payer = resolve_player_from_spec(game, &self.player, &ctx).ok()?;
+        let available = game.player(payer)?.life.max(0) as u32;
+        Some(
+            if game.can_pay_life_with_reason(
+                payer,
+                available,
+                crate::costs::PaymentReason::ActivateAbility,
+            ) {
+                available
+            } else {
+                0
+            },
+        )
+    }
+
     fn cost_description(&self) -> Option<String> {
         if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
             && let Value::Fixed(amount) = self.amount
@@ -91,7 +115,7 @@ impl CostExecutableEffect for PayLifeEffect {
         controller: PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller);
+        let ctx = ExecutionContext::new_default(source, controller).with_x(0);
         let player = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for life payment".to_string())
         })?;

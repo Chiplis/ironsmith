@@ -29,18 +29,23 @@ impl EffectExecutor for PayEnergyEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-
         if game
             .player(player_id)
-            .is_some_and(|player| player.energy_counters >= amount)
-            && let Some((removed, event)) = game.remove_player_counters_with_source(
-                player_id,
-                CounterType::Energy,
-                amount,
-                Some(ctx.source),
-                Some(ctx.controller),
-            )
+            .is_none_or(|player| player.energy_counters < amount)
         {
+            return Ok(EffectOutcome::impossible());
+        }
+        if amount == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        if let Some((removed, event)) = game.remove_player_counters_with_source(
+            player_id,
+            CounterType::Energy,
+            amount,
+            Some(ctx.source),
+            Some(ctx.controller),
+        ) {
             return Ok(EffectOutcome::count(removed as i32).with_event(event));
         }
 
@@ -57,6 +62,19 @@ impl EffectExecutor for PayEnergyEffect {
 
     fn target_description(&self) -> &'static str {
         "player to pay energy"
+    }
+
+    fn references_cost_x(&self) -> bool {
+        matches!(self.amount.unhinted(), Value::X)
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let ctx = ExecutionContext::new_default(source, controller);
+        let payer = resolve_player_from_spec(game, &self.player, &ctx).ok()?;
+        Some(game.player(payer)?.energy_counters)
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -84,7 +102,7 @@ impl CostExecutableEffect for PayEnergyEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller);
+        let ctx = ExecutionContext::new_default(source, controller).with_x(0);
         let payer = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
             CostValidationError::Other("unable to resolve player for energy cost".to_string())
         })?;

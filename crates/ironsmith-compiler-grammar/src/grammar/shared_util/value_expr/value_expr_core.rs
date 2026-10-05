@@ -7,6 +7,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(quantity) = referenced_object_quantities::parse(words) {
         return Some(quantity);
     }
+    if let Some(quantity) = scalar_counter_quantities::parse(words) {
+        return Some(quantity);
+    }
+    if let Some(quantity) = opponent_history_quantities::parse(words) {
+        return Some(quantity);
+    }
     let offset = usize::from(words.first() == Some(&"the"));
     if permission_shapes::starts_at_words(
         words,
@@ -308,25 +314,19 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if permission_shapes::prefix_words(words, &["twice", "x"]) {
         return Some((Value::XTimes(2), 2));
     }
-    // "two times X life" (Debt to the Deathless), "five times X damage"
-    // (Crackle with Power)
+    // Integer scalar composition: retain the existing XTimes form for X,
+    // and compose the same checked term grammar for a characteristic operand.
     if words.len() >= 3
         && words[1] == "times"
-        && words[2] == "x"
-        && let Some(multiplier) = match words[0] {
-            "two" => Some(2),
-            "three" => Some(3),
-            "four" => Some(4),
-            "five" => Some(5),
-            "six" => Some(6),
-            "seven" => Some(7),
-            "eight" => Some(8),
-            "nine" => Some(9),
-            "ten" => Some(10),
-            _ => None,
-        }
+        && let Ok(multiplier) = leaf::parse_number_i32_complete(words[0])
+        && multiplier >= 0
+        && let Some((base, used)) = parse_value_expr_term_words(&words[2..])
     {
-        return Some((Value::XTimes(multiplier), 3));
+        let value = match base {
+            Value::X => Value::XTimes(multiplier),
+            value => Value::Scaled(Box::new(value), multiplier),
+        };
+        return Some((value, used + 2));
     }
     if permission_shapes::prefix_words(words, &["twice"]) {
         let (value, used) = parse_value_expr_term_words(&words[1..])?;
@@ -489,6 +489,15 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 Some("toughness") => {
                     return Some((
                         Value::ToughnessOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 1,
+                    ));
+                }
+                Some("loyalty") => {
+                    return Some((
+                        Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            Some(crate::object::CounterType::Loyalty),
+                        ),
                         source_len + 1,
                     ));
                 }
@@ -759,6 +768,11 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
 
 pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     let mut idx = usize::from(permission_shapes::prefix_words(words, &["the"]));
+    // "the total number of ..." has the same cardinality semantics. The
+    // existing complete object-filter reader still owns every domain/scope.
+    if words.get(idx) == Some(&"total") {
+        idx += 1;
+    }
     if !permission_shapes::starts_at_words(words, idx, &["number", "of"]) {
         return None;
     }

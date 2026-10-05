@@ -48,6 +48,7 @@ pub fn assemble_activation_cost(
 fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
     match segment {
         ActivationCostSegmentCst::Mana(cost) => CompilerCost::Mana(cost.clone()),
+        ActivationCostSegmentCst::DynamicMana(cost) => CompilerCost::DynamicMana(cost.clone()),
         ActivationCostSegmentCst::Tap => CompilerCost::Tap,
         ActivationCostSegmentCst::TapChosen { count, filter } => CompilerCost::TapChosen {
             count: *count,
@@ -69,6 +70,11 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
         )),
         ActivationCostSegmentCst::Life(amount) => CompilerCost::Life(amount.clone()),
         ActivationCostSegmentCst::Energy(amount) => CompilerCost::Energy(*amount),
+        ActivationCostSegmentCst::EnergyValue(amount) => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_pay_energy(
+                crate::cards::builders::PlayerAst::You, amount.clone(),
+            ),
+        )),
         ActivationCostSegmentCst::DiscardSource => CompilerCost::DiscardSource,
         ActivationCostSegmentCst::DiscardHand => CompilerCost::DiscardHand,
         ActivationCostSegmentCst::DiscardCard(count) => CompilerCost::Discard {

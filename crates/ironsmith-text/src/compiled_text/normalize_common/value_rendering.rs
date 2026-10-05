@@ -6525,6 +6525,14 @@ pub(crate) fn describe_value(value: &Value) -> String {
             title_case_card_name_fragment(card_name)
         ),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
+        Value::PlayerCounters(PlayerFilter::Any, counter_type) => format!(
+            "the total number of {} counters among players",
+            counter_type.description()
+        ),
+        Value::PlayerCounters(PlayerFilter::Opponent, counter_type) => format!(
+            "the total number of {} counters among your opponents",
+            counter_type.description()
+        ),
         Value::PlayerCounters(player, counter_type) => format!(
             "the number of {} counters {}",
             counter_type.description(),

@@ -762,3 +762,34 @@ fn explicit_outside_selection_keeps_exile_followup_and_unrelated_may_scope() {
     assert_eq!(effects.len(), 1);
     assert!(matches!(&effects[0], EffectAst::Permissions(PermissionEffectAst::May { .. }) | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. })), "unrelated player choice lost its scope: {effects:#?}");
 }
+
+#[test]
+fn elided_domains_keep_subtype_or_name_as_an_independent_disjunction() {
+    let tokens = lex_line("cards you own in exile and in your graveyard that are Oozes or are named Slime Against Humanity", 0).unwrap();
+    let filter = parse_domain_union_object_filter_lexed(&tokens, false).unwrap();
+    assert_eq!(filter.zone, None);
+    assert_eq!(filter.any_of.len(), 2);
+    for (branch, zone) in filter.any_of.iter().zip([Zone::Exile, Zone::Graveyard]) {
+        assert_eq!(branch.zone, Some(zone));
+        assert_eq!(branch.owner, Some(PlayerFilter::You));
+        assert!(
+            branch
+                .any_of
+                .iter()
+                .any(|selector| selector.subtypes.contains(&Subtype::Ooze))
+        );
+        assert!(branch.any_of.iter().any(|selector| {
+            selector
+                .name
+                .as_ref()
+                .is_some_and(|name| name.eq_ignore_ascii_case("Slime Against Humanity"))
+        }));
+        assert!(branch.any_of.iter().all(|selector| selector.zone.is_none()));
+    }
+}
+
+#[test]
+fn elided_property_fallback_does_not_erase_an_authored_inner_location() {
+    let tokens = lex_line("cards you own in exile and in your graveyard that are Ooze cards in your hand or are named Slime Against Humanity", 0).unwrap();
+    assert!(parse_elided_shared_domain_union(&tokens, false).is_none());
+}
