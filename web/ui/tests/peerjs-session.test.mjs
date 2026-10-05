@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canPersistMatch, readPeerSession, saveRelayLobby } from '../src/lib/relay/session.js';
 
-test('trusted PeerJS recovery preserves seat identity and ignores incomplete or verified records', () => {
+test('PeerJS recovery preserves trusted and verified seat identities and rejects incomplete records', () => {
   const old = globalThis.localStorage;
   const records = new Map();
   globalThis.localStorage = { getItem: key => records.get(key) ?? null, setItem: (key, value) => records.set(key, value) };
@@ -13,9 +13,9 @@ test('trusted PeerJS recovery preserves seat identity and ignores incomplete or 
     assert.equal(readPeerSession('host-id').peerId, 'guest-id');
     assert.equal(readPeerSession('host-id').session.localPlayerIndex, 1);
     assert.equal(readPeerSession('another-host'), null);
-    assert.equal(canPersistMatch({ ...session, securityMode: 'verified' }), false);
+    assert.equal(canPersistMatch({ ...session, securityMode: 'verified' }), true);
     saveRelayLobby({ ...session, lobbyId: 'verified-host', securityMode: 'verified' });
-    assert.equal(readPeerSession('verified-host'), null);
+    assert.equal(readPeerSession('verified-host').session.localPlayerIndex, 1);
     records.set('ironsmith-peerjs-resume-v1:host-id', '{broken');
     assert.equal(readPeerSession('host-id'), null);
     records.set('ironsmith-peerjs-resume-v1:host-id', JSON.stringify({ peerId: 'wrong', session }));

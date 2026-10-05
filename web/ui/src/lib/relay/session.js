@@ -21,20 +21,19 @@ export function durableRelaySession(session) {
     .map(field => [field, session[field]]));
 }
 // PeerJS has no relay token: preserve its generated peer ID in this browser.
-// Only trusted matches can currently be reconstructed from the public journal.
+// Verified resume also restores client-owned private snapshot/identity state.
 export function readPeerSession(lobbyId) {
   try {
     const value = JSON.parse(localStorage.getItem(`ironsmith-peerjs-resume-v1:${lobbyId}`));
     return value?.session?.lobbyId === lobbyId && value.peerId === value.session.localPeerId
-      && value.session.securityMode === 'trusted' ? value : null;
+      && ['trusted', 'verified'].includes(value.session.securityMode) ? value : null;
   } catch { return null; }
 }
-// Verified matches hold private deck secrets and ziffle state that a replayed
-// public journal cannot rebuild, so only trusted matches are journaled.
+// The durable journal stays transcript-only. Private exact-build images live
+// in a separate local store and are never relayed to opponents.
 export function canPersistMatch(session) {
-  if (session?.securityMode === 'verified') return false;
   return isRelayId(session?.lobbyId)
-    || Boolean(session?.lobbyId && session?.securityMode === 'trusted');
+    || Boolean(session?.lobbyId && ['trusted', 'verified'].includes(session?.securityMode));
 }
 const relayOnlyKey = 'ironsmith-relay-only-v1';
 // Per-browser privacy choice: never open direct WebRTC channels, so opponents

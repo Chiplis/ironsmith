@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLocalAnalysisJournal, createLocalAnalysisReplica } from '../src/lib/local-analysis-replay.js';
+import { createLocalAnalysisJournal, createLocalAnalysisReplica, releaseRestoredRuntimeSavepoints } from '../src/lib/local-analysis-replay.js';
 
 class Game {
   state = { objects: [], choices: {}, history: [], manaProvenance: [], temporaryPermissions: [] };
@@ -152,4 +152,24 @@ test('allocator bootstrap is applied once and a changed origin rebuilds an exist
   const restored = await replica.hydrate(captured);
   assert.deepEqual(restored.origin, { object: 41 });
   assert.deepEqual(restored.state, original.state);
+});
+
+test('cold instance cleanup releases only live journaled savepoints and records their retirement', () => {
+  const released=[];
+  const operations=[
+    {method:'createRuntimeSavepoint',handle:1,args:[]},
+    {method:'createRuntimeSavepoint',handle:2,args:[]},
+    {method:'restoreRuntimeSavepoint',args:[1]},
+    {method:'createRuntimeSavepoint',handle:3,args:[],failed:true},
+    {method:'createRuntimeSavepoint',handle:4,args:[]},
+    {method:'releaseRuntimeSavepoint',args:[4]},
+    {method:'copyRuntimeSavepoint',args:[2]},
+    {method:'exchangeRuntimeSavepoint',args:[2]},
+  ];
+  const journal=createLocalAnalysisJournal({releaseRuntimeSavepoint:handle=>released.push(handle)},'restored',{identityOrigin:{object:1},operations});
+  releaseRestoredRuntimeSavepoints(journal);
+  assert.deepEqual(released,[2]);
+  assert.equal(journal.capture().operations.at(-1).method,'releaseRuntimeSavepoint');
+  releaseRestoredRuntimeSavepoints(journal);
+  assert.deepEqual(released,[2],'retired handles are not released twice');
 });
