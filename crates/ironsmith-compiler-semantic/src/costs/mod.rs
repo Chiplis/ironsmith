@@ -42,6 +42,8 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         .downcast_ref::<effects::RevealChosenSubtypeEffect>()
         .is_some()
         || effect.downcast_ref::<effects::PayManaEffect>().is_some()
+        || effect.downcast_ref::<effects::AddManaEffect>().is_some()
+        || effect.downcast_ref::<effects::DrawCardsEffect>().is_some()
         || effect.downcast_ref::<effects::TapEffect>().is_some()
         || effect.downcast_ref::<effects::UntapEffect>().is_some()
         || effect.downcast_ref::<effects::LoseLifeEffect>().is_some()

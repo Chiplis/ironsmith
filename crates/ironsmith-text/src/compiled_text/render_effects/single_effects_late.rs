@@ -3685,6 +3685,15 @@ pub(super) fn describe_structural_cumulative_upkeep_keyword(
 }
 
 pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
+    if let [choice, movement] = payment
+        && let Some(choice) = choice.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(movement) = movement.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &choice.tag)
+    {
+        let mut visible = movement.clone();
+        visible.target = ChooseSpec::Object(choice.filter.clone()).with_count(choice.count);
+        if let Some(text) = cumulative_upkeep_move_to_zone_text(&visible) { return Some(text); }
+    }
     if let Some(text) = cumulative_upkeep_chosen_player_token_payment(payment) {
         return Some(text);
     }
@@ -3704,7 +3713,14 @@ pub(super) fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<Strin
         } else {
             root
         };
-        if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
+        if let Some(add) = effect.downcast_ref::<crate::effects::AddManaEffect>() {
+            if add.player != PlayerFilter::You { return None; }
+            parts.push(format!("Add {}", crate::mana::ManaCost::from_symbols(add.mana.clone()).to_oracle()));
+        } else if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+            if draw.player != PlayerFilter::You { return None; }
+            parts.push(if draw.count == Value::Fixed(1) { "Draw a card".to_string() }
+                else { format!("Draw {} cards", describe_value(&draw.count)) });
+        } else if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
             parts.push(pay_mana.cost.to_oracle());
         } else if let Some(one_of) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
             let [first] = one_of.effects.as_slice() else {
@@ -3844,7 +3860,7 @@ pub(super) fn cumulative_upkeep_move_to_zone_text(
         ChooseSpec::Object(filter) => filter,
         _ => return None,
     };
-    if filter.zone != Some(Zone::Graveyard) {
+    if filter != &ObjectFilter::default().in_zone(Zone::Graveyard).single_graveyard() {
         return None;
     }
     let count = move_to_zone.target.count();

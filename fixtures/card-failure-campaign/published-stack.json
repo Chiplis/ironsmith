@@ -829,6 +829,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/825"
+    },
+    {
+      "stage": 60,
+      "branch": "fix/card-failures-60-cast-quantities-and-craft",
+      "base": "fix/card-failures-59-waterbend-payment-bodies",
+      "source_integration_commit": "57ac7cfd9c002f4156382b82f2a0c361599522db",
+      "remote_commit": "b550c809ed79ef269e186a78c0f7a1d6ecd0af61",
+      "tree": "536a5ba3f150e69d31b4fa0095b79013e7663b4a",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 826,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/826"
     }
   ]
 }

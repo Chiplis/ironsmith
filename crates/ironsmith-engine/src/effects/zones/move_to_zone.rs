@@ -62,6 +62,21 @@ fn order_library_move_objects(
     }
 
     match order {
+        LibraryPlacementOrder::Owners => {
+            let mut ordered = Vec::new();
+            for owner in game.team_apnap_player_order() {
+                let owned = object_ids.iter().copied().filter(|id| {
+                    game.object(*id).is_some_and(|object| object.owner == owner)
+                }).collect();
+                ordered.extend(order_library_move_objects(
+                    game, ctx, owned,
+                    &LibraryPlacementOrder::ChosenBy(crate::target::PlayerFilter::Specific(owner)),
+                    to_top,
+                )?);
+                if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+            }
+            Ok(ordered)
+        }
         LibraryPlacementOrder::Random => {
             let mut ordered = object_ids;
             game.shuffle_slice(&mut ordered);

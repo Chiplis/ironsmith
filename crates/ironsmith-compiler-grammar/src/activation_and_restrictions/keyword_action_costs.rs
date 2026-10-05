@@ -1830,6 +1830,18 @@ mod tests {
     }
 
     #[test]
+    fn cumulative_upkeep_action_costs_are_not_mana_payment_or_keyword_markers() {
+        for text in ["Cumulative upkeep—Add {R}.", "Cumulative upkeep—Draw a card."] {
+            let action = parse_ability_phrase(&lex(text)).expect("complete action cost");
+            let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else { panic!("typed upkeep action"); };
+            assert!(matches!(total_cost.costs(), [crate::model::CompilerCost::ValidatedEffect(_)]), "action cost stays typed through lowering: {total_cost:?}");
+        }
+        for text in ["Cumulative upkeep—Add {R} quickly.", "Cumulative upkeep—Draw a card from exile."] {
+            assert!(parse_ability_phrase(&lex(text)).is_none(), "must consume the complete action: {text}");
+        }
+    }
+
+    #[test]
     fn activation_cost_accepts_owned_graveyard_bottom_library_payment() {
         let total_cost = parse_payment_clause_as_total_cost(&lex(
             "Put three cards from your graveyard on the bottom of your library",

@@ -64,7 +64,7 @@ fn placement_order_suffix(order: &crate::effects::LibraryPlacementOrder) -> Opti
     match order {
         crate::effects::LibraryPlacementOrder::Random => Some(" in a random order"),
         crate::effects::LibraryPlacementOrder::ChosenBy(PlayerFilter::You) => Some(" in any order"),
-        crate::effects::LibraryPlacementOrder::ChosenBy(_) => None,
+        crate::effects::LibraryPlacementOrder::ChosenBy(_) | crate::effects::LibraryPlacementOrder::Owners => None,
     }
 }
 

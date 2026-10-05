@@ -12,6 +12,9 @@ use crate::object::CounterType;
 
 pub type CumulativeUpkeepEffect = ironsmith_core::CumulativeUpkeepEffect<Effect>;
 
+#[path = "cumulative_upkeep_action_costs.rs"]
+mod action_costs;
+
 fn execute_sequence(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -87,6 +90,9 @@ fn payment_can_complete(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> Result<bool, ExecutionError> {
+    if let Some(action) = action_costs::ActionCost::read(effects) {
+        return action.can_pay(game, ctx, count);
+    }
     let mut simulated_game = game.clone();
     let query = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
     simulated_game.bind_token_query_meter(query.meter());
@@ -116,6 +122,18 @@ fn execute_payment_atomically(
     let ctx_checkpoint = ExecutionContextCheckpoint::capture(ctx);
     let previous_reason = ctx.mana.payment_reason;
     ctx.mana.payment_reason = Some(reason);
+    if let Some(action) = action_costs::ActionCost::read(effects) {
+        let previous_cause = ctx.cause.clone();
+        ctx.cause.cause_type = crate::events::cause::CauseType::Cost;
+        let result = action.pay(game, ctx, count);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            restore_payment_checkpoint(game, ctx, game_checkpoint, ctx_checkpoint);
+            return result.map(|_| None);
+        }
+        ctx.cause = previous_cause;
+        ctx.mana.payment_reason = previous_reason;
+        return result.map(Some);
+    }
     let mut outcomes = Vec::new();
     let mut failed_to_pay = false;
     let mut execution_error = None;
@@ -176,6 +194,11 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let player = resolve_player_filter(game, &self.player, ctx)?;
+        // Replacement programs may move the source during payment. Preserve
+        // this incarnation's pre-payment LKI; never find a stable-id successor.
+        let payment_source_snapshot = game.object(ctx.source)
+            .map(|object| game.cached_object_snapshot_with_calculated_characteristics(object))
+            .or_else(|| ctx.source_snapshot.clone().filter(|snapshot| snapshot.object_id == ctx.source));
         let count = match self.kind {
             UpkeepPaymentKind::Echo => 1,
             UpkeepPaymentKind::Cumulative => resolve_value(game, &crate::effect::Value::CountersOnSource(CounterType::Age), ctx)?.max(0) as usize,
@@ -215,7 +238,8 @@ impl EffectExecutor for CumulativeUpkeepEffect {
             UpkeepPaymentKind::Cumulative => crate::events::KeywordActionKind::CumulativeUpkeepPaid,
             UpkeepPaymentKind::Echo => crate::events::KeywordActionKind::EchoCostPaid,
         };
-        let snapshot = game.object(ctx.source).map(|object|game.cached_object_snapshot_with_calculated_characteristics(object));
+        let snapshot = game.object(ctx.source).map(|object|game.cached_object_snapshot_with_calculated_characteristics(object))
+            .or(payment_source_snapshot);
         let provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::KeywordAction);
         outcome.events.push(crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::other::KeywordActionEvent::new(action, player, ctx.source, 1).with_snapshot(snapshot), provenance,

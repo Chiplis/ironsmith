@@ -1023,11 +1023,11 @@ fn lower_materialization_costs(
                     PlayerFilter::You,
                     tag.clone(),
                 )));
-                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                costs.push(Cost::validated_effect(Effect::new(crate::effects::MoveToZoneEffect::new(
                     crate::target::ChooseSpec::tagged(tag),
                     crate::zone::Zone::Library,
                     false,
-                )));
+                ).with_library_order(ironsmith_core::LibraryPlacementOrder::Owners))));
             }
             MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

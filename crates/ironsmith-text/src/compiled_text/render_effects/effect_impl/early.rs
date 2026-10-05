@@ -1812,7 +1812,7 @@
         }
         let order_suffix = match move_to_zone.library_order.as_ref() {
             Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) => " in any order",
             None => "",
         };
         let target = if move_to_zone.zone == Zone::Battlefield

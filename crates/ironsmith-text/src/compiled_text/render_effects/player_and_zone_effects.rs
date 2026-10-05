@@ -3067,7 +3067,7 @@ pub(super) fn describe_exiled_with_source_move(
     };
     let library_order = match library_placement.and_then(|(_, order)| order) {
         Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-        Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+        Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) => " in any order",
         None => "",
     };
     if matches!(&surface.subject, SubjectSurface::OwnerOfEachCard) && zone == Zone::Library {

@@ -310,6 +310,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
 /// let effect = DrawCardsEffect::new(2, PlayerFilter::Specific(player_id));
 /// ```
 impl EffectExecutor for DrawCardsEffect {
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         self.player.mentions_player_filter(needle)
     }
@@ -346,6 +347,21 @@ impl EffectExecutor for DrawCardsEffect {
             }
         }
         result
+    }
+}
+
+impl crate::effects::CostExecutableEffect for DrawCardsEffect {
+    fn can_execute_as_cost(
+        &self, game: &GameState, source: ObjectId, controller: PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let ctx = ExecutionContext::new_default(source, controller);
+        let player = resolve_player_filter(game, &self.player, &ctx)
+            .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?;
+        let count = resolve_value(game, &self.count, &ctx)
+            .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?.max(0);
+        if count == 0 || (game.can_draw(player) && (game.can_draw_extra_cards(player)
+            || (count == 1 && game.turn_store.turn_history.cards_drawn_by_player(player) == 0)))
+        { Ok(()) } else { Err(crate::effects::CostValidationError::NotEnoughCards) }
     }
 }
 

@@ -2993,6 +2993,8 @@ impl BattlefieldEntryCounterSpec {
 pub enum LibraryPlacementOrder {
     Random,
     ChosenBy(PlayerFilter),
+    /// CR 401.4: each owner orders cards entering their own library.
+    Owners,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

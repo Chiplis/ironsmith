@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Braid of Fire",
+    "id": "7132db09-4c60-4d6f-a0ae-2fdb8aea81a7",
+    "oracle_id": "796009b3-73b5-42c0-a490-66f12be5a42e",
+    "oracle_text": "Cumulative upkeep—Add {R}. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+    "text": "Mana cost: {1}{R}\nType: Enchantment\nCumulative upkeep—Add {R}. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "afc0d1537",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Jötun Grunt",
+    "id": "5bda33fb-8ab2-4a35-a432-11d4ebd7bc8a",
+    "oracle_id": "43fbfeec-bcaf-48b8-befe-b7346fec5a3a",
+    "oracle_text": "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+    "text": "Mana cost: {1}{W}\nType: Creature — Giant Soldier\nPower/Toughness: 4/4\nCumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "afc0d1537",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Psychic Vortex",
+    "id": "3bc2a419-7122-4eeb-bb64-738a647cfd82",
+    "oracle_id": "451e35dd-e0b5-4157-8511-bacb315e19bd",
+    "oracle_text": "Cumulative upkeep—Draw a card. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nAt the beginning of your end step, sacrifice a land and discard your hand.",
+    "text": "Mana cost: {2}{U}{U}\nType: Enchantment\nCumulative upkeep—Draw a card. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nAt the beginning of your end step, sacrifice a land and discard your hand.",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "afc0d1537",
+    "validation": "authored_not_run"
+  }
+]

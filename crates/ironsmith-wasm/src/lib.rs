@@ -6960,6 +6960,10 @@ mod viewed_card_acknowledgement_tests;
 mod territorial_kavu_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/cumulative_action_costs.rs"]
+mod cumulative_action_cost_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "tests/opposition_agent_search.rs"]
 mod opposition_agent_search_tests;
 
