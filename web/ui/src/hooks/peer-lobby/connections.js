@@ -1,3 +1,4 @@
+import { assertPaymentDisclosureAuthority, createPaymentDisclosureJournal } from "../../lib/payment-disclosure-journal.js";
 import { isPrivateZiffleEpoch, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { differsBeyondClock } from "../../lib/value-store.js";
 import { saveRelayLobby } from '../../lib/relay/session.js';
@@ -30,6 +31,8 @@ import {
   getPeerSessionStorage,
   importAuditEncryptionKeyPair,
   importAuditKeyPair,
+  isForfeitCommand,
+  isNonDispatchSyncCommand,
   importAuditPublicKey,
   isProtocolResponseWaitTimeout,
   mergeActionOpeningPreviews,
@@ -87,6 +90,127 @@ import { buildZiffleRuntimeManifest } from "../../lib/ziffle-runtime-manifest.js
 import { checkPeerGenesisAck, genesisRosterPlayers, genesisSeedCommitmentFor, localGenesisAck } from "./genesis-binding.js";
 
 export function usePeerLobbyConnections(base, servicesRef) {
+  const paymentDisclosures = createPaymentDisclosureJournal(getPeerSessionStorage);
+  function paymentDisclosureScope(intent) {
+    return { matchId: intent.matchId || currentAuditMatchId(), seq: intent.seq,
+      actorIndex: intent.actorIndex ?? intent.actor, prevStateHash: intent.prevStateHash,
+      command: intent.command,
+      ...(intent.attemptId ? { attemptId: intent.attemptId } : {}),
+      ...(intent.preActionPublicCheckpointHash ? { preActionPublicCheckpointHash: intent.preActionPublicCheckpointHash } : {}),
+      ...(intent.signature ? { signature: intent.signature } : {}),
+    };
+  }
+  function assertPaymentDisclosureIntent(intent) {
+    if (isForfeitCommand(intent.command)) return null;
+    return paymentDisclosures.assertCompatible(paymentDisclosureScope(intent));
+  }
+  function pinnedPaymentDisclosure(intent) {
+    return paymentDisclosures.lookup(paymentDisclosureScope(intent));
+  }
+  function paymentDisclosureTiming(intent, record = null) {
+    return {
+      intent: cloneMultiplayerPayload(record?.intent || (intent.signature ? intent : null)),
+      firstObservedAtMs: Number(record?.firstObservedAtMs || Date.now()),
+      observedElapsedAtIntentMs: record?.observedElapsedAtIntentMs ?? null,
+      ...(record ? {
+        evidence: cloneMultiplayerPayload(record.evidence || null),
+        timeoutConfirmation: cloneMultiplayerPayload(record.timeoutConfirmation || null),
+      } : {}),
+    };
+  }
+  function pinPaymentDisclosureIntent(intent, material = {}) {
+    const record = pendingActionIntentsRef.current.get(actionIntentKey(intent));
+    return paymentDisclosures.pin(paymentDisclosureScope(intent), {
+      ...material, timing: material.timing || paymentDisclosureTiming(intent, record),
+    });
+  }
+  function persistPendingPaymentTiming(record) {
+    if (record?.intent && pinnedPaymentDisclosure(record.intent)) {
+      pinPaymentDisclosureIntent(record.intent, { timing: paymentDisclosureTiming(record.intent, record) });
+    }
+  }
+  function acceptPaymentDisclosure(matchId, seq) {
+    // Acceptance already advanced the durable transcript. A stale old pin is
+    // harmless; a cleanup/storage error must never undo that accepted action.
+    try { paymentDisclosures.accepted(matchId, seq); return true; }
+    catch (error) { recordPeerSyncPerf("payment_disclosure:cleanup_deferred", { seq, error: toErrorMessage(error) }); return false; }
+  }
+  async function validatePaymentDisclosureAuthority(intent) {
+    const state = await gameRef.current.uiState();
+    assertPaymentDisclosureAuthority(intent, {
+      matchId: currentAuditMatchId(),
+      lastAppliedSequence: Number(base.actionHistoryRef.current.at(-1)?.seq || 0),
+      prevStateHash: base.auditStateHashRef.current,
+      decisionPlayer: state?.decision?.player,
+    });
+  }
+  async function pinVerifiedPaymentEnvelope(intent, openings = [], evidence = null) {
+    if (!openings.length || isNonDispatchSyncCommand(intent.command)) return false;
+    await validatePaymentDisclosureAuthority(intent);
+    const snapshot = await servicesRef.current.createSequencedActionValidationSnapshot();
+    try {
+      await servicesRef.current.verifyAuditOpeningsAgainstManifests(openings, {
+        payload: matchStartPayloadRef.current, shuffleProofs: evidence?.audit?.shuffleProofs || [],
+      });
+      await servicesRef.current.revealAuditOpenings(openings, { timing: "pre", command: intent.command,
+        shuffleProofs: evidence?.audit?.shuffleProofs || [], updateState: false });
+      const localCommand = await servicesRef.current.remapCommandForLocalHiddenOpening(intent.command, openings, intent.actorIndex);
+      const disclosure = await paymentDisclosureForCommand(localCommand);
+      if (!disclosure?.required && !disclosure?.active) return false;
+      pinPaymentDisclosureIntent(intent, { openings, evidence });
+      return true;
+    } finally {
+      // If pinned, this recovery path reopens the same verified disclosure
+      // after restoring the canonical prefix. Otherwise it is a pure probe.
+      try { await servicesRef.current.restoreSequencedActionValidationSnapshot(snapshot); }
+      finally { await snapshot.release?.(); }
+    }
+  }
+  async function restorePaymentDisclosureAtHead({ sequence, prevStateHash } = {}) {
+    const matchId = currentAuditMatchId();
+    if (!matchId) return null;
+    const entries = paymentDisclosures.entries(matchId).filter(entry =>
+      entry.seq === Number(sequence) && entry.prevStateHash === String(prevStateHash || ""));
+    if (!entries.length) return null;
+    if (entries.length !== 1) throw new Error("Conflicting payment disclosure recovery records");
+    const retained = entries[0];
+    await validatePaymentDisclosureAuthority(retained);
+    const canonicalIntent = retained.signedIntent || retained.evidence?.actionIntent || retained.timing?.intent;
+    if (canonicalIntent) {
+      await verifySignedActionIntent(canonicalIntent, retained);
+    } else if (retained.evidence?.audit) {
+      await servicesRef.current.verifySequencedActionAudit({ audit: retained.evidence.audit,
+        seq: retained.seq, actorIndex: retained.actorIndex, command: retained.command });
+    } else { throw new Error("Disclosed payment recovery lacks signed evidence"); }
+    await servicesRef.current.verifyAuditOpeningsAgainstManifests(retained.openings || [], {
+      payload: matchStartPayloadRef.current, shuffleProofs: retained.evidence?.audit?.shuffleProofs || [],
+    });
+    await servicesRef.current.revealAuditOpenings(retained.openings || [], { timing: "pre",
+      command: retained.command, shuffleProofs: retained.evidence?.audit?.shuffleProofs || [], updateState: false });
+    const localCommand = await servicesRef.current.remapCommandForLocalHiddenOpening(
+      retained.command, retained.openings || [], retained.actorIndex);
+    if (typeof gameRef.current?.retainPaymentDisclosure !== "function") {
+      throw new Error("Engine cannot retain the disclosed payment; replay the accepted prefix with the current engine");
+    }
+    const state = await gameRef.current.retainPaymentDisclosure(localCommand);
+    const pendingIntent = canonicalIntent;
+    if (pendingIntent) {
+      await verifySignedActionIntent(pendingIntent, retained);
+      await rememberPendingActionIntent(pendingIntent, retained.timing?.evidence || {});
+    }
+    return state;
+  }
+
+  async function paymentDisclosureForCommand(command) {
+    // Cancel/Undo is not a UiCommand. Native cancelDecision still checks the
+    // active commitment, and assertPaymentDisclosureIntent checks a pinned retry.
+    if (isNonDispatchSyncCommand(command)) return { required: false, active: false, objects: [] };
+    if (typeof gameRef.current?.getPaymentDisclosureForCommand !== "function") {
+      throw new Error("Engine lacks the disclosure-safe payment boundary; refresh before announcing this action");
+    }
+    return await gameRef.current.getPaymentDisclosureForCommand(command);
+  }
+
   const { actionIntentOpeningPreviewKeysRef, actionQuorumVoteWaitersRef, actionSubmissionStartedAtMsRef, auditEncryptionKeyPairRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditVerifyKeyCacheRef, connectionHeartbeatsRef, cryptoMaterialWaitersRef, ensureDirectPeerConnectionsRef, gameRef, ignoredActionIntentKeysRef, protocolWaitObservationsRef, liveZiffleCeremoniesRef, localRevealedOpeningsRef, localZiffleCeremonyLookupRef, matchClockConfigRef, matchStartPayloadRef, multiplayerRef, peerHeartbeatConfigRef, pendingActionIntentTimeoutsRef, pendingActionIntentsRef, privateDeckManifestsRef, privateViewDisclosuresRef, rngCommitWaitersRef, rngRevealWaitersRef, setMultiplayer, setStatus, stateRef, submissionIdleWaitersRef, timeoutVoteWaitersRef, ziffleHandRevealKeyRef, ziffleHandRevealQuickKeyRef, ziffleKeyPairsRef, ziffleOpeningPositionsRef, ziffleRevealTokenCacheRef, ziffleRevealWaitersRef, ziffleShuffleWaitersRef } = base;
   const actionHistoryEntryForSequence = useCallback((...args) => servicesRef.current.actionHistoryEntryForSequence(...args), [servicesRef]);
   const applySequencedActionMessage = useCallback((...args) => servicesRef.current.applySequencedActionMessage(...args), [servicesRef]);
@@ -3029,6 +3153,14 @@ export function usePeerLobbyConnections(base, servicesRef) {
     prevStateHash,
     preActionPublicCheckpointHash,
   }) {
+    const retained = assertPaymentDisclosureIntent({ matchId: currentAuditMatchId(), seq, actorIndex, prevStateHash, command });
+    const previous = retained?.signedIntent || retained?.evidence?.actionIntent || retained?.timing?.intent;
+    if (previous) {
+      if (String(previous.preActionPublicCheckpointHash) !== String(preActionPublicCheckpointHash)) {
+        throw new Error("Disclosed payment pre-state changed; recover its accepted prefix before retrying");
+      }
+      return cloneMultiplayerPayload(previous);
+    }
     const { keyPair } = await ensureAuditIdentity();
     const payload = signedActionIntentPayload({
       matchId: currentAuditMatchId(),
@@ -3315,6 +3447,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
   function schedulePendingActionIntentTimeout(key, record) {
     if (!key || !record?.intent) return;
+    persistPendingPaymentTiming(record);
     const existingTimeoutId = pendingActionIntentTimeoutsRef.current.get(key);
     if (existingTimeoutId) {
       window.clearTimeout(existingTimeoutId);
@@ -3418,6 +3551,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (servicesRef.current.fairRandomRevealLockConflict?.(verifiedIntent)) {
       throw new Error("Refusing conflicting signed action intent for this sequence");
     }
+    assertPaymentDisclosureIntent(verifiedIntent);
     const inactiveReason = protocolActionIntentInactiveReason(key, verifiedIntent);
     if (inactiveReason) {
       recordPeerSyncPerf("action_intent:ignored", {
@@ -3438,12 +3572,14 @@ export function usePeerLobbyConnections(base, servicesRef) {
       || verifiedIntent.matchId !== currentAuditMatchId()) {
       return verifiedIntent;
     }
+    const retainedTiming = pinnedPaymentDisclosure(verifiedIntent)?.timing;
     const record = existing || {
       intent: cloneMultiplayerPayload(verifiedIntent),
       fingerprint,
-      evidence: null,
-      firstObservedAtMs: Date.now(),
-      observedElapsedAtIntentMs: null,
+      evidence: cloneMultiplayerPayload(retainedTiming?.evidence || null),
+      firstObservedAtMs: retainedTiming?.firstObservedAtMs || Date.now(),
+      observedElapsedAtIntentMs: retainedTiming?.observedElapsedAtIntentMs ?? null,
+      timeoutConfirmation: cloneMultiplayerPayload(retainedTiming?.timeoutConfirmation || null),
     };
     if (!record.firstObservedAtMs) {
       record.firstObservedAtMs = Date.now();
@@ -3473,6 +3609,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
         Number(record.observedElapsedAtIntentMs || 0),
         Number(observedElapsed || 0)
       );
+      persistPendingPaymentTiming(record);
     }
     return verifiedIntent;
   }
@@ -3703,6 +3840,10 @@ export function usePeerLobbyConnections(base, servicesRef) {
     // hidden material for the intent, the disclosure lock (validation.js
     // fairRandomRevealLockKey) survives it and still pins the sequence to the
     // intent's command, so peeking and then substituting another action fails.
+    if (pinnedPaymentDisclosure(verifiedIntent)) {
+      setStatus("A disclosed payment is awaiting retry of its committed command", true);
+      return;
+    }
     rememberIgnoredActionIntentKey(key, String(message.reason || "action_intent_cancel"), verifiedIntent);
     const active = pendingActionIntentsRef.current.get(key);
     const hadPending = active?.fingerprint === actionIntentFingerprint(verifiedIntent);
@@ -3866,7 +4007,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
     return null;
   }
 
-  async function waitForPendingActionIntentBeforeLocalSubmit(seq) {
+  async function waitForPendingActionIntentBeforeLocalSubmit(seq, command = null) {
+    if (command && isForfeitCommand(command)) return true;
     const targetSeq = Number(seq);
     if (!Number.isSafeInteger(targetSeq) || targetSeq <= 0) return true;
     const startedAtMs = Date.now();
@@ -3875,6 +4017,11 @@ export function usePeerLobbyConnections(base, servicesRef) {
       if (currentSequence >= targetSeq) return false;
       const pending = pendingActionIntentRecordForSequence(targetSeq);
       if (!pending) return true;
+      if (command && Number(pending.payload.actorIndex) === Number(resolveLocalPlayerIndex(multiplayerRef.current))
+        && pinnedPaymentDisclosure(pending.record.intent)) {
+        assertPaymentDisclosureIntent({ ...pending.record.intent, command });
+        return true;
+      }
       if (matchingAppliedActionForIntent(pending.record.intent)) {
         clearPendingActionIntent(pending.key);
         return false;
@@ -4091,5 +4238,5 @@ export function usePeerLobbyConnections(base, servicesRef) {
   }
 
 
-  return { assertLocalProtocolTimeoutObservation, handleProtocolWaitAnswerMessage, handleProtocolWaitNoticeMessage, localProtocolTimeoutContradiction, observedProtocolWaitMs, openProtocolWaitsForRequester, protocolResponseConn, IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningCryptographicProof, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
+  return { pinVerifiedPaymentEnvelope, restorePaymentDisclosureAtHead, assertPaymentDisclosureIntent, pinnedPaymentDisclosure, pinPaymentDisclosureIntent, acceptPaymentDisclosure, paymentDisclosureForCommand, assertLocalProtocolTimeoutObservation, handleProtocolWaitAnswerMessage, handleProtocolWaitNoticeMessage, localProtocolTimeoutContradiction, observedProtocolWaitMs, openProtocolWaitsForRequester, protocolResponseConn, IGNORED_ACTION_INTENT_TTL_MS, MAX_IGNORED_ACTION_INTENTS, actionBroadcastResponseTimeoutMs, actionIntentKeyFromProtocolClaim, actionIntentKeyFromProtocolPayload, actionIntentProgressExtraFromMessage, actionIntentProgressOperation, auditEncryptionPublicKeyForPlayer, beginPeerWait, broadcastActionIntentCancel, broadcastActionIntentProgress, cachedZiffleRevealTokens, clearAllConnectionHeartbeats, clearAllPendingActionIntents, clearConnectionHeartbeat, clearOwnerZiffleOpeningCache, clearPeerWait, clearPeerWaitForActionIntent, clearPendingActionIntent, currentAuditMatchId, emitZiffleDiagnosticNotice, ensureAuditIdentity, ensureDirectPeerConnections, ensureZiffleIdentity, ensureZiffleOpeningProof, extendZiffleRevealTokenWaitersForActionIntent, handleActionIntentCancelMessage, handleActionIntentProgressMessage, handleConnectionHeartbeatMessage, handlePendingActionIntentTimeout, hydrateZiffleCeremonyForLookup, ignoreAndClearAllPendingActionIntents, ignoredActionIntentReason, importCachedAuditPublicKey, isDirectProtocolMessage, localRevealedOpeningForExport, localRevealedOpeningForRequirement, localRevealedOpeningForZiffleReveal, localZiffleDiagnostics, makeProtocolResponseTimeoutError, makeZiffleRequestId, markConnectionAlive, matchPayloadCeremoniesForLookup, matchingAppliedActionForIntent, normalizeZiffleRevealToken, observedMatchClockElapsedForIntent, openingNeedsZiffleProof, pendingActionIntentDueAtMs, pendingActionIntentEvidenceDueAtMs, pendingActionIntentEvidenceRequestedAtMs, pendingActionIntentEvidenceTimeoutMs, pendingActionIntentFirstObservedAtMs, pendingActionIntentHardDueAtMs, pendingActionIntentHardTimeoutEvidence, pendingActionIntentHeldForProtocolWork, pendingActionIntentRecordForSequence, pendingActionIntentSuppressesHeartbeatStale, previewActionIntentOpeningInInspector, privateDeckManifestForOwner, protocolActionIntentInactiveReason, pruneIgnoredActionIntents, publicDeckManifestForOwner, publicKeyForAuditSigner, publicZiffleKey, refreshPendingActionIntentEvidenceForAction, rememberIgnoredActionIntentKey, rememberLocalRevealedOpening, rememberLocalZiffleCeremonyForLookup, rememberPendingActionIntent, rememberPrivateDeckManifest, rememberPrivateViewDisclosure, rememberZiffleOpeningPosition, rememberZiffleRevealTokens, resolveActionQuorumVote, resolveCryptoMaterial, resolveLocalCryptoPlayerIndex, resolveRngCommit, resolveRngReveal, resolveSubmissionIdleWaiters, resolveTimeoutVote, resolveZiffleRevealToken, resolveZiffleShuffleStep, runtimeManifestForZiffleCeremony, schedulePendingActionIntentTimeout, shouldReplacePendingActionIntentEvidence, shouldSuppressProtocolMessageError, showActionIntentProgressWait, signActionIntentForCommand, signPlayerGenesis, signReconnectProofForChallenge, signedZiffleKeysForPayload, startActionIntentProgressBroadcast, startConnectionHeartbeat, updateMultiplayer, updatePeerWait, updatePeerWaitForActionIntent, verifyActionMatchesPendingIntent, verifyReconnectProofForChallenge, verifySignedActionIntent, verifyZiffleOpeningCryptographicProof, verifyZiffleOpeningProofForOpening, waitForActionQuorumVote, waitForCryptoMaterial, waitForPendingActionIntentBeforeLocalSubmit, waitForProtocolResponse, waitForRngCommit, waitForRngReveal, waitForSubmissionIdle, waitForTimeoutVote, waitForZiffleRevealToken, waitForZiffleShuffleStep, ziffleCeremonyCandidatesForOwner, ziffleCeremonyForOwner, ziffleCeremonyHasObjectOrder, ziffleObjectOrderLinksOpening, ziffleOpeningPositionForSlot, ziffleOpeningProofHasAuthenticatedObjectOrder, zifflePositionForObjectId, zifflePositionForOriginalSlot, zifflePublicKeysForPlayers, ziffleRevealMatchesOpening, ziffleRevealTokenCacheKey, ziffleShuffleObjectIdForPosition, ziffleShuffleOriginalSlotForPosition, ziffleTokensForPosition };
 }

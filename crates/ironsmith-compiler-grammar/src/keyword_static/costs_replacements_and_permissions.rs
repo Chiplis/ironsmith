@@ -5397,6 +5397,17 @@ pub fn parse_conditional_draw_replacement_line(
         )));
     }
 
+    if let Some(body) = late_static_facts::parse_empty_library_draw_effect_replacement_tokens(tokens) {
+        let effects = super::super::clause_support::parse_effect_sentences_lexed(body)?;
+        return Ok(Some(StaticAbility::conditional_draw_replacement(
+            PredicateAst::ValueComparison {
+                left: Value::CardsInLibrary(PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(0),
+            }, effects, render_token_slice(tokens),
+        )));
+    }
+
     let Some(fact) = late_static_facts::parse_conditional_draw_replacement_tokens(tokens) else {
         return Ok(None);
     };

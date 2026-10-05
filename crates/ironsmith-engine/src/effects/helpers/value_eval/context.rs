@@ -21,6 +21,7 @@ pub(crate) enum NumericProperty {
     ManaValue,
     ManaSpent,
     ColorCount,
+    KickerCount,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Reduction {
@@ -301,6 +302,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             NumericProperty::ManaSpent => {
                                 Some(snapshot.mana_spent_to_cast.total() as i32)
                             }
+                            NumericProperty::KickerCount => {
+                                checked_kicker_count(&snapshot.optional_costs_paid)
+                            }
                             NumericProperty::ColorCount => Some(snapshot.colors.count() as i32),
                         });
                     }
@@ -324,6 +328,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             NumericProperty::ManaSpent => {
                                 Some(object.mana_spent_to_cast.total() as i32)
                             }
+                            NumericProperty::KickerCount => {
+                                checked_kicker_count(&object.optional_costs_paid)
+                            }
                             NumericProperty::ColorCount => Some(object.colors().count() as i32),
                         });
                     }
@@ -340,6 +347,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         Some(crate::filter::object_mana_value_for_filter(object))
                     }
                     NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
+                    NumericProperty::KickerCount => {
+                        checked_kicker_count(&object.optional_costs_paid)
+                    }
                     NumericProperty::ColorCount => Some(chars.colors.count() as i32),
                 })
             }),
@@ -468,6 +478,20 @@ impl PropertyObject<'_> {
     }
 }
 
+fn checked_kicker_count(paid: &crate::cost::OptionalCostsPaid) -> Option<i32> {
+    paid.costs
+        .iter()
+        .filter(|(cost, _)| {
+            matches!(
+                cost.kind,
+                crate::cost::OptionalCostKind::Kicker | crate::cost::OptionalCostKind::Multikicker
+            )
+        })
+        .try_fold(0i32, |total, (_, count)| {
+            total.checked_add(i32::try_from(*count).ok()?)
+        })
+}
+
 impl NumericProperty {
     pub(crate) fn label(self) -> &'static str {
         match self {
@@ -475,6 +499,7 @@ impl NumericProperty {
             Self::Toughness => "toughness",
             Self::ManaValue => "mana value",
             Self::ManaSpent => "mana spent to cast",
+            Self::KickerCount => "kicker payments",
             Self::ColorCount => "colors",
         }
     }
@@ -484,6 +509,7 @@ impl NumericProperty {
             Self::Toughness => snapshot.toughness,
             Self::ManaValue => Some(crate::filter::snapshot_mana_value_for_filter(snapshot)),
             Self::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
+            Self::KickerCount => checked_kicker_count(&snapshot.optional_costs_paid),
             Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
     }
@@ -493,6 +519,7 @@ impl NumericProperty {
             Self::Toughness => object.toughness(),
             Self::ManaValue => Some(crate::filter::object_mana_value_for_filter(object)),
             Self::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
+            Self::KickerCount => checked_kicker_count(&object.optional_costs_paid),
             Self::ColorCount => Some(object.colors().count() as i32),
         }
     }
@@ -502,7 +529,9 @@ impl NumericProperty {
             Self::Toughness => game
                 .calculated_toughness(object.id)
                 .or_else(|| object.toughness()),
-            Self::ManaValue | Self::ManaSpent | Self::ColorCount => self.raw(object),
+            Self::ManaValue | Self::ManaSpent | Self::ColorCount | Self::KickerCount => {
+                self.raw(object)
+            }
         }
     }
     pub(crate) fn characteristics(
@@ -512,7 +541,7 @@ impl NumericProperty {
         match self {
             Self::Power => chars.power,
             Self::Toughness => chars.toughness,
-            Self::ManaValue | Self::ManaSpent | Self::ColorCount => None,
+            Self::ManaValue | Self::ManaSpent | Self::ColorCount | Self::KickerCount => None,
         }
     }
 }
@@ -636,5 +665,24 @@ impl EvaluationContext<'_, '_> {
             Mode::Execution(ctx) => ctx.get_tagged(tag.as_str()).map(|snapshot| snapshot.object_id).ok_or_else(|| ExecutionError::UnresolvableValue(format!("DamageDealtThisTurnByTaggedSpellCast requires tagged spell snapshot '{tag}'"))),
             Mode::Continuous(layer) => Ok(self.game.object(self.source).and_then(|object| object.cast_tagged_objects.get(tag)).and_then(|snapshots| snapshots.first()).unwrap_or_else(|| layer.unsupported(value, "tagged spell cast is not retained on the continuous-effect source")).object_id),
         }
+    }
+}
+
+#[cfg(test)]
+mod referenced_kicker_count_tests {
+    use super::*;
+    #[test]
+    fn counts_both_kicker_kinds_but_never_wraps_out_of_value_range() {
+        let mut paid = crate::cost::OptionalCostsPaid::default();
+        paid.costs = vec![
+            ("Kicker".into(), 1),
+            ("Multikicker".into(), 3),
+            ("Buyback".into(), 7),
+        ];
+        assert_eq!(checked_kicker_count(&paid), Some(4));
+        paid.costs[1].1 = i32::MAX as u32;
+        assert_eq!(checked_kicker_count(&paid), None);
+        paid.costs[1].1 = u32::MAX;
+        assert_eq!(checked_kicker_count(&paid), None);
     }
 }

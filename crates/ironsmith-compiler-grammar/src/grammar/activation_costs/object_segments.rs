@@ -141,6 +141,7 @@ pub fn parse_sacrifice_segment_tokens(
 pub fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, false) { return group; }
     let shape = match primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost") {
         Ok(shape) => shape,
         Err(_) => return parse_typed_discard_selector(tokens),
@@ -263,7 +264,7 @@ fn parse_typed_discard_selector(
         filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)?;
     // Relations across a selected set need a group-aware selector. The ordinary
     // discard executor must never silently treat them as per-card predicates.
-    if filter.distinct_names
+    if filter.shares_name || filter.shares_color || filter.distinct_names
         || filter.distinct_mana_values
         || filter.distinct_powers
         || filter.shares_land_type

@@ -75,6 +75,19 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
                 crate::cards::builders::PlayerAst::You, amount.clone(),
             ),
         )),
+        ActivationCostSegmentCst::GroupedHandSelection { count, filter, reveal, tag } => {
+            use crate::cards::builders::{EffectAst, ObjectChoiceEffectAst, PlayerAst};
+            let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: filter.clone(), count: ChoiceCount::exactly(*count as usize),
+                count_value: None, player: PlayerAst::You, tag: tag.clone(),
+            });
+            let selected = crate::target::ObjectFilter::tagged(tag.clone())
+                .in_zone(crate::zone::Zone::Hand).owned_by(crate::target::PlayerFilter::You);
+            let consume = if *reveal { EffectAst::subject_verb_reveal_tagged(tag.clone()) }
+            else { EffectAst::subject_verb_discard(PlayerAst::You, crate::effect::Value::Count(selected.clone()),
+                false, false, Some(selected), None) };
+            CompilerCost::ValidatedEffect(Box::new(EffectAst::Sequence { effects: vec![choose, consume] }))
+        },
         ActivationCostSegmentCst::DiscardValue { count, filter, random } => CompilerCost::ValidatedEffect(Box::new(
             crate::cards::builders::EffectAst::subject_verb_discard(
                 crate::cards::builders::PlayerAst::You, count.clone(), *random, false,

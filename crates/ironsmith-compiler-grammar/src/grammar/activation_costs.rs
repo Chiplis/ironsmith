@@ -40,6 +40,9 @@ pub use object_segments::*;
 mod exile_segments;
 pub use exile_segments::*;
 
+#[path = "activation_costs/grouped_hand.rs"]
+mod grouped_hand;
+
 #[path = "activation_costs/components.rs"]
 mod program;
 pub use program::*;
@@ -72,6 +75,12 @@ pub enum ActivationCostSegmentCst {
     Life(Value),
     Energy(u32),
     EnergyValue(Value),
+    GroupedHandSelection {
+        count: u32,
+        filter: ObjectFilter,
+        reveal: bool,
+        tag: crate::tag::TagRef,
+    },
     DiscardValue {
         count: Value,
         filter: ObjectFilter,

@@ -510,6 +510,31 @@ fn describe_effect_cost_program(effect: &Effect) -> Option<String> {
     while index < sequence.effects.len() {
         let member = structural_unwrap_render_wrappers(&sequence.effects[index]);
         if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && (choose.filter.distinct_names || choose.filter.shares_name || choose.filter.shares_color)
+            && choose.chooser == PlayerFilter::You
+            && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none()
+            && let Some(next) = sequence.effects.get(index + 1) {
+            let next = structural_unwrap_render_wrappers(next);
+            let reveal = next.downcast_ref::<crate::effects::RevealTaggedEffect>()
+                .is_some_and(|reveal| reveal.tag == choose.tag);
+            let discard = next.downcast_ref::<crate::effects::DiscardEffect>().is_some_and(|discard|
+                !discard.random && !discard.any_number && discard.player == PlayerFilter::You
+                    && matches!(&discard.count, Value::Count(count_filter) if discard.card_filter.as_ref() == Some(count_filter))
+                    && discard.card_filter.as_ref().is_some_and(|filter| filter.tagged_constraints.len() == 1
+                        && filter.tagged_constraints[0].tag == choose.tag
+                        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject));
+            if reveal || discard {
+                let mut display = choose.clone();
+                display.filter.owner = None;
+                if discard { display.filter.zone = None; display.zone = None; }
+                parts.push(format!("{} {}", if reveal { "Reveal" } else { "Discard" }, describe_choose_selection(&display)));
+                compacted_choice = true;
+                index += 2;
+                continue;
+            }
+        }
+        if let Some(choose) = member.downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && choose_exact_count(choose) == Some(1)
             && choose.count_value.is_none()
             && choose.aggregate_constraint.is_none()

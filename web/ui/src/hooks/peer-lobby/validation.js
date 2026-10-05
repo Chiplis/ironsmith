@@ -529,6 +529,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
           "Sequenced action does not match pending fair-random intent revealed for this sequence"
         );
       }
+      servicesRef.current.assertPaymentDisclosureIntent?.({ matchId: message.audit?.matchId,
+        seq: nextSequence, actorIndex: message.actorIndex, prevStateHash: message.audit?.prevStateHash,
+        command: message.command });
       const pendingIntentVerification = await verifyActionMatchesPendingIntent(message);
       if (!options.skipQuorumCertificate) {
         applyPhase = markApplyPhase("verify_quorum");
@@ -588,6 +591,11 @@ export function usePeerLobbyValidation(base, servicesRef) {
         && Number(expectedActor) !== Number(message.actorIndex)
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
+      }
+      if ((message.audit?.openings || []).length > 0) {
+        await servicesRef.current.pinVerifiedPaymentEnvelope({ matchId: message.audit.matchId,
+          seq: nextSequence, actorIndex: message.actorIndex, prevStateHash: message.audit.prevStateHash,
+          command: message.command }, message.audit.openings, { audit: message.audit });
       }
 	      const skipMatchClockObservationBounds =
 	        Number(nextSequence) === Number(matchClockObservationExemptSequenceRef.current || 0);
@@ -661,6 +669,12 @@ export function usePeerLobbyValidation(base, servicesRef) {
       );
       applyPhase = markApplyPhase("verify_public_selections_opened");
       await assertPublicSelectionsOpened(localCommand, liveStateForClock, message.actorIndex);
+      const paymentDisclosure = await servicesRef.current.paymentDisclosureForCommand(localCommand);
+      if (paymentDisclosure?.required || paymentDisclosure?.active) {
+        servicesRef.current.pinPaymentDisclosureIntent({ matchId: message.audit.matchId,
+          seq: nextSequence, actorIndex: message.actorIndex, prevStateHash: message.audit.prevStateHash,
+          command: message.command }, { openings: message.audit.openings || [], evidence: { audit: message.audit } });
+      }
       applyPhase = markApplyPhase("preview_requirements");
       let cryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,

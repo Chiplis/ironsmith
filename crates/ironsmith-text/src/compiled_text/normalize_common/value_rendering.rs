@@ -6122,6 +6122,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers

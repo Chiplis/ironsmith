@@ -423,6 +423,22 @@ fn discard_cost_precheck(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(choose) = transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && crate::effects::composition::selection_relations::has_relations(&choose.filter) {
+            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer).with_tagged_objects(ctx.tagged_objects.clone());
+            exec.source_snapshot = ctx.source_snapshot.clone();
+            exec.replacement = ctx.replacement.clone();
+            exec.x_value = ctx.x_value;
+            crate::effects::composition::choose_objects::check_relation_cost_with_context(choose, game, &exec).map_err(convert_validation_error)?;
+            if choose.aggregate_constraint.is_none() && !choose.top_only && !choose.bottom_only && !choose.is_search {
+                return Ok(());
+            }
+        }
+        if let Some(reveal) = transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::RevealTaggedEffect>() {
+            let selected = ctx.tagged_objects.get(&reveal.tag).ok_or_else(|| CostPaymentError::Other("reveal cost has no bound selection".into()))?;
+            return selected.iter().all(|snapshot| game.object(snapshot.object_id).is_some_and(|object| object.zone == snapshot.zone))
+                .then_some(()).ok_or_else(|| CostPaymentError::Other("reveal cost selection changed zones".into()));
+        }
         if let Some(result) = discard_cost_precheck(&self.effect, game, ctx, true) { return result; }
         if !ctx.replacement.entry_reserved_objects.is_empty()
             && let crate::costs::CostProcessingMode::DiscardCards { count, filter } = self.processing_mode()

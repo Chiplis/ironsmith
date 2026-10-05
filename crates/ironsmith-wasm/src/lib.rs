@@ -4001,6 +4001,7 @@ struct ReplayCheckpoint {
     /// Public hand identities already disclosed at this Undo boundary. This is
     /// knowledge, including audit views, rather than a reversible zone count.
     public_hand_disclosures: HashSet<(PlayerId, ObjectId)>,
+    payment_disclosure_generation: u64,
     /// Diagnostic tag identifying where this checkpoint was captured.
     diag_tag: &'static str,
 }
@@ -4534,6 +4535,8 @@ pub struct WasmGame {
     pending_action_checkpoint: Option<ReplayCheckpoint>,
     /// Root priority response for the current live action chain.
     pending_live_action_root: Option<PriorityResponse>,
+    payment_disclosure: Option<wasm_game_impl::PaymentDisclosureCommitment>,
+    payment_disclosure_generation: u64,
     /// Replayable suspended live priority computation plus any nested answers
     /// already provided for it.
     pending_live_continuation: Option<LivePriorityContinuation>,
@@ -4570,6 +4573,7 @@ pub struct WasmGame {
     /// Latched for the current priority epoch when an irreversible mana ability
     /// activation has occurred (for example sacrifice/counter/life side effects).
     priority_epoch_undo_locked_by_mana: bool,
+    priority_epoch_undo_locked_by_disclosure: bool,
     /// Stable id of the most recent reversible land-for-mana tap committed in
     /// the current priority epoch.
     priority_epoch_undo_land_stable_id: Option<u64>,
@@ -6931,5 +6935,66 @@ mod shared_payment_inventory_tests {
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
         assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
+    }
+}
+
+#[cfg(test)]
+mod revealed_hand_crypto_scope_tests {
+    use super::*;
+    use ironsmith::ability::Ability;
+    use ironsmith::cards::CardDefinitionBuilder;
+    use ironsmith::static_abilities::StaticAbility;
+    #[test]
+    fn self_and_global_revelation_require_public_hand_openings_through_source_transitions() {
+        let _ids = crate::test_id_counter_guard();
+        for global in [false, true] {
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+            let first = wasm.game.create_hidden_card_placeholder(alice, Zone::Hand, 3, "alice-hand-scope-proof".into());
+            let second = wasm.game.create_hidden_card_placeholder(bob, Zone::Hand, 4, "bob-hand-scope-proof".into());
+            let library = wasm.game.create_hidden_card_placeholder(alice, Zone::Library, 5, "library-must-stay-private".into());
+            let source = CardDefinitionBuilder::new(CardId::new(), "Revealed hand opening probe")
+                .card_types(vec![CardType::Enchantment]).with_ability(Ability::static_ability(if global {
+                    StaticAbility::players_play_with_hands_revealed()
+                } else { StaticAbility::controller_plays_with_hand_revealed() })).build();
+            let before = wasm.capture_crypto_audit_state();
+            let host = wasm.game.create_object_from_definition(&source, alice, Zone::Battlefield);
+            wasm.update_crypto_requirements_from(before);
+            let verify = |wasm: &WasmGame, controller: PlayerId, active: bool| {
+                for (player, id, commitment) in [(alice, first, "alice-hand-scope-proof"), (bob, second, "bob-hand-scope-proof")] {
+                    let expected = active && (global || player == controller);
+                    assert_eq!(wasm.last_crypto_requirements.iter().any(|requirement|
+                        requirement.requirement_type == "public_view_window" && requirement.owner == player.index() as u8
+                            && requirement.zone == "hand" && requirement.count == Some(1)), expected);
+                    assert_eq!(wasm.last_crypto_requirements.iter().any(|requirement|
+                        requirement.requirement_type == "public_open" && requirement.owner == player.index() as u8
+                            && requirement.object_id == Some(id.0) && requirement.commitment.as_deref() == Some(commitment)
+                            && requirement.visibility.as_deref() == Some("public")), expected);
+                }
+                assert!(!wasm.last_crypto_requirements.iter().any(|requirement|
+                    requirement.requirement_type == "public_open" && requirement.object_id == Some(library.0)));
+            };
+            verify(&wasm, alice, true);
+            // A proof may reopen a card whose identity is already known locally.
+            // Hydration must keep its physical binding and current object state.
+            let known = CardDefinitionBuilder::new(CardId::new(), "Known hand identity").card_types(vec![CardType::Artifact]).build();
+            wasm.registry.register(known.clone());
+            wasm.game.reveal_hidden_card_with_definition(first, &known).unwrap();
+            wasm.game.object_mut(first).unwrap().add_counters(ironsmith::object::CounterType::Charge, 2);
+            let stable = wasm.game.object(first).unwrap().stable_id;
+            wasm.game.reveal_hidden_card_with_definition(first, &known).unwrap();
+            assert_eq!(wasm.game.object(first).unwrap().stable_id, stable);
+            assert_eq!(wasm.game.object(first).unwrap().counters.get(&ironsmith::object::CounterType::Charge), Some(&2));
+            assert_eq!(wasm.game.hidden_card_info(first).unwrap().commitment, "alice-hand-scope-proof");
+            let before = wasm.capture_crypto_audit_state(); wasm.game.set_current_controller(host, bob).unwrap();
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, true);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.phase_out(host);
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, false);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.phase_in(host);
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, true);
+            let before = wasm.capture_crypto_audit_state(); wasm.game.move_object_by_effect(host, Zone::Graveyard).unwrap();
+            wasm.update_crypto_requirements_from(before); verify(&wasm, bob, false);
+        }
     }
 }

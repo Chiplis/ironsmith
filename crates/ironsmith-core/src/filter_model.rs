@@ -2381,6 +2381,14 @@ pub struct ObjectFilter {
     pub any_of: Vec<ObjectFilter>,
     pub source: bool,
     pub source_surface: Option<SourceReferenceSurface>,
+    /// Selection-set constraint: all chosen objects share at least one name.
+    /// This never changes whether an individual object matches the filter.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_name: bool,
+    /// Selection-set constraint: the intersection of the chosen objects' colors
+    /// must contain a color. Colorless objects do not share a color.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shares_color: bool,
 }
 
 impl ObjectFilter {
@@ -5383,6 +5391,12 @@ impl ObjectFilter {
         if self.shares_land_type {
             parts.push("that share a land type".to_string());
         }
+        if self.shares_name {
+            parts.push("with the same name".to_string());
+        }
+        if self.shares_color {
+            parts.push("that share a color".to_string());
+        }
         if self.one_per_card_type {
             parts.push("with at most one card of each card type".to_string());
         }
@@ -7640,6 +7654,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ToughnessOf(spec) => {
                 format!("{} toughness", describe_value_choose_spec_possessive(spec))
             }
+            Value::KicksPaidOf(_) => "the number of times it was kicked".to_string(),
             Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base() {

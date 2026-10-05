@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Cerebral Vortex",
+    "oracle_id": "c68b4003-e539-4b88-acc9-e95c100173c0",
+    "mana_cost": "{1}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Target player draws two cards, then Cerebral Vortex deals damage to that player equal to the number of cards they've drawn this turn."
+  },
+  {
+    "name": "Essence Backlash",
+    "oracle_id": "f51ed0b4-c144-458e-b97c-618b9e1cf25d",
+    "mana_cost": "{2}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Counter target creature spell. Essence Backlash deals damage equal to that spell's power to its controller."
+  },
+  {
+    "name": "Malignant Growth",
+    "oracle_id": "b3235d21-ce52-4a99-a2fe-99b0fe7cc8bc",
+    "mana_cost": "{3}{G}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "Cumulative upkeep {1} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nAt the beginning of your upkeep, put a growth counter on this enchantment.\nAt the beginning of each opponent's draw step, that player draws an additional card for each growth counter on this enchantment, then this enchantment deals damage to the player equal to the number of cards they drew this way."
+  },
+  {
+    "name": "Rumbling Aftershocks",
+    "oracle_id": "851a2214-5f87-4e5b-b099-1c5c90784a97",
+    "mana_cost": "{4}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you cast a kicked spell, you may have this enchantment deal damage to any target equal to the number of times that spell was kicked."
+  }
+]

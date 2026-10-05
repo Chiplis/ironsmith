@@ -2602,11 +2602,14 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 crate::effects::continuous::RuntimeModification::RemoveAllAbilities
             )
         });
-    if !card_types.contains(&CardType::Creature)
+    let is_creature_template = card_types.contains(&CardType::Creature);
+    let granted_self_subject = if is_creature_template { "this creature" } else if card_types.contains(&CardType::Artifact) { "this artifact" } else { "this permanent" };
+    if card_types.is_empty()
         || (!effect.runtime_modifications.is_empty() && !removes_all_abilities)
     {
         return None;
     }
+    let mut removes_other_abilities = false;
     let mut name_override = None;
     let mut supertypes = Vec::new();
 
@@ -2641,9 +2644,8 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             crate::continuous::Modification::AddSubtypes(candidate_subtypes) => {
                 subtypes.extend(candidate_subtypes.iter().copied());
             }
-            crate::continuous::Modification::RemoveAllSubtypesOfFamily(
-                crate::types::SubtypeFamily::Creature,
-            ) => {}
+            crate::continuous::Modification::RemoveAllSubtypesOfFamily(_) => {}
+            crate::continuous::Modification::RemoveAllAbilities => { removes_other_abilities = true; }
             crate::continuous::Modification::AddAllSubtypesOfFamily(
                 crate::types::SubtypeFamily::Creature,
             ) => {
@@ -2668,7 +2670,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                     });
                 let mut rendered = capitalize_first(&describe_static_ability_with_subject(
                     ability,
-                    "this creature",
+                    granted_self_subject,
                 ));
                 if !rendered.ends_with('.') && !rendered.ends_with('!') && !rendered.ends_with('?')
                 {
@@ -2715,10 +2717,10 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 );
                 let mut rendered = capitalize_first(&describe_inline_ability_with_self_subject(
                     ability,
-                    "this creature",
+                    granted_self_subject,
                 ))
                 .replace(". otherwise,", ". Otherwise,");
-                rendered = replace_this_spell_self_reference(rendered, "this creature");
+                rendered = replace_this_spell_self_reference(rendered, granted_self_subject);
                 rendered = normalize_granted_triggered_ability_surface(rendered);
                 rendered = rendered.replace(", where X is X", "");
                 if matches!(effect.until, Until::EndOfTurn) {
@@ -2747,7 +2749,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 .target_spec
                 .as_ref()
                 .is_some_and(choose_spec_is_returned_result_set));
-    let returned_artifact_creature_animation = returned_permanent_animation
+    let returned_artifact_creature_animation = is_creature_template && returned_permanent_animation
         && !replaces_other_types
         && effect.type_retention_surface.is_none()
         && card_types.contains(&CardType::Artifact);
@@ -2859,7 +2861,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             ]
             .iter()
             .any(|noun| target_lower.contains(noun)));
-    if !omit_creature_type_noun && !redundant_creature_noun {
+    if is_creature_template && !omit_creature_type_noun && !redundant_creature_noun {
         descriptor.push(if plural_target {
             "creatures".to_string()
         } else {
@@ -3060,6 +3062,9 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         } else {
             text.push_str(if preserves_other_colors { " in addition to its other colors and types" } else { " in addition to its other types" });
         }
+    }
+    if removes_other_abilities {
+        text.push_str(if plural_target { " and lose all other abilities" } else { " and loses all other abilities" });
     }
     let tail = describe_apply_continuous_tail(effect);
     let leading_duration = matches!(

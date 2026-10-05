@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Illuminated Folio",
+    "oracle_id": "0440f85f-8128-4399-9a3d-51f39e196c96",
+    "text": "Mana cost: {5}\nType: Artifact \u2014 Book\n{1}, {T}, Reveal two cards from your hand that share a color: Draw a card.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "No executed validation; native scenarios, peer scenarios and supported-card regressions remain mandatory."
+  },
+  {
+    "name": "Ormos, Archive Keeper",
+    "oracle_id": "06d60b71-a9f9-4a7f-ad69-15d760b6e5c3",
+    "text": "Mana cost: {4}{U}{U}\nType: Legendary Creature \u2014 Sphinx\nPower/Toughness: 5/5\nFlying\nIf you would draw a card while your library has no cards in it, instead put five +1/+1 counters on Ormos.\n{1}{U}{U}, Discard three cards with different names: Draw five cards.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "No executed validation; native scenarios, peer scenarios and supported-card regressions remain mandatory."
+  },
+  {
+    "name": "Sphinx of the Chimes",
+    "oracle_id": "690df8d2-9538-4c51-b730-cee09ad0ef1c",
+    "text": "Mana cost: {4}{U}{U}\nType: Creature \u2014 Sphinx\nPower/Toughness: 5/6\nFlying\nDiscard two nonland cards with the same name: Draw four cards.",
+    "proposed_coverage": "source_implemented_all_validation_deferred",
+    "remaining_blocker": "No executed validation; native scenarios, peer scenarios and supported-card regressions remain mandatory."
+  }
+]

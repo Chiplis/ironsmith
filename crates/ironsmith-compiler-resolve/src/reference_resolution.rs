@@ -1431,6 +1431,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
+        | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
@@ -8712,6 +8713,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
+        | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }

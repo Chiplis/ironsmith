@@ -74,4 +74,6 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     DoesntUntap,
     MakeColorless,
     SwitchPowerToughness,
+    /// Ordered clearing within a compound grant; appended for wire stability.
+    RemoveAllAbilities,
 }

@@ -76,3 +76,30 @@ Cyclone needs captured cycling-ability identity. Island Sanctuary has its own
 draw-step gate plus temporary attack restriction. They are not counted here.
 The earlier token-family silent 500-token truncation remains a mandatory final
 correctness gap tracked separately; nothing in this draw batch closes it.
+
+### Cryptographic opening path (source-reviewed, unrun)
+
+The visibility IDs feed `hand_revealed_by_static_ability` in WASM `lib.rs`, then
+`append_static_visibility_views`, which includes every current hand object and
+stable ID in a `public: true` view. `update_crypto_requirements_from` emits both
+`public_view_window` and commitment-bound `public_open` requirements from those
+views. The normal snapshot path runs this audit after a captured action, so
+entry, control transfer, phasing and departure re-evaluate the current scope.
+
+`web/ui/src/hooks/peer-lobby/audit-material.js` builds/collects these requirements'
+openings and `verifyAuditSatisfiesCryptoRequirements` rejects missing public
+openings. `revealAuditOpenings` calls `verifyAuditOpeningsAgainstManifests` before
+installing identities; that verifies the deck-manifest opening and applicable
+Ziffle cryptographic proof. It then uses the existing commitment/position-aware
+`revealHiddenObject`, `revealHiddenSlot` or `revealHiddenPosition` routes. WASM
+validates the physical binding, hydrates/rebinds with
+`reveal_hidden_card_with_definition`, and updates any live continuation
+checkpoint before preserving/recomputing the decision. A repeated known-card
+opening must preserve current characteristics and identity; stopping public
+visibility does not make already disclosed information unknown again.
+
+One additional authored, unrun WASM scenario asserts actual public window/opening
+requirements for self/global scopes across all source transitions, excludes a
+hidden library card, and checks known-card rehydration retains the commitment,
+stable identity and current state. This extends the local view matrix; it does
+not claim a newly executed peer/cryptographic validation run.

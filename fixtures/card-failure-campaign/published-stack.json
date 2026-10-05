@@ -2,7 +2,7 @@
   "schema_version": 1,
   "repository": "Chiplis/ironsmith",
   "frozen_baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "published_through_stage": 38,
+  "published_through_stage": 39,
   "purpose": "Verified published tree/ref/parent and draft-PR lookup for the source-coverage stage IDs. Only historical compile/runtime evidence is verification; stages08+ remain UNVALIDATED. The current stage appears in the next cumulative source update to avoid a self-referential commit.",
   "entries": [
     {
@@ -566,6 +566,20 @@
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/804",
       "validation_status": "UNVALIDATED_source_only_all_execution_deferred",
       "local_commit": "2ee64c7c5f87d839d07f386200f549c3d20d4918"
+    },
+    {
+      "stage": 39,
+      "branch": "fix/card-failures-39-replacement-context-roots",
+      "base": "fix/card-failures-38-token-lifetime-roots",
+      "remote_commit": "3796fb82d10aa3e5168d30c30abb3a93deea95ba",
+      "tree": "faa352d336bd50f3e019f45138e7260e2b04d3fa",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 805,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/805",
+      "local_commit": "7f8a717f4ee92bfdbb2d168c6532eaea5cfac867"
     }
   ]
 }

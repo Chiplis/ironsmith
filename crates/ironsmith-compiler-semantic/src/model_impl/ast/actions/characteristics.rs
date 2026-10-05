@@ -15,6 +15,7 @@ pub enum CharacteristicActionAst {
         name_override: Option<String>,
         add_supertypes: Vec<Supertype>,
         remove_all_abilities: bool,
+        remove_other_abilities: bool,
         base_power_toughness: Option<(Value, Value)>,
         target: TargetAst,
         card_types: Vec<CardType>,

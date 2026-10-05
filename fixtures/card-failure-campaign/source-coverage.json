@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "1883ee3085113b758837765dfd942b0379d92320",
+  "source_implementation_commit": "97bac9efeb1bd58a61e31549bf37d83c631c7a60",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 506,
-    "additional_proposed_compile_entries": 507,
+    "additional_proposed_unique_cards": 527,
+    "additional_proposed_compile_entries": 528,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 4,
+    "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 21,
-    "source_proposals_excluding_identified_runtime_gaps": 485,
+    "identified_source_proposals_with_known_runtime_gaps": 22,
+    "source_proposals_excluding_identified_runtime_gaps": 505,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -948,26 +948,6 @@
         {
           "card_name": "Gix, Yawgmoth Praetor",
           "remaining_blocker": "Immediate optional play/cast over the whole exiled pool needs ordered selection and correct land-play rules; the current singular CastTaggedEffect cannot represent the plural clause alone."
-        },
-        {
-          "card_name": "Knollspine Invocation",
-          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
-          "source_implementation_retained": true
-        },
-        {
-          "card_name": "Kozilek, the Great Distortion",
-          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
-          "source_implementation_retained": true
-        },
-        {
-          "card_name": "Krovikan Sorcerer",
-          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
-          "source_implementation_retained": true
-        },
-        {
-          "card_name": "Sanctum Spirit",
-          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
-          "source_implementation_retained": true
         }
       ],
       "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
@@ -975,6 +955,28 @@
       "semantic_scope": [
         "Typed discard filters and actual resource-bounded X; context-aware nonmutating preflight and exact payment selection.",
         "Kozilek is joint with relative-hand quantities; Gix plural immediate play/cast remains partial."
+      ],
+      "subsequent_source_closures": [
+        {
+          "card_name": "Knollspine Invocation",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Kozilek, the Great Distortion",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Krovikan Sorcerer",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Sanctum Spirit",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        }
       ]
     },
     {
@@ -993,18 +995,19 @@
         "Skull Raid",
         "Heed the Mists"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Kozilek, the Great Distortion",
-          "remaining_blocker": "Completed-action Undo can restore a payment after its discarded/revealed hand identities were disclosed publicly. A disclosure-aware Undo boundary is required; precommit paths are a separate scoped follow-up.",
-          "source_implementation_retained": true
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "a59a0c96b305b23283974e9f3f6763ceb05e18f7",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Per-player half-hand counts and instruction-wide sacrifice rounding.",
         "Exact compared thresholds, local consequent operands, strict intervening-if promotion and prior-discard result counts including zero."
+      ],
+      "subsequent_source_closures": [
+        {
+          "card_name": "Kozilek, the Great Distortion",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        }
       ]
     },
     {
@@ -1271,19 +1274,40 @@
     {
       "id": "snc-exiled-land-mana-grants",
       "stage": 37,
-      "status": "source_partial_runtime_prerequisite_unresolved",
+      "status": "source_prerequisite_closed_by_stage40_validation_deferred",
       "fixture": "fixtures/snc_exiled_land_mana_grants.json.fixture",
       "baseline_entries": [],
-      "partial_entries": [
-        "Glamorous Outlaw",
-        "Masked Bandits",
-        "Rakish Revelers",
-        "Shattered Seraph",
-        "Spara's Adjudicators"
-      ],
+      "partial_entries": [],
       "implementation_commit": "ba6da0e8",
       "tests": "authored_not_run",
-      "remaining_gap": "Transaction-scoped disclosure commitment and genuine failure recovery; modified self-exile receipt edge under source review."
+      "remaining_gap": "Execution and full regression validation remain deferred.",
+      "subsequent_source_closures": [
+        {
+          "card_name": "Glamorous Outlaw",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Masked Bandits",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Rakish Revelers",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Shattered Seraph",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        },
+        {
+          "card_name": "Spara's Adjudicators",
+          "stage": 40,
+          "closed_by": "payment-disclosure-transactions"
+        }
+      ]
     },
     {
       "id": "animation-characteristic-templates",
@@ -1554,6 +1578,77 @@
       "semantic_scope": [
         "Complete replacement program ownership and shared effect-reference frames, affected drawer scope and current-draw cancellation.",
         "Live native self/global public hand visibility reaches cryptographic public opening requirements; full source lifetime transitions authored."
+      ]
+    },
+    {
+      "id": "unsized-object-templates",
+      "stage": 40,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/unsized_object_templates.json.fixture",
+      "baseline_entries": [
+        "Chimeric Mass",
+        "Druid Class",
+        "Svogthos, the Restless Tomb",
+        "Warden of the First Tree",
+        "Frodo, Sauron's Bane"
+      ],
+      "implementation_commit": "e027e9dfc5ab035dfd085bc34e69758d7eccb3f8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Absent P/T is preserved with complete quoted grants and independent type/color retention.",
+        "Existing native late-static discovery retains receiver/current-controller/live-value and7b timestamp semantics.",
+        "Clear-before-grant noncreature transformation primitive is implemented; Vraska complete secondary body remains partial."
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Vraska, Betrayal's Sting",
+          "remaining": "Complete poison-difference/Compleated program source review remains; transformation primitive only."
+        }
+      ]
+    },
+    {
+      "id": "prior-damage-quantities",
+      "stage": 40,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/prior_damage_quantities.json.fixture",
+      "baseline_entries": [
+        "Cerebral Vortex",
+        "Essence Backlash",
+        "Malignant Growth",
+        "Rumbling Aftershocks"
+      ],
+      "implementation_commit": "bc4853d76ca484eee35a7a2001a31bb1fb091df7",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Actual prior draw count versus turn history, exact stack power/LKI and exact triggering spell kicker/multikicker metadata.",
+        "Four complete source proposals; checked referenced kick quantity rejects out-of-range representation."
+      ]
+    },
+    {
+      "id": "payment-disclosure-transactions",
+      "stage": 40,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/grouped_hand_costs.json.fixture",
+      "baseline_entries": [
+        "Knollspine Invocation",
+        "Krovikan Sorcerer",
+        "Sanctum Spirit",
+        "Kozilek, the Great Distortion",
+        "Glamorous Outlaw",
+        "Masked Bandits",
+        "Rakish Revelers",
+        "Shattered Seraph",
+        "Spara's Adjudicators",
+        "Illuminated Folio",
+        "Ormos, Archive Keeper",
+        "Sphinx of the Chimes"
+      ],
+      "implementation_commit": "97bac9efeb1bd58a61e31549bf37d83c631c7a60",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Native action commitment, immutable signed-attempt journal, accepted-prefix recovery and retained original timing preserve disclosure across failures.",
+        "Current decision-player authority, non-dispatch Cancel compatibility, stale-plan/invalid-group prechecks and public proof validation retained.",
+        "Earlier four discard costs, five SNC exiled mana grants and three shared-name/color hand costs admitted after coordinated source review; execution remains entirely deferred."
       ]
     }
   ],
@@ -5643,8 +5738,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prior-damage-quantities"
+      ]
     },
     {
       "card_name": "Chain Assassination",
@@ -5921,8 +6018,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unsized-object-templates"
+      ]
     },
     {
       "card_name": "Chimney Imp",
@@ -9164,8 +9263,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unsized-object-templates"
+      ]
     },
     {
       "card_name": "Druid of the Emerald Grove",
@@ -10140,8 +10241,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prior-damage-quantities"
+      ]
     },
     {
       "card_name": "Essence Bottle",
@@ -11888,8 +11991,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unsized-object-templates"
+      ]
     },
     {
       "card_name": "Froghemoth",
@@ -12648,12 +12753,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "snc-exiled-land-mana-grants"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "snc-exiled-land-mana-grants",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Glarecaster",
@@ -14850,8 +14954,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Illusion Spinners",
@@ -16979,12 +17085,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "typed-discard-cost-values"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Knowledge Is Power",
@@ -17169,13 +17274,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
         "typed-discard-cost-values",
-        "relative-hand-quantities-and-rounding"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+        "relative-hand-quantities-and-rounding",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Krang & Shredder",
@@ -17236,12 +17340,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "typed-discard-cost-values"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Krumar Initiate",
@@ -18602,8 +18705,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prior-damage-quantities"
+      ]
     },
     {
       "card_name": "Malignus",
@@ -18852,12 +18957,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "snc-exiled-land-mana-grants"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "snc-exiled-land-mana-grants",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Massacre Girl, Most Wanted",
@@ -21502,8 +21606,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Orochi Merge-Keeper",
@@ -23655,12 +23761,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "snc-exiled-land-mana-grants"
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "snc-exiled-land-mana-grants",
+        "payment-disclosure-transactions"
       ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Ral Zarek",
@@ -25039,8 +25147,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "prior-damage-quantities"
+      ]
     },
     {
       "card_name": "Rumbling Ruin",
@@ -25335,12 +25445,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "typed-discard-cost-values"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "typed-discard-cost-values",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Sandman's Quicksand",
@@ -26270,12 +26379,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "snc-exiled-land-mana-grants"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "snc-exiled-land-mana-grants",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Shauku, Endbringer",
@@ -27530,12 +27638,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_known_runtime_gap",
-      "source_families": [],
-      "partial_source_families": [
-        "snc-exiled-land-mana-grants"
-      ],
-      "remaining_runtime_gap": "payment-disclosure-undo"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "snc-exiled-land-mana-grants",
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Sparkshaper Visionary",
@@ -27654,8 +27761,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "payment-disclosure-transactions"
+      ]
     },
     {
       "card_name": "Sphinx of the Guildpact",
@@ -28761,8 +28870,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unsized-object-templates"
+      ]
     },
     {
       "card_name": "Swans of Bryn Argoll",
@@ -33386,8 +33497,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "unsized-object-templates"
+      ]
     },
     {
       "card_name": "Warden of the Grove",
@@ -35083,7 +35196,7 @@
   "known_runtime_prerequisites": [
     {
       "id": "payment-disclosure-undo",
-      "status": "source_proven_remediation_in_progress",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
       "affected_previously_proposed_complete": [
         "Knollspine Invocation",
         "Krovikan Sorcerer",
@@ -35098,7 +35211,9 @@
       "evidence": "architecture/card-failure-payment-disclosure-boundary.md",
       "complete_coverage_claims_withheld": true,
       "completed_action_guard_source_commit": "649a0c72",
-      "remaining_boundary": "Precommit opening previews and independent payment failure/cancellation routes remain under source review."
+      "remaining_boundary": "Known source defects addressed; authored native and peer regressions remain unrun. Final correctness claims withheld pending execution.",
+      "source_review_commit": "97bac9ef",
+      "source_proposal_promotion_stage": 40
     },
     {
       "id": "token-creation-silent-cap",
@@ -35119,7 +35234,8 @@
         "Worldwalker Helm",
         "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second",
         "Case of the Pilfered Proof",
-        "Fisher's Talent"
+        "Fisher's Talent",
+        "Rakish Revelers"
       ],
       "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
       "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",

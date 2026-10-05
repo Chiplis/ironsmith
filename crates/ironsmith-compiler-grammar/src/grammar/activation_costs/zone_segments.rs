@@ -30,6 +30,7 @@ enum ReturnCostShape {
 pub fn parse_reveal_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, true) { return group; }
     parse_segment(tokens, parse_reveal_segment_lexed, "reveal-cost")
 }
 

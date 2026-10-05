@@ -1629,6 +1629,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
+        | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::CasterManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
@@ -2321,6 +2322,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCast(_)
+        | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::CasterManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
@@ -2594,6 +2596,7 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.excluded_name.is_some()
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
+                    || filter.shares_name
             }
             Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
                 filter_mentions_card_types(filter, types)
@@ -2710,7 +2713,7 @@ fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
 }
 
 fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {
-    filter.colors.is_some()
+    filter.shares_color || filter.colors.is_some()
         || filter.required_colors.is_some()
         || filter.chosen_color
         || !filter.excluded_colors.is_empty()

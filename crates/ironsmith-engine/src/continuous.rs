@@ -1025,6 +1025,7 @@ impl Modification {
             },
             ironsmith_core::CompiledContinuousModification::DoesntUntap => Self::restriction(RestrictionKind::DoesntUntap),
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
+            ironsmith_core::CompiledContinuousModification::RemoveAllAbilities => Self::RemoveAllAbilities,
             ironsmith_core::CompiledContinuousModification::SwitchPowerToughness => {
                 Self::SwitchPowerToughness
             }
@@ -5478,6 +5479,8 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.distinct_powers
         || filter.distinct_creature_types
         || filter.shares_land_type
+        || filter.shares_name
+        || filter.shares_color
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()

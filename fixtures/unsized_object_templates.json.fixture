@@ -1,0 +1,67 @@
+[
+  {
+    "name": "Chimeric Mass",
+    "oracle_id": "98066238-28f8-41e3-903a-d367927f23ca",
+    "mana_cost": "{X}",
+    "type_line": "Artifact",
+    "oracle_text": "This artifact enters with X charge counters on it.\n{1}: Until end of turn, this artifact becomes a Construct artifact creature with \"This creature's power and toughness are each equal to the number of charge counters on it.\"",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/mm2/204/chimeric-mass?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Druid Class",
+    "oracle_id": "dcbcbf42-4654-487a-acad-21f2606d229b",
+    "mana_cost": "{1}{G}",
+    "type_line": "Enchantment \u2014 Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nLandfall \u2014 Whenever a land you control enters, you gain 1 life.\n{2}{G}: Level 2\nYou may play an additional land on each of your turns.\n{4}{G}: Level 3\nWhen this Class becomes level 3, target land you control becomes a creature with haste and \"This creature's power and toughness are each equal to the number of lands you control.\" It's still a land.",
+    "layout": "class",
+    "scryfall_uri": "https://scryfall.com/card/afr/180/druid-class?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Svogthos, the Restless Tomb",
+    "oracle_id": "a34a70b8-02e5-4e8c-a9e7-b21c5a11dddf",
+    "mana_cost": "",
+    "type_line": "Land",
+    "oracle_text": "{T}: Add {C}.\n{3}{B}{G}: Until end of turn, this land becomes a black and green Plant Zombie creature with \"This creature's power and toughness are each equal to the number of creature cards in your graveyard.\" It's still a land.",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/cm2/270/svogthos-the-restless-tomb?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Warden of the First Tree",
+    "oracle_id": "0068a341-92a5-470e-a565-9ace69eb04a8",
+    "mana_cost": "{G}",
+    "type_line": "Creature \u2014 Human",
+    "oracle_text": "{1}{W/B}: This creature becomes a Human Warrior with base power and toughness 3/3.\n{2}{W/B}{W/B}: If this creature is a Warrior, it becomes a Human Spirit Warrior with trample and lifelink.\n{3}{W/B}{W/B}{W/B}: If this creature is a Spirit, put five +1/+1 counters on it.",
+    "power": "1",
+    "toughness": "1",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/pfrf/143s/warden-of-the-first-tree?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Frodo, Sauron's Bane",
+    "oracle_id": "8be62f5c-0ab2-4869-97a2-d8a69a3fde95",
+    "mana_cost": "{W}",
+    "type_line": "Legendary Creature \u2014 Halfling Citizen",
+    "oracle_text": "{W/B}{W/B}: If Frodo is a Citizen, it becomes a Halfling Scout with base power and toughness 2/3 and lifelink.\n{B}{B}{B}: If Frodo is a Scout, it becomes a Halfling Rogue with \"Whenever this creature deals combat damage to a player, that player loses the game if the Ring has tempted you four or more times this game. Otherwise, the Ring tempts you.\"",
+    "power": "1",
+    "toughness": "2",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/ltr/796/frodo-saurons-bane?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Vraska, Betrayal's Sting",
+    "oracle_id": "05d09c55-f551-4cb4-a8d2-4811dccc848d",
+    "mana_cost": "{4}{B}{B/P}",
+    "type_line": "Legendary Planeswalker \u2014 Vraska",
+    "oracle_text": "Compleated ({B/P} can be paid with {B} or 2 life. If life was paid, this planeswalker enters with two fewer loyalty counters.)\n0: You draw a card and lose 1 life. Proliferate.\n\u22122: Target creature becomes a Treasure artifact with \"{T}, Sacrifice this artifact: Add one mana of any color\" and loses all other card types and abilities.\n\u22129: If target player has fewer than nine poison counters, they get a number of poison counters equal to the difference.",
+    "loyalty": "6",
+    "layout": "normal",
+    "scryfall_uri": "https://scryfall.com/card/ecc/88/vraska-betrayals-sting?utm_source=api",
+    "proposed_complete": false
+  }
+]

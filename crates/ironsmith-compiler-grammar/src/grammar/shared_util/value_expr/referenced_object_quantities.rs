@@ -37,6 +37,12 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         }
     }
 
+    if rest.starts_with(&["number", "of", "times", "that", "spell", "was", "kicked"]) {
+        return Some((
+            Value::KicksPaidOf(tagged(Tag::It, "that spell")),
+            offset + 7,
+        ));
+    }
     // A definite possessive retains the referenced object, rather than the
     // resolving spell as damage source. Destroy keeps departure LKI; a live
     // indestructible object is still read from the same tagged identity.
@@ -53,6 +59,18 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
                 Some(["mana", "value", ..]) => return Some((Value::ManaValueOf(spec), 4)),
                 _ => {}
             }
+        }
+    }
+    // A spell's characteristics are those of the exact prior/event stack
+    // object. The spelling must not collapse to the damage recipient or to
+    // the spell/ability currently resolving.
+    if rest.len() >= 3 && rest[0] == "that" && matches!(rest[1], "spell's" | "spells") {
+        let spec = tagged(Tag::It, "that spell");
+        match rest.get(2..) {
+            Some(["power", ..]) => return Some((Value::PowerOf(spec), offset + 3)),
+            Some(["toughness", ..]) => return Some((Value::ToughnessOf(spec), offset + 3)),
+            Some(["mana", "value", ..]) => return Some((Value::ManaValueOf(spec), offset + 4)),
+            _ => {}
         }
     }
     if rest.starts_with(&["tapped", "creatures", "power"])
@@ -248,5 +266,33 @@ mod attachment_host_tests {
             filter.card_types.as_slice(),
             [crate::types::CardType::Creature]
         ));
+    }
+}
+
+#[cfg(test)]
+mod spell_quantity_tests {
+    use super::*;
+    #[test]
+    fn referenced_spell_power_and_paid_kicks_are_not_the_resolving_source() {
+        for (text, kicks) in [
+            ("that spell's power", false),
+            ("the number of times that spell was kicked", true),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+            assert_eq!(used, tokens.len());
+            let spec = match &value {
+                Value::KicksPaidOf(spec) if kicks => spec,
+                Value::PowerOf(spec) if !kicks => spec,
+                _ => panic!("{value:?}"),
+            };
+            assert!(matches!(spec.base(),ChooseSpec::Tagged(tag) if tag.as_str()=="__it__"));
+            assert_eq!(
+                spec.source_reference_surface(),
+                Some(&SourceReferenceSurface::ThisPermanentType(
+                    "that spell".into()
+                ))
+            );
+        }
     }
 }

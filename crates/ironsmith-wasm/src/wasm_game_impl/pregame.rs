@@ -3154,9 +3154,12 @@ impl WasmGame {
         self.pending_replay_action = None;
         self.pending_action_checkpoint = None;
         self.pending_live_action_root = None;
+        self.payment_disclosure = None;
+        self.payment_disclosure_generation = 0;
         self.priority_epoch_checkpoint = None;
         self.priority_epoch_has_undoable_action = false;
         self.priority_epoch_undo_locked_by_mana = false;
+        self.priority_epoch_undo_locked_by_disclosure = false;
         self.priority_epoch_undo_land_stable_id = None;
         self.active_viewed_cards = None;
         self.active_audit_viewed_cards.clear();

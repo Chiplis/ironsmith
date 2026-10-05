@@ -368,6 +368,9 @@ pub(crate) fn resolve(
         Value::ToughnessOf(target_spec) => {
             context.object_number(target_spec, NumericProperty::Toughness)
         }
+        Value::KicksPaidOf(target_spec) => {
+            context.object_number(target_spec, NumericProperty::KickerCount)
+        }
         Value::ManaSpentToCast(target_spec) => {
             context.object_number(target_spec, NumericProperty::ManaSpent)
         }
