@@ -1507,14 +1507,19 @@ fn resolve_stack_entry_full_inner(
                     let event_provenance = game
                         .provenance_graph_mut()
                         .alloc_root_event(crate::events::EventKind::Mutated);
-                    let event = TriggerEvent::new_with_provenance(
+                    let mut completed = vec![TriggerEvent::new_with_provenance(
                         crate::events::other::MutatedEvent::new(target_id, entry.controller),
                         event_provenance,
-                    );
+                    )];
+                    crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)?;
+                    let event = completed.remove(0);
                     if let Some(ref mut tq) = trigger_queue {
                         queue_triggers_from_event(game, tq, event, false);
                     } else {
-                        game.record_turn_history_event(&event);
+                        // Public resolution without an external queue must
+                        // preserve the same mutation notification for the
+                        // ordinary pending-trigger owner.
+                        game.queue_trigger_event(event_provenance, event);
                     }
                     return Ok(());
                 }

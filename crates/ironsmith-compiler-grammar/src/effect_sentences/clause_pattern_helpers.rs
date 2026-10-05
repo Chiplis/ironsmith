@@ -407,6 +407,36 @@ pub fn parse_copy_spell_clause(
             result_conjunction: false,
         }));
     }
+    if let Some((_, subject_target_tokens)) = crate::grammar::primitives::parse_prefix(
+        &tokens[..copy_idx],
+        crate::grammar::primitives::phrase(&["the", "controller", "of"]),
+    ) {
+        let copy_target_tokens = split_idx.map_or(tail, |index| &tail[..index]);
+        if matches!(clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(copy_target_tokens)),
+            clause_shapes::CopyTargetShape::TaggedIt)
+        {
+            let target = parse_counter_target_phrase(subject_target_tokens)?;
+            if !matches!(&target, TargetAst::Spell(Some(_)) | TargetAst::Object(_, Some(_), _)) {
+                return Err(CardTextError::ParseError("copy controller subject requires an explicit stack target".into()));
+            }
+            let retarget = split_idx.map(|index| {
+                clause_shapes::parse_copy_retarget_shape_tokens(&tail[index + 1..])
+                    .filter(|retarget| retarget.has_new)
+                    .ok_or_else(|| CardTextError::ParseError("unsupported controller-copy retarget clause".into()))
+            }).transpose()?;
+            return Ok(Some(EffectAst::subject_verb_copy_spell(
+                target,
+                Value::Fixed(1),
+                PlayerAst::ItsController,
+                retarget.as_ref().is_some_and(|retarget| retarget.may_choose),
+                retarget.as_ref().is_some_and(|retarget| retarget.single_target),
+                removed_supertypes(&copy_shape),
+            ).with_copy_set_colors(set_colors)
+             .with_copy_added_card_types(added_card_types)
+             .with_copy_added_subtypes(added_subtypes)
+             .with_copy_set_base_power_toughness(set_base_power_toughness)));
+        }
+    }
     if copy_shape.simple_reference {
         // Oracle may place the copy condition before the coordinated retarget
         // permission: "copy that spell if ..., and you may choose new targets

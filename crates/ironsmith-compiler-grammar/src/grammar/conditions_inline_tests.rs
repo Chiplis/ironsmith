@@ -423,3 +423,23 @@ fn shared_subject_status_disjunction_preserves_each_alternative() {
         );
     }
 }
+
+#[test]
+fn live_static_condition_compound_descriptors_and_poison_scope() {
+    let basic=lex_line("enchanted land is a basic Mountain",0).unwrap();
+    let parsed=parse_subject_descriptor_condition(&basic).unwrap();
+    let ObjectDescriptorAst::Filter(filter)=&parsed.descriptor else {panic!("{parsed:?}")};
+    assert!(filter.supertypes.contains(&crate::types::Supertype::Basic));
+    assert!(filter.subtypes.contains(&Subtype::Mountain));
+    assert!(matches!(parsed.condition_expr("enchanted land is a basic Mountain".into()),PredicateAst::AttachedToSourceMatches(_)));
+    let modified=parse_subject_status_condition(&lex_line("this creature is modified",0).unwrap()).unwrap().condition_expr().unwrap();
+    assert!(format!("{modified:?}").contains("modified: true"));
+    let poisoned=parse_player_status_condition(&lex_line("an opponent is poisoned",0).unwrap()).unwrap().condition_expr().unwrap();
+    assert!(format!("{poisoned:?}").contains("CountPlayersWithPoisonCountersAtLeast(Opponent, 1)"));
+    for text in ["enchanted land is a basic Mountain with nonsense", "an opponent is poisoned except during combat", "this creature is modified except on Tuesdays"] {
+        let tokens=lex_line(text,0).unwrap();
+        assert!(parse_subject_descriptor_condition(&tokens).is_none());
+        assert!(parse_player_status_condition(&tokens).is_none());
+        assert!(parse_subject_status_condition(&tokens).is_none());
+    }
+}

@@ -103,3 +103,66 @@ from the command. The two native direct/artifact and two production-helper Wasm
 scenarios, plus UI identity/disclosure assertions, are authored and unrun.
 The complete permission family still contributes zero new proposals pending
 bounded review and the three remaining full-body implementations.
+
+
+## Resolving private-top permission (unvalidated)
+
+The Belligerent's complete frozen body is included. The exact compound
+until-end-of-turn permission registers typed current-top play and private-view
+scope through `GrantBySpec`. Both scopes bind the resolving controller, persist
+if the Vehicle changes controller or leaves, and expire with the duration.
+Inspection follows each new top, even when the top is not currently playable;
+it does not open the whole library. The authenticated private-opening producer
+and cached UI query consume the same stored permission and existing native
+announcement gate. The retained grant carrier requires both fields on decode.
+
+A full-body direct/artifact scenario authors actual crew, attack declaration,
+Treasure creation, source departure, consecutive tops, land play and expiry.
+A production Wasm scenario authors private openings, exact carrier round-trip,
+missing-field rejection and changed-top suppression during announcement.
+All checks remain unrun. Multiverse and Fourth Doctor are still partial.
+
+
+## Shared hand/top free cast (unvalidated)
+
+One with the Multiverse retains its unlimited ordinary top play ability and a
+separate once-own-turn free-cast ability. Typed additional origins expand into
+concrete Hand and Library grant scopes with one owning ability identity. The
+library arm remains current-top-only; the hand arm's explicit origin prevents
+commander-origin reuse. Paying normally does not spend the separate free-use
+budget. Resolving multi-origin grants likewise retain one identity and total
+budget, and every scope field survives core/native/artifact mapping.
+
+The full frozen body, shared-origin budget, paid-versus-free choice, opponent
+turn, phasing, next-turn reset and owner/origin rejection scenarios are authored
+and unrun. Nine full-body fixtures are candidates for bounded source review;
+The Fourth Doctor still awaits its selected land/spell permission receipt and
+real Food reflexive trigger. No measured recovery claim is added.
+
+
+## Selected-use completion and Fourth Doctor (unvalidated)
+
+The Fourth Doctor's complete frozen body now carries a typed on-use Food
+program on its one filtered land/spell permission. Land play chooses among
+available permissions before movement, after installing the chosen face;
+competing ordinary permissions can be used without spending the Doctor's turn
+allowance. Both land execution owners reserve that exact use and retain its
+entry constraint. They queue the reflexive trigger only after the full land
+entry receipt completes. The spell announcement captures its exact program and
+source snapshot before costs; completion queues the same real reflexive trigger
+above the cast spell. A sacrificed/phased-out provider cannot erase the already
+selected program, and later cancellation or suspended entry rolls back both
+usage and effects. No Food is created by announcement itself.
+
+The pending cast completion travels in exact GameState clones and is covered
+by the existing fail-closed announcement checkpoint guard. Settled stored grants
+carry on-use effects through the occurrence codec, with explicit embedded token
+definitions and required fields. Authored checks include full direct/artifact
+body, land versus spell shared use, save-versus-spend competing permission
+choices, suspension rollback, source sacrificed as a spell cost, and retained
+carrier graph/missing-template rejection. All are unrun.
+
+All ten exact source fixtures are now candidates for independent bounded review.
+No source proposal is a measured recovery; the measured totals remain unchanged.
+The runtime on-use reader is deliberately limited to complete target-free named
+Food/Treasure/Clue token follow-ups. Targeted reflexive tails remain rejected.

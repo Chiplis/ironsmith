@@ -1195,6 +1195,7 @@ struct EnterAsCopySourceCache {
 #[derive(Debug)]
 struct RuntimeCacheState {
     library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
+    pending_grant_use_completions: HashMap<ObjectId, crate::grant_registry::GrantUseCompletion>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
@@ -1242,6 +1243,7 @@ impl Clone for RuntimeCacheState {
     fn clone(&self) -> Self {
         Self {
             library_top_announcements: self.library_top_announcements.clone(),
+            pending_grant_use_completions: self.pending_grant_use_completions.clone(),
             token_creation_limits: self.token_creation_limits,
             // All speculative/nested work belongs to one host computation.
             token_creation_meter: self.token_creation_meter.clone(),
@@ -1289,6 +1291,7 @@ impl RuntimeCacheState {
     fn new(active_player: PlayerId) -> Self {
         Self {
             library_top_announcements: HashMap::new(),
+            pending_grant_use_completions: HashMap::new(),
             token_creation_limits: Default::default(),
             token_creation_meter: None,
             observed_players: RefCell::new(None),

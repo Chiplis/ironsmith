@@ -46,6 +46,7 @@ pub fn parse_quantified_opponent_presence(tokens: &[OwnedLexToken]) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub struct RelativeControlClauseShape<'a> {
     pub controls_most: bool,
+    pub controls_fewest: bool,
     pub count_comparison: Option<crate::effect::Comparison>,
     pub fewer_than_most_filter_tokens: Option<&'a [OwnedLexToken]>,
     pub fewer_than_you: bool,
@@ -426,6 +427,7 @@ pub fn parse_relative_control_clause_shape(
         {
             return Some(RelativeControlClauseShape {
                 controls_most: false,
+                controls_fewest: false,
                 count_comparison: None,
                 fewer_than_most_filter_tokens: Some(most_filter_tokens),
                 fewer_than_you: false,
@@ -449,6 +451,7 @@ pub fn parse_relative_control_clause_shape(
         if !filter_tokens.is_empty() && !effect_tokens.is_empty() {
             return Some(RelativeControlClauseShape {
                 controls_most: false,
+                controls_fewest: false,
                 count_comparison: None,
                 fewer_than_most_filter_tokens: None,
                 fewer_than_you: true,
@@ -472,6 +475,7 @@ pub fn parse_relative_control_clause_shape(
         if !filter_tokens.is_empty() && !effect_tokens.is_empty() {
             return Some(RelativeControlClauseShape {
                 controls_most: false,
+                controls_fewest: false,
                 count_comparison: Some(comparison),
                 fewer_than_most_filter_tokens: None,
                 fewer_than_you: false,
@@ -485,6 +489,7 @@ pub fn parse_relative_control_clause_shape(
     let mut filter_tokens = trim(tail.get(..split)?);
     let effect_tokens = trim(tail.get(split..)?);
     let mut controls_most = false;
+    let mut controls_fewest = false;
     if let Some((_, rest)) = primitives::parse_prefix(
         filter_tokens,
         alt((
@@ -495,9 +500,20 @@ pub fn parse_relative_control_clause_shape(
     ) {
         controls_most = true;
         filter_tokens = trim(rest);
+    } else if let Some((_, rest)) = primitives::parse_prefix(
+        filter_tokens,
+        alt((
+            primitives::phrase(&["the", "fewest"]),
+            primitives::kw("fewest").void(),
+        ))
+        .void(),
+    ) {
+        controls_fewest = true;
+        filter_tokens = trim(rest);
     }
     (!filter_tokens.is_empty() && !effect_tokens.is_empty()).then_some(RelativeControlClauseShape {
         controls_most,
+        controls_fewest,
         count_comparison: None,
         fewer_than_most_filter_tokens: None,
         fewer_than_you: false,

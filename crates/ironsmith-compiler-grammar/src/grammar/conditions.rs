@@ -132,6 +132,7 @@ pub enum StatusConditionStateAst {
     Attacking,
     AttackingAlone,
     Monstrous,
+    Modified,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,6 +146,8 @@ pub enum ObjectDescriptorAst {
     Color(ColorSet),
     CardType(CardType),
     Subtype(Subtype),
+    /// A complete compound descriptor, such as a basic Mountain or red or green.
+    Filter(ObjectFilter),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +232,7 @@ pub enum PlayerStatusAst {
     Monarch,
     Initiative,
     MaxSpeed,
+    Poisoned,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -506,6 +510,11 @@ impl SubjectStatusConditionAst {
                     }),
                 ))
             }
+            (StatusConditionSubjectAst::Source, StatusConditionStateAst::Modified) => {
+                let mut filter = ObjectFilter::default();
+                filter.modified = true;
+                Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)))
+            }
             (StatusConditionSubjectAst::Source, StatusConditionStateAst::Monstrous) => {
                 Some(PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous))
             }
@@ -525,6 +534,11 @@ impl SubjectStatusConditionAst {
 
 impl SubjectDescriptorConditionAst {
     pub fn condition_expr(self, display: String) -> PredicateAst {
+        if let ObjectDescriptorAst::Filter(filter) = &self.descriptor {
+            // Every descriptor subject admitted here is the source attachment's host.
+            // Do not rebind a compound condition to a choice/tag or an affected creature.
+            return PredicateAst::AttachedToSourceMatches(filter.clone());
+        }
         if self.subject == SubjectDescriptorConditionSubjectAst::AttachedObject {
             let mut descriptor_filter = ObjectFilter::default();
             apply_object_descriptor_to_filter(&mut descriptor_filter, self.descriptor);
@@ -591,6 +605,11 @@ impl PlayerStatusConditionAst {
                     player: self.player,
                 })
             }
+            PlayerStatusAst::Poisoned => PredicateAst::ValueComparison {
+                left: Value::CountPlayersWithPoisonCountersAtLeast(unconditional_player_filter(self.player)?, 1),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            },
             PlayerStatusAst::MaxSpeed => PredicateAst::ValueComparison {
                 left: Value::Speed(unconditional_player_filter(self.player)?),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
@@ -1219,10 +1238,14 @@ fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescr
         )))
         .void(),
     )?;
-    let [descriptor] = tokens else {
-        return None;
-    };
-    parse_object_descriptor_word(descriptor.as_word()?)
+    if let [descriptor] = tokens {
+        if let Some(descriptor) = descriptor.as_word().and_then(parse_object_descriptor_word) {
+            return Some(descriptor);
+        }
+    }
+    crate::grammar::primitives::probe_shape(
+        parse_object_filter_with_grammar_entrypoint(tokens, false),
+    ).map(ObjectDescriptorAst::Filter)
 }
 
 pub fn parse_player_status_condition(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
@@ -1987,6 +2010,7 @@ fn parse_object_descriptor_word(word: &str) -> Option<ObjectDescriptorAst> {
 
 fn apply_object_descriptor_to_filter(filter: &mut ObjectFilter, descriptor: ObjectDescriptorAst) {
     match descriptor {
+        ObjectDescriptorAst::Filter(descriptor) => *filter = descriptor,
         ObjectDescriptorAst::Color(color) => filter.colors = Some(color),
         ObjectDescriptorAst::CardType(card_type) => filter.card_types.push(card_type),
         ObjectDescriptorAst::Subtype(subtype) => {

@@ -75,6 +75,7 @@ impl EffectExecutor for RenownEffect {
                 ),
                 ctx.provenance,
             ));
+            crate::events::other::freeze_completed_lifecycle_events(game, &mut outcome.events)?;
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {

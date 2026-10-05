@@ -463,7 +463,8 @@ pub fn events(seed: &Seed) -> Vec<Fixture> {
             Box::new(TurnedFaceUpEvent::new(
                 object,
                 seed.game.current_controller(object).unwrap(),
-            )),
+            ).with_snapshot(seed.game.object(object).map(|object|
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, &seed.game)))),
         );
     }
     result

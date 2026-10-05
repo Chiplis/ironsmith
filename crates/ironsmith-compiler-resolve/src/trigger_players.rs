@@ -327,7 +327,8 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
             }
         }
         TriggerSpec::BeginningOfTheEndStep => Some(PlayerFilter::Active),
-        TriggerSpec::PlayerBecomesTargeted { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerBecomesTargeted { .. }
+        | TriggerSpec::PlayerTurnsFaceUp { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BeginningOfMonarchEndStep => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..

@@ -370,7 +370,7 @@ fn bind_other_damage_target_to_tagged_source(target: &mut ChooseSpec, source: &C
             | ChooseSpec::Target(spec)
             | ChooseSpec::WithCount(spec, _)
             | ChooseSpec::WithCountValue(spec, _, _) => bind(spec, source_tag),
-            ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) if filter.other => {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) | ChooseSpec::ObjectOrPlayer(filter, _) if filter.other => {
                 if !filter.tagged_constraints.iter().any(|constraint| {
                     constraint.tag.as_str() == source_tag.as_str()
                         && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
@@ -554,8 +554,22 @@ pub(super) fn compile_subject_verb_late(
             // resolution may otherwise consume the IteratedPlayer placeholder
             // as an older trigger/loop antecedent, losing the nearer explicit
             // target provenance before the binder can see it.
-            let resolved_amount =
-                resolve_value_it_tag(&target_bound_amount, &current_reference_env(ctx))?;
+            let mut amount_refs = current_reference_env(ctx);
+            if let TargetAst::Player(_, _) = target {
+                let (recipient, _) = resolve_target_spec_with_choices(target, &amount_refs)?;
+                if let ChooseSpec::Player(player) = recipient.base()
+                    && !player.mentions_iterated_player()
+                {
+                    // "to that land's controller equal to ... that player's
+                    // graveyard": the explicit recipient is the nearest
+                    // player antecedent, even though the destroyed land's
+                    // own target filter introduced no player noun.
+                    amount_refs.last_player_filter =
+                        crate::model::reference_state::RefState::Known(player.clone());
+                    amount_refs.iterated_player = false;
+                }
+            }
+            let resolved_amount = resolve_value_it_tag(&target_bound_amount, &amount_refs)?;
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
                     if *unpreventable {
@@ -739,15 +753,35 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 amount.clone()
             };
+            let source_tag = source_spec.is_target()
+                .then(|| reserved_or_next_object_tag(ctx, "damage_source"));
+            let mut recipient_refs = current_reference_env(ctx);
+            if let Some(tag) = source_tag.as_ref()
+                && let ChooseSpec::Object(filter) = source_spec.base()
+                && (filter.controller.is_some() || filter.owner.is_some())
+            {
+                let reference = ObjectRef::tagged(tag.clone());
+                recipient_refs.last_player_filter = crate::model::reference_state::RefState::Known(
+                    if filter.owner.is_some() {
+                        PlayerFilter::AliasedOwnerOf(reference)
+                    } else {
+                        PlayerFilter::AliasedControllerOf(reference)
+                    },
+                );
+                recipient_refs.iterated_player = false;
+            }
             let amount = resolve_value_it_tag(&amount, &current_reference_env(ctx))?;
+            let relation_source = source_tag.as_ref()
+                .map(|tag| ChooseSpec::Tagged(tag.clone()))
+                .unwrap_or_else(|| source_spec.clone());
             let mut damage_target_spec = if source == target {
                 source_spec.clone()
             } else {
                 let (mut target_spec, mut target_choices) =
-                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-                bind_other_damage_target_to_tagged_source(&mut target_spec, &source_spec);
+                    resolve_target_spec_with_choices(target, &recipient_refs)?;
+                bind_other_damage_target_to_tagged_source(&mut target_spec, &relation_source);
                 for choice in &mut target_choices {
-                    bind_other_damage_target_to_tagged_source(choice, &source_spec);
+                    bind_other_damage_target_to_tagged_source(choice, &relation_source);
                 }
                 for choice in target_choices {
                     push_choice(&mut choices, choice);
@@ -801,8 +835,7 @@ pub(super) fn compile_subject_verb_late(
                 amount.clone()
             };
 
-            if source_spec.is_target() {
-                let source_tag = reserved_or_next_object_tag(ctx, "damage_source");
+            if let Some(source_tag) = source_tag {
                 effects.push(
                     Effect::new(crate::effects::TargetOnlyEffect::new(source_spec.clone()))
                         .tag(source_tag.clone()),

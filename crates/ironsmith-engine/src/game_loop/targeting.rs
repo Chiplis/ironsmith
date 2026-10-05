@@ -2691,6 +2691,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
+        PlayerFilter::ControlsFewestTied { filter } => PlayerFilter::ControlsFewestTied {
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -3625,7 +3628,8 @@ pub fn player_matches_filter_with_combat(
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
-        | PlayerFilter::ControlsMost { .. } => {
+        | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }

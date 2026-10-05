@@ -171,14 +171,14 @@ fn tokens(game: &GameState) -> Vec<ObjectId> {
         .collect()
 }
 #[test]
-fn four_complete_oracle_bodies_and_one_explicit_partial_keep_direct_artifact_identity() {
+fn five_complete_oracle_bodies_keep_direct_artifact_identity() {
     assert_eq!(fixtures().len(), 5);
     assert_eq!(
         fixtures()
             .iter()
             .filter(|r| r["proposed_complete"] == true)
             .count(),
-        4
+        5
     );
     for row in fixtures()
         .into_iter()

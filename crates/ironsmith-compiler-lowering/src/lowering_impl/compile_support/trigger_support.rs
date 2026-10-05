@@ -511,6 +511,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
                 .this_surface(surface.clone()),
         ),
         TriggerSpec::ThisMutates => Trigger::this_mutates(),
+        TriggerSpec::PermanentMutates(filter) => Trigger::permanent_mutates(filter.clone()),
+        TriggerSpec::PlayerTurnsFaceUp { player, filter } => Trigger::player_turns_face_up(player.clone(), filter.clone()),
+        TriggerSpec::PermanentTransformsInto { filter, destination } => Trigger::permanent_transforms_into(filter.clone(), destination.clone()),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisClassBecomesLevel(level) => Trigger::class_becomes_level(level),
         TriggerSpec::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
@@ -1480,7 +1483,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::WinsClash { .. }
         | TriggerSpec::Expend { .. } => true,
         TriggerSpec::StateBased { .. } => false,
-        TriggerSpec::PlayerBecomesTargeted { .. } => true,
+        TriggerSpec::PlayerBecomesTargeted { .. } | TriggerSpec::PlayerTurnsFaceUp { .. } => true,
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         }

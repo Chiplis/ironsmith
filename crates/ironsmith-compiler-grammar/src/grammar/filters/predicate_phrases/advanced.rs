@@ -15,6 +15,9 @@ mod attack_power;
 #[path = "advanced/damage_history.rs"]
 mod damage_history;
 
+#[path = "advanced/extrema.rs"]
+mod extrema;
+
 fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
     if surface::exact_any(clause, &[&["you've"], &["youve"]]) {
         return Some(PlayerAst::You);
@@ -1148,7 +1151,15 @@ pub(super) fn parse_player_cards_in_hand_predicate(
     let condition =
         crate::grammar::conditions::parse_player_cards_in_hand_condition(&present_tokens)?;
     let player = condition.player;
-    let player_filter = crate::grammar::conditions::unconditional_player_filter(player)?;
+    let player_filter = match player {
+        PlayerAst::ItsController => PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )),
+        PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )),
+        _ => crate::grammar::conditions::unconditional_player_filter(player)?,
+    };
 
     if !at_turn_start && player == PlayerAst::You && condition.is_no_cards_in_hand() {
         return Some(PredicateAst::YouHaveNoCardsInHand);
@@ -1648,6 +1659,7 @@ pub(super) fn parse_controlled_creatures_total_power_predicate(
 pub(super) fn parse_value_reference_comparison_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    if let Some(predicate) = extrema::parse(tokens) { return Some(predicate); }
     let words = crate::lexer::parser_token_word_refs(tokens);
     let words = words.strip_prefix(&["the"]).unwrap_or(&words);
     let comparison = match words {

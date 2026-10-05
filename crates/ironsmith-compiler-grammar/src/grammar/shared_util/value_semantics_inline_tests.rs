@@ -642,3 +642,14 @@ fn equal_to_party_count_plus_fixed_keeps_typed_party_value() {
         )
     );
 }
+
+#[test]
+fn qualified_hand_count_does_not_erase_the_card_color_into_hand_size() {
+    let value = parse_equal_to_number_of_filter_value(&lex_words(
+        "equal to the number of white cards in their hand",
+    )).expect("qualified hand count");
+    let Value::Count(filter) = value.unhinted() else { panic!("{value:?}"); };
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    assert_eq!(filter.colors, Some(crate::color::ColorSet::WHITE));
+}

@@ -2234,8 +2234,8 @@ fn triggering_event_object_matches_at_resolution(
         // Its earlier successful event snapshot cannot override a failed recheck.
         return filter.matches(object, filter_ctx, game);
     }
-    if let Some(departure) = crate::effects::helpers::latest_zone_change_snapshot_for_object(game, id) {
-        return filter.matches_snapshot(&departure, filter_ctx, game);
+    if let Some(departure) = game.turn_store.turn_history.source_departure_snapshot(id) {
+        return filter.matches_snapshot(departure, filter_ctx, game);
     }
     let snapshot = if let Some(entry) = entry { entry.destination_snapshot(id) } else { event.snapshot() };
     snapshot.filter(|snapshot| snapshot.object_id == id)
@@ -3432,6 +3432,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
+        | PlayerFilter::ControlsFewestTied { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
@@ -4610,17 +4611,16 @@ fn evaluate_condition_in_context(
             }
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
-                    let snapshot_matches = filter.matches_snapshot(snapshot, &filter_ctx, game);
-                    let current_id = game
-                        .object(snapshot.object_id)
-                        .map(|object| object.id)
-                        .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
-                    if let Some(current_id) = current_id
+                    if let Some(current_id) = crate::effects::helpers::resolve_tagged_object_id(game, ctx, snapshot)
                         && let Some(object) = game.object(current_id)
                     {
-                        return filter.matches(object, &filter_ctx, game) || snapshot_matches;
+                        // Current characteristics own an ordinary predicate;
+                        // an earlier successful snapshot cannot override them.
+                        return filter.matches(object, &filter_ctx, game);
                     }
-                    snapshot_matches
+                    let last_known = game.turn_store.turn_history
+                        .source_departure_snapshot(snapshot.object_id).unwrap_or(snapshot);
+                    filter.matches_snapshot(last_known, &filter_ctx, game)
                 }));
             }
 
@@ -5969,5 +5969,98 @@ mod referenced_characteristic_frame_tests {
         if game.object(aura).is_some() { game.move_object(aura, Zone::Graveyard, EventCause::effect()).unwrap(); }
         assert!(filter.matches_snapshot(&snapshot, &context, &game));
         assert!(!filter.matches_snapshot(&snapshot, &FilterContext::new(b), &game));
+    }
+}
+
+#[cfg(test)]
+mod tagged_current_and_departure_condition_tests {
+    use super::*;
+    use crate::events::combat::{
+        AttackEventTarget, CreatureAttackedAndUnblockedEvent, CreatureAttackedEvent,
+        CreatureBecameBlockedEvent, CreatureBlockedEvent,
+    };
+    #[test]
+    fn ordinary_tags_use_live_characteristics_or_exact_departure_lki_without_combat_blink_follow() {
+        for kind in 0..4 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let card = crate::cards::CardDefinitionBuilder::new(
+                crate::ids::CardId::new(),
+                "Tagged combatant",
+            )
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(15, 30))
+            .build();
+            let object = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+            let source = game.create_object_from_definition(&card, bob, Zone::Battlefield);
+            let snapshot =
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(object).unwrap(),
+                    &game,
+                );
+            let event = match kind {
+                0 => TriggerEvent::new_with_provenance(
+                    CreatureAttackedEvent::new(object, AttackEventTarget::Player(bob)),
+                    Default::default(),
+                ),
+                1 => TriggerEvent::new_with_provenance(
+                    CreatureAttackedAndUnblockedEvent::new(object, AttackEventTarget::Player(bob)),
+                    Default::default(),
+                ),
+                2 => TriggerEvent::new_with_provenance(
+                    CreatureBlockedEvent::new(object, source),
+                    Default::default(),
+                ),
+                _ => TriggerEvent::new_with_provenance(
+                    CreatureBecameBlockedEvent::new(object, 1),
+                    Default::default(),
+                ),
+            };
+            let mut ctx = ExecutionContext::new_default(source, bob).with_triggering_event(event);
+            ctx.tag_object("combatant", snapshot);
+            let condition = |power| {
+                let mut filter = crate::target::ObjectFilter::creature();
+                filter.power = Some(crate::filter::Comparison::Equal(power));
+                Condition::TaggedObjectMatches("combatant".into(), filter)
+            };
+            let effect = crate::effect::Effect::pump(
+                -14,
+                0,
+                crate::target::ChooseSpec::SpecificObject(object),
+                crate::effect::Until::EndOfTurn,
+            );
+            crate::effects::execute_effect(
+                &mut game,
+                &effect,
+                &mut ExecutionContext::new_default(source, bob),
+            )
+            .unwrap();
+            assert!(
+                !evaluate_condition_resolution(&game, &condition(15), &ctx).unwrap(),
+                "the old matching tag cannot override current power 1"
+            );
+            assert!(evaluate_condition_resolution(&game, &condition(1), &ctx).unwrap());
+            let exiled = game.move_object_by_game_rule(object, Zone::Exile).unwrap();
+            let returned = game
+                .move_object_by_game_rule(exiled, Zone::Battlefield)
+                .unwrap();
+            ctx.resolution_object_id_floor = Some(game.new_object_id());
+            assert_ne!(returned, object);
+            assert_eq!(game.calculated_power(returned), Some(15));
+            assert!(
+                evaluate_condition_resolution(&game, &condition(1), &ctx).unwrap(),
+                "the exact departed incarnation had power 1, not its earlier tagged 15"
+            );
+            assert!(!evaluate_condition_resolution(&game, &condition(15), &ctx).unwrap());
+            assert_eq!(
+                crate::effects::helpers::resolve_tagged_object_id(
+                    &game,
+                    &ctx,
+                    &ctx.get_tagged_all("combatant").unwrap()[0]
+                ),
+                None
+            );
+        }
     }
 }

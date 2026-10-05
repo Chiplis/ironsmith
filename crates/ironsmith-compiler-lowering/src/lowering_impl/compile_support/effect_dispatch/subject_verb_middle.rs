@@ -1176,10 +1176,16 @@ pub(super) fn compile_subject_verb_middle(
             if *all_matches && let ChooseSpec::Object(filter) = &spec {
                 spec = ChooseSpec::All(filter.clone());
             }
-            let player_filter =
-                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let controller_target = if *player == PlayerAst::ItsController && spec.is_target() {
+                Some(reserved_or_next_object_tag(ctx, "copy_target"))
+            } else { None };
+            let player_filter = if let Some(tag) = controller_target.as_ref() {
+                PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone()))
+            } else {
+                resolve_non_target_player_filter(*player, &current_reference_env(ctx))?
+            };
             if !matches!(*player, PlayerAst::Implicit) {
-                ctx.last_player_filter = Some(player_filter.clone());
+                ctx.last_player_filter = Some(as_followup_player_alias(player_filter.clone()));
             }
             // "Copy target instant or sorcery spell, then return it to its
             // owner's hand": the copied target stays the pronoun antecedent.
@@ -1191,7 +1197,7 @@ pub(super) fn compile_subject_verb_middle(
                 )
                 // Only when reference annotation predicted a later reference
                 // to the copied target.
-                && let Some(tag) = ctx.take_reserved_object_result_tag("copy_target")
+                && let Some(tag) = controller_target.or_else(|| ctx.take_reserved_object_result_tag("copy_target"))
             {
                 ctx.last_object_tag = Some(tag.clone());
                 target_prelude = Some(
@@ -2139,7 +2145,7 @@ pub(super) fn compile_subject_verb_middle(
                     let order_chooser = if matches!(*library_order_chooser, PlayerAst::Implicit)
                         && !matches!(
                             player,
-                            PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+                            PlayerAst::Implicit
                         ) {
                         player
                     } else {
@@ -2153,10 +2159,7 @@ pub(super) fn compile_subject_verb_middle(
                     ))
                 }
             };
-            let actor_surface = if matches!(
-                player,
-                PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
-            ) {
+            let actor_surface = if matches!(player, PlayerAst::Implicit) {
                 None
             } else {
                 Some(resolve_non_target_player_filter(

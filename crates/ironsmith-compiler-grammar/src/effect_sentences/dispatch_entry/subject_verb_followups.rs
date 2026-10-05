@@ -1179,6 +1179,18 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
         })
 }
 
+fn pre_rule_extremum_choice_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if super::super::chain_carry::bind_extremum_choice_followup(state.effects, sentence_tokens) {
+        return Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: None }));
+    }
+    Ok(None)
+}
+
 fn pre_rule_cant_be_regenerated_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1946,6 +1958,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         &["theyre", "they", "its", "it"],
         pre_rule_still_lands_followup
     ),
+    pre_followup_rule!("extremum-choice", &["if"], pre_rule_extremum_choice_followup),
     pre_followup_rule!(
         "cant-be-regenerated",
         &[

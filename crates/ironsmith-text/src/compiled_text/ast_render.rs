@@ -31001,6 +31001,42 @@ pub(super) fn describe_alternative_cast_line(
     idx: usize,
 ) -> String {
     match method {
+        AlternativeCastingMethod::FromZone { name, zone, total_cost, condition, exiles_after_resolution }
+            if name.as_ref() == "Parsed graveyard alternative cost" =>
+        {
+            fn payment(cost: &crate::cost::TotalCost) -> String {
+                match cost.kind() {
+                    ironsmith_core::TotalCostKind::OneOf(branches) =>
+                        branches.iter().map(payment).collect::<Vec<_>>().join(" or "),
+                    ironsmith_core::TotalCostKind::All(costs) => {
+                        let parts = costs.iter().map(|cost| {
+                            let text = lowercase_first(&describe_total_cost(
+                                &crate::cost::TotalCost::from_cost(cost.clone()),
+                            ));
+                            if text.starts_with('{') { return format!("paying {text}"); }
+                            for (verb, gerund) in [("pay ", "paying "), ("sacrifice ", "sacrificing "),
+                                ("exile ", "exiling "), ("discard ", "discarding "),
+                                ("return ", "returning "), ("reveal ", "revealing "), ("tap ", "tapping ")] {
+                                if let Some(rest) = text.strip_prefix(verb) { return format!("{gerund}{rest}"); }
+                            }
+                            text
+                        }).collect::<Vec<_>>();
+                        if parts.is_empty() { "paying {0}".into() } else { parts.join(" and ") }
+                    }
+                }
+            }
+            let mut line = format!("You may cast this card from your {} by {} rather than paying its mana cost",
+                zone.name(), payment(total_cost));
+            if let Some(condition) = condition
+                && let Some(text) = crate::static_abilities::describe_this_spell_cost_condition(condition)
+            {
+                line = format!("As long as {text}, {}", lowercase_first(&line));
+            }
+            if *exiles_after_resolution {
+                line.push_str(". If you cast this card this way and it would be put into your graveyard, exile it instead");
+            }
+            line
+        }
         method if method.trap_condition().is_some() => {
             let condition = method.trap_condition().expect("trap condition checked above");
             let cost = method

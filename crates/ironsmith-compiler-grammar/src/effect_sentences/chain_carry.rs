@@ -3209,3 +3209,6 @@ fn set_ability_modifier_target(effect: &mut EffectAst, subject: TargetAst) {
         *target = subject;
     }
 }
+
+mod extremum_choice;
+pub(crate) use extremum_choice::bind as bind_extremum_choice_followup;

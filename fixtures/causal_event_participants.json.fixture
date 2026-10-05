@@ -55,8 +55,8 @@
     "baseline_category": "parser_failure",
     "baseline_error": "unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever a spell or ability an opponent controls causes you to discard cards this turn, return those cards from your graveyard to your hand.' [rule-path=statement-line > triggered-line]",
     "baseline_content_hash": "228cf1b4b186bbac00590440be7b42e03ee55d46a03d561174ac4b6ddec247e4",
-    "proposed_complete": false,
+    "proposed_complete": true,
     "status": "UNVALIDATED source proposal",
-    "remaining": "Delayed discard registration and exact completed discard destination identity, including extra moves before delayed registration; no full-card credit."
+    "remaining": null
   }
 ]

@@ -230,14 +230,17 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             grantable: self.runtime_grantable_hook(spec.grantable)?,
             filter: spec.filter,
             zone: spec.zone,
+            additional_zones: spec.additional_zones,
             beneficiary: spec.beneficiary,
             usage_limit: spec.usage_limit,
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter,
+            on_use_effects: spec.on_use_effects.into_iter().map(runtime_effect_from_core_model).collect::<Result<_, _>>()?,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
             top_card_only: spec.top_card_only,
             instant_timing: spec.instant_timing,
+            may_look_at_top: spec.may_look_at_top,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()

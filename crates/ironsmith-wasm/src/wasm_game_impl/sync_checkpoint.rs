@@ -3282,9 +3282,13 @@ impl WasmGame {
         !self.trigger_queue.is_fully_empty()
             || self.grand_melee_host_lanes.values().any(|lane| !lane.trigger_queue.is_fully_empty())
             || self.game.effect_store.has_pending_trigger_work()
+            || !self.game.turn_store.pending_day_night_as_transforms.is_empty()
             || self.game.stack.iter().any(|entry| entry.is_ability)
             || self.game.grand_melee_restore_snapshot().is_some_and(|snapshot|
-                snapshot.markers.iter().any(|marker| marker.stack.iter().any(|entry| entry.is_ability)))
+                snapshot.markers.iter().any(|marker| {
+                    !marker.turn_store.pending_day_night_as_transforms.is_empty()
+                        || marker.stack.iter().any(|entry| entry.is_ability)
+                }))
             // Suspended parent frames/host queues have no authoritative wire
             // carrier; do not assert those unseen programs are empty either.
             || self.game.is_subgame()
@@ -11023,5 +11027,32 @@ mod completed_target_history_wire_tests {
         assert_eq!(second.turn_history.targeted_object_history_for_checkpoint(), vec![ObjectId::from_raw(22)]);
         first.turn_history.clear_for_new_turn();
         assert_eq!(second.turn_history.targeted_object_history_for_checkpoint(), vec![ObjectId::from_raw(22)]);
+    }
+}
+
+#[cfg(test)]
+mod day_night_continuation_checkpoint_tests {
+    use super::*;
+    #[test]
+    fn pending_as_transforms_work_survives_native_restore_and_refuses_every_wire_lane() {
+        let _ids=crate::test_id_counter_guard();
+        let mut host=WasmGame::new();
+        host.initialize_empty_match((0..10).map(|n|format!("Player {n}")).collect(),20,1);
+        host.match_format=MatchFormatInput::GrandMelee;
+        host.game.restore_grand_melee((0..10).map(PlayerId::from_index).collect()).unwrap();
+        assert!(!host.has_unretained_ability_programs());
+        let source=ObjectId::from_raw(901);
+        host.game.turn_store.pending_day_night_as_transforms.push(source);
+        assert!(host.has_unretained_ability_programs());
+        let saved=RuntimeSavepoint::capture(&host);
+        host.game.turn_store.pending_day_night_as_transforms.clear();
+        assert!(!host.has_unretained_ability_programs());
+        saved.restore(&mut host);
+        assert_eq!(host.game.turn_store.pending_day_night_as_transforms,vec![source]);
+        let focus=host.game.grand_melee().unwrap().focused_marker();
+        let other=host.game.grand_melee_restore_snapshot().unwrap().markers.into_iter().find(|m|m.number!=focus).unwrap().number;
+        host.game.select_grand_melee_turn_marker(other).unwrap();
+        assert!(host.game.turn_store.pending_day_night_as_transforms.is_empty());
+        assert!(host.has_unretained_ability_programs(),"an inactive lane still owns unfinished transform work and its unpublished event");
     }
 }

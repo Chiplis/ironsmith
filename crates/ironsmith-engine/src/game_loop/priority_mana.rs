@@ -2990,6 +2990,11 @@ fn propose_spell_cast_with_origin(
         None => None,
     };
 
+    let use_completion = selected_grant.as_ref().and_then(|grant|
+        crate::grant_registry::GrantUseCompletion::capture(game, grant.source_id, caster, grant.on_use_effects.clone()))
+        .or_else(|| selected_plain_grant.as_ref().and_then(|grant|
+            crate::grant_registry::GrantUseCompletion::capture(game, grant.source.source_id(), caster, grant.on_use_effects.clone())));
+
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
         .ok_or_else(|| {
@@ -2997,6 +3002,7 @@ fn propose_spell_cast_with_origin(
         })?;
     game.register_library_top_announcement(
         crate::game_state::LibraryTopAnnouncement::Cast(new_id), visibility_boundary);
+    if let Some(completion) = use_completion { game.capture_cast_grant_completion(new_id, completion); }
     if let Some(spell) = game.object_mut(new_id) {
         spell.cast_play_from_constraints = play_from_constraints;
         spell.cast_grant_usage_identity = usage_identity.map(Box::new);
@@ -3633,6 +3639,7 @@ pub(super) fn finalize_spell_cast(
             .insert(new_id, std::sync::Arc::new((spell_obj, entry.clone())));
     }
     game.push_to_stack(entry);
+    game.complete_cast_grant(new_id);
     game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Cast(new_id));
 
     if let Some(spell_obj) = game.object(new_id).cloned() {

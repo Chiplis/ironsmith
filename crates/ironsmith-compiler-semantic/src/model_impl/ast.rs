@@ -711,4 +711,7 @@ pub enum TriggerSpec {
     },
     FinalChapterAbilityResolved(ObjectFilter),
     Either(Box<TriggerSpec>, Box<TriggerSpec>),
+    PermanentTransformsInto { filter: ObjectFilter, destination: ObjectFilter },
+    PermanentMutates(ObjectFilter),
+    PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
 }

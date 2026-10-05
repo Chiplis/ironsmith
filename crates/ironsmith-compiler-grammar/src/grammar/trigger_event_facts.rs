@@ -223,6 +223,10 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
         | TriggerSpec::PermanentBecomesUntapped { filter, .. }
         | TriggerSpec::TurnedFaceUp(filter)
+        | TriggerSpec::PermanentMutates(filter)
+        | TriggerSpec::PermanentTransforms(filter)
+        | TriggerSpec::PermanentTransformsInto { filter, .. }
+        | TriggerSpec::PlayerTurnsFaceUp { filter, .. }
         | TriggerSpec::BecomesTargeted(filter)
         | TriggerSpec::ThisBecomesTargetedBySpell(filter)
         | TriggerSpec::ThisBecomesTargetedByStackObject(filter)

@@ -171,6 +171,13 @@ impl CardDefinitionBuilder {
         self
     }
 
+    /// Preserve the catalog distinction between a transforming DFC and a
+    /// modal linked pair. Transform layout alone does not permit casting the back.
+    pub fn transforming_dfc(mut self, transforming: bool) -> Self {
+        self.card_builder = self.card_builder.transforming_dfc(transforming);
+        self
+    }
+
     pub fn has_fuse(mut self) -> Self {
         self.has_fuse = true;
         self

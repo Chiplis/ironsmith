@@ -5,9 +5,9 @@ UNVALIDATED source proposals. No compiler, build, CLI probe, or test was run.
 Five exact frozen stack07 identities are retained with complete Oracle text,
 metadata and original failure diagnostics in `fixtures/causal_event_participants.json.fixture`.
 
-Four proposed complete: Baral, Chief of Compliance; Lullmage Mentor; Karmic
-Justice; Spiritual Focus. Pure Intentions remains partial, with an unignored
-complete-card regression and no recovery credit.
+Five proposed complete: Baral, Chief of Compliance; Lullmage Mentor; Karmic
+Justice; Spiritual Focus; Pure Intentions. The complete chain received an
+independent bounded source review; every authored regression remains unrun.
 
 ## Shared typed boundary
 
@@ -46,19 +46,7 @@ their complete old observer set; a later arrival cannot observe the old counter.
   unconditional life gain, and native cause/team/cost/batch negatives.
 - Native historical source-frame, grouping and old/new wire-shape tests.
 
-## Pure Intentions partial
-
-Causal grammar alone is not the complete card. The first clause still needs a
-real recurring discard registration expiring this turn. CardDiscardedEvent
-currently carries pre-discard card/batch identities, not the exact completed
-destination receipts needed by “those cards from your graveyard.” Its self-discard
-clause must pin the exact graveyard incarnation before scheduling the next-end-step
-return, including an extra move before registration. Do not use stable-card-ID
-chasing or an empty delayed program as a substitute. These are concrete remaining
-source boundaries, and the full Oracle fixture remains in the validation gate.
-
-
-## Pure Intentions source closure, pending review
+## Pure Intentions exact discard destinations
 
 The follow-up now carries each DiscardResult.new_id directly from all seven
 completed-discard receipt owners into CardDiscardedEvent, alongside the original
@@ -76,5 +64,6 @@ extra moves either before registration or before resolution invalidate it.
 New unrun direct/artifact scenarios cover whole batches, repeated discard batches
 in the same turn, expiration, replaced exile destinations, and self-return with
 extra movements on both sides of registration. Native reference and delayed-wire
-tests are also authored. Pure Intentions remains marked partial until this
-complete source chain receives its bounded review; no recovery is measured.
+tests are also authored. Independent review cleared the full source chain
+through 306ced8e3, including grouped registration, expiration and exact self
+arrival. This is a proposed source closure only; no recovery is measured.

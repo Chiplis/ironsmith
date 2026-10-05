@@ -180,7 +180,11 @@ fn execute_transform_like_action_inner(
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
     }
 
-    Ok(EffectOutcome::resolved().with_event(action.event(target_id, ctx.provenance)))
+    let mut events = vec![action.event(target_id, ctx.provenance)];
+    crate::events::other::freeze_completed_lifecycle_events(game, &mut events)?;
+    let mut outcome = EffectOutcome::resolved();
+    outcome.events = events;
+    Ok(outcome)
 }
 
 impl EffectExecutor for TransformEffect {

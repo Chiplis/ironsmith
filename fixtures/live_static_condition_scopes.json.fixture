@@ -1,0 +1,114 @@
+[
+  {
+    "name": "Goblin Caves",
+    "oracle_id": "3ab5c3a7-12e7-4394-a495-0bc7c310bf9c",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant land\nAs long as enchanted land is a basic Mountain, Goblin creatures get +0/+2.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Goblin Shrine",
+    "oracle_id": "5e35df8a-2404-4b3b-888a-25d663bd4383",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant land\nAs long as enchanted land is a basic Mountain, Goblin creatures get +1/+0.\nWhen this Aura leaves the battlefield, it deals 1 damage to each Goblin creature.",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Orochi Merge-Keeper",
+    "oracle_id": "53e39011-3d77-4883-9c8e-4707f6fc5c47",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature \u2014 Snake Druid",
+    "oracle_text": "{T}: Add {G}.\nAs long as this creature is modified, it has \"{T}: Add {G}{G}.\" (Equipment, Auras you control, and counters are modifications.)",
+    "power": "1",
+    "toughness": "1",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Viridian Betrayers",
+    "oracle_id": "1d5ebb4b-0248-4255-8e1a-bcba4d5eaf7f",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Creature \u2014 Phyrexian Elf Warrior",
+    "oracle_text": "This creature has infect as long as an opponent is poisoned. (It deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)",
+    "power": "3",
+    "toughness": "1",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal",
+    "remaining": null
+  },
+  {
+    "name": "Essence Leak",
+    "oracle_id": "cb02daf6-9013-4ccc-bf1f-773b757ac468",
+    "mana_cost": "{U}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant permanent\nAs long as enchanted permanent is red or green, it has \"At the beginning of your upkeep, sacrifice this permanent unless you pay its mana cost.\"",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  },
+  {
+    "name": "Mul Daya Channelers",
+    "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Creature \u2014 Elf Druid Shaman",
+    "oracle_text": "Play with the top card of your library revealed.\nAs long as the top card of your library is a creature card, this creature gets +3/+3.\nAs long as the top card of your library is a land card, this creature has \"{T}: Add two mana of any one color.\"",
+    "power": "2",
+    "toughness": "2",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  },
+  {
+    "name": "Vampire Nocturnus",
+    "oracle_id": "2109c49e-dc81-4a10-8265-3cf8c90db523",
+    "mana_cost": "{1}{B}{B}{B}",
+    "type_line": "Creature \u2014 Vampire",
+    "oracle_text": "Play with the top card of your library revealed.\nAs long as the top card of your library is black, this creature and other Vampire creatures you control get +2/+1 and have flying.",
+    "power": "3",
+    "toughness": "3",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  },
+  {
+    "name": "Crown of Convergence",
+    "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "Play with the top card of your library revealed.\nAs long as the top card of your library is a creature card, creatures you control that share a color with that card get +1/+1.\n{G}{W}: Put the top card of your library on the bottom of your library.",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  },
+  {
+    "name": "Isleback Spawn",
+    "oracle_id": "05ad7ec4-f48d-4cbe-be58-f871dc19702b",
+    "mana_cost": "{5}{U}{U}",
+    "type_line": "Creature \u2014 Kraken",
+    "oracle_text": "Shroud (This creature can't be the target of spells or abilities.)\nThis creature gets +4/+8 as long as a library has twenty or fewer cards in it.",
+    "power": "4",
+    "toughness": "8",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  },
+  {
+    "name": "Kianne, Corrupted Memory",
+    "oracle_id": "7fc9e800-da66-4dda-a56d-79daec9e943e",
+    "mana_cost": "{2}{G}{U}",
+    "type_line": "Legendary Creature \u2014 Illusion",
+    "oracle_text": "As long as Kianne's power is even, you may cast noncreature spells as though they had flash.\nAs long as Kianne's power is odd, you may cast creature spells as though they had flash.\nWhenever you draw a card, put a +1/+1 counter on Kianne.",
+    "power": "2",
+    "toughness": "2",
+    "proposed_complete": false,
+    "status": "partial_not_counted",
+    "remaining": "Full additional conditional scope/body remains under source review."
+  }
+]
