@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "working_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+  "purpose": "Recover exact committed source after ephemeral workspace replacement; source PRs exclude this archive directory.",
+  "checkpoints": [
+    {
+      "file": "dynamic-keywords-265bfdb1.bundle",
+      "commit": "265bfdb1898271fac1d25e58f661958d22e76b3b",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "bytes": 69791,
+      "sha256": "f2d67e11bd63887c962362a3d20a9c4178b6d883564bbd953ae2b5770aa44c9d",
+      "blob_sha": "81fa244316c2a2a97e86b29d6474f9e0077cb524",
+      "status": "UNVALIDATED source reconstruction checkpoint; no new card coverage",
+      "builds_tests": "not_run"
+    },
+    {
+      "file": "shared-types-b272c72f.bundle",
+      "commit": "b272c72f94a13ce4be687ae72e5f28cac9ce59dc",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "bytes": 6883,
+      "sha256": "b7b676f56386cbdb8d0c84ef0ee247141074c74cbb3edccc8fb99345dbd2619d",
+      "blob_sha": "35cdc70a7c575b8bc1ab99e569d1405c19899230",
+      "status": "UNVALIDATED source reconstruction checkpoint; no new card coverage",
+      "builds_tests": "not_run"
+    }
+  ]
+}
