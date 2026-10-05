@@ -7,7 +7,12 @@ pub fn parse_conditional_anthem_replacement_line(
         return Ok(None);
     };
     let subject = parse_anthem_subject(shape.subject_tokens)?;
-    let condition = PredicateAst::AttachedToSourceMatches(shape.condition_filter);
+    let condition = match shape.condition {
+        anthem_grant_grammar::AnthemReplacementCondition::Attached(filter) =>
+            PredicateAst::AttachedToSourceMatches(filter),
+        anthem_grant_grammar::AnthemReplacementCondition::Predicate(tokens) =>
+            parse_static_condition_clause(tokens)?,
+    };
     let base = fixed_anthem_clause(
         subject.clone(),
         shape.base_power,

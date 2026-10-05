@@ -2955,7 +2955,10 @@ impl StaticAbilityKind for RedirectDamageToSource {
                 self.object_filter.clone(),
             ),
             ReplacementAction::Redirect {
-                target: RedirectTarget::ToSource,
+                // `ToSource` denotes the incoming damage event's source.
+                // This replacement instead names the permanent bearing the
+                // static ability, captured when its replacement is generated.
+                target: RedirectTarget::ToObject(source),
                 which: RedirectWhich::First,
             },
         ))
