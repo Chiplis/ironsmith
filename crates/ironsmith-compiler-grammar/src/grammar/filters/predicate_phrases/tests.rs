@@ -4321,3 +4321,12 @@ fn untyped_counter_absence_preserves_present_or_past_tense() -> Result<(), CardT
     }
     Ok(())
 }
+
+#[test]
+fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation(){
+    for (text,player) in [("you were the monarch as the turn began",PlayerAst::You),("that player was the monarch as the turn began",PlayerAst::That)]{
+        let tokens=crate::lexer::lex_line(text,0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));
+    }
+    let tokens=crate::lexer::lex_line("you are the monarch",0).unwrap();assert_eq!(parse_predicate(&tokens).unwrap(),PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch{player:PlayerAst::You}));
+    let tokens=crate::lexer::lex_line("you were the monarch during an unknown time",0).unwrap();assert!(parse_predicate(&tokens).is_err());
+}

@@ -78,8 +78,10 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => ctx
                 .x_value
-                .map(|x| x as i32)
-                .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".into())),
+                .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".into()))
+                .and_then(|x| i32::try_from(x).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                    resource: "announced X quantity", requested: u128::from(x), maximum: i32::MAX as u128,
+                })),
             Mode::Continuous(_) => Ok(0),
         }
     }

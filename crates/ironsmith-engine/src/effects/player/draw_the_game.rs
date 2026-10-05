@@ -11,7 +11,7 @@ impl EffectExecutor for DrawTheGameEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let drawn = game.draw_game_for_controller_and_range(ctx.controller);
+        let drawn = game.draw_game_for_controller_and_range(ctx.controller)?;
         Ok(EffectOutcome::count(drawn.len() as i32))
     }
 }

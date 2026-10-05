@@ -1172,6 +1172,9 @@ struct SyncRulesState {
     /// Draw ordinals are lane-local public rules state, including draw-step priority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     draw_step_counts: Option<Vec<(u8, u32)>>,
+    /// Presence distinguishes known no-monarch from a legacy missing fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    monarch_at_turn_start: Option<SyncMonarchAtTurnStart>,
 }
 
 fn restore_completed_target_history(history: &mut ironsmith::turn_history::TurnHistory, ids: Option<&[u64]>) -> Result<(), String> {
@@ -1835,6 +1838,23 @@ struct SyncAlternatingTeams {
     deploy_creatures: bool,
 }
 
+#[derive(Debug,Clone,PartialEq,Eq,Serialize,Deserialize)]
+#[serde(rename_all="camelCase")]
+enum SyncMonarchAtTurnStart {NoMonarch,Player(u8)}
+impl SyncMonarchAtTurnStart {
+    fn capture(history:&ironsmith::turn_history::TurnHistory)->Self {
+        history.monarch_at_turn_start.map(|player|Self::Player(player.0)).unwrap_or(Self::NoMonarch)
+    }
+    fn restore(carrier:Option<&Self>,player_count:usize)->Result<Option<PlayerId>,String>{
+        match carrier {
+            Some(Self::NoMonarch)=>Ok(None),
+            Some(Self::Player(player)) if (*player as usize)<player_count=>Ok(Some(PlayerId::from_index(*player))),
+            Some(Self::Player(_))=>Err("invalid historical monarch seat".into()),
+            None=>Err("monarch-at-turn-start evidence is missing; replay accepted transcript".into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncGrandMelee {
@@ -1881,6 +1901,8 @@ struct SyncGrandMeleeMarker {
     consecutive_priority_passes: usize,
     #[serde(default)]
     priority_players_in_game: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    monarch_at_turn_start: Option<SyncMonarchAtTurnStart>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2589,6 +2611,7 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                         .unwrap_or_default()
                 };
                 SyncGrandMeleeMarker {
+                    monarch_at_turn_start:Some(SyncMonarchAtTurnStart::capture(&marker.turn_store.turn_history)),
                     targeted_objects_this_turn: Some(marker.turn_store.turn_history.targeted_object_history_for_checkpoint().into_iter().map(|id| id.0).collect()),
                     generic_turn_history_empty: Some(generic_turn_history_is_empty(
                         &marker.turn_store.turn_history,
@@ -2684,6 +2707,7 @@ fn grand_melee_restore_from_sync(
                     }
                 };
                 let mut turn_store = ironsmith::game_state::TurnStore::default();
+                turn_store.turn_history.monarch_at_turn_start=SyncMonarchAtTurnStart::restore(marker.monarch_at_turn_start.as_ref(),sync.starting_player_count)?;
                 turn_store.turn_order = sync
                     .seats
                     .iter()
@@ -3740,6 +3764,7 @@ impl WasmGame {
             .collect::<Result<Vec<_>, String>>()?;
         let (regeneration_shields, regenerated_this_turn) = self.game.regeneration_state();
         Ok(SyncRulesState {
+            monarch_at_turn_start:Some(SyncMonarchAtTurnStart::capture(&self.game.turn_store.turn_history)),
             targeted_objects_this_turn: Some(self.game.turn_store.turn_history.targeted_object_history_for_checkpoint().into_iter().map(|id| id.0).collect()),
             generic_turn_history_empty: Some(generic_turn_history_is_empty(
                 &self.game.turn_store.turn_history,
@@ -4097,6 +4122,7 @@ impl WasmGame {
         // Assign the designations directly: the setters would replay their
         // side effects (UI events, day/night transformations, returns from
         // exile) that already happened before the checkpoint was taken.
+        self.game.turn_store.turn_history.monarch_at_turn_start=SyncMonarchAtTurnStart::restore(rules.monarch_at_turn_start.as_ref(),self.game.players.len())?;
         self.game.monarch = rules.monarch.map(PlayerId::from_index);
         self.game.initiative = rules.initiative.map(PlayerId::from_index);
         self.game.has_day_night = rules.has_day_night;
@@ -4905,12 +4931,17 @@ impl WasmGame {
         // Validate every lane before reset/construction; a failed import leaves
         // the authoritative host unchanged through its existing transaction.
         require_empty_turn_history_carrier(checkpoint.rules.generic_turn_history_empty)?;
+        SyncMonarchAtTurnStart::restore(checkpoint.rules.monarch_at_turn_start.as_ref(),checkpoint.players.len())?;
         if let Some(melee) = &checkpoint.grand_melee {
             for marker in &melee.markers {
                 require_empty_turn_history_carrier(marker.generic_turn_history_empty)?;
+                SyncMonarchAtTurnStart::restore(marker.monarch_at_turn_start.as_ref(),checkpoint.players.len())?;
             }
             let focused = melee.markers.iter().find(|marker| marker.number == melee.focused_marker)
                 .ok_or_else(|| "checkpoint has no focused Grand Melee target-history lane".to_string())?;
+            if focused.monarch_at_turn_start!=checkpoint.rules.monarch_at_turn_start {
+                return Err("inconsistent focused monarch-at-turn-start evidence".into());
+            }
             if focused.targeted_objects_this_turn != checkpoint.rules.targeted_objects_this_turn {
                 return Err("inconsistent focused target history across Grand Melee carriers".into());
             }
@@ -7519,7 +7550,7 @@ mod sync_checkpoint_tests {
                 vec![1, 2, 1, 1, 2, 1],
             )
             .expect("host profile");
-        assert!(host.game.leave_game(seats[3]));
+        assert!(host.game.leave_game(seats[3]).expect("checked designation/departure fixture"));
         let frozen_range = host
             .game
             .limited_range_of_influence()
@@ -7643,7 +7674,7 @@ mod sync_checkpoint_tests {
                 true,
             )
             .expect("host profile");
-        assert!(host.game.leave_game(players[2]));
+        assert!(host.game.leave_game(players[2]).expect("checked designation/departure fixture"));
         let frozen_range = host
             .game
             .limited_range_of_influence()
@@ -9251,7 +9282,7 @@ fn actual_departed_hidden_card_checkpoint() -> (SyncCheckpoint, CardDefinition) 
             public_commitment: Some("public-commitment".into()),
         },
     );
-    assert!(host.game.leave_game(bob), "real departure completes");
+    assert!(host.game.leave_game(bob).expect("checked designation/departure fixture"), "real departure completes");
     assert!(
         host.game.object(card).is_none(),
         "departed card is no longer live"
@@ -11170,5 +11201,23 @@ mod day_night_continuation_checkpoint_tests {
         host.game.select_grand_melee_turn_marker(other).unwrap();
         assert!(host.game.turn_store.pending_day_night_as_transforms.is_empty());
         assert!(host.has_unretained_ability_programs(),"an inactive lane still owns unfinished transform work and its unpublished event");
+    }
+}
+
+#[cfg(test)]
+mod monarch_turn_start_wire_tests {
+    use super::*;
+    #[test]
+    fn historical_holder_and_known_absence_are_explicit_and_legacy_unknown_fails(){
+        for holder in [None,Some(PlayerId(1))]{
+            let mut history=ironsmith::turn_history::TurnHistory::default();history.monarch_at_turn_start=holder;
+            let carrier=SyncMonarchAtTurnStart::capture(&history);
+            let restored:SyncMonarchAtTurnStart=serde_json::from_str(&serde_json::to_string(&carrier).unwrap()).unwrap();
+            assert_eq!(SyncMonarchAtTurnStart::restore(Some(&restored),3).unwrap(),holder);
+        }
+        assert!(SyncMonarchAtTurnStart::restore(None,3).is_err());
+        assert!(SyncMonarchAtTurnStart::restore(Some(&SyncMonarchAtTurnStart::Player(9)),3).is_err());
+        assert!(serde_json::from_str::<SyncMonarchAtTurnStart>("{}").is_err());
+        assert!(serde_json::from_str::<SyncMonarchAtTurnStart>("null").is_err());
     }
 }

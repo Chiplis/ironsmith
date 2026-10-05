@@ -92,6 +92,9 @@ impl std::ops::Index<usize> for TurnEventRecords {
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
+    /// Exact public holder when this turn began. Fresh games have no monarch;
+    /// authoritative restore requires a presence-bearing carrier for this fact.
+    pub monarch_at_turn_start: Option<PlayerId>,
     /// Per-player snapshot taken before the untap step begins.
     pub untapped_lands_at_turn_start: HashMap<PlayerId, u32>,
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
@@ -162,6 +165,7 @@ impl TurnHistory {
     pub fn clear_for_new_turn(&mut self) -> u32 {
         let spells_cast_last_turn_total = self.total_spells_cast_this_turn();
 
+        self.monarch_at_turn_start=None;
         self.activated_abilities_this_turn.clear();
         self.loyalty_abilities_activated_this_turn.clear();
         self.activated_abilities_resolved_this_turn.clear();

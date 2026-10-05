@@ -745,6 +745,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/818"
+    },
+    {
+      "stage": 53,
+      "branch": "fix/card-failures-53-effect-prices-and-permissions",
+      "base": "fix/card-failures-52-tokens-payments-and-results",
+      "source_integration_commit": "2fd3dc529681cd9e446f09621651d8249dce3164",
+      "remote_commit": "b0e3747fb4fa48d3bbaa5974d0422ce1c04fa4c3",
+      "tree": "2d41e5a16014a535fd1b9d74ba62e86651b45000",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 819,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/819"
     }
   ]
 }

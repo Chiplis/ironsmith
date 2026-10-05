@@ -272,6 +272,8 @@ impl PartialEq for Trigger {
 }
 
 impl Trigger {
+    pub fn player_becomes_monarch(player:PlayerFilter)->Self{Self::new(other::PlayerBecomesMonarchTrigger{player})}
+
     /// Process-local identity for immutable runtime cache eligibility. This is
     /// never a checkpoint reference or a substitute for a retained wire model.
     pub(crate) fn runtime_matcher_identity(&self) -> usize {

@@ -273,7 +273,7 @@ fn u072_extra_turn_stays_with_a_spaced_marker_and_departure_reduces_marker_count
     assert_eq!(game.grand_melee_marker_views()[0].holder, players[0]);
     assert_eq!(game.turn.active_player, players[0]);
 
-    assert!(game.leave_game(players[7]));
+    assert!(game.leave_game(players[7]).expect("checked designation/departure fixture"));
     let marker_two = game
         .grand_melee_marker_views()
         .into_iter()
@@ -290,7 +290,7 @@ fn u072_extra_turn_stays_with_a_spaced_marker_and_departure_reduces_marker_count
 fn u072_close_markers_wait_or_defer_extra_turns_on_the_correct_side() {
     let (mut left_game, players) = game_with_players(10);
     left_game.restore_grand_melee(players.clone()).unwrap();
-    assert!(left_game.leave_game(players[1]));
+    assert!(left_game.leave_game(players[1]).expect("checked designation/departure fixture"));
     left_game.turn_store.extra_turns.push(players[0]);
     left_game.next_turn();
     let marker_one = &left_game.grand_melee_marker_views()[0];
@@ -317,7 +317,7 @@ fn u072_close_markers_wait_or_defer_extra_turns_on_the_correct_side() {
     let (mut right_game, players) = game_with_players(10);
     right_game.restore_grand_melee(players.clone()).unwrap();
     right_game.select_grand_melee_turn_marker(2).unwrap();
-    assert!(right_game.leave_game(players[1]));
+    assert!(right_game.leave_game(players[1]).expect("checked designation/departure fixture"));
     assert_eq!(right_game.grand_melee().unwrap().focused_marker(), 2);
     right_game.turn_store.extra_turns.push(players[4]);
     right_game.next_turn();
@@ -343,7 +343,7 @@ fn u072_departure_adjacency_is_frozen_until_each_markers_next_turn() {
     game.restore_grand_melee(players.clone()).unwrap();
     assert!(!game.player_is_within_range(players[0], players[2]));
 
-    assert!(game.leave_game(players[1]));
+    assert!(game.leave_game(players[1]).expect("checked designation/departure fixture"));
     assert!(
         !game.player_is_within_range(players[0], players[2]),
         "new neighbors do not enter the current marker's frozen range"
@@ -365,7 +365,7 @@ fn u072_multiple_removal_designations_cascade_to_the_marker_on_the_right() {
     game.restore_grand_melee(players.clone()).unwrap();
 
     for departed in [players[1], players[5], players[6], players[9], players[2]] {
-        assert!(game.leave_game(departed));
+        assert!(game.leave_game(departed).expect("checked designation/departure fixture"));
     }
     let marker_one = game
         .grand_melee_marker_views()
@@ -396,7 +396,7 @@ fn u072_simultaneous_departures_choose_the_lowest_numbered_eligible_marker() {
         players[6],
         players[9],
         players[10],
-    ]);
+    ]).expect("checked designation/departure fixture");
     assert_eq!(departed.len(), 5);
     let markers = game.grand_melee_marker_views();
     assert_eq!(markers[0].number, 1);
@@ -415,7 +415,7 @@ fn u072_designated_marker_that_has_not_begun_is_removed_immediately() {
         GrandMeleeMarkerStatus::Waiting,
     );
 
-    assert!(game.leave_game(players[2]));
+    assert!(game.leave_game(players[2]).expect("checked designation/departure fixture"));
     assert_eq!(game.grand_melee().unwrap().marker_count(), 1);
     assert_eq!(game.grand_melee_marker_views()[0].number, 2);
 }
@@ -463,7 +463,7 @@ fn u072_planechase_has_one_controller_and_starting_plane_per_initial_marker() {
     );
 
     let planeswalks_before = game.planechase.as_ref().unwrap().planeswalk_count;
-    assert!(game.leave_game(players[4]));
+    assert!(game.leave_game(players[4]).expect("checked designation/departure fixture"));
     assert!(!game.planar_controllers().contains(&players[4]));
     assert!(!game.face_up_planar_objects().contains(&faces[1]));
     assert_eq!(

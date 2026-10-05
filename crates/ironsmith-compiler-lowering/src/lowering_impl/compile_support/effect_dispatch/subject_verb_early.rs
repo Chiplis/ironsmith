@@ -186,7 +186,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. }
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. }
+                ReplacementActionAst::RegisterDamageMultiplier { .. } | ReplacementActionAst::RegisterDamageAddition { .. }
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { .. }
@@ -1843,6 +1843,8 @@ pub(super) fn compile_subject_verb_early(
             let effect = Effect::new(registration);
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) =>
+            Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),

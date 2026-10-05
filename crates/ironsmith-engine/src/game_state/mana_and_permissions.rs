@@ -3289,23 +3289,6 @@ impl GameState {
             .insert(object_id);
     }
 
-    /// Set the current monarch designation holder.
-    ///
-    /// Use `None` to clear the designation.
-    pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
-        let changed = monarch != self.monarch;
-        if changed {
-            self.mark_continuous_state_dirty();
-        }
-        if monarch.is_some() && changed {
-            self.record_ui_effect_event("monarch", monarch, None, Vec::new(), None, None);
-        }
-        self.monarch = monarch;
-        if changed && let Some(monarch) = monarch {
-            self.return_exiled_for_opponent_becoming_monarch(monarch);
-        }
-    }
-
     /// Set the current initiative designation holder.
     ///
     /// Use `None` to clear the designation.

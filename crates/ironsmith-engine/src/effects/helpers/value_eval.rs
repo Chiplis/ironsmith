@@ -1192,23 +1192,27 @@ pub(crate) fn resolve(
         Value::CountersOnFilterCandidate(_) => Ok(0),
         Value::CountersOnSource(counter_type) => {
             if let Some(ctx) = context.execution() {
-                {
-                    // Get the number of counters of the specified type on the source
-                    if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
-                        Ok(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32)
-                    } else if let Some(source) = game.object(ctx.source) {
-                        Ok(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
-                    } else if let Some(snapshot) = &ctx.source_snapshot {
-                        Ok(snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32)
-                    } else {
-                        Ok(0)
-                    }
-                }
+                let amount = if let Some(snapshot) = source_lki_for_moved_current_object(game, ctx) {
+                    snapshot.counters.get(counter_type).copied().unwrap_or(0)
+                } else if let Some(source) = game.object(ctx.source) {
+                    source.counters.get(counter_type).copied().unwrap_or(0)
+                } else if let Some(snapshot) = &ctx.source_snapshot {
+                    snapshot.counters.get(counter_type).copied().unwrap_or(0)
+                } else {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "counter source has neither current nor retained characteristics".into()));
+                };
+                i32::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                    resource: "source counter quantity", requested: u128::from(amount), maximum: i32::MAX as u128,
+                })
             } else {
                 Ok(context.layer().counters_on_source(value, counter_type))
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            if matches!(spec.base(), ChooseSpec::Source) && let Some(kind) = counter_type {
+                return resolve(&Value::CountersOnSource(*kind), context);
+            }
             // Counters on players ("each counter among players and
             // permanents", Lumbering Megasloth, CR 122.1).
             if let ChooseSpec::EachPlayer(player_filter) = spec.base() {
@@ -1444,7 +1448,8 @@ fn resolve_event_value(
                     "counter placement amount exceeds the supported value range".into()));
             }
             if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
-                return Ok(markers_event.amount as i32);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(markers_event.amount), "player marker event scalar");
             }
             if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
                 return Ok(counter_event.amount as i32);

@@ -552,6 +552,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::OpponentsEachLoseExactLife { amount } => {
             crate::triggers::Trigger::opponents_each_lose_exact_life(amount)
         }
+        TriggerKind::PlayerBecomesMonarch {player} => crate::triggers::Trigger::player_becomes_monarch(player),
         TriggerKind::PlayerLosesGame { player } => {
             crate::triggers::Trigger::player_loses_game(player)
         }

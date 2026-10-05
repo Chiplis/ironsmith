@@ -76,3 +76,6 @@ pub use wins_clash::WinsClashTrigger;
 
 mod qualified_die_roll;
 pub use qualified_die_roll::QualifiedDieRollTrigger;
+
+mod player_becomes_monarch;
+pub use player_becomes_monarch::PlayerBecomesMonarchTrigger;

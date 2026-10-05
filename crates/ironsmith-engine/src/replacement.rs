@@ -672,6 +672,10 @@ pub enum EventModification {
 
     /// Reduce to zero (prevent)
     ReduceToZero,
+
+    /// Evaluate a signed bonus using the replacement source and controller.
+    /// Appended to preserve the existing fixed Add schema.
+    AddDynamic(crate::effect::Value),
 }
 
 /// Where to redirect an effect.

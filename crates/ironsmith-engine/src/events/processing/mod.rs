@@ -3984,7 +3984,7 @@ pub(crate) fn process_player_loss_with_context(
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
         let Some(mut receipt) = prepare_player_loss_scoped(game, player, ctx, simultaneous_zone_changes)? else { return Ok(None); };
-        commit_player_loss_receipt(game, &mut receipt);
+        commit_player_loss_receipt(game, &mut receipt)?;
         let verdict = receipt.original;
         let original = if verdict == PlayerLossOutcome::Lost { crate::effect::EffectOutcome::resolved() }
             else { crate::effect::EffectOutcome::prevented() };
@@ -4066,10 +4066,14 @@ fn prepare_player_loss_scoped(
     result
 }
 
-pub(crate) fn commit_player_loss_receipt(game: &mut GameState, receipt: &mut PlayerLossReceipt) {
-    if receipt.original == PlayerLossOutcome::Lost && !game.mark_player_lost(receipt.player) {
-        receipt.original = PlayerLossOutcome::Prevented;
-    }
+pub(crate) fn commit_player_loss_receipt(game: &mut GameState,receipt:&mut PlayerLossReceipt)->Result<(),crate::effects::ExecutionError>{
+    commit_player_loss_receipts(game,std::slice::from_mut(receipt))
+}
+pub(crate) fn commit_player_loss_receipts(game: &mut GameState,receipts:&mut [PlayerLossReceipt])->Result<(),crate::effects::ExecutionError>{
+    let players=receipts.iter().filter(|receipt|receipt.original==PlayerLossOutcome::Lost).map(|receipt|receipt.player).collect::<Vec<_>>();
+    let lost=game.mark_players_lost_simultaneously(&players)?;
+    for receipt in receipts {if receipt.original==PlayerLossOutcome::Lost && !lost.contains(&receipt.player){receipt.original=PlayerLossOutcome::Prevented;}}
+    Ok(())
 }
 
 pub(crate) fn finish_player_loss_receipts(

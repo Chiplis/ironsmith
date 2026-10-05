@@ -5750,6 +5750,16 @@ fn parse_you_control_shared_creature_type_count_predicate(
 }
 
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    let monarch_words=non_article_token_word_refs(tokens);
+    if let Some(subject)=monarch_words.strip_suffix(&["monarch","as","turn","began"]) {
+        let player=match subject {
+            ["you","were"]=>Some(PlayerAst::You),
+            ["that","player","was"]|["they","were"]=>Some(PlayerAst::That),
+            _=>None,
+        };
+        if let Some(player)=player {return Ok(PredicateAst::Player(PlayerPredicateAst::PlayerWasMonarchAtTurnStart{player}));}
+    }
+
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
     } else {

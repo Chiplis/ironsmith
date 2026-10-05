@@ -335,7 +335,7 @@ fn u075_cant_win_cant_lose_and_concession_apply_to_the_complete_team() {
             ))
     );
 
-    assert!(game.concede_game(seats[1]));
+    assert!(game.concede_game(seats[1]).expect("checked designation/departure fixture"));
     assert!(
         seats[0..2]
             .iter()

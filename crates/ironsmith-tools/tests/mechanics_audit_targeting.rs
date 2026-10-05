@@ -1171,7 +1171,7 @@ mod e2_7_initiative_venture_trigger {
         game.turn.phase = Phase::FirstMain;
         let mut queue = TriggerQueue::new();
         game.set_initiative(Some(BOB));
-        assert!(game.concede_game(BOB));
+        assert!(game.concede_game(BOB).expect("checked designation/departure fixture"));
         let mut dm = Script::default();
         settle(&mut game, &mut queue, &mut dm);
         assert!(

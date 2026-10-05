@@ -507,10 +507,10 @@ fn monarch_condition_rechecks_live_designation() {
         let host = game.create_object_from_definition(&definition, bob, Zone::Battlefield);
         let (combat, attackers) = attack_setup(&mut game, bob, 3, "");
         assert!(blocks(&game, &combat, host, &attackers[..2]).is_err());
-        game.set_monarch(Some(bob));
+        game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
         blocks(&game, &combat, host, &attackers[..2]).unwrap();
         assert!(blocks(&game, &combat, host, &attackers).is_err());
-        game.set_monarch(Some(charlie));
+        game.set_monarch(Some(charlie)).expect("checked designation/departure fixture");
         assert!(blocks(&game, &combat, host, &attackers[..2]).is_err());
     }
 }

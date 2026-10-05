@@ -77,6 +77,7 @@ pub fn this_blocks_or_becomes_blocked_other_filter(trigger: &TriggerSpec) -> Opt
 
 pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> {
     if matches!(trigger, TriggerSpec::PlayerPaysLife(_)) { return None; }
+    if matches!(trigger,TriggerSpec::PlayerBecomesMonarch(_)){return None;}
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return default_trigger_last_object_tag(trigger);
     }

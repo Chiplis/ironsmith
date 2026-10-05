@@ -1602,19 +1602,19 @@ pub fn parse_permission_clause_spec_lexed(
                 if permission_subject_facts::parse_exact_permission_subject(parsed.filter_tokens)
                     == Some(permission_subject_facts::ExactPermissionSubject::GenericSpells)
                 {
-                    crate::model::CompilerGrantSpecCore::flash_to_spells()
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::nonland())
                 } else if permission_subject_facts::parse_exact_permission_subject(
                     parsed.filter_tokens,
                 ) == Some(
                     permission_subject_facts::ExactPermissionSubject::NoncreatureSpells,
                 ) {
-                    crate::model::CompilerGrantSpecCore::flash_to_noncreature_spells()
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(ObjectFilter::noncreature_spell())
                 } else if let Some(filter) =
                     permission_subject_facts::parse_permission_subject_filter_tokens(
                         parsed.filter_tokens,
                     )?
                 {
-                    crate::model::CompilerGrantSpecCore::flash_to_spells_matching(filter)
+                    crate::model::CompilerGrantSpecCore::flash_timing_for_spells_matching(filter)
                 } else {
                     return Ok(None);
                 };

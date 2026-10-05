@@ -170,6 +170,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
                     | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
                     | TriggerSpec::CounterPutOn { .. }
+                    | TriggerSpec::PlayerGetsCounters { .. }
                     | TriggerSpec::NthCounterPutOn { .. }
                     | TriggerSpec::CounterRemovedFrom { .. }
                     | TriggerSpec::EntersBattlefieldOneOrMore { .. }
@@ -7028,6 +7029,9 @@ fn resolve_effect_result_values_in_fields(
             }) => {
                 resolve_effect_result_value(power, state)?;
             }
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+                resolve_effect_result_value(&mut spec.delta, state)?;
+            }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. },
             )
@@ -8080,6 +8084,11 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 source_filter,
                 ..
             }) => bind_unresolved_it_in_filter(source_filter, seed_tag),
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
+                bind_unresolved_it_in_filter(&mut spec.source_filter, seed_tag)
+                    + spec.target_object_filter.as_mut().map(|filter| bind_unresolved_it_in_filter(filter, seed_tag)).unwrap_or(0)
+                    + bind_unresolved_it_in_value(&mut spec.delta, seed_tag)
+            }
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamageMultiplier { spec },
             ) => {

@@ -159,6 +159,8 @@ pub enum EventKind {
     ManaLost,
     /// A successfully completed life payment (not generic life loss).
     LifePaid,
+    /// A different player acquired the monarch designation.
+    MonarchChanged,
 }
 
 /// A target within an event that can potentially be redirected.

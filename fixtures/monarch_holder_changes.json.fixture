@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Custodi Lich",
+    "oracle_id": "0d95ee14-9ff0-4d7f-be56-361a500ce36f",
+    "text": "Mana cost: {3}{B}{B}\nType: Creature — Zombie Cleric\nPower/Toughness: 4/2\nWhen this creature enters, you become the monarch.\nWhenever you become the monarch, target player sacrifices a creature of their choice.",
+    "oracle_text": "When this creature enters, you become the monarch.\nWhenever you become the monarch, target player sacrifices a creature of their choice.",
+    "baseline_content_hash": "0009914d4518cdaf54b921dd4d13b6ab2b712876f79a5bd0d81569dd04e784b5",
+    "baseline_error": "unsupported triggered line: 'Whenever you become the monarch, target player sacrifices a creature of their choice.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you become the monarch, target player sacrifices a creature of their choice.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; independent bounded source review clear through d80feb7a8; scenarios authored and unrun"
+  },
+  {
+    "name": "Garland, Royal Kidnapper",
+    "oracle_id": "ab914053-4384-415f-b1e8-09fecb5a30b8",
+    "text": "Mana cost: {2}{U}{B}\nType: Legendary Creature — Human Knight\nPower/Toughness: 3/4\nWhen Garland enters, target opponent becomes the monarch.\nWhenever an opponent becomes the monarch, gain control of target creature that player controls for as long as they're the monarch.\nCreatures you control but don't own get +2/+2 and can't be sacrificed.",
+    "oracle_text": "When Garland enters, target opponent becomes the monarch.\nWhenever an opponent becomes the monarch, gain control of target creature that player controls for as long as they're the monarch.\nCreatures you control but don't own get +2/+2 and can't be sacrificed.",
+    "baseline_content_hash": "2f710f213dcf15cc2dbe855d6408bc648710d4988a580271d29ba6f5b3a06b25",
+    "baseline_error": "unsupported triggered line: 'Whenever an opponent becomes the monarch, gain control of target creature that player controls for as long as they're the monarch.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent becomes the monarch, gain control of target creature that player controls for as long as they're the monarch.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; independent bounded source review clear through d80feb7a8; scenarios authored and unrun"
+  },
+  {
+    "name": "Knights of the Black Rose",
+    "oracle_id": "9dbfa01b-ce7e-4dd1-9257-0c89b831f477",
+    "text": "Mana cost: {3}{W}{B}\nType: Creature — Human Knight\nPower/Toughness: 4/4\nWhen this creature enters, you become the monarch.\nWhenever an opponent becomes the monarch, if you were the monarch as the turn began, that player loses 2 life and you gain 2 life.",
+    "oracle_text": "When this creature enters, you become the monarch.\nWhenever an opponent becomes the monarch, if you were the monarch as the turn began, that player loses 2 life and you gain 2 life.",
+    "baseline_content_hash": "c6a72f1b43bf05e5463f79952b4dbef60dc18cb807db7e703a165f0ef6a147be",
+    "baseline_error": "unsupported intervening-if predicate in triggered line: 'Whenever an opponent becomes the monarch, if you were the monarch as the turn began, that player loses 2 life and you gain 2 life.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'Whenever an opponent becomes the monarch, if you were the monarch as the turn began, that player loses 2 life and you gain 2 life.' [rule-path=statement-line > triggered-line]",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; independent bounded source review clear through d80feb7a8; scenarios authored and unrun"
+  }
+]

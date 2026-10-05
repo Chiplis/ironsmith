@@ -255,7 +255,7 @@ fn words_war_uses_leave_game_lki_when_its_owner_leaves_after_another_player_regi
         activate(&mut game, host, Some(Target::Player(c)));
         // This ability was absent from the registration-time snapshot.
         game.object_mut(host).unwrap().abilities_mut().push(ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::lifelink()));
-        assert!(game.leave_game(b()));
+        assert!(game.leave_game(b()).expect("checked designation/departure fixture"));
         assert!(game.object(host).is_none());
         assert_eq!(game.effect_store.replacement_effects.registered_state().unwrap().effects.len(), 1);
         draw(&mut game, host, a(), 1);

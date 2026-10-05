@@ -2116,7 +2116,7 @@ pub(super) fn fall_from_favor_enters_taps_enchanted_creature_and_makes_controlle
 #[test]
 pub(super) fn fall_from_favor_keeps_enchanted_creature_tapped_when_controller_is_not_monarch() {
     let (mut game, alice, bob, _aura, enchanted_creature) = fall_from_favor_runtime_game();
-    game.set_monarch(Some(alice));
+    game.set_monarch(Some(alice)).expect("checked designation/departure fixture");
     game.tap(enchanted_creature);
     game.turn.active_player = bob;
     game.turn.phase = crate::game_state::Phase::Beginning;
@@ -2135,7 +2135,7 @@ pub(super) fn fall_from_favor_keeps_enchanted_creature_tapped_when_controller_is
 #[test]
 pub(super) fn fall_from_favor_allows_enchanted_creature_to_untap_when_controller_is_monarch() {
     let (mut game, _alice, bob, _aura, enchanted_creature) = fall_from_favor_runtime_game();
-    game.set_monarch(Some(bob));
+    game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
     game.tap(enchanted_creature);
     game.turn.active_player = bob;
     game.turn.phase = crate::game_state::Phase::Beginning;

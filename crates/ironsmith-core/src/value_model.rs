@@ -2127,6 +2127,7 @@ pub enum Condition {
     /// Captured causation of the triggering completed action. The causing
     /// controller is independent of the affected object's controller.
     TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
+    PlayerWasMonarchAtTurnStart { player: PlayerFilter },
 }
 
 #[cfg(test)]

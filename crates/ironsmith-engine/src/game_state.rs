@@ -50,6 +50,7 @@ mod hidden_hand_choices;
 mod mana_and_permissions;
 mod life_payments;
 pub(crate) use life_payments::PreparedLifePayment;
+mod monarch;
 mod object_state_and_events;
 mod opaque_library_epochs;
 mod announcement_visibility;
@@ -4078,7 +4079,7 @@ impl GameState {
 
     /// Apply CR 801.16 and clear the pending marker. Returns true only when no
     /// player remains and the whole game is a draw.
-    pub(crate) fn resolve_mandatory_loop_draw(&mut self) -> bool {
+    pub(crate) fn resolve_mandatory_loop_draw(&mut self) -> Result<bool,crate::effects::ExecutionError> {
         let controllers = self
             .auxiliary_tracking
             .mandatory_loop_draw_controllers
@@ -4098,13 +4099,15 @@ impl GameState {
                 affected.extend(self.players_within_range(controller));
             }
         }
+        // The checked departure owner may roll back. Keep the pending loop's
+        // exact range controllers until the entire draw has committed.
+        self.draw_game_for_players(affected)?;
         {
             let tracking = self.auxiliary_tracking_mut();
             tracking.mandatory_loop_draw_pending = false;
             tracking.mandatory_loop_draw_controllers.clear();
         }
-        self.draw_game_for_players(affected);
-        !self.players.iter().any(|player| player.is_in_game())
+        Ok(!self.players.iter().any(|player| player.is_in_game()))
     }
 
     pub(crate) fn mandatory_loop_draw_pending(&self) -> bool {
@@ -7084,66 +7087,41 @@ impl GameState {
         self.write_shared_life(player, life)
     }
 
-    /// Marks a player as having lost the game and emits the trigger-visible event once.
-    pub fn mark_player_lost(&mut self, player: PlayerId) -> bool {
-        let propagated_team = self
-            .emperor_team_members(player)
-            .or_else(|| self.two_headed_giant_team_members(player));
-        let lookback_source_snapshots = self.trigger_source_lookback_snapshots();
-        let should_emit = if let Some(p) = self.player_mut(player) {
-            if !p.is_in_game() {
-                false
-            } else {
-                p.has_lost = true;
-                true
-            }
-        } else {
-            false
-        };
+    /// Marks a player (and a rules-linked team) as lost in one checked operation.
+    pub fn mark_player_lost(&mut self,player:PlayerId)->Result<bool,crate::effects::ExecutionError>{
+        self.mark_players_lost_simultaneously(&[player]).map(|lost|lost.contains(&player))
+    }
+    pub fn concede_game(&mut self,player:PlayerId)->Result<bool,crate::effects::ExecutionError>{self.mark_player_lost(player)}
 
-        if should_emit {
-            self.queue_trigger_event(
-                crate::provenance::ProvNodeId::default(),
-                crate::events::Event::player_loses_game(player)
-                    .into_raw()
-                    .with_lookback_source_snapshots(lookback_source_snapshots),
-            );
-            self.leave_game(player);
-            if let Some(team) = propagated_team {
-                for teammate in team {
-                    if teammate != player {
-                        self.mark_player_lost(teammate);
-                    }
+    /// Mark the complete losing group before departure and choose a monarch
+    /// only among survivors of the whole operation, never a transient loser.
+    pub fn mark_players_lost_simultaneously(&mut self,players:&[PlayerId])->Result<Vec<PlayerId>,crate::effects::ExecutionError>{
+        if players.is_empty(){return Ok(Vec::new());}
+        let checkpoint=self.clone();
+        let result=(||{
+            self.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let mut losing=players.iter().copied().collect::<Vec<_>>();
+            let mut cursor=0;
+            while cursor<losing.len(){
+                let player=losing[cursor];cursor+=1;
+                if let Some(team)=self.emperor_team_members(player).or_else(||self.two_headed_giant_team_members(player)){
+                    for member in team {if !losing.contains(&member){losing.push(member);}}
                 }
             }
-        }
-
-        should_emit
-    }
-
-    /// Concede the game, propagating CR 810.8b to the complete shared-life team.
-    ///
-    /// Concession is not prevented by effects that say a player can't lose.
-    pub fn concede_game(&mut self, player: PlayerId) -> bool {
-        self.mark_player_lost(player)
-    }
-
-    /// Mark a known group as losing simultaneously, preserving Grand Melee's
-    /// lowest-numbered marker designation rule before any seat is removed.
-    pub fn mark_players_lost_simultaneously(&mut self, players: &[PlayerId]) -> Vec<PlayerId> {
-        let players = players
-            .iter()
-            .copied()
-            .filter(|player| {
-                self.player(*player)
-                    .is_some_and(|candidate| candidate.is_in_game())
-            })
-            .collect::<Vec<_>>();
-        self.prepare_grand_melee_simultaneous_departures(&players);
-        players
-            .into_iter()
-            .filter(|player| self.mark_player_lost(*player))
-            .collect()
+            losing.retain(|player|self.player(*player).is_some_and(|p|p.is_in_game()));
+            losing.sort();losing.dedup();
+            self.prepare_grand_melee_simultaneous_departures(&losing);
+            let lookback=self.trigger_source_lookback_snapshots();
+            for &player in &losing {
+                self.player_mut(player).expect("validated player").has_lost=true;
+                self.queue_trigger_event(crate::provenance::ProvNodeId::default(),
+                    crate::events::Event::player_loses_game(player).into_raw().with_lookback_source_snapshots(lookback.clone()));
+            }
+            self.leave_game_group(&losing)?;
+            Ok(losing)
+        })();
+        if result.is_err(){self.restore_execution_checkpoint(checkpoint,false);}
+        result
     }
 
     /// Apply a chosen redistribution of life totals as one transaction.

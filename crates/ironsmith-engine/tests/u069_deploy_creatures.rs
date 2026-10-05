@@ -289,7 +289,7 @@ fn u069_range_and_resolution_revalidation_can_make_the_teammate_target_illegal()
     let source = creature(&mut game, alice, "Fizzling Deploy Creature");
     game.remove_summoning_sickness(source);
     activate_deploy(&mut game, source, bob);
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     resolve_stack_entry(&mut game).expect("illegal target makes deploy resolve without effect");
     assert_eq!(game.current_controller(source), Some(alice));
     assert!(game.is_tapped(source), "paid costs are not refunded");

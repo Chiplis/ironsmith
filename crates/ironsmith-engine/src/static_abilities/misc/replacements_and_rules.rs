@@ -137,6 +137,7 @@ pub struct ModifyDamageAmountReplacement {
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
     pub delta: i32,
+    pub dynamic_delta: Option<Value>,
     pub noncombat_only: bool,
     pub display: String,
     pub condition: Option<crate::ConditionExpr>,
@@ -155,10 +156,16 @@ impl ModifyDamageAmountReplacement {
             target_player_filter,
             target_object_filter,
             delta,
+            dynamic_delta: None,
             noncombat_only: false,
             display: display.into(),
             condition: None,
         }
+    }
+
+    pub fn with_dynamic_delta(mut self, value: Value) -> Self {
+        self.dynamic_delta = Some(value);
+        self
     }
 
     pub fn with_noncombat_only(mut self, noncombat_only: bool) -> Self {
@@ -402,7 +409,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        if self.delta == 0 {
+        if self.dynamic_delta.is_none() && self.delta == 0 {
             return None;
         }
         Some(ReplacementEffect::with_matcher(
@@ -418,7 +425,10 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 amount_less_than: None,
                 maximum_damage: None,
             },
-            ReplacementAction::Modify(EventModification::Add(self.delta)),
+            ReplacementAction::Modify(match &self.dynamic_delta {
+                Some(value) => EventModification::AddDynamic(value.clone()),
+                None => EventModification::Add(self.delta),
+            }),
         ))
     }
 }

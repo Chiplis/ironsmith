@@ -893,7 +893,7 @@ fn sigarda_owned_by_a_departing_player_preserves_another_players_pending_latest_
                 set_life(&mut game, setup, A, 18);
                 resolve(&mut game, &mut Choices::default());
                 assert_eq!(game.noted_life_total_for_source(source), Some(18));
-                assert!(game.leave_game(B));
+                assert!(game.leave_game(B).expect("checked designation/departure fixture"));
                 assert!(game.object(source).is_none());
                 assert_eq!(game.noted_life_total_for_source(source), None);
                 let pending = game.stack.last().unwrap();

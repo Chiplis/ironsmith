@@ -77,6 +77,9 @@ pub enum ReplacementActionAst {
     RegisterDamageMultiplier {
         spec: ironsmith_core::RegisterDamageMultiplierEffect,
     },
+    RegisterDamageAddition {
+        spec: ironsmith_core::RegisterDamageAdditionEffect,
+    },
     RegisterManaRewrite {
         rule: ironsmith_core::ManaOutputRewrite,
         target: Option<TargetAst>,

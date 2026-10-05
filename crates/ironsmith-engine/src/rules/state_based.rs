@@ -2240,7 +2240,7 @@ fn prepare_and_apply_state_based_actions(
         }
         any_applied = true;
     }
-    for receipt in &mut loss_receipts { crate::events::processing::commit_player_loss_receipt(game, receipt); }
+    crate::events::processing::commit_player_loss_receipts(game, &mut loss_receipts)?;
     // Freeze both event families before any addition can move another arrival.
     let frozen_zones = crate::effects::zones::freeze_zone_change_receipts(game, committed_zones);
     let frozen_destroy = crate::events::processing::freeze_destroy_receipts(game, destroy_receipts);

@@ -1253,7 +1253,7 @@ mod tests {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
-        assert!(game.leave_game(alice));
+        assert!(game.leave_game(alice).expect("checked designation/departure fixture"));
         let mut ctx = ExecutionContext::new_default(source, alice);
 
         let result = CreateTokenEffect::you(soldier_token(), 2)

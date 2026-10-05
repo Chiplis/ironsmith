@@ -57,7 +57,7 @@ pub(super) fn finish_mandatory_loop_draw(
     if !game.mandatory_loop_draw_pending() {
         game.mark_mandatory_loop_draw();
     }
-    if game.resolve_mandatory_loop_draw() {
+    if game.resolve_mandatory_loop_draw()? {
         terminal_progress_or_resume_subgame(game, GameResult::Draw, decision_maker)
     } else {
         Ok(GameProgress::StackResolved)

@@ -25,6 +25,8 @@ mod control_transitions;
 mod causal_events;
 #[path = "combat_declaration_shapes.rs"]
 mod combat_declaration_shapes;
+#[path = "monarch_triggers.rs"]
+mod monarch_triggers;
 #[path = "paid_cost_triggers.rs"]
 mod paid_cost_triggers;
 
@@ -694,6 +696,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
 
     if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
     if let Some(trigger) = paid_cost_triggers::parse(tokens) { return Ok(trigger); }
+    if let Some(trigger) = monarch_triggers::parse(tokens) {return Ok(trigger);}
 
     if let Some(player) = parse_unpaid_cumulative_upkeep_player(&words) {
         return Ok(TriggerSpec::KeywordActionFromSource {

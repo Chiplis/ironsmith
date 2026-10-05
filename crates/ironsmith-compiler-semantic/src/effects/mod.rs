@@ -233,6 +233,7 @@ pub mod mana {
 }
 
 pub use ironsmith_core::RegisterDamageMultiplierEffect;
+pub use ironsmith_core::RegisterDamageAdditionEffect;
 
 pub use ironsmith_core::DealDamageBySourcesEffect;
 

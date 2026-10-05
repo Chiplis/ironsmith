@@ -1103,6 +1103,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         delta: i32,
+        /// When present, evaluated in the replacement source context at application.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        dynamic_delta: Option<Value>,
         noncombat_only: bool,
         display: String,
     },
@@ -2684,6 +2687,7 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta,
                 noncombat_only,
                 display,
             } => StaticAbilityPayload::ModifyDamageAmountReplacement {
@@ -2691,6 +2695,7 @@ where
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta,
                 noncombat_only,
                 display,
             },
@@ -6801,10 +6806,18 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 delta,
+                dynamic_delta: None,
                 noncombat_only,
                 display,
             },
         }
+    }
+    /// A live additive bonus is distinct from a resolving, captured X bonus.
+    pub fn with_dynamic_damage_delta(mut self, value: Value) -> Self {
+        if let StaticAbilityPayload::ModifyDamageAmountReplacement { dynamic_delta, .. } = &mut self.payload {
+            *dynamic_delta = Some(value);
+        }
+        self
     }
     /// Restrict a multiplied-damage replacement to noncombat damage
     /// ("would deal noncombat damage", Solphim, Mayhem Dominus).

@@ -5867,11 +5867,11 @@ mod fewest_controller_set_tests {
             .unwrap(),
             vec![b]
         );
-        assert!(game.leave_game(b));
+        assert!(game.leave_game(b).expect("checked designation/departure fixture"));
         assert_eq!(selected(&game), vec![a]);
-        assert!(game.leave_game(c));
+        assert!(game.leave_game(c).expect("checked designation/departure fixture"));
         assert_eq!(selected(&game), vec![a]);
-        assert!(game.leave_game(a));
+        assert!(game.leave_game(a).expect("checked designation/departure fixture"));
         assert!(selected(&game).is_empty());
     }
 }

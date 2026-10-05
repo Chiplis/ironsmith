@@ -5286,7 +5286,7 @@ mod tests {
         );
         let source_stable_id = game.object(source).expect("source exists").stable_id;
 
-        assert!(game.mark_player_lost(bob));
+        assert!(game.mark_player_lost(bob).expect("checked designation/departure fixture"));
         let events = game.take_pending_trigger_events();
         let event = events
             .iter()

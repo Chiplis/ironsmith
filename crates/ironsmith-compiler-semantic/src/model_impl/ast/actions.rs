@@ -716,6 +716,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_mana", replacement_mana)
                 .field("mode", mode)
                 .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => f
+                .debug_struct("RegisterDamageAddition").field("spec", spec).finish(),
             Self::Replacements(ReplacementActionAst::RegisterDamageMultiplier { spec }) => f
                 .debug_struct("RegisterDamageMultiplier")
                 .field("spec", spec)

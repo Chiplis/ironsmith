@@ -147,7 +147,7 @@ fn u068_an_empty_adjacent_seat_does_not_make_the_next_opponent_attackable() {
     game.set_attack_direction(Some(AttackDirection::Left));
     assert_eq!(game.adjacent_player_in_attack_direction(alice), Some(bob));
 
-    assert!(game.leave_game(bob));
+    assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
     assert_eq!(game.adjacent_player_in_attack_direction(alice), None);
     assert!(
         compute_legal_attackers(&game, &CombatState::default())

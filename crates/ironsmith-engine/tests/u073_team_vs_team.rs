@@ -95,9 +95,9 @@ fn u073_individuals_leave_but_the_last_team_makes_every_teammate_a_winner() {
     )
     .unwrap();
 
-    assert!(game.mark_player_lost(seats[0]));
-    assert!(game.mark_player_lost(seats[2]));
-    assert!(game.mark_player_lost(seats[3]));
+    assert!(game.mark_player_lost(seats[0]).expect("checked designation/departure fixture"));
+    assert!(game.mark_player_lost(seats[2]).expect("checked designation/departure fixture"));
+    assert!(game.mark_player_lost(seats[3]).expect("checked designation/departure fixture"));
     assert!(game.player(seats[1]).unwrap().is_in_game());
 
     let mut queue = TriggerQueue::new();

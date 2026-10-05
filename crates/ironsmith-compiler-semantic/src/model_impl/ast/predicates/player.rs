@@ -177,4 +177,5 @@ pub enum PlayerPredicateAst {
         filter: ObjectFilter,
         with_cards_named: String,
     },
+    PlayerWasMonarchAtTurnStart { player: PlayerAst },
 }

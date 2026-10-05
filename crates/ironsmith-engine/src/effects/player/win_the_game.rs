@@ -55,7 +55,7 @@ impl EffectExecutor for WinTheGameEffect {
             })
             .map(|player| player.id)
             .collect::<Vec<_>>();
-        game.mark_players_lost_simultaneously(&losing_players);
+        game.mark_players_lost_simultaneously(&losing_players)?;
         Ok(EffectOutcome::resolved())
     }
 }

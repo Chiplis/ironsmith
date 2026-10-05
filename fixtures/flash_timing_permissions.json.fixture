@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Bard's Company",
+    "oracle_id": "5c5bfbb2-0e63-4e43-b441-c4878983288f",
+    "mana_cost": "{2}{W}{U}",
+    "type_line": "Creature — Human Citizen",
+    "oracle_text": "You may cast this spell as though it had flash if you control a Human.\nOther creatures you control get +1/+1.\nWhenever this creature enters or attacks, recruit. (Draw a card, then discard a card. If you discarded a nonland card, create a 1/1 white Human Soldier creature token.)",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Fated Clash",
+    "oracle_id": "610d9f58-4182-49cb-855c-9b6030e7f714",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "You may cast this spell as though it had flash if a creature is attacking and a creature is blocking.\nTarget creature you control and target creature an opponent controls each gain indestructible until end of turn. Then destroy all creatures."
+  },
+  {
+    "name": "Illusion Spinners",
+    "oracle_id": "b608288e-1755-4738-b828-9df6998bae8d",
+    "mana_cost": "{4}{U}",
+    "type_line": "Creature — Faerie Wizard",
+    "oracle_text": "You may cast this spell as though it had flash if you control a Faerie.\nFlying\nThis creature has hexproof as long as it's untapped. (It can't be the target of spells or abilities your opponents control.)",
+    "power": "4",
+    "toughness": "3"
+  },
+  {
+    "name": "Quick Sliver",
+    "oracle_id": "530a5740-041c-42df-8fe0-fcea87258038",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Sliver",
+    "oracle_text": "Flash\nAny player may cast Sliver spells as though they had flash.",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "name": "Scarring Memories",
+    "oracle_id": "63957ec0-89e6-4be2-8740-846ca56ee48c",
+    "mana_cost": "{3}{B}",
+    "type_line": "Sorcery — Lesson",
+    "oracle_text": "You may cast this spell as though it had flash if you control an attacking legendary creature.\nTarget opponent sacrifices a creature of their choice, discards a card, and loses 3 life."
+  },
+  {
+    "name": "Tidal Barracuda",
+    "oracle_id": "edfc0a46-414e-467d-9f27-e42d08ec127a",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Fish",
+    "oracle_text": "Any player may cast spells as though they had flash.\nYour opponents can't cast spells during your turn.",
+    "power": "3",
+    "toughness": "4"
+  },
+  {
+    "name": "Timely Ward",
+    "oracle_id": "8e589dca-d31e-4d2f-81b1-18e5f9198795",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "You may cast this spell as though it had flash if it targets a commander.\nEnchant creature\nEnchanted creature has indestructible."
+  },
+  {
+    "name": "Vernal Equinox",
+    "oracle_id": "2241ef7d-3e9d-44ee-88ac-e8ad6fb2444e",
+    "mana_cost": "{3}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "Any player may cast creature and enchantment spells as though they had flash."
+  }
+]
