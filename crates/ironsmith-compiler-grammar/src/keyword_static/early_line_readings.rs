@@ -368,8 +368,8 @@ fn read_can_block_additional_creature_each_combat_line(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
-    if let Some(ability) = parse_can_block_any_number_line(tokens)? {
-        return Ok(Some(vec![ability]));
+    if let Some(abilities) = parse_blocking_capacity_static_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(ability) = parse_can_block_additional_creature_each_combat_line(tokens)? {
         return Ok(Some(vec![ability.into()]));

@@ -903,6 +903,32 @@ impl StaticAbilityKind for EnlistAttack {
     }
 }
 
+/// A live per-permanent blocking allowance, evaluated for the actual blocker.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CanBlockAdditionalForEach {
+    pub additional: u32,
+    pub filter: ObjectFilter,
+}
+
+impl StaticAbilityKind for CanBlockAdditionalForEach {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::CanBlockAdditionalForEach }
+
+    fn display(&self) -> String {
+        let count = if self.additional == 1 { "an additional creature".to_string() }
+            else { format!("{} additional creatures", self.additional) };
+        format!("Can block {count} each combat for each {}", self.filter.description())
+    }
+
+    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        let controller = game.controller_of_id(source)?;
+        let context = game.filter_context_for(controller, Some(source));
+        let count = game.battlefield.iter().filter(|id| {
+            game.object(**id).is_some_and(|object| self.filter.matches(object, &context, game))
+        }).count();
+        Some(count.saturating_mul(self.additional as usize))
+    }
+}
+
 /// "This creature can block an additional creature each combat."
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CanBlockAdditionalCreatureEachCombat {

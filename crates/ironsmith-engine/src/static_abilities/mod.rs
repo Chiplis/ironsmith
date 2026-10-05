@@ -760,6 +760,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Capacity read for the actual blocking creature, including live counted
+    /// allowances such as Equipment attached to that creature.
+    fn additional_blockable_attackers_for_source(&self, _game: &GameState, _source: ObjectId) -> Option<usize> {
+        self.additional_blockable_attackers()
+    }
+
     /// Returns the attacker subtype this creature can block as though it had reach.
     fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
         None
@@ -2076,6 +2082,10 @@ impl StaticAbility {
         self.0.additional_blockable_attackers()
     }
 
+    pub fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        self.0.additional_blockable_attackers_for_source(game, source)
+    }
+
     pub fn can_block_as_though_reach_subtype(&self) -> Option<crate::types::Subtype> {
         self.0.can_block_as_though_reach_subtype()
     }
@@ -2759,6 +2769,10 @@ impl StaticAbility {
         spec: ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec,
     ) -> Self {
         Self::new(TargetingAsThoughNoAbility { spec })
+    }
+
+    pub fn can_block_additional_for_each(additional: u32, filter: ObjectFilter) -> Self {
+        Self::new(CanBlockAdditionalForEach { additional, filter })
     }
 
     pub fn can_block_any_number() -> Self {

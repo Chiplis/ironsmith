@@ -733,7 +733,7 @@ fn read_can_block_additional_creature_this_turn(
     // ability, however, it is a temporary grant and must retain its explicit
     // turn duration instead of going through the generic granted-object
     // ability parser, which defaults to Forever.
-    if let Some(effect) = parse_can_block_any_number_this_turn_clause(tokens)? {
+    if let Some(effect) = parse_blocking_capacity_this_turn_clause(tokens)? {
         return Ok(Some(vec![effect]));
     }
     if let Some(effect) = parse_can_block_additional_creature_this_turn_clause(tokens)? {

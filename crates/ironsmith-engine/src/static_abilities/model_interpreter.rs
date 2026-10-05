@@ -1171,6 +1171,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(count) => {
                 StaticAbility::can_block_additional_creature_each_combat(*count)
             }
+            ironsmith_core::StaticAbilityPayload::CanBlockAdditionalForEach { additional, filter } => {
+                StaticAbility::can_block_additional_for_each(*additional, filter.clone())
+            }
             ironsmith_core::StaticAbilityPayload::CanBlockAsThoughReachForSubtype(subtype) => {
                 StaticAbility::can_block_subtype_as_though_reach(*subtype)
             }
@@ -2652,6 +2655,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             }
             _ => None,
         }
+    }
+
+    fn additional_blockable_attackers_for_source(&self, game: &GameState, source: ObjectId) -> Option<usize> {
+        self.leaf_static_ability().and_then(|ability| ability.additional_blockable_attackers_for_source(game, source))
+            .or_else(|| self.additional_blockable_attackers())
     }
 
     fn additional_blockable_attackers(&self) -> Option<usize> {
