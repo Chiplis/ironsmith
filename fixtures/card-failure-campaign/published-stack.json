@@ -969,6 +969,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/835"
+    },
+    {
+      "stage": 70,
+      "branch": "fix/card-failures-70-combat-rules-and-paired-coins",
+      "base": "fix/card-failures-69-coins-costs-and-untap",
+      "source_integration_commit": "89d090b54f79ab1b3d9acc110d21efc8c0acff03",
+      "remote_commit": "0a70b5138962e8bd16461708533bdf05ea651760",
+      "tree": "aa084776388e5e7bc9c36d406edde51cce7a1e3c",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 836,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/836"
     }
   ]
 }

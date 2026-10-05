@@ -7,6 +7,42 @@
 use crate::cards::builders::{TagKey, TriggerSpec};
 use crate::target::{ObjectFilter, ObjectRef, PlayerFilter};
 
+/// The native grouped zone-change matcher captures the size of its exact
+/// matching object set, after the event's owner/type/zone filters are applied.
+pub fn trigger_binds_grouped_zone_amount(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } =>
+            trigger_binds_grouped_zone_amount(trigger),
+        TriggerSpec::Either(left, right) => trigger_binds_grouped_zone_amount(left)
+            && trigger_binds_grouped_zone_amount(right),
+        TriggerSpec::ZoneChange(trigger) => trigger.count == ironsmith_core::trigger_model::CountMode::OneOrMore,
+        TriggerSpec::PutIntoGraveyardOneOrMore(_) | TriggerSpec::DiesOneOrMore(_) => true,
+        TriggerSpec::PutIntoGraveyardFromZone { one_or_more, .. }
+        | TriggerSpec::PutIntoGraveyardFromAnyExcept { one_or_more, .. }
+        | TriggerSpec::LeavesBattlefieldWithoutDying { one_or_more, .. }
+        | TriggerSpec::DiesDuringTurn { one_or_more, .. }
+        | TriggerSpec::DiesDuringCombat { one_or_more, .. } => *one_or_more,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod grouped_zone_amount_tests {
+    use super::*;
+    #[test]
+    fn only_a_proven_grouped_zone_trigger_supplies_the_matching_object_count() {
+        let grouped = TriggerSpec::PutIntoGraveyardOneOrMore(ObjectFilter::creature());
+        let singular = TriggerSpec::PutIntoGraveyard(ObjectFilter::creature());
+        assert!(trigger_binds_grouped_zone_amount(&grouped));
+        assert!(!trigger_binds_grouped_zone_amount(&singular));
+        assert!(!trigger_binds_grouped_zone_amount(&TriggerSpec::Either(Box::new(grouped.clone()), Box::new(singular))));
+        let mut canonical = ironsmith_core::trigger_model::ZoneChangeTrigger::new();
+        assert!(!trigger_binds_grouped_zone_amount(&TriggerSpec::ZoneChange(canonical.clone())));
+        canonical.count = ironsmith_core::trigger_model::CountMode::OneOrMore;
+        assert!(trigger_binds_grouped_zone_amount(&TriggerSpec::ZoneChange(canonical)));
+    }
+}
+
 pub fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<TagKey> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return phase_step_trigger_object_reference_tag(trigger);

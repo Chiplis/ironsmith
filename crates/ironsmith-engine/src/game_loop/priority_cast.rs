@@ -41,7 +41,7 @@ pub(super) fn x_defined_mode_count_range(
         pending.spell_id,
         &pending.casting_method,
         mana_cost.as_ref(),
-        0,
+        unspent_alternative_base_reduction(pending),
     );
     needs_x.then_some((min_x as usize, (max_x as usize).max(min_x as usize)))
 }
@@ -1625,10 +1625,53 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price(
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<Option<ObjectId>, GameLoopError> {
+    cast_spell_from_resolving_effect_with_captured_price(game, spell_id, from_zone, caster,
+        casting_method, base_mana_cost_waived, alternative_cost, None, mana_cost_reduction,
+        additional_mana_cost, mana_spend_mode, tagged_objects, provenance, decision_maker)
+}
+
+/// Consume one revealed draw's linked casting instruction. The ordinary
+/// proposal/payment owner still supplies timing, targets, choices and rollback.
+pub(crate) fn cast_spell_from_revealed_miracle(
+    game: &mut GameState,
+    proof: &crate::events::other::RevealedMiracle,
+    caster: PlayerId,
+    provenance: ProvNodeId,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Option<ObjectId>, GameLoopError> {
+    if !game.object(proof.card).is_some_and(|object| object.zone == Zone::Hand
+        && object.stable_id == proof.stable_id && object.owner == proof.player)
+    { return Ok(None); }
+    game.authorize_miracle_cast(proof.card);
+    let result = cast_spell_from_resolving_effect_with_captured_price(game, proof.card,
+        Zone::Hand, caster, &CastingMethod::Normal, false, None,
+        Some(&proof.instance.price), None, None, Default::default(), Default::default(),
+        provenance, decision_maker);
+    game.revoke_miracle_cast(proof.card);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cast_spell_from_resolving_effect_with_captured_price(
+    game: &mut GameState,
+    spell_id: ObjectId,
+    from_zone: Zone,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+    base_mana_cost_waived: bool,
+    alternative_cost: Option<&crate::cost::TotalCost>,
+    miracle_price: Option<&crate::events::other::DrawnMiraclePrice>,
+    mana_cost_reduction: Option<&crate::mana::ManaCost>,
+    additional_mana_cost: Option<&crate::mana::ManaCost>,
+    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    provenance: ProvNodeId,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Option<ObjectId>, GameLoopError> {
     // The referenced card may have more than one castable face. Choose its
     // spell before deriving a source-relative price; neither a front-face MV
     // nor the off-stack combined split value is an announced spell price.
-    let selected_face = if alternative_cost.is_some() {
+    let selected_face = if alternative_cost.is_some() || miracle_price.is_some() {
         let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("priced card disappeared".into()))?;
         let other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
         let method = match casting_method {
@@ -1658,7 +1701,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price(
     // replacement price. Offer independent prices only when it leaves the
     // ordinary mana cost payable; an already-waived/alternative cost cannot
     // be combined with a second alternative (CR 118.9a).
-    let selected_price_method = if !base_mana_cost_waived && alternative_cost.is_none() {
+    let selected_price_method = if !base_mana_cost_waived && alternative_cost.is_none() && miracle_price.is_none() {
         let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("Effect-authorized spell disappeared".into()))?;
         let prices = crate::alternative_cast::price_routes::effect_candidates(game, caster, spell, casting_method)?;
         if prices.is_empty() { None } else {
@@ -1678,7 +1721,18 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price(
         }
     } else { None };
     let casting_method = selected_price_method.as_ref().unwrap_or(casting_method);
-    let mut selected_cost = alternative_cost.cloned();
+    let (miracle_cost, miracle_reduction) = match miracle_price {
+        Some(crate::events::other::DrawnMiraclePrice::Fixed(cost)) => (Some(cost.clone()), 0),
+        Some(crate::events::other::DrawnMiraclePrice::ReducedManaCost { mana_cost, other_face_mana_cost, generic_reduction }) => {
+            let selected = if matches!(casting_method.origin_method(), CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }) {
+                other_face_mana_cost
+            } else { mana_cost };
+            let Some(cost) = selected else { return Ok(None); };
+            (Some(cost.clone()), *generic_reduction)
+        }
+        None => (None, 0),
+    };
+    let mut selected_cost = miracle_cost.map(crate::cost::TotalCost::mana).or_else(|| alternative_cost.cloned());
     while let Some(branches) = selected_cost.as_ref().and_then(|cost| cost.as_one_of()) {
         if branches.is_empty() { return Err(GameLoopError::InvalidState("empty effect casting price".into())); }
         let options = branches.iter().enumerate().map(|(index, branch)|
@@ -1746,6 +1800,8 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price(
     );
     pending.base_mana_cost_waived = base_mana_cost_waived || selected_cost.is_some();
     pending.effect_alternative_cost = selected_cost;
+    pending.effect_alternative_base_generic_reduction = miracle_reduction;
+    pending.effect_miracle_cast = miracle_price.is_some();
     pending.effect_mana_cost_reduction = mana_cost_reduction.cloned();
     pending.effect_additional_mana_cost = additional_mana_cost.cloned();
     pending.effect_mana_spend_mode = mana_spend_mode;
@@ -2542,10 +2598,28 @@ pub(super) fn get_spell_mana_cost(
 
 /// The announced resolving-effect price replaces the mana cost, before all
 /// ordinary additional costs, modifiers and final floors (CR 118.9d).
+fn unspent_alternative_base_reduction(pending: &PendingCast) -> u32 {
+    pending.effect_alternative_cost.as_ref().map_or(0, |cost| {
+        let fixed_generic = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+            .map(|mana| mana.generic_mana_total().saturating_add(
+                (mana.pips().iter().filter(|pip| pip.contains(&crate::mana::ManaSymbol::X)).count() as u32)
+                    .saturating_mul(pending.x_value.unwrap_or(0))))
+            .fold(0u32, u32::saturating_add);
+        pending.effect_alternative_base_generic_reduction.saturating_sub(fixed_generic)
+    })
+}
+
 fn pending_cast_base_mana_cost(game: &GameState, pending: &PendingCast) -> Option<crate::mana::ManaCost> {
     if let Some(cost) = &pending.effect_alternative_cost {
         let mana = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
             .fold(crate::mana::ManaCost::new(), |sum, part| crate::decision::add_mana_cost(&sum, part));
+        let mana = if pending.effect_alternative_base_generic_reduction == 0 { mana } else {
+            match pending.x_value {
+                Some(x) => crate::decision::mana_cost_with_locked_x_and_generic_reduction(
+                    &mana, x, pending.effect_alternative_base_generic_reduction),
+                None => mana.reduce_generic(pending.effect_alternative_base_generic_reduction),
+            }
+        };
         let mut priced_spell = game.object(pending.spell_id)?.clone();
         priced_spell.mana_cost = Some(mana.into());
         return crate::decision::spell_mana_cost_for_cast(game, pending.caster, &priced_spell,
@@ -2889,13 +2963,14 @@ pub(super) fn check_x_or_continue(
             );
             locked.mana_value().saturating_sub(effective.mana_value())
         });
+    let recipe_reduction_headroom = unspent_alternative_base_reduction(&pending);
     let (mut needs_x, min_x, mut max_x) = compute_spell_cast_x_bounds_with_reduction(
         game,
         pending.caster,
         pending.spell_id,
         &pending.casting_method,
         mana_cost.as_ref(),
-        mana_reduction_headroom,
+        mana_reduction_headroom.saturating_add(recipe_reduction_headroom),
     );
 
     if let Some(cost) = &pending.effect_alternative_cost {
@@ -3479,6 +3554,15 @@ pub(super) fn finalize_pending_spell_cast(
     // the rest of an illegal proposal.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     drain_pending_trigger_events(game, trigger_queue);
+    if pending.effect_miracle_cast {
+        let cost = pending_cast_base_mana_cost(game, &pending).ok_or_else(||
+            GameLoopError::InvalidState("revealed Miracle lost its captured base price".into()))?;
+        let cost = mana_cost_with_announced_hybrid_choices(&cost, &pending.hybrid_choices)
+            .reduce_generic(unspent_alternative_base_reduction(&pending));
+        if let Some(spell) = game.object_mut(pending.spell_id) {
+            spell.cast_alternative_method = Some(Box::new(AlternativeCastingMethod::Miracle { cost }));
+        }
+    }
     let effect_driven = pending.effect_driven;
     let base_mana_cost_waived = pending.base_mana_cost_waived;
     let mana_spent_to_cast = pending.mana_spent_to_cast.clone();
@@ -4610,6 +4694,28 @@ fn mana_cost_with_announced_hybrid_choices(
     cost.with_pips(pips)
 }
 
+/// The base's remaining recipe reduction sees its announced hybrid choices.
+/// Keep extra pips separate until their choices are rebound, since shrinking
+/// the base must never redirect an optional/additional-cost hybrid index.
+fn spell_mana_with_announced_miracle_recipe(
+    spell: &crate::object::Object,
+    pending: &PendingCast,
+    base: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    let base_pips = base.pips().len();
+    let base = mana_cost_with_announced_hybrid_choices(base, &pending.hybrid_choices)
+        .reduce_generic(unspent_alternative_base_reduction(pending));
+    let extras = mana_cost_with_paid_optional_and_splice_costs(
+        &crate::mana::ManaCost::new(), spell, &pending.optional_costs_paid,
+        &pending.splice_costs, pending.chosen_modes.as_deref());
+    let extras = mana_cost_with_escalate(&extras, spell, pending.chosen_modes.as_deref());
+    let extras = mana_cost_with_effect_additional_cost(&extras, pending.effect_additional_mana_cost.as_ref());
+    let extra_choices = pending.hybrid_choices.iter().filter_map(|(index, symbol)|
+        index.checked_sub(base_pips).map(|index| (index, *symbol))).collect::<Vec<_>>();
+    let extras = mana_cost_with_announced_hybrid_choices(&extras, &extra_choices);
+    crate::decision::add_mana_cost(&base, &extras)
+}
+
 fn announced_spell_mana_cost(
     game: &GameState,
     pending: &PendingCast,
@@ -4694,24 +4800,29 @@ pub(super) fn continue_to_mana_payment(
 
         // Calculate total costs; keyword payment substitutions happen in the planner.
         base_cost.map(|bc| {
-            let bc = mana_cost_with_paid_optional_and_splice_costs(
-                &bc,
-                obj,
-                &pending.optional_costs_paid,
-                &pending.splice_costs,
-                pending.chosen_modes.as_deref(),
-            );
-            let bc = mana_cost_with_escalate(&bc, obj, pending.chosen_modes.as_deref());
-            let bc = mana_cost_with_effect_additional_cost(
-                &bc,
-                pending.effect_additional_mana_cost.as_ref(),
-            );
-            // CR 118.13a / 601.2b: the hybrid and Phyrexian payment choices were
-            // announced against this exact cost (pip indices of the announced
-            // cost). Substitute them before cost modifiers reorder or remove
-            // pips, so the total cost (and any Trinisphere-style minimum)
-            // counts a Phyrexian pip paid with life as 0 mana (CR 601.2f).
-            let bc = mana_cost_with_announced_hybrid_choices(&bc, &pending.hybrid_choices);
+            let bc = if pending.effect_miracle_cast {
+                spell_mana_with_announced_miracle_recipe(obj, &pending, &bc)
+            } else {
+                let bc = mana_cost_with_paid_optional_and_splice_costs(
+                    &bc,
+                    obj,
+                    &pending.optional_costs_paid,
+                    &pending.splice_costs,
+                    pending.chosen_modes.as_deref(),
+                );
+                let bc = mana_cost_with_escalate(&bc, obj, pending.chosen_modes.as_deref());
+                let bc = mana_cost_with_effect_additional_cost(
+                    &bc,
+                    pending.effect_additional_mana_cost.as_ref(),
+                );
+                // CR 118.13a / 601.2b: the hybrid and Phyrexian payment choices were
+                // announced against this exact cost (pip indices of the announced
+                // cost). Substitute them before cost modifiers reorder or remove
+                // pips, so the total cost (and any Trinisphere-style minimum)
+                // counts a Phyrexian pip paid with life as 0 mana (CR 601.2f).
+                let bc = mana_cost_with_announced_hybrid_choices(&bc, &pending.hybrid_choices);
+                bc
+            };
             // CR 107.3a / 601.2f: X has its announced value while the total
             // cost is determined, so cost reductions reduce it like any other
             // generic mana and a minimum-cost floor counts it.

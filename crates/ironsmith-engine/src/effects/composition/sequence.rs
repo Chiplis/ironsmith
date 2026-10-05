@@ -121,13 +121,13 @@ impl EffectExecutor for SequenceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         if self.effects.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
 
         let mut outcomes = Vec::with_capacity(self.effects.len());
         let mut events = Vec::new();
-        let mut execution_facts = Vec::new();
         // A one-child wrapper is presentation provenance left after
         // normalization removes a sibling marker (such as "repeat this
         // process"). It is semantically transparent and must not restart the
@@ -216,22 +216,13 @@ impl EffectExecutor for SequenceEffect {
                 other => other?,
             };
             events.extend(outcome.events.clone());
-            execution_facts.extend(outcome.execution_facts.clone());
 
             // CR 608.2c: carry out instructions in order, doing as much as
             // possible. "Then" orders actions without requiring success;
             // explicit conditional effects implement "if you do" gates.
             outcomes.push(outcome);
             if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
-                let terminal = outcomes
-                    .last()
-                    .expect("the pending outcome was just appended");
-                return Ok(EffectOutcome::with_details(
-                    terminal.status,
-                    terminal.value.clone(),
-                    events,
-                    execution_facts,
-                ));
+                return Ok(EffectOutcome::aggregate_terminal(outcomes));
             }
             if let Some(next) = self.effects.get(index + 1) {
                 crate::effects::match_triggers_at_instruction_boundary(
@@ -243,15 +234,8 @@ impl EffectExecutor for SequenceEffect {
             }
         }
 
-        let terminal = outcomes
-            .last()
-            .expect("a non-empty sequence has a terminal outcome");
-        Ok(EffectOutcome::with_details(
-            terminal.status,
-            terminal.value.clone(),
-            events,
-            execution_facts,
-        ))
+        Ok(EffectOutcome::aggregate_terminal(outcomes))
+        })
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -428,6 +412,85 @@ mod tests {
             2,
             "terminal summary selection must retain events from earlier steps"
         );
+    }
+
+    #[test]
+    fn direct_and_dispatched_sequences_keep_all_original_object_results_and_all_replacement_actions() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        for dispatched in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let source = create_creature(&mut game, "Source", alice);
+            let first = create_creature(&mut game, "First original", alice);
+            let second = create_creature(&mut game, "Second original", alice);
+            let added = create_creature(&mut game, "Replacement-only", alice);
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, alice,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(crate::ObjectFilter::specific(first), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+                ReplacementAction::Additionally(vec![Effect::destroy(ChooseSpec::SpecificObject(added))])));
+            let sequence = SequenceEffect::coordinated(vec![
+                Effect::destroy(ChooseSpec::SpecificObject(first)),
+                Effect::destroy(ChooseSpec::SpecificObject(second)),
+            ]);
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let outcome = if dispatched { execute_effect(&mut game, &Effect::new(sequence), &mut ctx) }
+                else { sequence.execute(&mut game, &mut ctx) }.unwrap();
+            assert_eq!(outcome.instruction_result().count_or_zero(), 1, "terminal original summary is retained");
+            let memory = outcome.affected_object_memory().unwrap();
+            assert_eq!(memory.iter().map(|object| object.object_id).collect::<Vec<_>>(), vec![first, second]);
+            assert!(game.object(first).is_none() && game.object(second).is_none() && game.object(added).is_none());
+            let id = crate::effect::EffectId(17); ctx.effect_outcomes.insert(id, outcome);
+            let quantity = Value::PriorEffectMetric { effect_id: id,
+                query: ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::TotalManaValue).with_filter(crate::ObjectFilter::creature())
+                    .with_action(ironsmith_core::PriorEffectAction::Destroyed) };
+            assert_eq!(crate::effects::helpers::resolve_value_wide(&game, &quantity, &ctx).unwrap(), 4);
+        }
+    }
+
+    #[test]
+    fn native_sequence_pending_and_resource_error_restore_prefix_receipts_before_replay() {
+        for dispatched in [false, true] { for pending in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0); let source = create_creature(&mut game, "Source", alice);
+            let suffix = if pending { Effect::new(PendingChoiceEffect) } else {
+                Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 1))
+            };
+            if !pending { game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() }); }
+            let sequence = SequenceEffect::new(vec![Effect::with_id(11, Effect::gain_life(3)), suffix]);
+            let mut dm = CapturingDecisionMaker::default();
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ctx.effect_outcomes.insert(crate::effect::EffectId(99), EffectOutcome::count(7));
+            let before = game.next_object_id_counter(); let history = game.turn_store.turn_history.event_records.len();
+            let result = if dispatched { execute_effect(&mut game, &Effect::new(sequence.clone()), &mut ctx) }
+                else { sequence.execute(&mut game, &mut ctx) };
+            if pending { assert!(result.is_ok() && ctx.decision_maker.awaiting_choice()); }
+            else { assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { .. })), "{result:?}"); }
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.next_object_id_counter(), before); assert_eq!(game.turn_store.turn_history.event_records.len(), history);
+            assert_eq!(ctx.effect_outcomes.len(), 1); assert_eq!(ctx.effect_outcomes[&crate::effect::EffectId(99)].count_or_zero(), 7);
+            assert!(!game.effect_store.has_pending_trigger_work());
+            drop(ctx); game.set_token_creation_limits(Default::default());
+            let mut replay = ExecutionContext::new_default(source, alice);
+            sequence.execute(&mut game, &mut replay).unwrap();
+            assert_eq!(game.player(alice).unwrap().life, 23, "prefix executes once after the suspended/failed attempt rolls back");
+            assert_eq!(replay.effect_outcomes[&crate::effect::EffectId(11)].count_or_zero(), 3);
+        }}
+    }
+
+    #[test]
+    fn sequence_preserves_full_resolution_stop_with_terminal_original_receipts() {
+        #[derive(Debug, Clone)] struct Stop;
+        impl EffectExecutor for Stop {
+            fn execute(&self, _: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+                ctx.stop_resolution(); Ok(EffectOutcome::count(7))
+            }
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game(); let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Source", alice); let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = SequenceEffect::new(vec![Effect::gain_life(2), Effect::new(Stop), Effect::gain_life(9)])
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.resolution_stopped()); assert_eq!(game.player(alice).unwrap().life, 22);
+        assert_eq!(outcome.instruction_result().count_or_zero(), 7);
     }
 
     #[test]

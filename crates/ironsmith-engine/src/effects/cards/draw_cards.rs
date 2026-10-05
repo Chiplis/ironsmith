@@ -340,7 +340,7 @@ impl EffectExecutor for DrawCardsEffect {
         let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
         let result = execute_draw_instruction(self, game, ctx);
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = game_checkpoint;
+            game.restore_execution_checkpoint(game_checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
             context_checkpoint.restore(ctx);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
@@ -378,6 +378,7 @@ fn finish_direct_draw_segment(
     step_context: (bool, u32),
     draws_before: u32,
     hidden_mode: HiddenDrawRevealMode,
+    miracle: &mut Option<crate::events::other::MiracleDrawDecision>,
 ) -> Vec<TriggerEvent> {
     if drawn.is_empty() { return Vec::new(); }
     // Every physical observation has its own identity. Reusing the proposal's
@@ -387,16 +388,17 @@ fn finish_direct_draw_segment(
     let event = TriggerEvent::new_with_provenance(
         CardsDrawnEvent::new_with_step_context(
             player, std::mem::take(drawn), is_first, step_context.0, step_context.1,
-        ), draw_provenance,
+        ).with_miracle_decision(miracle.take()), draw_provenance,
     );
     let draw = event.downcast::<CardsDrawnEvent>().expect("draw notification is typed");
     game.record_cards_drawn_in_current_draw_step(player, draw.amount());
     game.note_hidden_draw_for_reveal_window(&event);
+    let miracle_reveal = super::miracle_reveal_event(game, draw, draw_provenance);
     let reveals = automatic_reveal_events_for_draw(
         game, player, &draw.cards, draws_before, &mut *ctx.decision_maker,
         draw_provenance, hidden_mode,
     );
-    let mut events = vec![event]; events.extend(reveals); events
+    let mut events = vec![event]; events.extend(miracle_reveal); events.extend(reveals); events
 }
 
 /// Commit an expanded draw's original result before its appended programs.
@@ -434,7 +436,9 @@ fn commit_draw_original_with_reveal_mode(
             if !game.can_draw(player) { return Ok(EffectOutcome::count(0)); }
             let before = game.turn_store.turn_history.cards_drawn_by_player(player);
             let step = game.draw_step_context_for_player(player);
-            let mut drawn = game.draw_cards_with_dm(player, count, &mut *ctx.decision_maker);
+            let completed = super::draw_cards_with_miracle_window(game, player, count, before == 0, &mut *ctx.decision_maker)?;
+            let mut drawn = completed.cards;
+            let mut miracle = completed.miracle;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             let count = if player == requested_player {
                 i64::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
@@ -442,8 +446,8 @@ fn commit_draw_original_with_reveal_mode(
             let ids = drawn.clone();
             let events = finish_direct_draw_segment(
                 game, ctx, player, &mut drawn,
-                draw.is_first_this_turn,
-                step, before, hidden_mode,
+                before == 0,
+                step, before, hidden_mode, &mut miracle,
             );
             Ok(EffectOutcome::count(count).with_result_objects(ids).with_events(events))
         }
@@ -534,6 +538,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
     let mut replacement_facts = Vec::new();
     let mut direct_drawn = Vec::new();
     let mut direct_draw_is_first = false;
+    let mut direct_miracle = None;
     let mut direct_draw_step_context = (false, 0);
     let mut direct_draws_before = 0;
 
@@ -547,7 +552,8 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
             .turn_history
             .cards_drawn_by_player(player_id)
             .saturating_add(direct_drawn.len() as u32);
-        let is_first = current_draws == 0;
+        let is_first = current_draws == 0 && !events.iter().any(|event: &TriggerEvent|
+            event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == player_id && !draw.cards.is_empty()));
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(player_id);
         let draw_event = Event::draw_in_instruction(
@@ -570,7 +576,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
             // Keep the physical receipts while recording their matched proof.
             events.extend(finish_direct_draw_segment(
                 game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
-                direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
+                direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline, &mut direct_miracle,
             ));
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             crate::effects::capture_triggers_before_added_program(game, ctx, None, events.iter_mut())?;
@@ -638,14 +644,14 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                         .turn_store
                         .turn_history
                         .cards_drawn_by_player(redirected_player)
-                        == 0;
+                        == 0 && !events.iter().any(|event: &TriggerEvent|
+                            event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == redirected_player && !draw.cards.is_empty()));
                     let (redirected_in_draw_step, redirected_previous) =
                         game.draw_step_context_for_player(redirected_player);
-                    let drawn = game.draw_cards_with_dm(
-                        redirected_player,
-                        final_count as usize,
-                        &mut *ctx.decision_maker,
-                    );
+                    let completed = super::draw_cards_with_miracle_window(game, redirected_player,
+                        final_count as usize, redirected_is_first, &mut *ctx.decision_maker)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    let drawn = completed.cards;
                     if drawn.is_empty() {
                         continue;
                     }
@@ -656,7 +662,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                             redirected_is_first,
                             redirected_in_draw_step,
                             redirected_previous,
-                        ),
+                        ).with_miracle_decision(completed.miracle),
                         ctx.provenance,
                     );
                     let drawn_count = event
@@ -668,15 +674,16 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                         drawn_count,
                     );
                     game.note_hidden_draw_for_reveal_window(&event);
+                    let reveal = super::miracle_reveal_event(game, event.downcast::<CardsDrawnEvent>().expect("typed draw"), ctx.provenance);
                     events.push(event);
+                    events.extend(reveal);
                     continue;
                 }
 
-                let drawn = game.draw_cards_with_dm(
-                    player_id,
-                    final_count as usize,
-                    &mut *ctx.decision_maker,
-                );
+                let completed = super::draw_cards_with_miracle_window(game, player_id,
+                    final_count as usize, is_first, &mut *ctx.decision_maker)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let drawn = completed.cards;
 
                 // Only emit event if cards were actually drawn
                 if drawn.is_empty() {
@@ -685,6 +692,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                 let drawn_len = drawn.len() as i64;
                 if direct_drawn.is_empty() {
                     direct_draw_is_first = is_first;
+                    direct_miracle = completed.miracle;
                     direct_draw_step_context = (
                         is_during_players_draw_step,
                         cards_previously_drawn_this_draw_step,
@@ -699,7 +707,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
 
     events.extend(finish_direct_draw_segment(
         game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
-        direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
+        direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline, &mut direct_miracle,
     ));
 
     Ok(EffectOutcome::count(total_drawn + replacement_count).with_events(events)

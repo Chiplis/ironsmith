@@ -1092,12 +1092,105 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
     }
 }
 
+fn extract_grant_spec_from_subject(
+    subject_tokens: &[OwnedLexToken],
+    grantable: crate::model::CompilerGrantableCore,
+) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let AnthemSubjectAst::Filter(mut filter) = subject else {
+        return Ok(None);
+    };
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    filter.zone = None;
+    Ok(Some(crate::model::CompilerGrantSpecCore::new(
+        grantable, filter, zone,
+    )))
+}
+
+fn parse_granted_miracle_cost_reduction_tail(
+    trailing_tokens: &[OwnedLexToken],
+) -> Result<Option<u32>, CardTextError> {
+    let trailing_word_refs = crate::lexer::token_word_refs(trailing_tokens);
+    let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
+        return Ok(None);
+    };
+
+    let Some((cost, used)) =
+        crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    };
+    if used != parsed.reduction_cost_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    }
+    let generic = cost.generic_mana_total();
+    if generic == 0 || cost.mana_value() != generic {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    }
+    Ok(Some(generic))
+}
+
+/// Own both the granted keyword and its complete cost-definition sentence.
+/// Both registry routes return this same typed grant, so no reader can turn
+/// only the first sentence into a removable marker or lose the derived price.
+fn parse_complete_miracle_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
+    if sentences.len() < 2 { return Ok(None); }
+    let first = sentences[0];
+    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else { return Ok(None); };
+    let have = verb.have_token;
+    let keyword_tokens = &first[have + 1..];
+    if anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword_tokens)
+        != Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Miracle)
+    { return Ok(None); }
+    if sentences.len() != 2 {
+        return Err(CardTextError::ParseError("Miracle cost grant has an unowned trailing sentence".into()));
+    }
+    let Some(reduction) = parse_granted_miracle_cost_reduction_tail(sentences[1])? else {
+        return Err(CardTextError::ParseError("Miracle cost grant requires its complete derived-cost sentence".into()));
+    };
+    let (condition, subject_start) = parse_anthem_prefix_condition(first, have)?;
+    let subject = &first[subject_start..have];
+    // This complete owner cannot use the anthem reader's tolerant suffix
+    // recovery. Prove the original subject, including punctuation/symbols.
+    let mut quoted = false;
+    for token in subject {
+        if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+        if !quoted && matches!(token.kind, crate::lexer::TokenKind::ManaGroup | crate::lexer::TokenKind::Colon) {
+            return Err(CardTextError::ParseError("unexpected symbol in Miracle grant subject".into()));
+        }
+    }
+    let mut filter = parse_object_filter(subject, false)?;
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    filter.zone = None;
+    let spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::miracle_from_cards_mana_cost_reduced_by(reduction), filter, zone);
+    let ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+    Ok(Some(vec![match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility { ability: Box::new(ability), condition },
+        None => ability,
+    }]))
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if super::combat_requirements::owns_combat_requirement_line(tokens) {
         return super::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
+    if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete as-entry characteristic replacement is not a keyword grant
     // to the descriptor at its tail (for example a Dinosaur creature).
@@ -1219,21 +1312,6 @@ pub fn parse_granted_keyword_static_line(
     if matches!(parse_all_have_indestructible_line(tokens), Ok(Some(_))) {
         return Ok(None);
     }
-    fn extract_grant_spec_from_subject(
-        subject_tokens: &[OwnedLexToken],
-        grantable: crate::model::CompilerGrantableCore,
-    ) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
-        let subject = parse_anthem_subject(subject_tokens)?;
-        let AnthemSubjectAst::Filter(mut filter) = subject else {
-            return Ok(None);
-        };
-        let zone = filter.zone.unwrap_or(Zone::Battlefield);
-        filter.zone = None;
-        Ok(Some(crate::model::CompilerGrantSpecCore::new(
-            grantable, filter, zone,
-        )))
-    }
-
     fn parse_granted_escape_cost_tail(
         trailing_tokens: &[OwnedLexToken],
     ) -> Result<Option<u32>, CardTextError> {
@@ -1255,38 +1333,6 @@ pub fn parse_granted_keyword_static_line(
             )));
         }
         Ok(Some(count))
-    }
-
-    fn parse_granted_miracle_cost_reduction_tail(
-        trailing_tokens: &[OwnedLexToken],
-    ) -> Result<Option<u32>, CardTextError> {
-        let trailing_word_refs = crate::lexer::token_word_refs(trailing_tokens);
-        let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
-            return Ok(None);
-        };
-
-        let Some((cost, used)) =
-            crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
-        else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        };
-        if used != parsed.reduction_cost_tokens.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        }
-        let generic = cost.generic_mana_total();
-        if generic == 0 || cost.mana_value() != generic {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        }
-        Ok(Some(generic))
     }
 
     fn parse_granted_alternative_cast_static(

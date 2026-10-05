@@ -1019,13 +1019,21 @@ pub fn execute_draw_step_with(
         return Vec::new();
     }
 
+    let checkpoint = game.clone();
     let mut events = Vec::new();
     for player in active_players {
-        events.extend(execute_draw_step_for_player_with(
-            game,
-            player,
-            decision_maker,
-        ));
+        match execute_draw_step_for_player_with(game, player, decision_maker) {
+            Ok(drawn) => events.extend(drawn),
+            Err(error) => {
+                game.restore_execution_checkpoint(checkpoint, false);
+                game.record_token_resource_failure(&error);
+                return Vec::new();
+            }
+        }
+        if decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(checkpoint, true);
+            return Vec::new();
+        }
     }
     game.reset_priority_for_new_window();
     events
@@ -1035,7 +1043,7 @@ fn execute_draw_step_for_player_with(
     game: &mut GameState,
     active_player: PlayerId,
     decision_maker: &mut dyn DecisionMaker,
-) -> Vec<crate::triggers::TriggerEvent> {
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     use crate::events::other::CardsDrawnEvent;
     use crate::triggers::TriggerEvent;
 
@@ -1044,13 +1052,13 @@ fn execute_draw_step_for_player_with(
         .is_some_and(|player| player.is_in_game())
     {
         game.reset_priority_for_new_window();
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
         game.draw_step_context_for_player(active_player);
     if game.should_skip_first_turn_draw(active_player) {
         game.reset_priority_for_new_window();
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     // Check if player can draw (the draw step draw is the first draw of the turn)
@@ -1074,7 +1082,10 @@ fn execute_draw_step_for_player_with(
     let mut draw_events = Vec::new();
 
     if can_draw {
-        let drawn = game.draw_cards_with_dm(active_player, 1, decision_maker);
+        let completed = crate::effects::cards::draw_cards_with_miracle_window(
+            game, active_player, 1, is_first_draw, decision_maker)?;
+        if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+        let drawn = completed.cards;
 
         // Create a single CardsDrawnEvent if any cards were drawn
         if !drawn.is_empty() {
@@ -1087,7 +1098,8 @@ fn execute_draw_step_for_player_with(
                 is_first_draw,
                 is_during_players_draw_step,
                 cards_previously_drawn_this_draw_step,
-            );
+            ).with_miracle_decision(completed.miracle);
+            let miracle_reveal = crate::effects::cards::miracle_reveal_event(game, &event, draw_event_provenance);
             let event = TriggerEvent::new_with_provenance(event, draw_event_provenance);
             if let Some(drawn_event) = event.downcast::<CardsDrawnEvent>() {
                 game.record_cards_drawn_in_current_draw_step(active_player, drawn_event.amount());
@@ -1100,6 +1112,10 @@ fn execute_draw_step_for_player_with(
                 .and_then(|evt| evt.downcast::<CardsDrawnEvent>())
                 .map(|evt| evt.cards.clone())
                 .unwrap_or_default();
+            if let Some(reveal) = miracle_reveal {
+                game.stage_turn_history_event(&reveal);
+                draw_events.push(reveal);
+            }
             for reveal_event in crate::effects::cards::automatic_reveal_events_for_draw(
                 game,
                 active_player,
@@ -1116,7 +1132,7 @@ fn execute_draw_step_for_player_with(
         }
     }
 
-    draw_events
+    Ok(draw_events)
 }
 
 /// Checks if the active player needs to discard during cleanup.

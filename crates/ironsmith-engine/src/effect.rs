@@ -926,6 +926,15 @@ impl EffectOutcome {
         Self::aggregate_with_summary(outcomes, Self::derive_summary)
     }
 
+    /// A sequential program exposes its terminal instruction's summary while
+    /// retaining every original receipt and every replacement observation.
+    /// The same terminal rule is applied independently to original results.
+    pub fn aggregate_terminal(outcomes: impl IntoIterator<Item = EffectOutcome>) -> Self {
+        Self::aggregate_with_summary(outcomes, |results| {
+            results.last().cloned().unwrap_or((OutcomeStatus::Succeeded, OutcomeValue::None))
+        })
+    }
+
     /// Aggregate repeated homogeneous outcomes into a single outcome.
     ///
     /// This is intended for iterator-style composition (`for each`, `for each player`,

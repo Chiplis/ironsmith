@@ -159,3 +159,31 @@ fn parity_protection_rejects_hidden_symbol_and_punctuation_tails_in_live_readers
         assert!(!matches!(parse_static_ability_ast_line_lexed(&granted), Ok(Some(_))), "{quality}");
     }
 }
+
+
+#[test]
+fn miracle_grant_readers_share_the_whole_derived_cost_and_hand_subject() {
+    let text = "Each enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}.";
+    let tokens = crate::lexer::lex_line(text, 0).unwrap();
+    assert_eq!(parse_filter_has_granted_ability_line(&tokens).unwrap(), parse_granted_keyword_static_line(&tokens).unwrap());
+    let parsed = parse(text);
+    let [StaticAbilityAst::Static(ability)] = parsed.as_slice() else { panic!("one complete grant"); };
+    let ironsmith_core::StaticAbilityPayload::Grants(spec) = &ability.payload else { panic!("typed grant"); };
+    assert_eq!(spec.zone, Zone::Hand);
+    assert_eq!(spec.filter.card_types, vec![CardType::Enchantment]);
+    assert!(matches!(spec.grantable, ironsmith_core::Grantable::DerivedAlternativeCast(
+        ironsmith_core::DerivedAlternativeCast::MiracleFromCardManaCostReducedBy { reduction: 4 })));
+    for malformed in [
+        "Each enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}. Draw a card.",
+        "Each enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4} and draw a card.",
+        "Each enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}:",
+        "Each {R} enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}.",
+        "Each enchantment card in {R} your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}.",
+        "Each enchantment card in your hand: has miracle. Its miracle cost is equal to its mana cost reduced by {4}.",
+    ] {
+        let tokens = crate::lexer::lex_line(malformed, 0).unwrap();
+        for result in [parse_filter_has_granted_ability_line(&tokens), parse_granted_keyword_static_line(&tokens)] {
+            assert!(!matches!(result, Ok(Some(_))), "whole cost grant must reject {malformed}");
+        }
+    }
+}

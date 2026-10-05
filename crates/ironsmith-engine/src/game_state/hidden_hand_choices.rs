@@ -1665,6 +1665,9 @@ impl GameState {
         let Some(drawn) = event.downcast::<crate::events::other::CardsDrawnEvent>() else {
             return;
         };
+        // The native draw owner already answered this exact reveal window.
+        // Do not expose the card again or infer a different Miracle instance.
+        if drawn.miracle.is_some() { return; }
         if !drawn.is_first_this_turn
             || !self
                 .auxiliary_tracking

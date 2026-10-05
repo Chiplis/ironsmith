@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "676e44043",
+  "source_implementation_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1081,
-    "additional_proposed_compile_entries": 1086,
+    "additional_proposed_unique_cards": 1084,
+    "additional_proposed_compile_entries": 1089,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 0,
+    "known_runtime_partial_previous_proposals": 1,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1081,
+    "source_proposals_excluding_identified_runtime_gaps": 1084,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4263,6 +4263,42 @@
       "semantic_scope": [
         "Each round retains its exact player pair and local coin face receipt, applies tails consequences simultaneously, and repeats from faces independently of prevented damage. Whole native transaction preserves pending/resource rollback."
       ]
+    },
+    {
+      "id": "granted-miracle-original-draw-lifecycle",
+      "stage": 71,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/aminatou_body.json.fixture",
+      "baseline_entries": [
+        "Aminatou, Veil Piercer"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462",
+      "source_review_commit": "7d5c217dea18903752df40a213501d8e8aa8a1da",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete hand enchantment Miracle grant retains original first physical draw/reveal ordering, exact authenticated opening and linked grant instance, actual redirected drawer, source loss, copied-trigger caster, and selected-face/X/hybrid alternative base recipes before extras. Native pending replay preserves prepared draw recipient/count ownership."
+      ]
+    },
+    {
+      "id": "actual-sequential-and-grouped-result-quantities",
+      "stage": 71,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/paid_result_quantities.json.fixture",
+      "baseline_entries": [
+        "Malevolent Witchkite",
+        "Sawblade Skinripper",
+        "Voracious Brood"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462",
+      "source_review_commit": "710f12f00e8e8ddff507fcb6dcaffcf3cbc28ea2",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Sequence terminal summaries preserve all original instruction receipts separately from appended actions and observations. Whole native transaction keeps stop/pending/rollback ownership; full bodies retain actual sacrifice counts, tested current-turn cardinality and filtered grouped zone-event amounts."
+      ]
     }
   ],
   "cards": [
@@ -4969,8 +5005,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "granted-miracle-original-draw-lifecycle"
+      ],
+      "source_review_commit": "7d5c217dea18903752df40a213501d8e8aa8a1da",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462"
     },
     {
       "card_name": "Amplifire",
@@ -7054,12 +7094,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "paid-counter-and-actual-sacrifice-quantities"
       ],
       "source_review_commit": "7ec3e7c29d28b24ae16a123e4c2d90410b173a7f",
-      "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630"
+      "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
+      "source_hold": "Source-exiled store lacks linked ability occurrence scope: an unrelated borrowed activated exile ability can add a card to the printed linked power query. Exact CR607 linkage repair pending."
     },
     {
       "card_name": "Bismuth Mindrender",
@@ -22194,8 +22235,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-sequential-and-grouped-result-quantities"
+      ],
+      "source_review_commit": "710f12f00e8e8ddff507fcb6dcaffcf3cbc28ea2",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462"
     },
     {
       "card_name": "Malignant Growth",
@@ -29495,8 +29540,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-sequential-and-grouped-result-quantities"
+      ],
+      "source_review_commit": "710f12f00e8e8ddff507fcb6dcaffcf3cbc28ea2",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462"
     },
     {
       "card_name": "Sawhorn Nemesis",
@@ -37369,8 +37418,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "actual-sequential-and-grouped-result-quantities"
+      ],
+      "source_review_commit": "710f12f00e8e8ddff507fcb6dcaffcf3cbc28ea2",
+      "integrated_source_review_commit": "632ec5761c0ee93fa42e52e8aa6bb5ad0c5a1462"
     },
     {
       "card_name": "Vortex Elemental",
@@ -39893,6 +39946,26 @@
       "source_correction_commit": "514e71585d9203eca12d2e0067060d5c03d59bdd",
       "source_review_commit": "7ec3e7c29d28b24ae16a123e4c2d90410b173a7f",
       "completion_gate": "Authored actual/redirected/Prevent/Instead/Additionally full-body scenarios remain unrun; complete corpus and runtime validation deferred."
+    },
+    {
+      "id": "linked-exile-ability-pair-identity",
+      "status": "confirmed_source_gap_proposal_in_progress",
+      "affected_previously_proposed_complete": [
+        "Bishop of Binding"
+      ],
+      "held_new_cards": [
+        "Bane Alley Broker",
+        "Kheru Mind-Eater",
+        "Nightveil Specter",
+        "Intellect Devourer",
+        "Colfenor's Plans",
+        "Rogue Class",
+        "Intet, the Dreamer",
+        "Elder Brain"
+      ],
+      "scope": "Confirmed Bishop scalar consumer only; other existing linked consumers are not presumed affected without source evidence.",
+      "evidence": "ExileEffect records add_exiled_with_source_link(ctx.source,new_id); source-only map is read by linked power quantity; AbilityOrigin::Borrowed is not propagated into that collector.",
+      "completion_gate": "Carry exact linked ability occurrence as well as source incarnation; author actual borrowed-exile negative and retain existing printed linkage, then independent source review and deferred runtime validation."
     }
   ]
 }

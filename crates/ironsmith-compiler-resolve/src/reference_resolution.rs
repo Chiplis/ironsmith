@@ -136,6 +136,9 @@ struct EffectReferenceResolutionState<'a> {
 }
 
 fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
+    if ironsmith_compiler_semantic::trigger_references::trigger_binds_grouped_zone_amount(trigger) {
+        return true;
+    }
     match trigger {
         TriggerSpec::WithIntro { trigger, .. }
         | TriggerSpec::ConditionQualified { trigger, .. } => trigger_supports_event_amount(trigger),
@@ -7709,8 +7712,9 @@ fn resolve_effect_result_value(
             });
         }
         // "If you control N or more ..., create that many ...": the
-        // demonstrative counts the tested objects at resolution. A combat-step
-        // event has no quantity, and a threshold is not the amount to create.
+        // demonstrative reads the tested cardinality at resolution, including
+        // a typed turn-history count. A step event has no quantity, and the
+        // comparison threshold is not the amount the consequent consumes.
         Value::EventValue(EventValueSpec::Amount)
             if !state.allow_life_event_value
                 && state
@@ -7718,7 +7722,7 @@ fn resolve_effect_result_value(
                     .or(state.last_effect_id)
                     .is_none()
                 && state.last_value_comparison.is_some_and(|(left, right)| {
-                    matches!(left.unhinted(), Value::Count(_))
+                    matches!(left.unhinted(), Value::Count(_) | Value::TurnHistoryCount(_))
                         && matches!(right.unhinted(), Value::Fixed(_))
                 }) =>
         {

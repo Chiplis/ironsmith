@@ -107,7 +107,7 @@
     "toughness": "4",
     "oracle_text": "Flying\nWhen this creature enters, sacrifice any number of artifacts, enchantments, and/or tokens, then draw that many cards.",
     "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
-    "proposed_coverage": "held"
+    "proposed_coverage": "source_complete_unvalidated"
   },
   {
     "name": "Sawblade Skinripper",
@@ -118,7 +118,7 @@
     "toughness": "2",
     "oracle_text": "Menace\n{2}, Sacrifice another creature or enchantment: Put a +1/+1 counter on this creature.\nAt the beginning of your end step, if you sacrificed one or more permanents this turn, this creature deals that much damage to any target.",
     "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
-    "proposed_coverage": "held"
+    "proposed_coverage": "source_complete_unvalidated"
   },
   {
     "name": "Voracious Brood",
@@ -129,7 +129,7 @@
     "toughness": "1",
     "oracle_text": "This creature enters with a +1/+1 counter on it for each creature card in your graveyard.\nWhenever one or more creature cards are put into your graveyard from anywhere, put that many +1/+1 counters on this creature.",
     "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
-    "proposed_coverage": "held"
+    "proposed_coverage": "source_complete_unvalidated"
   },
   {
     "name": "Yurlok of Scorch Thrash",

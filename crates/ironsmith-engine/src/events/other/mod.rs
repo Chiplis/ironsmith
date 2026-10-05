@@ -38,7 +38,8 @@ mod turned_face_up;
 
 pub use became_monstrous::BecameMonstrousEvent;
 pub use card_discarded::{CardDiscardedEvent, DiscardedCardDestination};
-pub use card_drawn::CardsDrawnEvent;
+pub use card_drawn::{CardsDrawnEvent, DrawnMiracleInstance, DrawnMiraclePrice, MiracleDrawDecision, MiracleInstanceIdentity, RevealedMiracle};
+pub(crate) use card_drawn::MiracleDrawOpportunity;
 pub use card_revealed::CardRevealedEvent;
 pub use chapter_ability_resolved::ChapterAbilityResolvedEvent;
 pub use coin_flipped::CoinFlippedEvent;

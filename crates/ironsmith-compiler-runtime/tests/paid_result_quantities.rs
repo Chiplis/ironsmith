@@ -18,7 +18,7 @@ use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definit
 
 const A: PlayerId = PlayerId::from_index(0);
 const B: PlayerId = PlayerId::from_index(1);
-const COMPLETE: &[&str] = &["Bishop of Binding", "Essence Bottle", "Ooze Flux", "Vish Kal, Blood Arbiter"];
+const COMPLETE: &[&str] = &["Bishop of Binding", "Essence Bottle", "Ooze Flux", "Vish Kal, Blood Arbiter", "Malevolent Witchkite", "Sawblade Skinripper", "Voracious Brood"];
 
 fn definitions(name: &str) -> [CardDefinition; 2] {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/paid_result_quantities.json.fixture")).unwrap();
@@ -47,7 +47,7 @@ fn creature(game: &mut GameState, owner: PlayerId, zone: Zone, name: &str, p: i3
 }
 fn mana(game: &mut GameState, color: ManaSymbol, amount: u32) { game.player_mut(A).unwrap().mana_pool.add(color, amount); }
 #[derive(Default)]
-struct Choices { quantity: u32, target: Option<Target>, pick: Option<ObjectId>, distribution: Vec<(Target, u32)> }
+struct Choices { quantity: u32, target: Option<Target>, pick: Option<ObjectId>, distribution: Vec<(Target, u32)>, objects: Option<Vec<ObjectId>>, forbidden: Vec<ObjectId> }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _: &GameState, ctx: &NumberContext) -> u32 {
         assert!(!ctx.is_x_value, "a printed result variable is not announced mana X");
@@ -59,6 +59,11 @@ impl DecisionMaker for Choices {
         } else { SelectFirstDecisionMaker.decide_targets(game, ctx) }
     }
     fn decide_objects(&mut self, game: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+        if let Some(objects) = &self.objects {
+            assert!(objects.iter().all(|id| ctx.candidates.iter().any(|candidate| candidate.id == *id && candidate.legal)));
+            assert!(self.forbidden.iter().all(|id| !ctx.candidates.iter().any(|candidate| candidate.id == *id && candidate.legal)));
+            return objects.clone();
+        }
         if let Some(pick) = self.pick.filter(|id| ctx.candidates.iter().any(|c| c.id == *id && c.legal)) { vec![pick] }
         else { SelectFirstDecisionMaker.decide_objects(game, ctx) }
     }
@@ -115,10 +120,10 @@ fn full_frozen_bodies_retain_all_abilities_and_do_not_leave_pending_quantities()
         assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
         let debug = format!("{definition:?}");
         assert!(!debug.contains("PendingPriorEffectMetric"), "{name}: {debug}");
-        let expected = if *name == "Ooze Flux" { 1 } else { 2 };
+        let expected = if matches!(*name, "Ooze Flux" | "Malevolent Witchkite" | "Voracious Brood") { 1 } else { 2 };
         let count = definition.abilities.iter().filter(|ability| match ability.kind {
-            ironsmith::ability::AbilityKind::Triggered(_) => *name == "Bishop of Binding",
-            ironsmith::ability::AbilityKind::Activated(_) => *name != "Bishop of Binding",
+            ironsmith::ability::AbilityKind::Triggered(_) => matches!(*name, "Bishop of Binding" | "Malevolent Witchkite" | "Sawblade Skinripper" | "Voracious Brood"),
+            ironsmith::ability::AbilityKind::Activated(_) => !matches!(*name, "Bishop of Binding" | "Malevolent Witchkite" | "Voracious Brood"),
             _ => false,
         }).count();
         assert_eq!(count, expected, "{name}: every printed action survives");
@@ -334,4 +339,168 @@ fn tom_full_body_draws_only_the_original_sacrificed_creature_power_then_always_d
         assert_eq!(game.player(A).unwrap().library.len(), 8 - drawn);
         assert_eq!(game.player(A).unwrap().hand.len(), drawn, "even a zero-card draw is followed by discard");
     }}
+}
+
+#[test]
+fn witchkite_full_entry_counts_only_actual_selected_sacrifices_across_the_printed_union() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    for definition in definitions("Malevolent Witchkite") { for scenario in 0..5 {
+        let mut game = game();
+        let artifact = compile_to_runtime_definition("Artifact resource", "Type: Artifact", false).unwrap();
+        let enchantment = compile_to_runtime_definition("Enchantment resource", "Type: Enchantment", false).unwrap();
+        let own_artifact = game.create_object_from_definition(&artifact, A, Zone::Battlefield);
+        let own_enchantment = game.create_object_from_definition(&enchantment, A, Zone::Battlefield);
+        let foreign = game.create_object_from_definition(&artifact, B, Zone::Battlefield);
+        let hand = game.create_object_from_definition(&enchantment, A, Zone::Hand);
+        let plain = creature(&mut game, A, Zone::Battlefield, "Nontoken creature", 2, 3, "Elf");
+        let added = creature(&mut game, A, Zone::Battlefield, "Replacement-only sacrifice", 9, 9, "Elf");
+        let token_definition = compile_to_runtime_definition("Saproling", "Type: Creature — Saproling\nPower/Toughness: 1/1", false).unwrap();
+        apply(&mut game, own_artifact, Effect::new(ironsmith::effects::CreateTokenEffect::you(token_definition, 1)));
+        let token = *game.battlefield.iter().find(|id| game.object(**id).unwrap().kind == ObjectKind::Token).unwrap();
+        for _ in 0..8 { creature(&mut game, A, Zone::Library, "Draw witness", 1, 1, "Elf"); }
+        let source = game.create_object_from_definition(&definition, A, Zone::Hand); let stable = game.object(source).unwrap().stable_id;
+        let added_sacrifice = Effect::new(ironsmith::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(added)));
+        let replacement = match scenario {
+            2 => Some(ReplacementAction::Prevent),
+            3 => Some(ReplacementAction::Instead(vec![added_sacrifice])),
+            4 => Some(ReplacementAction::Additionally(vec![added_sacrifice])),
+            _ => None,
+        };
+        if let Some(action) = replacement {
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(plain, A,
+                ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(own_artifact), Some(Zone::Battlefield), Some(Zone::Graveyard)), action));
+        }
+        mana(&mut game, ManaSymbol::Black, 2); mana(&mut game, ManaSymbol::Colorless, 4);
+        let action = compute_legal_actions(&game, A).unwrap().into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)).unwrap();
+        let mut dm = Choices::default(); announce(&mut game, action, &mut dm); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let source = game.find_object_by_stable_id(stable).unwrap();
+        assert!(game.object_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Flying));
+        let mut queue = TriggerQueue::new(); drain_pending_trigger_events(&mut game, &mut queue);
+        put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap(); assert_eq!(game.stack.len(), 1);
+        dm.objects = Some(if scenario == 0 { Vec::new() } else { vec![own_artifact, own_enchantment, token] });
+        dm.forbidden = vec![foreign, hand, plain, source, added];
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let actual = match scenario { 0 => 0, 2 | 3 => 2, _ => 3 };
+        assert_eq!(game.player(A).unwrap().library.len(), 8 - actual);
+        assert_eq!(game.player(A).unwrap().hand.len(), 1 + actual, "selected count and added sacrifice are not the draw count");
+        assert!(game.object(foreign).is_some() && game.object(plain).is_some() && game.object(hand).is_some());
+    }}
+}
+
+fn sacrifice_with_observations(game: &mut GameState, source: ObjectId, player: PlayerId, target: ObjectId) {
+    let effect = Effect::new(ironsmith::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(target)));
+    let outcome = execute_effect(game, &effect, &mut EffectContext::new(source, player, &mut SelectFirstDecisionMaker)).unwrap();
+    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+}
+fn end_step(game: &mut GameState, player: PlayerId, dm: &mut Choices) -> usize {
+    game.turn.phase = Phase::Ending; game.turn.step = Some(ironsmith::game_state::Step::End); game.turn.active_player = player;
+    let mut queue = TriggerQueue::new(); ironsmith::game_loop::generate_and_queue_step_triggers(game, &mut queue);
+    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap(); game.stack.len()
+}
+
+#[test]
+fn sawblade_full_body_uses_current_turn_actual_sacrifice_history_not_the_threshold_or_source_counters() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    for definition in definitions("Sawblade Skinripper") {
+        let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        assert!(game.object_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Menace));
+        mana(&mut game, ManaSymbol::Colorless, 2);
+        assert!(activation(&game, source, 0).is_none(), "another permanent is required");
+        let original = creature(&mut game, A, Zone::Battlefield, "Original payment", 1, 2, "Elf");
+        let enchantment = compile_to_runtime_definition("Enchantment resource", "Type: Enchantment", false).unwrap();
+        let added = game.create_object_from_definition(&enchantment, A, Zone::Battlefield);
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(original), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(vec![Effect::new(ironsmith::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(added)))])));
+        let mut dm = Choices { pick: Some(original), target: Some(Target::Player(B)), ..Default::default() };
+        activate(&mut game, source, 0, &mut dm); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 1);
+        assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
+        let foreign = creature(&mut game, B, Zone::Battlefield, "Opponent sacrifice", 1, 2, "Elf");
+        sacrifice_with_observations(&mut game, source, B, foreign);
+        assert_eq!(end_step(&mut game, B, &mut dm), 0, "only your end step");
+        assert_eq!(end_step(&mut game, A, &mut dm), 1);
+        let land = compile_to_runtime_definition("Later land", "Type: Land", false).unwrap();
+        let later = game.create_object_from_definition(&land, A, Zone::Battlefield);
+        sacrifice_with_observations(&mut game, source, A, later);
+        game = game.clone(); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.player(B).unwrap().life, 17, "two payment-time sacrifices plus the later one; foreign sacrifice and threshold do not contribute");
+        game.next_turn();
+        assert_eq!(end_step(&mut game, A, &mut dm), 0, "previous-turn sacrifice history is gone");
+    }
+}
+
+#[test]
+fn sawblade_prevented_or_wholly_replaced_payment_does_not_satisfy_the_end_step_history_gate() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    for definition in definitions("Sawblade Skinripper") { for prevent in [false, true] {
+        let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let enchantment = compile_to_runtime_definition("Selected enchantment", "Type: Enchantment", false).unwrap();
+        let selected = game.create_object_from_definition(&enchantment, A, Zone::Battlefield);
+        let replacement = if prevent { ReplacementAction::Prevent } else { ReplacementAction::Instead(vec![Effect::gain_life(1)]) };
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(selected), Some(Zone::Battlefield), Some(Zone::Graveyard)), replacement));
+        mana(&mut game, ManaSymbol::Colorless, 2);
+        let mut dm = Choices { pick: Some(selected), ..Default::default() }; activate(&mut game, source, 0, &mut dm);
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 1, "the modified cost is paid");
+        assert!(game.object(selected).is_some()); assert_eq!(end_step(&mut game, A, &mut dm), 0);
+    }}
+}
+
+fn recorded_effect(game: &mut GameState, source: ObjectId, effect: Effect, dm: &mut Choices) {
+    let outcome = execute_effect(game, &effect, &mut EffectContext::new(source, A, dm)).unwrap();
+    for event in outcome.events { game.queue_trigger_event(event.provenance(), event); }
+    let mut queue = TriggerQueue::new(); drain_pending_trigger_events(game, &mut queue);
+    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
+}
+
+#[test]
+fn voracious_brood_full_body_counts_only_owned_creature_cards_and_captures_each_matching_batch() {
+    for definition in definitions("Voracious Brood") {
+        let mut game = game();
+        for _ in 0..2 { creature(&mut game, A, Zone::Graveyard, "Old graveyard creature", 1, 2, "Elf"); }
+        creature(&mut game, B, Zone::Graveyard, "Opponent graveyard creature", 1, 2, "Elf");
+        let artifact = compile_to_runtime_definition("Noncreature card", "Type: Artifact", false).unwrap();
+        game.create_object_from_definition(&artifact, A, Zone::Graveyard);
+        let source = game.create_object_from_definition(&definition, A, Zone::Hand); let stable = game.object(source).unwrap().stable_id;
+        mana(&mut game, ManaSymbol::Green, 1); mana(&mut game, ManaSymbol::Colorless, 2);
+        let action = compute_legal_actions(&game, A).unwrap().into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)).unwrap();
+        let mut dm = Choices::default(); announce(&mut game, action, &mut dm); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let source = game.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 2);
+        let first = creature(&mut game, A, Zone::Library, "Milled creature one", 1, 2, "Elf");
+        let first_stable = game.object(first).unwrap().stable_id;
+        creature(&mut game, A, Zone::Library, "Milled creature two", 1, 2, "Elf");
+        game.create_object_from_definition(&artifact, A, Zone::Library);
+        recorded_effect(&mut game, source, Effect::new(ironsmith::effects::MillEffect::you(3)), &mut dm);
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].event_value_amount, Some(2), "the batch amount is the matched creature-card subset, not all milled cards");
+        let trigger = game.stack[0].ability_id.unwrap();
+        apply(&mut game, source, Effect::new(ironsmith::effects::CopySpellEffect::single(ChooseSpec::SpecificObject(trigger))));
+        assert_eq!(game.stack.len(), 2); assert_eq!(game.stack[1].event_value_amount, Some(2));
+        let first_grave = game.find_object_by_stable_id(first_stable).unwrap(); game.move_object_by_game_rule(first_grave, Zone::Exile).unwrap();
+        for _ in 0..2 { resolve_stack_entry_with(&mut game, &mut dm).unwrap(); }
+        assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 6, "copies retain the captured two-card event count after a card leaves");
+
+        creature(&mut game, A, Zone::Battlefield, "Owned one", 1, 2, "Elf");
+        creature(&mut game, A, Zone::Battlefield, "Owned two", 1, 2, "Elf");
+        let stolen = creature(&mut game, B, Zone::Battlefield, "Foreign-owned", 1, 2, "Elf");
+        game.set_current_controller(stolen, A);
+        assert_eq!(game.current_controller(stolen), Some(A));
+        assert_eq!(game.object(stolen).unwrap().owner, B);
+        let token = compile_to_runtime_definition("Saproling", "Type: Creature — Saproling\nPower/Toughness: 1/1", false).unwrap();
+        apply(&mut game, source, Effect::new(ironsmith::effects::CreateTokenEffect::you(token, 1)));
+        let mut filter = ironsmith::target::ObjectFilter::creature().you_control(); filter.other = true;
+        recorded_effect(&mut game, source, Effect::destroy_all(filter), &mut dm);
+        assert_eq!(game.stack.len(), 1); assert_eq!(game.stack[0].event_value_amount, Some(2), "tokens and opponent-owned cards do not enter your creature-card batch");
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap(); assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 8);
+        let hand = creature(&mut game, A, Zone::Hand, "Hand-origin creature", 1, 2, "Elf");
+        recorded_effect(&mut game, source, Effect::move_to_zone(ChooseSpec::SpecificObject(hand), Zone::Graveyard, false), &mut dm);
+        assert_eq!(game.stack.len(), 1); assert_eq!(game.stack[0].event_value_amount, Some(1));
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap(); assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 9);
+        let noncreature = game.create_object_from_definition(&artifact, A, Zone::Hand);
+        recorded_effect(&mut game, source, Effect::move_to_zone(ChooseSpec::SpecificObject(noncreature), Zone::Graveyard, false), &mut dm);
+        assert!(game.stack.is_empty());
+    }
 }

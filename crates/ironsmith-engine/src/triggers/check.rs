@@ -3099,6 +3099,37 @@ fn check_triggers_with_view_and_registry(
         check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
 
+    // The original draw/reveal owner pins the exact linked instance before
+    // additions can remove its granter or the drawn source itself.
+    if let Some(drawn) = trigger_event.downcast::<crate::events::CardsDrawnEvent>()
+        && let Some(crate::events::other::MiracleDrawDecision::Revealed(proof)) = &drawn.miracle
+    {
+        if !drawn.is_miracle_eligible(proof.card) || drawn.player != proof.player
+            || proof.drawn_snapshot.object_id != proof.card
+            || proof.drawn_snapshot.stable_id != proof.stable_id
+            || proof.drawn_snapshot.owner != proof.player || proof.drawn_snapshot.zone != Zone::Hand
+        {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "Miracle reveal receipt does not identify the exact first drawn hand arrival".into()));
+        } else {
+            let ability = TriggeredAbility {
+                trigger: Trigger::miracle(),
+                effects: ResolutionProgram::from_effects(vec![Effect::may_cast_for_miracle_cost()]),
+                choices: vec![], intervening_if: None, presentation_label: None,
+            };
+            let mut identity = DefaultHasher::new();
+            compute_trigger_identity(&ability).hash(&mut identity);
+            proof.instance.identity.hash(&mut identity);
+            triggered.push(TriggeredAbilityEntry {
+                source: proof.card, controller: proof.player, x_value: None, event_value_amount: None,
+                ability, triggering_event: trigger_event.clone(), source_stable_id: proof.stable_id,
+                source_name: proof.drawn_snapshot.name.clone(), source_snapshot: Some(proof.drawn_snapshot.clone()),
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                source_kind: TriggeredAbilitySourceKind::Object, trigger_identity: TriggerIdentity(identity.finish()),
+            });
+        }
+    }
+
     // Note: Undying/Persist/Miracle triggers are handled through the normal trigger system.
     // They function from the graveyard/hand (where the object is after the event) and use
     // the triggering_event to get stable_id and other context at execution time.

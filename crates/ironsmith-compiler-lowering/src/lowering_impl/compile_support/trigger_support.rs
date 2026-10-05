@@ -1613,6 +1613,10 @@ pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
 }
 
 pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
+    if matches!(spec, EventValueSpec::Amount)
+        && ironsmith_compiler_semantic::trigger_references::trigger_binds_grouped_zone_amount(trigger) {
+        return true;
+    }
     match spec {
         EventValueSpec::CastSpell(quantity) => {
             ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger) == Some(*quantity)

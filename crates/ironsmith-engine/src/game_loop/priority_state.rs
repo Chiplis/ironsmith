@@ -162,6 +162,10 @@ pub struct PendingCast {
     /// A resolving instruction's selected alternative price. The effect cast
     /// is replayed atomically if input is pending; this never grants priority.
     pub effect_alternative_cost: Option<crate::cost::TotalCost>,
+    /// A captured keyword-cost recipe reduces its own base after X is
+    /// announced, before adding mandatory/optional costs and ordinary taxes.
+    pub effect_alternative_base_generic_reduction: u32,
+    pub effect_miracle_cast: bool,
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
@@ -276,6 +280,8 @@ impl PendingCast {
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
             effect_alternative_cost: None,
+            effect_alternative_base_generic_reduction: 0,
+            effect_miracle_cast: false,
             announced_cost_replacements: None,
             cost_resource_announced: false,
             cost_resource: None,
