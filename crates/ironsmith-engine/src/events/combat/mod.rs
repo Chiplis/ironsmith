@@ -1,5 +1,7 @@
 //! Combat-related events.
 
+mod player_attack_declaration;
+pub use player_attack_declaration::PlayerAttackDeclarationEvent;
 mod creature_attacked;
 mod creature_attacked_and_unblocked;
 mod creature_became_blocked;

@@ -244,6 +244,12 @@ pub enum Until {
     /// whose first transition to false is permanent.
     ForAsLongAs(ContinuousDurationPredicate),
     TurnsPass(crate::value_model::Value),
+    /// Ends when this exact incarnation completes casting from the named zone.
+    /// Merely leaving that zone (including proposal before payment) is not enough.
+    ObjectIsCast {
+        object: ContinuousDurationObject,
+        from_zone: crate::zone::Zone,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -407,6 +413,7 @@ pub enum GrantPlayTaggedObjectSurface {
         creature_spell: bool,
         source: SourceReferenceSurface,
     },
+    ThisCard,
 }
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary

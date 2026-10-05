@@ -1,0 +1,135 @@
+[
+  {
+    "name": "Awakening of Vitu-Ghazi",
+    "oracle_id": "5c326102-005d-463c-b9f7-14b034b66baa",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Put nine +1/+1 counters on target land you control. It becomes a legendary 0/0 Elemental creature with haste named Vitu-Ghazi. It's still a land.",
+    "scryfall_uri": "https://scryfall.com/card/war/152/awakening-of-vitu-ghazi?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Behind the Mask",
+    "oracle_id": "85ac3efc-5e19-4661-b52f-116f57e39581",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "As an additional cost to cast this spell, you may collect evidence 6. (Exile cards with total mana value 6 or greater from your graveyard.)\nUntil end of turn, target artifact or creature becomes an artifact creature with base power and toughness 4/3. If evidence was collected, it has base power and toughness 1/1 until end of turn instead.",
+    "scryfall_uri": "https://scryfall.com/card/mkm/39/behind-the-mask?utm_source=api",
+    "proposed_complete": false,
+    "remaining_source_gap": "Conditional trailing-instead base-P/T override, owned by quantity lane; collect-evidence primitive exists."
+  },
+  {
+    "name": "Cacophony Unleashed",
+    "oracle_id": "1f6056be-67c8-40a9-86ef-1606961644eb",
+    "mana_cost": "{5}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, if you cast it, destroy all nonenchantment creatures.\nWhenever this enchantment or another enchantment you control enters, until end of turn, this enchantment becomes a legendary 6/6 Nightmare God creature with menace and deathtouch. It's still an enchantment.",
+    "scryfall_uri": "https://scryfall.com/card/cmm/761/cacophony-unleashed?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Figure of Fable",
+    "oracle_id": "5d4ea910-3b16-4f98-89be-c1b2cfff4bf0",
+    "mana_cost": "{G/W}",
+    "type_line": "Creature \u2014 Kithkin",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "{G/W}: This creature becomes a Kithkin Scout with base power and toughness 2/3.\n{1}{G/W}{G/W}: If this creature is a Scout, it becomes a Kithkin Soldier with base power and toughness 4/5.\n{3}{G/W}{G/W}{G/W}: If this creature is a Soldier, it becomes a Kithkin Avatar with base power and toughness 7/8 and protection from each of your opponents.",
+    "scryfall_uri": "https://scryfall.com/card/pecl/224p/figure-of-fable?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Genju of the Realm",
+    "oracle_id": "1da3a0c0-43f0-4feb-b20a-414b023e710c",
+    "mana_cost": "{W}{U}{B}{R}{G}",
+    "type_line": "Legendary Enchantment \u2014 Aura",
+    "oracle_text": "Enchant land\n{2}: Enchanted land becomes a legendary 8/12 Spirit creature with trample until end of turn. It's still a land.\nWhen enchanted land is put into a graveyard, you may return Genju of the Realm from your graveyard to your hand.",
+    "scryfall_uri": "https://scryfall.com/card/bok/151/genju-of-the-realm?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Halsin, Emerald Archdruid",
+    "oracle_id": "01ab3603-6c2f-4d65-9bb2-da95efdbe622",
+    "mana_cost": "{3}{G}",
+    "type_line": "Legendary Creature \u2014 Elf Druid",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "{1}: Until end of turn, target token you control becomes a green Bear creature with base power and toughness 4/4 in addition to its other colors and types.\nChoose a Background (You can have a Background as a second commander.)",
+    "scryfall_uri": "https://scryfall.com/card/clb/516/halsin-emerald-archdruid?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Indigo Faerie",
+    "oracle_id": "10ae611f-e56d-47c5-8b6e-d38d95208bba",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature \u2014 Faerie Wizard",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "Flying\n{U}: Target permanent becomes blue in addition to its other colors until end of turn.",
+    "scryfall_uri": "https://scryfall.com/card/eve/24/indigo-faerie?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Relic's Roar",
+    "oracle_id": "7887f060-3024-4dc4-aeb5-fb5546db6b48",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, target artifact or creature becomes a Dinosaur artifact creature with base power and toughness 4/3 in addition to its other types.",
+    "scryfall_uri": "https://scryfall.com/card/lci/71/relics-roar?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Sarkhan, the Dragonspeaker",
+    "oracle_id": "80c26f58-04b0-4db0-b84e-9b136609abe0",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Legendary Planeswalker \u2014 Sarkhan",
+    "loyalty": "4",
+    "oracle_text": "+1: Until end of turn, Sarkhan becomes a legendary 4/4 red Dragon creature with flying, indestructible, and haste. (He doesn't lose loyalty while he's not a planeswalker.)\n\u22123: Sarkhan deals 4 damage to target creature.\n\u22126: You get an emblem with \"At the beginning of your draw step, draw two additional cards\" and \"At the beginning of your end step, discard your hand.\"",
+    "scryfall_uri": "https://scryfall.com/card/scd/156/sarkhan-the-dragonspeaker?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Scrapbasket",
+    "oracle_id": "779269f9-78c1-4e65-bafe-b6dea40a2b24",
+    "mana_cost": "{4}",
+    "type_line": "Artifact Creature \u2014 Scarecrow",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "{1}: This creature becomes all colors until end of turn.",
+    "scryfall_uri": "https://scryfall.com/card/shm/262/scrapbasket?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Shadow Puppeteers",
+    "oracle_id": "0a570fdb-2104-4592-b158-5b5d88f1d087",
+    "mana_cost": "{6}{U}",
+    "type_line": "Creature \u2014 Faerie Wizard",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Flying, ward {2}\nWhen this creature enters, create two 1/1 black Faerie Rogue creature tokens with flying.\nWhenever a creature you control with flying attacks, you may have it become a red Dragon with base power and toughness 4/4 in addition to its other colors and types until end of turn.",
+    "scryfall_uri": "https://scryfall.com/card/woc/48/shadow-puppeteers?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Unctus, Grand Metatect",
+    "oracle_id": "54c18f09-5c5a-46e7-9f66-ff91bc12537c",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Legendary Artifact Creature \u2014 Phyrexian Vedalken",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "Other blue creatures you control have \"Whenever this creature becomes tapped, draw a card, then discard a card.\"\nOther artifact creatures you control get +1/+1.\n{U/P}: Until end of turn, target creature you control becomes a blue artifact in addition to its other colors and types. Activate only as a sorcery. ({U/P} can be paid with either {U} or 2 life.)",
+    "scryfall_uri": "https://scryfall.com/card/pone/75s/unctus-grand-metatect?utm_source=api",
+    "proposed_complete": true
+  },
+  {
+    "name": "Xathrid Gorgon",
+    "oracle_id": "1e65fac0-23fc-4a32-bd36-4e3f7ebfe33d",
+    "mana_cost": "{5}{B}",
+    "type_line": "Creature \u2014 Gorgon",
+    "power": "3",
+    "toughness": "6",
+    "oracle_text": "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)\n{2}{B}, {T}: Put a petrification counter on target creature. It gains defender and becomes a colorless artifact in addition to its other types. Its activated abilities can't be activated. (A creature with defender can't attack.)",
+    "scryfall_uri": "https://scryfall.com/card/m13/118/xathrid-gorgon?utm_source=api",
+    "proposed_complete": true
+  }
+]

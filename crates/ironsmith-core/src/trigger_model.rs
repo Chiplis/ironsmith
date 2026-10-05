@@ -12,6 +12,17 @@ pub enum CountMode {
     OneOrMore,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum PlayerAttackGrouping {
+    /// One event per attacking player, across all qualifying defenders.
+    Attacker,
+    /// One event per directly attacked player, across attacking teammates.
+    Defender,
+    /// One event for each separately declared attacking/defending player pair.
+    Pair,
+}
+
 /// Oracle surface for an end-step trigger whose runtime player filter is Any.
 ///
 /// Both forms fire at every end step; this distinction only preserves whether
@@ -714,6 +725,11 @@ pub enum TriggerKind {
         one_or_more: bool,
         per_player: bool,
     },
+    PlayerAttackDeclaration {
+        attacker: PlayerFilter,
+        defender: PlayerFilter,
+        grouping: PlayerAttackGrouping,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1111,6 +1127,16 @@ impl Trigger {
         Self::typed(
             "this_leaves_battlefield",
             TriggerKind::ThisLeavesBattlefield,
+        )
+    }
+    pub fn player_attack_declaration(
+        attacker: PlayerFilter,
+        defender: PlayerFilter,
+        grouping: PlayerAttackGrouping,
+    ) -> Self {
+        Self::typed(
+            "player_attack_declaration",
+            TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping },
         )
     }
     pub fn cards_milled(player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool) -> Self {

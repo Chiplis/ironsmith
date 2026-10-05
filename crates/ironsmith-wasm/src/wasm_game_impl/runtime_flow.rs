@@ -4269,5 +4269,6 @@ mod live_action_rollback_tests {
     }
 
     include!("payment_disclosure_undo_tests.rs");
+    include!("snc_payment_disclosure_undo_tests.rs");
 
 }

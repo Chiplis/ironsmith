@@ -81,6 +81,14 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(copier.clone())
             }
         }
+        TriggerSpec::PlayerAttackDeclaration { grouping, .. } => {
+            let tag = if *grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender {
+                ironsmith_core::tag::ATTACK_DECLARATION_DEFENDER_TAG
+            } else {
+                ironsmith_core::tag::ATTACK_DECLARATION_ACTOR_TAG
+            };
+            Some(PlayerFilter::TaggedPlayer(tag.into()))
+        }
         TriggerSpec::CardsMilled { .. } | TriggerSpec::PlayerChangesTapState { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLife(_) | TriggerSpec::PlayersLoseLifeOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)

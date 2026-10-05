@@ -227,6 +227,9 @@ impl EffectExecutor for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let retained_self = matches!(self.spec.base(), ChooseSpec::Source)
+            .then(|| game.object(ctx.source).map(|object| ObjectSnapshot::from_object(object, game)))
+            .flatten();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let mut receipts: ExileZoneReceipts = Vec::new();
@@ -482,6 +485,18 @@ impl EffectExecutor for ExileEffect {
         }
         let original = outcome?;
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if let Some(before) = retained_self.as_ref() {
+            // CR 118.11: the legal exile cost remains paid if replacement or
+            // prevention changes the action. Bind only its receipt-result
+            // incarnation (or the retained original when nothing moved), never
+            // whichever later object happens to share this stable card id.
+            let after = original.affected_objects().unwrap_or_default().iter()
+                .filter_map(|id| game.object(*id))
+                .find(|object| object.stable_id == before.stable_id)
+                .map(|object| ObjectSnapshot::from_object(object, game))
+                .unwrap_or_else(|| before.clone());
+            ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![after]);
+        }
         super::finish_zone_change_receipts(game, ctx, original, receipts)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {

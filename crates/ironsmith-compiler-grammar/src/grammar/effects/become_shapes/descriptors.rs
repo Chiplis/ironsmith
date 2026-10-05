@@ -10,6 +10,8 @@ use winnow::prelude::*;
 use super::super::super::{leaf, permission_shapes, primitives};
 
 const ADDITION_TAILS: &[&[&str]] = &[
+    &["in", "addition", "to", "its", "other", "colors", "and", "types"],
+    &["in", "addition", "to", "their", "other", "colors", "and", "types"],
     &["in", "addition", "to", "its", "other", "types"],
     &["in", "addition", "to", "their", "other", "types"],
     &["in", "addition", "to", "its", "other", "type"],
@@ -33,6 +35,7 @@ pub struct BecomeLeadingPtShape<'a> {
     pub power: Value,
     pub toughness: Value,
     pub value_word_count: usize,
+    pub leading_supertypes: Vec<crate::types::Supertype>,
     pub creature_word_index: Option<usize>,
     pub suffix_tokens: &'a [OwnedLexToken],
 }
@@ -101,7 +104,13 @@ pub fn parse_become_leading_pt_shape<'a>(
     words: &[&str],
     body_tokens: &'a [OwnedLexToken],
 ) -> Option<BecomeLeadingPtShape<'a>> {
-    let (power, toughness, value_word_count) = parse_pt_value_words(words)?;
+    let mut leading_supertypes = Vec::new();
+    let mut offset = 0;
+    while let Some(supertype) = words.get(offset).and_then(|word| crate::util::parse_supertype_word(word)) {
+        push_unique(&mut leading_supertypes, supertype); offset += 1;
+    }
+    let (power, toughness, used) = parse_pt_value_words(&words[offset..])?;
+    let value_word_count = offset + used;
     let creature_word_index = permission_shapes::find_words(words, &["creature"])
         .or_else(|| permission_shapes::find_words(words, &["creatures"]));
     let suffix_tokens = if creature_word_index.is_some() {
@@ -120,6 +129,7 @@ pub fn parse_become_leading_pt_shape<'a>(
         power,
         toughness,
         value_word_count,
+        leading_supertypes,
         creature_word_index,
         suffix_tokens,
     })
@@ -136,6 +146,7 @@ pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCrea
             index += 1;
             continue;
         }
+        if word == "colorless" { index += 1; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
             index += 1;
@@ -175,7 +186,7 @@ pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCrea
         supported: true,
         card_types,
         subtypes,
-        colors: (!colors.is_empty()).then_some(colors),
+        colors: (!colors.is_empty() || words.contains(&"colorless")).then_some(colors),
     }
 }
 
@@ -191,6 +202,7 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
             index += 1;
             continue;
         }
+        if word == "colorless" { index += 1; continue; }
         if let Ok(color) = leaf::parse_leaf_color_complete(word) {
             colors = colors.union(color);
             index += 1;
@@ -222,7 +234,7 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
     Some(BecomeCreatureDescriptor {
         card_types,
         subtypes,
-        colors: (!colors.is_empty()).then_some(colors),
+        colors: (!colors.is_empty() || words.contains(&"colorless")).then_some(colors),
     })
 }
 
@@ -315,3 +327,32 @@ pub use object_action_programs::{
 #[path = "descriptors/core.rs"]
 mod core_programs;
 use core_programs::creature_subtypes_only;
+
+/// A color plus explicitly authored card types, independent of a base size.
+#[derive(Debug, Clone)]
+pub struct BecomeMixedCharacteristics {
+    pub colors: ColorSet,
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub preserve_other_types: bool,
+    pub preserve_other_colors: bool,
+}
+pub fn parse_become_mixed_characteristics(words: &[&str]) -> Option<BecomeMixedCharacteristics> {
+    let preserve_other_colors = words.ends_with(&["in", "addition", "to", "its", "other", "colors", "and", "types"])
+        || words.ends_with(&["in", "addition", "to", "their", "other", "colors", "and", "types"]);
+    let (body, preserve_other_types) = strip_become_addition_tail_words(words);
+    let mut colors = ColorSet::new(); let mut saw_colors = false;
+    let mut card_types = Vec::new(); let mut subtypes = Vec::new();
+    for &word in body {
+        if matches!(word, "a" | "an" | "and") { continue; }
+        if word == "colorless" { saw_colors = true; continue; }
+        if let Ok(color) = leaf::parse_leaf_color_complete(word) { colors = colors.union(color); saw_colors = true; }
+        else if let Ok(kind) = leaf::parse_leaf_card_type_complete(word) { push_unique(&mut card_types, kind); }
+        else if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word) { push_unique(&mut subtypes, subtype); }
+        else { return None; }
+    }
+    // This bounded shape has the existing creature-subtype operation. Do not
+    // use it to approximate an artifact/enchantment subtype replacement.
+    if !subtypes.is_empty() && (!card_types.contains(&CardType::Creature) || !creature_subtypes_only(&subtypes)) { return None; }
+    (saw_colors && !card_types.is_empty()).then_some(BecomeMixedCharacteristics { colors, card_types, subtypes, preserve_other_types, preserve_other_colors })
+}

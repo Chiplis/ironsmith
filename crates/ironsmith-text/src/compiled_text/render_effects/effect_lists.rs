@@ -1140,6 +1140,7 @@ pub(super) fn describe_temporary_tagged_permission_surface(
     let (object_text, plural) = match object_surface {
         ironsmith_core::GrantPlayTaggedObjectSurface::It => ("it".to_string(), false),
         ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard => ("that card".to_string(), false),
+        ironsmith_core::GrantPlayTaggedObjectSurface::ThisCard => ("this card".to_string(), false),
         ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile => {
             ("that card from exile".to_string(), false)
         }

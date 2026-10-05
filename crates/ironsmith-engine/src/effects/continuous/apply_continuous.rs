@@ -947,6 +947,19 @@ impl EffectExecutor for ApplyContinuousEffect {
         }
 
         let materialized_until = match &self.until {
+            Until::ObjectIsCast { object, from_zone } => {
+                let object = materialize_duration_object(object, &target, &source_type, ctx)
+                    .ok_or_else(|| match object {
+                        ironsmith_core::ContinuousDurationObject::Tagged(tag) =>
+                            ExecutionError::TagNotFound(tag.as_str().to_string()),
+                        _ => ExecutionError::UnresolvableValue("cast-event duration must identify one object".into()),
+                    })?;
+                let ironsmith_core::ContinuousDurationObject::Specific(id) = object else { unreachable!() };
+                if game.object_completed_cast_from(id, *from_zone) {
+                    return Ok(EffectOutcome::resolved());
+                }
+                Until::ObjectIsCast { object: ironsmith_core::ContinuousDurationObject::Specific(id), from_zone: *from_zone }
+            }
             Until::ForAsLongAs(predicate) => {
                 let Some(predicate) =
                     materialize_duration_predicate(predicate, &target, &source_type, game, ctx)

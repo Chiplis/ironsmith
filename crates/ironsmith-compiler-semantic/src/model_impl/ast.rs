@@ -176,6 +176,7 @@ pub enum TriggerSpec {
     ThisPhasesOut,
     PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
     CardsMilled { player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool },
+    PlayerAttackDeclaration { attacker: PlayerFilter, defender: PlayerFilter, grouping: ironsmith_core::trigger_model::PlayerAttackGrouping },
     StateBased {
         condition: PredicateAst,
         display: String,

@@ -577,6 +577,9 @@ struct ExileTracking {
     face_down_exile_view_sources: HashMap<ObjectId, ObjectId>,
     /// Snapshot of a card just before it moved to the stack for casting.
     cast_origin_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+    /// Original incarnation and zone for completed casts, retained across turns
+    /// and later zone changes for event-bounded continuous durations.
+    completed_cast_origins: HashMap<ObjectId, Zone>,
     /// Cards exiled via Plot, keyed by object id -> (player who plotted it, turn plotted).
     plotted_cards: HashMap<ObjectId, (PlayerId, u32)>,
     /// Imprinted cards keyed by source permanent.

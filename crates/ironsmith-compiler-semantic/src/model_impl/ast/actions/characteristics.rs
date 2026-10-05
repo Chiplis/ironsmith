@@ -25,6 +25,7 @@ pub enum CharacteristicActionAst {
         abilities: Vec<crate::model::CompilerStaticAbilityCore>,
         granted_abilities: Vec<GrantedAbilityAst>,
         preserve_other_types: bool,
+        preserve_other_colors: bool,
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
         animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
         animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,

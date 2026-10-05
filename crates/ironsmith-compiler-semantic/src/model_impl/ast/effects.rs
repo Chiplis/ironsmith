@@ -2138,6 +2138,7 @@ impl EffectAst {
                 abilities,
                 granted_abilities,
                 preserve_other_types,
+                preserve_other_colors: false,
                 type_retention_surface,
                 animation_pt_surface,
                 animation_duration_surface,
@@ -2145,6 +2146,14 @@ impl EffectAst {
                 duration,
             }),
         )
+    }
+
+    /// Colors and card types have independent retention semantics.
+    pub fn with_animation_color_retention(mut self, preserve: bool) -> Self {
+        if let Self::SubjectVerb(subject) = &mut self
+            && let SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature { preserve_other_colors, .. }) = &mut subject.action
+        { *preserve_other_colors = preserve; }
+        self
     }
 
     /// Preserve an authored plural/set subject on a resolving continuous

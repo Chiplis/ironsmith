@@ -1452,6 +1452,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 abilities,
                 granted_abilities,
                 preserve_other_types,
+                preserve_other_colors,
                 type_retention_surface,
                 animation_pt_surface,
                 animation_duration_surface,
@@ -1472,6 +1473,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("abilities", abilities)
                 .field("granted_abilities", granted_abilities)
                 .field("preserve_other_types", preserve_other_types)
+                .field("preserve_other_colors", preserve_other_colors)
                 .field("type_retention_surface", type_retention_surface)
                 .field("animation_pt_surface", animation_pt_surface)
                 .field("animation_duration_surface", animation_duration_surface)

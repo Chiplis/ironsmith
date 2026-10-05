@@ -45,6 +45,7 @@ pub enum TaggedPermissionReference {
     LastTagged,
     SourceExiled,
     LastRevealed,
+    SourceExiledSelf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +59,7 @@ pub enum TaggedPermissionTargetSurface {
     SpellsFromAmongThoseExiledCards,
     SpellFromAmongSourceExiledCards,
     Other,
+    ThisCard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,6 +431,17 @@ fn parse_tagged_permission_target_lexed<'a>(
 )> {
     alt((
         (
+            primitives::phrase(&["this", "card"]),
+            // This cross-zone self reference is the durable exile permission,
+            // not an immediate cast-source instruction (for example madness).
+            peek(primitives::phrase(&["for", "as", "long", "as", "it", "remains", "exiled"])),
+        ).value((
+            TaggedPermissionReference::SourceExiledSelf,
+            false,
+            TaggedPermissionTargetSurface::ThisCard,
+            None,
+        )),
+        (
             primitives::phrase(&["cards", "exiled", "with", "this"]),
             opt(primitives::any_phrase(&[
                 &["creature"],
@@ -553,6 +566,8 @@ fn parse_tagged_permission_target_surface_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<TaggedPermissionTargetSurface> {
     alt((
+        (primitives::phrase(&["this", "card"]), primitives::sentence_end())
+            .value(TaggedPermissionTargetSurface::ThisCard),
         (primitives::kw("it"), primitives::sentence_end()).value(TaggedPermissionTargetSurface::It),
         (
             primitives::phrase(&["that", "card"]),
