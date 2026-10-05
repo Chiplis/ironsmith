@@ -1371,9 +1371,15 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
 pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
-        TriggerSpec::ZoneChange(event) if event.this && event.from.is_none() => {
+        TriggerSpec::ZoneChange(event)
+            if event.this
+                && !matches!(
+                    event.from,
+                    Some(crate::zone::Zone::Battlefield | crate::zone::Zone::Graveyard)
+                ) =>
+        {
             Err(CardTextError::ParseError(
-                "source zone-change trigger requires a bounded origin".into(),
+                "source zone-change trigger requires a supported look-back origin".into(),
             ))
         }
         TriggerSpec::Either(left, right) => {

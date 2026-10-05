@@ -109,9 +109,11 @@ pub(super) fn parse_complete_zone_change(
         event = event.during_turn(player);
     }
     if this {
-        // An explicit origin also determines where this source's ability
-        // functions. Unknown/all origins need their own zone-domain rule.
-        if event.from.is_none() {
+        // This reader owns the explicit battlefield/graveyard look-back
+        // families. Other source origins (including hidden-zone departures)
+        // need their own ability-zone rule, rather than assuming that every
+        // explicit origin is a look-back zone.
+        if !matches!(event.from, Some(Zone::Battlefield | Zone::Graveyard)) {
             return Ok(None);
         }
         event = event.this();
@@ -198,6 +200,8 @@ mod entrypoint_tests {
             "this card is put into a graveyard from anywhere",
             "this card is put into exile from anywhere",
             "this card is put into your hand",
+            "this card is put into your graveyard from your hand",
+            "this card is put into your hand from your library",
             "this card is put into your graveyard from anywhere other than the battlefield",
         ] {
             assert!(
@@ -213,6 +217,24 @@ mod entrypoint_tests {
         )
         .unwrap();
         assert!(matches!(old, TriggerSpec::PutIntoGraveyard(_)));
+    }
+
+    #[test]
+    fn card_origin_cohort_reaches_typed_trigger_entrypoint_including_unions() {
+        for text in [
+            "a creature card leaves an opponent's graveyard",
+            "a Lhurgoyf permanent card is put into your graveyard from anywhere other than the battlefield",
+            "another artifact is put into your graveyard from the battlefield or an artifact card is put into your graveyard from anywhere other than the battlefield",
+            "one or more creature cards are put into your graveyard from anywhere during your turn",
+            "this card is put into your hand from your graveyard",
+            "this artifact is put into exile from the battlefield",
+            "one or more cards are put into a library from anywhere",
+            "a creature dies or a creature card is put into a graveyard from a library",
+            "you sacrifice a Desert and whenever a Desert card is put into your graveyard from your hand or library",
+        ] {
+            parse_trigger_clause_lexed(&lex_line(text, 0).unwrap())
+                .unwrap_or_else(|error| panic!("{text}: {error:?}"));
+        }
     }
 
     #[test]

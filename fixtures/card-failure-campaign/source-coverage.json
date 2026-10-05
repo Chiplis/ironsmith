@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "af75ea04a396fe8cf944c7e4b67d862da4739580",
+  "source_implementation_commit": "8ff32cfc00a2d09d35b0329ebbb9cf119a306261",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 238,
-    "additional_proposed_compile_entries": 238,
+    "additional_proposed_unique_cards": 249,
+    "additional_proposed_compile_entries": 249,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -525,6 +525,34 @@
         "layer-evaluated controller scalars and source-independent aggregate filters",
         "history-publication and turn-context cache invalidation",
         "legacy object-relative/event/tagged Dynamic paths preserved"
+      ]
+    },
+    {
+      "id": "card-origin-zone-movement-triggers",
+      "stage": 24,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/card_origin_zone_change_triggers.json.fixture",
+      "baseline_entries": [
+        "Erebos's Titan",
+        "Disa the Restless",
+        "Ultron the Annihilator",
+        "Ultron's Auxiliary",
+        "Crawling Infestation",
+        "Golgari Brownscale",
+        "Urza's Sylex",
+        "Dutiful Knowledge Seeker",
+        "Wan Shi Tong, All-Knowing",
+        "Dreadhound",
+        "Desert Warfare"
+      ],
+      "implementation_commit": "8ff32cfc00a2d09d35b0329ebbb9cf119a306261",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "private-zone card origins and disjoint union arms",
+        "exact pre-move source snapshot identity rather than stable-card aliases",
+        "one-or-more batches, owner and turn guards",
+        "look-back source behavior limited to supported battlefield/graveyard origins",
+        "actual mill, return, sacrifice and library producer scenarios authored"
       ]
     }
   ],
@@ -5960,8 +5988,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Crazed Firecat",
@@ -7069,8 +7099,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Desertion",
@@ -7231,8 +7263,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Discordant Spirit",
@@ -7887,8 +7921,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Dream Devourer",
@@ -8097,8 +8133,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Dutiful Replicator",
@@ -8817,8 +8855,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Erestor of the Council",
@@ -11773,8 +11813,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Goliath Daydreamer",
@@ -30199,8 +30241,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Ultron's Auxiliary",
@@ -30209,8 +30253,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Ultron, Artificial Malevolence",
@@ -30489,8 +30535,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Urza, Planeswalker",
@@ -31624,8 +31672,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "card-origin-zone-movement-triggers"
+      ]
     },
     {
       "card_name": "Wand of Ith",
