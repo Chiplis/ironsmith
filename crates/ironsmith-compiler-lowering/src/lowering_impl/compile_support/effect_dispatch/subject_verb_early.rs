@@ -2819,11 +2819,15 @@ pub(super) fn compile_subject_verb_early(
             DamagePreventionActionAst::PreventAllDamageToTarget {
                 target,
                 duration,
+                combat_only,
                 source_of_your_choice,
                 source_choice_shares_activation_mana_color,
                 source_target,
             },
         ) => {
+            let damage_filter = if *combat_only {
+                ironsmith_core::DamageFilter::combat()
+            } else { ironsmith_core::DamageFilter::all() };
             if let Some(source_target) = source_target {
                 let (source_spec, choices) =
                     resolve_target_spec_with_choices(source_target, &current_reference_env(ctx))?;
@@ -2835,7 +2839,7 @@ pub(super) fn compile_subject_verb_early(
                 };
                 let mut effect = crate::effects::PreventAllDamageEffect::new(
                     protected,
-                    ironsmith_core::DamageFilter::all(),
+                    damage_filter.clone(),
                     duration.clone(),
                 )
                 .with_target_source(source_spec.clone());
@@ -2852,7 +2856,7 @@ pub(super) fn compile_subject_verb_early(
             {
                 let mut effect = crate::effects::PreventAllDamageEffect::new(
                     ironsmith_core::PreventionTarget::You,
-                    ironsmith_core::DamageFilter::all(),
+                    damage_filter.clone(),
                     duration.clone(),
                 );
                 effect = if *source_choice_shares_activation_mana_color {
@@ -2872,7 +2876,7 @@ pub(super) fn compile_subject_verb_early(
                 let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
                 let mut effect = crate::effects::PreventAllDamageEffect::new(
                     ironsmith_core::PreventionTarget::YouAndPermanentsMatching(resolved_filter),
-                    ironsmith_core::DamageFilter::all(),
+                    damage_filter.clone(),
                     duration.clone(),
                 );
                 if *source_of_your_choice {
@@ -2884,8 +2888,9 @@ pub(super) fn compile_subject_verb_early(
                 && explicit_target_span.is_none()
             {
                 let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-                let mut effect = crate::effects::PreventAllDamageEffect::matching(
+                let mut effect = crate::effects::PreventAllDamageEffect::matching_with_filter(
                     resolved_filter,
+                    damage_filter.clone(),
                     duration.clone(),
                 );
                 if *source_of_your_choice {
@@ -2900,7 +2905,9 @@ pub(super) fn compile_subject_verb_early(
                     ));
                 }
                 compile_effect_for_target(target, ctx, |spec| {
-                    Effect::prevent_all_damage_to_target(spec, duration.clone())
+                    let mut prevent = crate::effects::PreventAllDamageToTargetEffect::new(spec, duration.clone());
+                    if *combat_only { prevent = prevent.combat_only(); }
+                    Effect::new(prevent)
                 })
             }
         }

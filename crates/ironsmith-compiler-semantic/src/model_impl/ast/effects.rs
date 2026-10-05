@@ -649,6 +649,16 @@ impl EffectAst {
         Self::subject_verb_prevent_all_damage_to_target_with_source_choice(target, duration, false)
     }
 
+    pub fn subject_verb_prevent_all_combat_damage_to_target(target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
+                target, duration, combat_only: true, source_of_your_choice: false,
+                source_choice_shares_activation_mana_color: false, source_target: None,
+            }),
+        )
+    }
+
     pub fn subject_verb_prevent_all_damage_to_target_with_source_choice(
         target: TargetAst,
         duration: Until,
@@ -661,6 +671,7 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice,
                     source_choice_shares_activation_mana_color: false,
                     source_target: None,
@@ -680,6 +691,7 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice: true,
                     source_choice_shares_activation_mana_color: true,
                     source_target: None,
@@ -700,6 +712,7 @@ impl EffectAst {
                 DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     duration,
+                    combat_only: false,
                     source_of_your_choice: false,
                     source_choice_shares_activation_mana_color: false,
                     source_target: Some(source_target),

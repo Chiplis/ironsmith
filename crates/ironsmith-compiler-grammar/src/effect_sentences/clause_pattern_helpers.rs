@@ -1216,7 +1216,7 @@ fn parse_counter_ability_target_phrase(
     Ok(Some(wrap_target_count(target, shape.target_count)))
 }
 
-fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+pub(crate) fn parse_prevention_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     if let Some(filter) = clause_shapes::parse_you_and_permanents_filter_tokens(tokens) {
         return Ok(TargetAst::ObjectOrPlayer(filter, PlayerFilter::You, None));
     }
@@ -1246,15 +1246,15 @@ fn parse_damage_sources_filter(
             ));
         };
         if !is_source_noun(last) {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported damage source phrase '{}'",
-                LexedClause::new(part).text()
-            )));
+            return parse_object_filter(part, false);
         }
         if descriptor.is_empty() {
             return Ok(ObjectFilter::default());
         }
-        parse_object_filter(descriptor, false)
+        let mut filter = parse_object_filter(descriptor, false)?;
+        // An explicit source noun ranges over any zone, not only permanents.
+        filter.zone = None;
+        Ok(filter)
     };
     // "black sources and red sources": two independently described sets.
     if parts.len() > 1
@@ -1285,7 +1285,10 @@ pub fn parse_prevent_all_damage_clause(
             // creature you control" (Kry Shield): the source is a declared
             // target, so it must stay a target choice (and the antecedent of a
             // following "that creature"), protecting every recipient.
-            if starts_with_target_indicator(source_tokens) {
+            if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
+                return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+            }
+            if source_tokens.iter().any(|token| token.is_word("target")) {
                 let source_target = parse_target_phrase(source_tokens)?;
                 return Ok(Some(
                     EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
@@ -1295,13 +1298,8 @@ pub fn parse_prevent_all_damage_clause(
                     ),
                 ));
             }
-            let source_filter_target = parse_target_phrase(source_tokens)?;
-            let TargetAst::Object(source_filter, _, _) = source_filter_target else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported prevent-all damage source filter target (clause: '{}')",
-                    clause_text
-                )));
-            };
+            let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
+            if of_chosen_color { return Err(CardTextError::ParseError("chosen-color source must retain its explicit decision".into())); }
             Ok(Some(
                 EffectAst::subject_verb_prevent_all_damage_from_source_filter(
                     source_filter,
@@ -1313,6 +1311,29 @@ pub fn parse_prevent_all_damage_clause(
             source_tokens,
             target_tokens,
         } => {
+            // A relative "that" before an ordinary plural source set is
+            // distinct from the referent in "that creature would deal".
+            let source_tokens = if source_tokens.first().is_some_and(|token| token.is_word("that"))
+                && (source_tokens.last().is_some_and(|token| token.is_word("sources"))
+                    || source_tokens.get(1).is_some_and(|token| token.is_any_word(&[
+                        "creatures", "permanents", "spells", "artifacts", "enchantments", "planeswalkers",
+                    ])))
+            { &source_tokens[1..] } else { source_tokens };
+            if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
+                return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+            }
+            if source_tokens.iter().any(|token| token.is_word("target"))
+                || source_tokens.first().is_some_and(|token| token.is_any_word(&["this", "that", "those", "it", "them"]))
+            {
+                let source_target = parse_target_phrase(source_tokens)?;
+                let target = match target_tokens {
+                    Some(tokens) => parse_prevention_target_phrase(tokens)?,
+                    None => TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
+                };
+                return Ok(Some(EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
+                    target, source_target, Until::EndOfTurn,
+                )));
+            }
             let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
             match target_tokens {
                 None if of_chosen_color => Ok(Some(
@@ -1386,7 +1407,10 @@ pub fn parse_prevent_all_damage_clause(
                     ))
                 }
                 clause_shapes::PreventAllDamageSourceShape::Filter(source_tokens) => {
-                    if starts_with_target_indicator(source_tokens) {
+                    if source_tokens.windows(2).any(|pair| pair[0].is_word("other") && pair[1].is_word("than")) {
+                        return Err(CardTextError::ParseError("all-damage source exclusion needs its own complete target binding".into()));
+                    }
+                    if source_tokens.iter().any(|token| token.is_word("target")) {
                         let source_target = parse_target_phrase(source_tokens)?;
                         return Ok(Some(
                             EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
@@ -1396,13 +1420,8 @@ pub fn parse_prevent_all_damage_clause(
                             ),
                         ));
                     }
-                    let source_filter_target = parse_target_phrase(source_tokens)?;
-                    let TargetAst::Object(source_filter, _, _) = source_filter_target else {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported prevent-all damage source filter target (clause: '{}')",
-                            clause_text
-                        )));
-                    };
+                    let (source_filter, of_chosen_color) = parse_damage_sources_filter(source_tokens)?;
+                    if of_chosen_color { return Err(CardTextError::ParseError("chosen-color target prevention needs its complete decision path".into())); }
                     Ok(Some(
                         EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
                             target,

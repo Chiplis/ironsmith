@@ -376,6 +376,8 @@ pub enum StaticAbilityId {
     PreventMatchingDamage,
     /// A controller-scoped exception to CR 704.5i.
     PlaneswalkersYouControlDontDieAtZeroLoyalty,
+    /// Add to one life-gain event; appended for serialized ID compatibility.
+    AddLifeGainReplacement,
 }
 
 impl StaticAbilityId {
@@ -676,6 +678,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
+            | AddLifeGainReplacement
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement

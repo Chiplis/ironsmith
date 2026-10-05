@@ -6,7 +6,7 @@ use super::prevention_helpers::{
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_objects_from_spec;
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub use ironsmith_core::PreventAllDamageEffect;
@@ -41,15 +41,17 @@ impl EffectExecutor for PreventAllDamageEffect {
         // preventability per event), so it keeps working once the
         // restriction ends later in its duration.
         let mut damage_filter = self.damage_filter.clone();
-        if let Some(source_target) = &self.source_target {
-            damage_filter.from_specific_source =
-                resolve_objects_from_spec(game, source_target, ctx)?
-                    .first()
-                    .copied();
-            if damage_filter.from_specific_source.is_none() {
-                return Err(ExecutionError::InvalidTarget);
+        let selected_sources = if let Some(source_target) = &self.source_target {
+            let mut sources = resolve_objects_for_effect(game, ctx, source_target)?;
+            sources.sort_unstable();
+            sources.dedup();
+            if sources.is_empty() {
+                return if source_target.count().min == 0 {
+                    Ok(EffectOutcome::count(0))
+                } else { Err(ExecutionError::InvalidTarget) };
             }
-        }
+            Some(sources)
+        } else { None };
         if let Some(excluded_source_target) = &self.excluded_source_target {
             damage_filter.excluded_specific_source =
                 resolve_objects_from_spec(game, excluded_source_target, ctx)?
@@ -87,19 +89,24 @@ impl EffectExecutor for PreventAllDamageEffect {
         } else {
             self.target.clone()
         };
-        register_prevention_shield(
-            game,
-            ctx,
-            protected,
-            None,
-            self.until.clone(),
-            damage_filter,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        );
+        // Each selected source gets its own unlimited identity-bound shield;
+        // selecting several sources must not silently keep only the first.
+        let sources = selected_sources.map(|sources| sources.into_iter().map(Some).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![damage_filter.from_specific_source]);
+        for source in sources {
+            let mut filter = damage_filter.clone();
+            filter.from_specific_source = source;
+            register_prevention_shield(
+                game, ctx, protected.clone(), None, self.until.clone(), filter,
+                Vec::new(), Vec::new(), Vec::new(),
+            );
+        }
 
         Ok(EffectOutcome::resolved())
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        self.get_target_spec().map(|spec| spec.count())
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {

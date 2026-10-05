@@ -4704,7 +4704,13 @@ impl StaticAbility {
         ))
     }
 
-    /// "If you would gain life, you gain twice that much life instead."
+    /// "If you would gain life, you gain that much life plus N instead."
+    pub fn add_life_gain_replacement(
+        player: crate::target::PlayerFilter, additional: i32, display: impl Into<String>,
+    ) -> Self {
+        Self::new(AddLifeGainReplacement { player, additional, condition: None, display: display.into() })
+    }
+
     pub fn double_life_change_replacement(
         player: crate::target::PlayerFilter,
         loss: bool,

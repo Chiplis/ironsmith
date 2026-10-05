@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "0e5c8fd67b5810db93a9cee0f013d2e11542274e",
+  "source_implementation_commit": "c2e0f3817664e9f5dae122bf2258d315d55433b4",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 328,
-    "additional_proposed_compile_entries": 328,
+    "additional_proposed_unique_cards": 347,
+    "additional_proposed_compile_entries": 347,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true
   },
@@ -865,6 +865,53 @@
         "Atomic regular-turn in/out exchange with complete pre-out LKI and completed-state in snapshots.",
         "Direct/indirect attachment phasing, grouped combinator forwarding and exact object identity."
       ]
+    },
+    {
+      "id": "temporary-filtered-damage-prevention",
+      "stage": 32,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/temporary_damage_prevention.json.fixture",
+      "baseline_entries": [
+        "Al-abara's Carpet",
+        "Azorius Ploy",
+        "Energy Arc",
+        "Ethereal Haze",
+        "Fleeting Flight",
+        "Hidden Retreat",
+        "Pack Leader",
+        "Repel the Abominable",
+        "Shieldmage Elder",
+        "Soul Parry"
+      ],
+      "implementation_commit": "c2e0f3817664e9f5dae122bf2258d315d55433b4",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed combat-recipient and active/passive source filters; every selected source retains an unlimited identity-bound shield.",
+        "Actual combat/end-turn and skipped combat-step expiry; delayed-owned prevention metrics retained."
+      ]
+    },
+    {
+      "id": "persistent-life-gain-replacements",
+      "stage": 32,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/life_gain_replacements.json.fixture",
+      "baseline_entries": [
+        "Angel of Vitality",
+        "Bilbo, Birthday Celebrant",
+        "Cleric Class",
+        "Heron of Hope",
+        "Honor Troll",
+        "Knight of Dawn's Light",
+        "Leyline of Hope",
+        "Pest Rescuer",
+        "Phial of Galadriel"
+      ],
+      "implementation_commit": "c2e0f3817664e9f5dae122bf2258d315d55433b4",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Real ordered additive/doubling life-event modification with dynamic conditions; no extra life-gain event.",
+        "Phial exact draw and life bodies, replacement recursion scope and complete instead marker."
+      ]
     }
   ],
   "cards": [
@@ -1251,8 +1298,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Aladdin's Lamp",
@@ -1669,8 +1718,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Angelic Arbiter",
@@ -2699,8 +2750,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Azula, Cunning Usurper",
@@ -3385,8 +3438,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Bilbo, Fellow Conspirator",
@@ -5457,8 +5512,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Cliffside Rescuer",
@@ -9010,8 +9067,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Energy Field",
@@ -9388,8 +9447,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Ethereal Valkyrie",
@@ -10581,8 +10642,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Flood of Tears",
@@ -13329,8 +13392,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Hexhaven Battalion",
@@ -13381,8 +13446,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Hidetsugu's Second Rite",
@@ -13577,8 +13644,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Hooded Hydra",
@@ -16001,8 +16070,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Knight of Grace",
@@ -16653,8 +16724,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Leyline of Singularity",
@@ -20723,8 +20796,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Pain Distributor",
@@ -21103,8 +21178,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Petra Sphinx",
@@ -21173,8 +21250,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-life-gain-replacements"
+      ]
     },
     {
       "card_name": "Phosphorescent Feast",
@@ -23205,8 +23284,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Replicating Ring",
@@ -25325,8 +25406,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Shifting Sky",
@@ -26379,8 +26462,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "temporary-filtered-damage-prevention"
+      ]
     },
     {
       "card_name": "Soul Ransom",

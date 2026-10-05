@@ -6659,6 +6659,11 @@ impl GameState {
         self.effect_store
             .delayed_triggers
             .retain(|trigger| !trigger.expires_at_end_of_combat);
+        let retained_prevention_metrics = self.effect_store.delayed_triggers.iter()
+            .filter_map(|trigger| trigger.prevention_shield)
+            .collect::<std::collections::HashSet<_>>();
+        self.effect_store.prevention_effects
+            .cleanup_end_of_combat_retaining_metrics(&retained_prevention_metrics);
     }
 
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
