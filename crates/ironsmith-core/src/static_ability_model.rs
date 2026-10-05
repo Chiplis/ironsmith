@@ -3782,6 +3782,10 @@ impl<
         }
     }
 
+    pub fn can_block_any_number() -> Self {
+        Self::identified(StaticAbilityId::CanBlockAnyNumber, "can block any number of creatures")
+    }
+
     pub fn can_block_additional_creature_each_combat(additional: usize) -> Self {
         Self {
             id: Some(StaticAbilityId::CanBlockAdditionalCreatureEachCombat),

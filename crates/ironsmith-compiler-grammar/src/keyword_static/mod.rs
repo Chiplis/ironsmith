@@ -2,6 +2,8 @@ use crate::cards::builders::PlayerPredicateAst;
 use crate::cards::builders::PredicateAst;
 use crate::cards::builders::SourcePredicateAst;
 use crate::cards::builders::TurnEventPredicateAst;
+mod blocking_permissions;
+pub use blocking_permissions::parse_can_block_any_number_line;
 mod costs_replacements_and_permissions;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
@@ -1706,6 +1708,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_graveyard_cards_have_retrace_line),
         single_static_ability_ast_rule!(parse_cast_spells_from_hand_without_paying_mana_costs_line),
         single_static_ability_ast_rule!(parse_cost_reduction_line),
+        single_static_ability_ast_passthrough_rule!(parse_can_block_any_number_line),
         single_static_ability_ast_rule!(parse_can_block_additional_creature_each_combat_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_able_to_block_source_line),
         single_static_ability_ast_passthrough_rule!(

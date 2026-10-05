@@ -368,6 +368,8 @@ pub enum StaticAbilityId {
     TrampleOverPlaneswalkers,
     /// A blocking-only permission that preserves the attacker's landwalk abilities.
     BlockingAsThoughNoLandwalk,
+    /// Unbounded blocker capacity; appended to preserve serialized variant ordinals.
+    CanBlockAnyNumber,
 }
 
 impl StaticAbilityId {
@@ -447,6 +449,7 @@ impl StaticAbilityId {
             | CanBlockAsThoughNoShadow
             | CanBlockOnlyFlying
             | CanBlockAdditionalCreatureEachCombat
+            | CanBlockAnyNumber
             | MaxCreaturesCanAttackEachCombat
             | MaxCreaturesCanAttackYouEachCombat
             | MaxCreaturesCanBlockEachCombat
@@ -844,6 +847,7 @@ impl StaticAbilityId {
                 | CanBlockAsThoughNoShadow
                 | BlockingAsThoughNoLandwalk
                 | CanBlockOnlyFlying
+                | CanBlockAnyNumber
                 | MaxCreaturesCanAttackEachCombat
                 | MaxCreaturesCanBlockEachCombat
                 | CantBeBlockedByPowerOrLess

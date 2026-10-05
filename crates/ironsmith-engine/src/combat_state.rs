@@ -1037,7 +1037,13 @@ fn max_attackers_this_blocker_can_block(
     blocker_id: ObjectId,
     effects: &[crate::continuous::ContinuousEffect],
 ) -> usize {
-    let extra = static_abilities_for_object(game, blocker_id, effects)
+    let abilities = static_abilities_for_object(game, blocker_id, effects);
+    if abilities.iter().any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::CanBlockAnyNumber) {
+        // Capacity is unbounded by this rule; duplicate pairs, evasion, costs,
+        // controller scope and global blocker restrictions are still checked.
+        return usize::MAX;
+    }
+    let extra = abilities
         .iter()
         .filter_map(|ability| ability.additional_blockable_attackers())
         .sum::<usize>();
