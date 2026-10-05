@@ -2627,6 +2627,20 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
 ) -> Result<(), ActionError> {
+    can_activate_mana_ability_check_for_payment_with_view(game, player, permanent_id, ability_index,
+        ability, view, perf_ctx, None)
+}
+
+pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
+    game: &GameState,
+    player: PlayerId,
+    permanent_id: ObjectId,
+    ability_index: usize,
+    ability: &crate::ability::Ability,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    perf_ctx: Option<&crate::decision::BattlefieldAbilityContext>,
+    payment: Option<&crate::mana_payment::ManaPaymentRequest>,
+) -> Result<(), ActionError> {
     use crate::costs::CostCheckContext;
 
     let object = game
@@ -2790,6 +2804,27 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
     }
     let affordability_started_at = crate::perf::PerfTimer::start();
     let components = total_cost.costs();
+    for mana in components.iter().filter_map(|cost| cost.mana_cost_ref()).filter(|cost| cost.has_waterbend_obligation() || payment.is_some()) {
+        let mut request = crate::mana_payment::ManaPaymentRequest::new(player, permanent_id,
+            crate::costs::PaymentReason::ActivateManaAbility, mana.clone())
+            .with_spend_policy(game.mana_spend_policy(player, Some(permanent_id)));
+        if let Some(outer) = payment {
+            request.activation_excluded_sources.extend(outer.activation_excluded_sources.iter().copied());
+            request.reserved_tap_sources.extend(outer.reserved_tap_sources.iter().copied());
+            request.reserved_graveyard_sources.extend(outer.reserved_graveyard_sources.iter().copied());
+            request.reserved_permanent_sources.extend(outer.reserved_permanent_sources.iter().copied());
+        }
+        if components.iter().any(|cost| cost.requires_tap()) { request.reserved_tap_sources.push(permanent_id); }
+        request.allow_black_life = game.player_can_pay_black_with_life_for_reason(player, Some(permanent_id), request.reason);
+        match crate::mana_payment::check_mana_payment(game, &request) {
+            Ok(()) => {},
+            Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => {
+                game.record_token_resource_failure(&error);
+                return Err(ActionError::ExecutionFailure { source: permanent_id, error });
+            },
+            Err(_) => return Err(ActionError::CantPayCost),
+        }
+    }
     let mut idx = 0usize;
     while idx < components.len() {
         if let Some(choose) = components[idx]
@@ -2813,6 +2848,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
                 paired_cost,
                 &ctx,
                 has_activation_cost_modifiers,
+                payment.is_some(),
             )?;
             idx += 2;
             continue;
@@ -2841,6 +2877,7 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
             &components[idx],
             &ctx,
             has_activation_cost_modifiers,
+            payment.is_some(),
         )?;
         idx += 1;
     }
@@ -2865,6 +2902,7 @@ fn mana_ability_cost_component_payable(
     cost: &crate::costs::Cost,
     ctx: &crate::costs::CostCheckContext,
     has_activation_cost_modifiers: bool,
+    mana_was_checked: bool,
 ) -> Result<(), ActionError> {
     use crate::costs::{can_pay_with_check_context, can_potentially_pay_with_check_context};
 
@@ -2874,6 +2912,7 @@ fn mana_ability_cost_component_payable(
     }
     if cost.processing_mode().is_mana_payment() {
         if let Some(mana_cost) = cost.mana_cost_ref() {
+            if mana_was_checked || mana_cost.has_waterbend_obligation() { return Ok(()); }
             if !view.can_potentially_pay_with_reason(
                 player,
                 Some(permanent_id),
@@ -3009,6 +3048,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         ability_index,
         mana_color_restriction,
         None,
+        Vec::new(),
         decision_maker,
     )
 }
@@ -3020,6 +3060,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
     ability_index: usize,
     mana_color_restriction: Option<Vec<crate::color::Color>>,
     interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    reserved_tap_sources: Vec<ObjectId>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<Vec<TriggerEvent>, ActionError> {
     let checkpoint = game.clone();
@@ -3089,6 +3130,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
                 .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
             cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
+            cost_ctx.reserved_tap_sources = reserved_tap_sources;
             let cost_summary =
                 pay_total_cost_without_preflight_with_choice(game, &total_cost, &mut cost_ctx)
                     .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
@@ -3330,6 +3372,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
                 cost_ctx.effect_outcomes = execution_ctx.effect_outcomes.clone();
+                if costs.iter().any(|cost| cost.requires_tap()) { cost_ctx.reserved_tap_sources.push(source); }
                 adjusted_component.0.can_pay(game, &cost_ctx)?;
 
                 // Some multi-object costs are represented as a choice that tags the
@@ -3707,7 +3750,13 @@ fn pay_total_cost_branch_without_execution_context(
                     continue;
                 }
 
-                pay_component_without_execution_context(game, &costs[idx], cost_ctx)?;
+                let previous = cost_ctx.reserved_tap_sources.clone();
+                if costs[idx + 1..].iter().any(|cost| cost.requires_tap()) {
+                    cost_ctx.reserved_tap_sources.push(cost_ctx.source);
+                }
+                let result = pay_component_without_execution_context(game, &costs[idx], cost_ctx);
+                cost_ctx.reserved_tap_sources = previous;
+                result?;
                 if cost_ctx.interactive_mana_exclusions.is_some()
                     && cost_ctx.decision_maker.awaiting_choice()
                 {
@@ -4137,7 +4186,7 @@ fn pay_total_cost_branch_in_context(
 ) -> Result<(), CostPaymentError> {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
-            for component in costs {
+            for (index, component) in costs.iter().enumerate() {
                 pay_component_in_context(
                     game,
                     payer,
@@ -4146,6 +4195,7 @@ fn pay_total_cost_branch_in_context(
                     reason,
                     provenance,
                     execution_ctx,
+                    if costs[index + 1..].iter().any(|cost| cost.requires_tap()) { vec![source] } else { Vec::new() },
                 )?;
             }
             Ok(())
@@ -4245,14 +4295,19 @@ fn pay_component_without_execution_context(
             cost_ctx.reason,
         );
         let execution = cost_ctx.capture_execution_context();
-        if let Some(exclusions) = cost_ctx.interactive_mana_exclusions.clone() {
+        if cost_ctx.interactive_mana_exclusions.is_some() || adjusted_cost.has_waterbend_obligation() {
+            adjusted_cost.waterbend_capacity_checked(cost_ctx.x_value.unwrap_or(0)).ok_or_else(|| CostPaymentError::ExecutionFailed(
+                crate::effects::ExecutionError::IncompleteEvidence("Waterbend payment quantity overflows".into())))?;
+            let adjusted_cost = adjusted_cost.bind_x_payment_if_unbound(cost_ctx.x_value.unwrap_or(0));
+            let adjusted_cost = adjusted_cost.with_pips(GameState::expanded_payment_pips(&adjusted_cost, cost_ctx.x_value.unwrap_or(0), false));
             return crate::mana_payment::pay_mana_interactively_in_context(
                 game,
                 cost_ctx.payer,
                 cost_ctx.source,
                 adjusted_cost,
                 cost_ctx.reason,
-                exclusions,
+                cost_ctx.interactive_mana_exclusions.clone().unwrap_or_default(),
+                cost_ctx.reserved_tap_sources.clone(),
                 cost_ctx.decision_maker,
                 Some(&execution),
             );
@@ -4293,12 +4348,17 @@ fn pay_component_in_context(
     reason: crate::costs::PaymentReason,
     provenance: crate::provenance::ProvNodeId,
     execution_ctx: &mut ExecutionContext<'_>,
+    reserved_tap_sources: Vec<ObjectId>,
 ) -> Result<(), CostPaymentError> {
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
         let adjusted_cost =
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason);
         let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
+        if adjusted_cost.has_waterbend_obligation() {
+            return crate::mana_payment::pay_mana_interactively_in_context(game, payer, source, adjusted_cost,
+                reason, Vec::new(), reserved_tap_sources, execution_ctx.decision_maker, Some(&execution));
+        }
         return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
             payer,
@@ -4313,6 +4373,7 @@ fn pay_component_in_context(
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
         .with_provenance(provenance);
+    cost_ctx.reserved_tap_sources = reserved_tap_sources;
     cost_ctx.source_snapshot = execution_ctx.source_snapshot.clone();
     cost_ctx.replacement = execution_ctx.replacement.clone();
     cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());

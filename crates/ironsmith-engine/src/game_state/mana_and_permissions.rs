@@ -1893,6 +1893,7 @@ impl GameState {
     ) -> Vec<Vec<crate::mana::ManaSymbol>> {
         use crate::mana::ManaSymbol;
 
+        let x_value = cost.payment_x_value(x_value);
         let mut pips = Vec::new();
         for pip in cost.pips() {
             if pip.len() == 1 {

@@ -53,6 +53,13 @@ pub fn parse_unless_pays_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Unless
     let tokens = primitives::parse_prefix(tokens, primitives::kw("unless"))
         .map(|(_, rest)| rest)
         .unwrap_or(tokens);
+    if let Some((index, _, _)) = primitives::find_prefix(tokens, || primitives::kw("waterbend")) {
+        let player_tokens = trim_payment_edges(&tokens[..index]);
+        let payment_tokens = trim_payment_edges(&tokens[index..]);
+        if !player_tokens.is_empty() {
+            return Some(UnlessPaysShape { player_tokens, payment_tokens, kind: UnlessPaymentKind::Cost });
+        }
+    }
     let (pays_idx, (), payment_tokens) = primitives::find_prefix(tokens, || {
         winnow::combinator::alt((primitives::kw("pay"), primitives::kw("pays"))).void()
     })?;

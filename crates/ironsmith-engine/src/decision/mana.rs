@@ -17,6 +17,10 @@ pub(super) use resumable::{
 
 pub use mechanics::*;
 
+pub(super) fn check_scoped_mana_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
+    resumable::check_payment(game, request)
+}
+
 pub(crate) fn mana_cost_has_black_symbol(cost: &crate::mana::ManaCost) -> bool {
     cost.pips()
         .iter()
@@ -3065,7 +3069,7 @@ fn mana_cost_can_be_paid_with_view_at_x(
                 })
             })
         });
-    if !cost.spending_restrictions().is_empty()
+    if !cost.spending_restrictions().is_empty() || cost.has_waterbend_obligation()
         || has_restricted_mana
         || crate::mana_payment::has_potential_mana_triggers(game, view)
         || crate::mana_payment::has_mana_modifying_replacements(game)
@@ -3194,7 +3198,7 @@ fn mana_cost_can_be_paid_by_caster_or_assist_with_view_at_x(
         .filter(|helper| *helper != caster && game.player(*helper).is_some())
         .any(|helper| {
             (1..=generic_total).any(|contribution| {
-                if cost.has_x_spending_restriction() {
+                if cost.has_x_spending_restriction() || cost.has_waterbend_obligation() {
                     let remaining =
                         mana_cost_with_locked_x_and_generic_reduction(cost, x_value, contribution);
                     let completion = crate::mana_payment::ManaPaymentRequest::new(
@@ -3260,7 +3264,7 @@ pub(crate) fn max_x_payable_with_payment_resources(
     let delve = spell_has_delve(game, spell);
     let convoke = spell_has_convoke(game, spell);
     let improvise = spell_has_improvise(game, spell);
-    if !cost.has_x() || !(assist || delve || convoke || improvise) {
+    if !cost.has_x() || !(assist || delve || convoke || improvise || cost.has_waterbend_obligation()) {
         return None;
     }
     let view = DerivedGameView::new(game);
@@ -3284,6 +3288,11 @@ pub(crate) fn max_x_payable_with_payment_resources(
     }
     if improvise {
         tap_resources.extend(get_improvise_artifacts(game, caster));
+    }
+    if cost.has_waterbend_obligation() {
+        let request = crate::mana_payment::ManaPaymentRequest::new(caster, spell_id,
+            crate::costs::PaymentReason::CastSpell, cost.clone()).with_x(1);
+        tap_resources.extend(crate::mana_payment::waterbend_sources(game, &request));
     }
     upper_bound = upper_bound.saturating_add(tap_resources.len() as u32);
     if delve {
@@ -7256,7 +7265,7 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
     // The legacy color-only solver cannot retain production evidence. Route
     // constrained costs through the same full request used at payment, before
     // projecting to pips or entering that solver's symbol-only memo cache.
-    if !cost.spending_restrictions().is_empty()
+    if !cost.spending_restrictions().is_empty() || cost.has_waterbend_obligation()
         || crate::mana_payment::has_mana_modifying_replacements(game)
         || crate::mana_payment::has_potential_mana_triggers(game, view)
     {

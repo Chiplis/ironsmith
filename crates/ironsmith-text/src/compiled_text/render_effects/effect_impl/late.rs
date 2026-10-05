@@ -2440,6 +2440,12 @@
     }
     if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
         let player = describe_choose_spec(&pay_mana.player);
+        if pay_mana.cost.has_waterbend_obligation() {
+            let surface = pay_mana.cost.payment_surface();
+            if let Some(amount) = surface.strip_prefix("Waterbend ") {
+                return format!("{} {} {}", player, player_verb(&player, "waterbend", "waterbends"), amount);
+            }
+        }
         return format!(
             "{} {} {}",
             player,

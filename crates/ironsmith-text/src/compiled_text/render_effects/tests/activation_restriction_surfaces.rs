@@ -90,7 +90,7 @@ fn ward_waterbend_materializes_and_preserves_its_keyword_cost() {
     );
     let debug = format!("{definition:#?}");
     assert!(debug.contains("Ward"), "{debug}");
-    assert!(debug.contains("OneOf"), "{debug}");
+    assert!(debug.contains("waterbend_payment_scope"), "{debug}");
 }
 
 #[test]

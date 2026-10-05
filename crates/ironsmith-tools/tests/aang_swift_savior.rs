@@ -49,11 +49,8 @@ fn waterbend_eight_preserves_every_mana_and_tap_payment_branch() {
             }
         })
         .unwrap();
-    let branches = activated
-        .mana_cost
-        .as_one_of()
-        .expect("waterbend alternatives");
-    assert_eq!(branches.len(), 9);
+    let mana = activated.mana_cost.mana_cost().expect("typed Waterbend obligation");
+    assert_eq!(mana.waterbend_capacity(0), 8);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     for taps in 0..=8 {
@@ -89,7 +86,7 @@ fn waterbend_eight_preserves_every_mana_and_tap_payment_branch() {
             .add(ManaSymbol::Colorless, (8 - taps) as u32);
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = ironsmith::costs::CostContext::new(source, alice, &mut dm);
-        for cost in branches[taps].costs() {
+        for cost in activated.mana_cost.costs() {
             cost.pay(&mut game, &mut ctx)
                 .expect("exact waterbend resources suffice");
         }

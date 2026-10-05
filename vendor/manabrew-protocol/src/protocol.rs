@@ -1,0 +1,369 @@
+pub use crate::deck_dto::Deck;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+// The wire-compat number IS the crate major: a breaking wire change must ship
+// as a breaking (major) release of this crate, never as a separate constant.
+pub const PROTOCOL_VERSION: u32 = major_of(env!("CARGO_PKG_VERSION_MAJOR"));
+
+const fn major_of(major: &str) -> u32 {
+    let bytes = major.as_bytes();
+    let mut value = 0u32;
+    let mut i = 0;
+    while i < bytes.len() {
+        value = value * 10 + (bytes[i] - b'0') as u32;
+        i += 1;
+    }
+    value
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub struct PlayerDeckInfo {
+    pub username: String,
+    pub deck_name: String,
+    pub deck: Deck,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub commander_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub avatar: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
+pub enum ClientMessage {
+    Authenticate {
+        username: String,
+        password: String,
+        #[serde(default)]
+        service: bool,
+    },
+
+    Ping,
+
+    ListRooms,
+
+    ListPlayers,
+
+    CreateRoom {
+        room_name: String,
+        max_players: u8,
+        format: GameFormat,
+        #[serde(default)]
+        protocol_version: u32,
+        #[serde(default)]
+        hosted: bool,
+        #[serde(default)]
+        engine: EngineKind,
+        #[serde(default)]
+        draft_config: Option<DraftConfig>,
+        #[serde(default)]
+        sealed_config: Option<SealedConfig>,
+        #[serde(default)]
+        official_key: Option<String>,
+        #[serde(default)]
+        password: Option<String>,
+        #[serde(default)]
+        reconnect_timeout_s: Option<u32>,
+    },
+
+    JoinRoom {
+        room_id: String,
+        #[serde(default)]
+        observe: bool,
+        #[serde(default)]
+        as_bot: bool,
+        #[serde(default)]
+        password: Option<String>,
+    },
+
+    ResumeRoom(ResumeRoomRequest),
+
+    LeaveRoom,
+
+    SetReady {
+        ready: bool,
+    },
+
+    SetDeckSelection {
+        deck_name: String,
+        deck: Deck,
+        commander_name: Option<String>,
+        #[serde(default)]
+        avatar: Option<String>,
+    },
+
+    SetFormat {
+        format: GameFormat,
+    },
+
+    SetMaxPlayers {
+        max_players: u8,
+    },
+
+    StartGame {
+        #[serde(default)]
+        format: Option<GameFormat>,
+    },
+
+    EndGame {
+        game_id: String,
+    },
+
+    RequestResync,
+
+    BroadcastState {
+        state: serde_json::Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        /// A null value will broadcast to the whole room
+        target_player: Option<String>,
+    },
+
+    TurnChange {
+        new_active_player: String,
+        turn_number: u32,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ServerMessage {
+    AuthResult {
+        success: bool,
+        player_id: Option<String>,
+        reconnected: Option<bool>,
+        error: Option<String>,
+    },
+
+    RoomList {
+        rooms: Vec<RoomInfo>,
+    },
+
+    PlayerList {
+        players: Vec<PlayerInfo>,
+    },
+
+    RoomCreated {
+        room_id: String,
+        room_name: String,
+        room: RoomInfo,
+        #[serde(default)]
+        resume_token: Option<String>,
+    },
+
+    RoomResumed {
+        room: RoomInfo,
+    },
+
+    PlayerJoined {
+        room_id: String,
+        username: String,
+    },
+
+    PlayerLeft {
+        room_id: String,
+        username: String,
+    },
+
+    PlayerConnected {
+        username: String,
+    },
+
+    PlayerDisconnected {
+        username: String,
+    },
+
+    ReadyStateChanged {
+        username: String,
+        ready: bool,
+    },
+
+    RoomUpdate {
+        room: RoomInfo,
+    },
+
+    GameStarted {
+        room_id: String,
+        game_id: String,
+        player_order: Vec<String>,
+        player_decks: Vec<PlayerDeckInfo>,
+        starting_life: i32,
+    },
+
+    StateUpdate {
+        from_player: String,
+        state: serde_json::Value,
+    },
+
+    TurnChanged {
+        from_player: String,
+        new_active_player: String,
+        turn_number: u32,
+    },
+
+    GameAborted {
+        room_id: String,
+    },
+
+    Error {
+        code: String,
+        message: String,
+    },
+
+    ServerShuttingDown {
+        reconnect_in_s: u32,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub struct ResumeRoomRequest {
+    pub room_id: String,
+    pub resume_token: String,
+    pub room_name: String,
+    pub max_players: u8,
+    pub format: GameFormat,
+    #[serde(default)]
+    pub hosted: bool,
+    #[serde(default)]
+    pub engine: EngineKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub official_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub reconnect_timeout_s: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub draft_config: Option<DraftConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sealed_config: Option<SealedConfig>,
+    pub player_order: Vec<String>,
+    pub player_decks: Vec<PlayerDeckInfo>,
+    pub starting_life: i32,
+    #[serde(default)]
+    pub bot_players: Vec<String>,
+    pub game_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomInfo {
+    pub room_id: String,
+    pub room_name: String,
+    pub host: String,
+    #[serde(default)]
+    pub protocol_version: u32,
+    #[serde(default)]
+    pub hosted: bool,
+    #[serde(default)]
+    pub official: bool,
+    #[serde(default)]
+    pub password_protected: bool,
+    pub players: Vec<RoomPlayerInfo>,
+    pub max_players: u8,
+    pub format: GameFormat,
+    pub status: RoomStatus,
+    #[serde(default)]
+    pub engine: EngineKind,
+    #[serde(default = "default_reconnect_timeout_s")]
+    pub reconnect_timeout_s: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_config: Option<DraftConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed_config: Option<SealedConfig>,
+}
+
+pub const DEFAULT_RECONNECT_TIMEOUT_S: u32 = 60;
+
+fn default_reconnect_timeout_s() -> u32 {
+    DEFAULT_RECONNECT_TIMEOUT_S
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub struct SealedConfig {
+    pub set_code: String,
+    pub num_boosters: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub base_seed: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub struct DraftConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub set_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cube_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cube_name: Option<String>,
+    pub rounds: u8,
+    pub picks_per_pass: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "number")]
+    pub seed: Option<u64>,
+    pub fill_with_bots: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomPlayerInfo {
+    pub username: String,
+    pub ready: bool,
+    pub connected: bool,
+    #[serde(default)]
+    pub is_bot: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_deck_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayerInfo {
+    pub username: String,
+    pub player_id: String,
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RoomStatus {
+    Lobby,
+    InGame,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub enum GameFormat {
+    Any,
+    Standard,
+    Pioneer,
+    Modern,
+    Legacy,
+    Vintage,
+    Pauper,
+    Commander,
+    Brawl,
+    Oathbreaker,
+    Draft,
+    Sealed,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, TS)]
+#[ts(export, export_to = "lobby/index.ts")]
+pub enum EngineKind {
+    #[default]
+    Manabrew,
+    Forge,
+    Ironsmith,
+}

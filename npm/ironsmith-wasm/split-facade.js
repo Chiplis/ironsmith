@@ -252,6 +252,13 @@ function wasmInitOptions(input) {
   return { module_or_path: input };
 }
 
+function requireManabrewProtocolVersion(engine, config) {
+  const expected = engine.manabrewProtocolVersion();
+  if (config?.protocolVersion !== expected) {
+    throw new Error(`Manabrew protocol version mismatch: expected ${expected}, received ${config?.protocolVersion ?? 0}`);
+  }
+}
+
 function installCompatibilityMethods() {
   for (const [name, operation] of Object.entries(verifierMethods)) {
     if (typeof WasmGame.prototype[name] === "function") continue;
@@ -288,6 +295,7 @@ function installCompatibilityMethods() {
       Object.defineProperty(proto, "validateManabrewMatchConfig", {
         configurable: true,
         value(config) {
+          requireManabrewProtocolVersion(this, config);
           compileAndRegisterCardSources(this, manabrewDeckSources(config?.decks));
           return validateManabrewMatchConfig.call(this, config);
         },
@@ -297,6 +305,7 @@ function installCompatibilityMethods() {
       Object.defineProperty(proto, "startManabrewMatch", {
         configurable: true,
         value(config) {
+          requireManabrewProtocolVersion(this, config);
           compileAndRegisterCardSources(this, manabrewDeckSources(config?.decks));
           return startManabrewMatch.call(this, config);
         },

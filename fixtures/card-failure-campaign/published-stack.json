@@ -801,6 +801,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/823"
+    },
+    {
+      "stage": 58,
+      "branch": "fix/card-failures-58-alternative-payment-bodies",
+      "base": "fix/card-failures-57-timing-and-counter-costs",
+      "source_integration_commit": "b26366f2befef541c12898765c0de034d4b81ad5",
+      "remote_commit": "12b3c589b72228637b9397f2bad4fa2b602a8080",
+      "tree": "8eaf992ea30301801ea4e9c37bb880834b4a5cf2",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 824,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/824"
     }
   ]
 }

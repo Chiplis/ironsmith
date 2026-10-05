@@ -1759,7 +1759,8 @@ pub(super) fn protected_object_ids_for_decision(
             ids.extend(payment.plan.allocations.iter().filter_map(|allocation| {
                 match allocation.payment {
                     ironsmith::mana_payment::PlannedPipPayment::Convoke(source)
-                    | ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => Some(source),
+                    | ironsmith::mana_payment::PlannedPipPayment::Improvise(source)
+                    | ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => Some(source),
                     _ => None,
                 }
             }));

@@ -102,8 +102,8 @@ fn assemble_activated_line(
     let presentation = activated.presentation.clone().or_else(|| {
         activated
             .cost
-            .waterbend_generic
-            .map(|generic| PresentationLabel::AbilityWord(format!("Waterbend {{{generic}}}")))
+            .waterbend_cost.as_ref()
+            .map(|cost| PresentationLabel::AbilityWord(format!("Waterbend {}", cost.to_oracle())))
     });
     let compiler_cost = match activation_costs::assemble_activation_cost(&activated.cost) {
         Ok(cost) => cost,

@@ -106,6 +106,8 @@ pub struct CostContext<'dm> {
     /// Some during an interactive cost transaction. The entries exclude ancestor
     /// mana abilities from funding themselves; special actions start with no exclusions.
     pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    /// Exact resources reserved by other unpaid components of this cost.
+    pub reserved_tap_sources: Vec<ObjectId>,
 }
 
 impl std::fmt::Debug for CostContext<'_> {
@@ -151,6 +153,7 @@ impl<'dm> CostContext<'dm> {
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
+            reserved_tap_sources: Vec::new(),
         }
     }
 
@@ -259,6 +262,7 @@ impl CostCheckContext {
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
+            reserved_tap_sources: Vec::new(),
         }
     }
 }

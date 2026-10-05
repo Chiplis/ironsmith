@@ -520,26 +520,6 @@ impl Ward {
     }
 }
 
-fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
-    let ironsmith_core::TotalCostKind::OneOf(branches) = cost.kind() else {
-        return None;
-    };
-    branches.iter().find_map(|branch| {
-        let ironsmith_core::TotalCostKind::All(costs) = branch.kind() else {
-            return None;
-        };
-        costs.iter().find_map(|cost| {
-            let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
-            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-            choose
-                .tag
-                .as_str()
-                .strip_prefix("waterbend_cost_")?
-                .parse::<u32>()
-                .ok()
-        })
-    })
-}
 
 impl StaticAbilityKind for Ward {
     // Ward is handled when an object becomes targeted. It does not emit
@@ -561,10 +541,9 @@ impl StaticAbilityKind for Ward {
     }
 
     fn display(&self) -> String {
-        // Waterbend's expanded tap branches are the executable payment model;
-        // the authored keyword is the public cost surface.
-        if let Some(generic) = ward_waterbend_generic(&self.cost) {
-            return format!("Ward—Waterbend {{{generic}}}.");
+        if self.cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+            .any(|cost| cost.has_waterbend_obligation()) {
+            return format!("Ward—{}.", self.cost.display());
         }
         // Mana-only ward uses a space ("Ward {2}"); ward with any non-mana cost
         // uses an em dash ("Ward—Discard a card").

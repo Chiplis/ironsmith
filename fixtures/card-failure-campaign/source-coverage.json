@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+  "source_implementation_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 982,
-    "additional_proposed_compile_entries": 984,
+    "additional_proposed_unique_cards": 988,
+    "additional_proposed_compile_entries": 990,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 982,
+    "source_proposals_excluding_identified_runtime_gaps": 988,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -3834,6 +3834,31 @@
         "Typed alternative-method references survive permanent/header/self-replacement lowering with complete original-token validation.",
         "Actual dated, undated and unpaid receipts remain distinct across source departure, copy and incarnation reset; temporal and combat qualification failures propagate through checked owners."
       ]
+    },
+    {
+      "id": "waterbend-scoped-payment-bodies",
+      "stage": 59,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/card-failure-campaign/waterbend-payment-bodies.json",
+      "baseline_entries": [
+        "Benevolent River Spirit",
+        "Crashing Wave",
+        "Foggy Swamp Visions",
+        "Water Whip",
+        "Waterbender's Restoration",
+        "Waterbending Lesson"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f",
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Scoped Waterbend obligations retain independent X bindings and eligibility through cost addition, taxes, reductions, Assist and explicit zero payment.",
+        "Exact resource reservation and ancestor separation prevent double taps while preserving legal self-source substitutions; direct/planned/manual payment owners share atomic checked resource scope.",
+        "Six complete frozen bodies and Katara migration have 27 authored public scenario groups plus planner, schema and UI contracts."
+      ],
+      "compatibility_boundary": "Native browser/peer-lobby/replay entry points remain unchanged by source. The optional Manabrew adapter requires matching local protocol-3 peers; missing/v2 configurations are rejected before deck registration. No external v2 compatibility or executed multiplayer behavior is claimed."
     }
   ],
   "cards": [
@@ -6451,8 +6476,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Benevolent Unicorn",
@@ -9592,8 +9621,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Craven Hulk",
@@ -14248,8 +14281,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Folio of Fancies",
@@ -37153,8 +37190,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Waterbender's Restoration",
@@ -37163,8 +37204,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Waterbending Lesson",
@@ -37173,8 +37218,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "waterbend-scoped-payment-bodies"
+      ],
+      "source_review_commit": "0f91bf03a",
+      "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
     },
     {
       "card_name": "Waterlogged Hulk // Watertight Gondola",

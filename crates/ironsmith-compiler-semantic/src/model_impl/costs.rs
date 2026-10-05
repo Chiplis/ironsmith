@@ -90,7 +90,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
 
     fn display(&self) -> String {
         match self {
-            Self::Mana(cost) => cost.to_oracle(),
+            Self::Mana(cost) => cost.payment_surface(),
             Self::DynamicMana(cost) => cost.base.to_oracle(),
             Self::VariableMana { generic } => format!("{{{generic}}}"),
             Self::Tap => "{T}".to_string(),

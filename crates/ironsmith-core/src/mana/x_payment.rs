@@ -110,8 +110,9 @@ impl ManaCost {
     /// Combine independently priced components without reconstructing X
     /// provenance from their already-expanded generic pips.
     pub fn combined_with(&self, other: &Self) -> Self {
-        let mut pips = self.pips.clone();
-        pips.extend(other.pips.iter().cloned());
+        let scoped_waterbend = self.has_waterbend_obligation() || other.has_waterbend_obligation();
+        let mut pips = if scoped_waterbend { self.pips_with_bound_x_expanded() } else { self.pips.clone() };
+        pips.extend(if scoped_waterbend { other.pips_with_bound_x_expanded() } else { other.pips.clone() });
         let mut result = Self::from_pips(pips);
         for rule in self
             .spending_restrictions()
@@ -130,7 +131,7 @@ impl ManaCost {
                             .iter()
                             .filter(|pip| pip.contains(&ManaSymbol::X))
                             .count() as u32,
-                        announced_x: None,
+                        announced_x: cost.waterbend_payment_scope.as_ref().and_then(|scope| scope.x_pip_binding),
                         ordinary_generic: cost.generic_mana_total(),
                         prepaid_generic: Vec::new(),
                         required: None,
@@ -180,6 +181,7 @@ impl ManaCost {
             };
             result.x_payment_scope = Some(left);
         }
+        result.combine_waterbend_from(self, other);
         result.required_actual_payment =
             match (self.required_actual_payment, other.required_actual_payment) {
                 (Some(a), Some(b)) => Some(ActualManaAllocation(std::array::from_fn(|index| {
@@ -229,17 +231,24 @@ impl ManaCost {
     /// Bind before expanding X or reducing its generic price. Rebinding an
     /// already priced cost is deliberately not performed by a request's X=0.
     pub fn bind_x_payment(mut self, x: u32) -> Self {
+        if let Some(scope) = self.waterbend_payment_scope.as_mut() {
+            for obligation in &mut scope.obligations { obligation.announced_x = Some(x); }
+            scope.capacity.bind(x);
+            if self.pips.iter().any(|pip| pip.contains(&ManaSymbol::X)) { scope.x_pip_binding = Some(x); }
+        }
         if let Some(scope) = self.x_payment_scope.as_mut() {
             scope.announced_x = Some(x);
         }
         self
     }
-    pub fn bind_x_payment_if_unbound(self, x: u32) -> Self {
-        if self.x_payment_is_bound() {
-            self
-        } else {
-            self.bind_x_payment(x)
+    pub fn bind_x_payment_if_unbound(mut self, x: u32) -> Self {
+        if let Some(scope) = self.x_payment_scope.as_mut() { scope.announced_x.get_or_insert(x); }
+        if let Some(scope) = self.waterbend_payment_scope.as_mut() {
+            for obligation in &mut scope.obligations { obligation.announced_x.get_or_insert(x); }
+            scope.capacity.bind_if_unbound(x);
+            if self.pips.iter().any(|pip| pip.contains(&ManaSymbol::X)) { scope.x_pip_binding.get_or_insert(x); }
         }
+        self
     }
     pub fn required_x_allocation(&self) -> Option<XManaAllocation> {
         self.x_payment_scope

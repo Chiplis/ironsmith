@@ -33,6 +33,13 @@ fn parse_trailing_discard_unless_predicate(
                 predicate_tokens
             }
         };
+    if crate::grammar::effects::parse_unless_pays_shape_tokens(predicate_tokens).is_some() {
+        let (payer, cost) = crate::effect_sentences::clause_primitives::parse_unless_pays_clause(predicate_tokens)?;
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+            effects: vec![EffectAst::subject_verb_discard(player, count, false, any_number, discard_filter, None)],
+            player: payer, cost, before_delayed_step: false,
+        })));
+    }
     let predicate =
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)?;
     let discard =

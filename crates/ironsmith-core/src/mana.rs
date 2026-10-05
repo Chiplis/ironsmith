@@ -2,6 +2,8 @@ use crate::tag::TagKeyWalk;
 
 use crate::color::{Color, ColorSet};
 mod x_payment;
+mod waterbend;
+pub use waterbend::{WaterbendCapacity, WaterbendObligation, WaterbendPaymentScope};
 pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};
 
 /// Atomic mana payment options.
@@ -137,24 +139,27 @@ pub struct ManaCost {
     x_payment_scope: Option<XPaymentScope>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     required_actual_payment: Option<ActualManaAllocation>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    waterbend_payment_scope: Option<WaterbendPaymentScope>,
 }
 
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
-        Self { pips: Vec::new(), spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
+        Self { pips: Vec::new(), waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a list of pips, where each pip is a list of
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
+        Self { pips, waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
     }
 
     /// Creates a mana cost from a simple list of symbols (each becomes one pip).
     pub fn from_symbols(symbols: Vec<ManaSymbol>) -> Self {
         Self {
             pips: symbols.into_iter().map(|s| vec![s]).collect(),
+            waterbend_payment_scope: None,
             spending_restrictions: Vec::new(),
             x_payment_scope: None,
             required_actual_payment: None,
@@ -182,7 +187,7 @@ impl ManaCost {
 
     /// Rewrite the price while retaining transaction-wide spending rules.
     pub fn with_pips(&self, pips: Vec<Vec<ManaSymbol>>) -> Self {
-        let mut result = Self { pips, spending_restrictions: self.spending_restrictions.clone(),
+        let mut result = Self { pips, waterbend_payment_scope: self.waterbend_payment_scope.clone(), spending_restrictions: self.spending_restrictions.clone(),
             x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment };
         if let Some(scope) = result.x_payment_scope.as_mut() {
             let old_x = self.pips.iter().filter(|pip| pip.contains(&ManaSymbol::X)).count() as u32;
@@ -197,6 +202,7 @@ impl ManaCost {
             scope.ordinary_generic = scope.ordinary_generic.saturating_add(
                 after.saturating_sub(before).saturating_sub(added_x.saturating_mul(value)));
         }
+        result.reprice_waterbend_from(self);
         result
     }
 
@@ -278,14 +284,17 @@ impl ManaCost {
 
     /// Adds a pip with multiple alternative payment options.
     pub fn push_alternatives(&mut self, alternatives: Vec<ManaSymbol>) {
-        let mut pips = self.pips.clone();
+        let base = if self.has_waterbend_obligation() {
+            self.with_pips(self.pips_with_bound_x_expanded())
+        } else { self.clone() };
+        let mut pips = base.pips.clone();
         pips.push(alternatives);
-        *self = self.with_pips(pips);
+        *self = base.with_pips(pips);
     }
 
     /// Returns true if this mana cost is empty (costs nothing).
     pub fn is_empty(&self) -> bool {
-        self.pips.is_empty()
+        self.pips.is_empty() && !self.has_waterbend_obligation()
     }
 
     /// Returns the number of pips in this mana cost.

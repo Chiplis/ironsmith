@@ -273,7 +273,14 @@ pub fn can_pay_cost_with_reason(
     // lands"). The ordinary component-by-component check has no tag state, so
     // route those totals through the context-aware checker that can construct a
     // legal speculative selection without making the player's actual choice.
-    if total_cost_has_tagged_choice_consumer(cost) {
+    fn has_waterbend(cost: &TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost|
+                cost.mana_cost_ref().is_some_and(|mana| mana.has_waterbend_obligation())),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(has_waterbend),
+        }
+    }
+    if total_cost_has_tagged_choice_consumer(cost) || has_waterbend(cost) {
         let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
         let mut execution_ctx =
             crate::effects::ExecutionContext::new(source_id, player, &mut decision_maker);

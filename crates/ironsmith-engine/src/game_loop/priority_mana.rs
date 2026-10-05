@@ -294,14 +294,12 @@ fn execute_planned_mana_activations(
         );
         let activation_cost_has_tap =
             activated_ability_has_tap_cost(game, step.source, step.ability_index);
-        let events =
-            crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
-                game,
-                payer,
-                step.source,
-                step.ability_index,
-                step.color_restriction.clone(),
-                &mut replay,
+        let request = payment.request.reserving_alternatives(&payment.plan.allocations);
+        let mut exclusions = request.activation_excluded_sources.clone();
+        exclusions.push(step.source);
+        let events = crate::special_actions::perform_mana_ability_with_payment_mode(
+                game, payer, step.source, step.ability_index, step.color_restriction.clone(),
+                Some(exclusions), request.reserved_tap_sources, &mut replay,
             )
             .map_err(|error| match error {
                 crate::special_actions::ActionError::ExecutionFailure { error, .. } => {
@@ -343,6 +341,27 @@ fn execute_planned_mana_activations(
         drain_pending_trigger_events(game, trigger_queue);
     }
     Ok(false)
+}
+
+/// Waterbend has the same payment owner for spells, activations and effects.
+/// Emit completion only after mana/life payment succeeds below.
+fn execute_planned_waterbend_taps(
+    game: &mut GameState, payment: &crate::mana_payment::PendingManaPayment,
+) -> Result<(), GameLoopError> {
+    if !crate::mana_payment::validate_waterbend_taps(game, &payment.request, &payment.plan.allocations) {
+        return Err(GameLoopError::InvalidState("planned Waterbend resources are no longer eligible".into()));
+    }
+    let before = crate::events::other::before_tap_state_snapshots(game);
+    let mut events = Vec::new();
+    for allocation in &payment.plan.allocations {
+        if let crate::mana_payment::PlannedPipPayment::Waterbend(id) = allocation.payment {
+            if let Some(event) = tap_permanent_with_trigger(game, id, payment.request.payer) { events.push(event); }
+        }
+    }
+    crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
+    crate::events::other::group_tap_state_events(game, &mut events, Default::default());
+    for event in events { game.queue_trigger_event(event.provenance(), event); }
+    Ok(())
 }
 
 fn execute_planned_keyword_payments(
@@ -454,29 +473,13 @@ pub(super) fn prompt_pending_mana_ability_payment(
         pending.mana_cost.clone(),
     )
     .with_spend_policy(spend_policy);
-    request.preferences.excluded_sources.push(pending.source);
-    request.preferences.excluded_sources.extend(
-        state
-            .pending_mana_parents
-            .iter()
-            .map(|parent| parent.source),
-    );
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
-        if !request
-            .preferences
-            .excluded_sources
-            .contains(&pending.source)
-        {
-            request.preferences.excluded_sources.push(pending.source);
-        }
     }
-    request.preferences.excluded_sources.extend(
-        state
-            .pending_mana_parents
-            .iter()
-            .map(|parent| parent.source),
-    );
+    request.activation_excluded_sources.extend(state.pending_mana_parents.iter().map(|parent| parent.source));
+    if pending.other_costs.iter().any(|cost| cost.requires_tap()) {
+        request.reserved_tap_sources.push(pending.source);
+    }
     request.preferences.normalize();
     request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
         && game.player_can_pay_black_with_life_for_reason(
@@ -611,6 +614,7 @@ pub(super) fn commit_prepared_spell_mana_payment(
                 "spell payer is missing".to_string(),
             ));
         };
+        execute_planned_waterbend_taps(game, &payment)?;
         if !game
             .try_pay_mana_cost_with_payment_options_and_dm(
                 payment.request.payer,
@@ -637,6 +641,9 @@ pub(super) fn commit_prepared_spell_mana_payment(
                 "spell payment failed validation and was rolled back".to_string(),
             ));
         }
+        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+            state.rollback_action(game); GameLoopError::ExecutionFailed(error)
+        })?;
         let pool_after = game
             .player(pending.caster)
             .map(|player| player.mana_pool.clone())
@@ -727,6 +734,7 @@ pub(super) fn commit_prepared_activation_mana_payment(
                 "activation payer is missing".to_string(),
             ));
         };
+        execute_planned_waterbend_taps(game, &payment)?;
         if !game
             .try_pay_mana_cost_with_payment_options_and_dm(
                 payment.request.payer,
@@ -753,6 +761,9 @@ pub(super) fn commit_prepared_activation_mana_payment(
                 "activation payment failed validation and was rolled back".to_string(),
             ));
         }
+        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+            state.rollback_action(game); GameLoopError::ExecutionFailed(error)
+        })?;
         let pool_after = game
             .player(pending.activator)
             .map(|player| player.mana_pool.clone())
@@ -1075,9 +1086,6 @@ fn apply_mana_payment_plan_response_inner(
         match response {
             ManaPaymentResponse::Replan { preferences } => {
                 let mut preferences = preferences.clone();
-                if !preferences.excluded_sources.contains(&pending.source) {
-                    preferences.excluded_sources.push(pending.source);
-                }
                 preferences.normalize();
                 payment.request.preferences = preferences;
                 pending.pending_mana_payment = Some(payment);
@@ -1128,6 +1136,7 @@ fn apply_mana_payment_plan_response_inner(
                 return Err(error);
             }
         }
+        execute_planned_waterbend_taps(game, &payment)?;
         if !game
             .try_pay_mana_cost_with_payment_options_and_dm(
                 payment.request.payer,
@@ -1154,6 +1163,9 @@ fn apply_mana_payment_plan_response_inner(
                 "mana-ability payment failed validation and was rolled back".to_string(),
             ));
         }
+        crate::mana_payment::record_waterbend_payment(game, &payment.request).map_err(|error| {
+            state.rollback_action(game); GameLoopError::ExecutionFailed(error)
+        })?;
         pending.mana_cost = crate::mana::ManaCost::new();
         pending.pending_mana_payment = None;
         if let Err(error) =
@@ -1337,6 +1349,7 @@ fn apply_mana_payment_plan_response_inner(
                 "Assist payer is missing".to_string(),
             ));
         };
+        execute_planned_waterbend_taps(game, &payment)?;
         if !game
             .try_pay_mana_cost_with_payment_options_and_dm(
                 payment.request.payer,

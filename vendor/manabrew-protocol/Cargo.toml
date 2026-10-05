@@ -1,0 +1,19 @@
+[package]
+name = "manabrew-protocol"
+version = "3.0.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/witchesofthehill/manabrew"
+homepage = "https://docs.manabrew.app/protocol/"
+documentation = "https://docs.rs/manabrew-protocol"
+description = "Wire protocol for manabrew multiplayer"
+
+[[bin]]
+name = "gen-protocol"
+path = "src/bin/gen_protocol.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ts-rs = { version = "10", features = ["no-serde-warnings"] }
+strum_macros = "0.28.0"

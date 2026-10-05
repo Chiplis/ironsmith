@@ -9,12 +9,6 @@ use crate::grammar::activation_costs::{ActivationCostCst, ActivationCostSegmentC
 pub fn assemble_activation_cost(
     cst: &ActivationCostCst,
 ) -> Result<CompilerTotalCost, CardTextError> {
-    if let Some(generic) = cst.waterbend_generic {
-        let mut total = CompilerTotalCost::ordered(vec![CompilerCost::VariableMana { generic }]);
-        total.is_loyalty_shorthand = cst.is_loyalty_shorthand;
-        return Ok(total);
-    }
-
     if !cst.alternative_branches.is_empty() {
         let mut branches = Vec::with_capacity(cst.alternative_branches.len());
         for branch in &cst.alternative_branches {

@@ -206,6 +206,14 @@ impl EffectExecutor for PayManaEffect {
         let bounded_x = if self.x_maximum.is_some() || chooses_x {
             let semantic_maximum = if let Some(maximum) = &self.x_maximum {
                 resolve_value(game, maximum, ctx)?.max(0) as u32
+            } else if self.cost.has_waterbend_obligation() {
+                let reason = payment_reason(ctx);
+                let adjusted = game.adjust_mana_cost_for_payment_reason(player_id, Some(ctx.source), &self.cost, reason);
+                let request = planner_request(game, player_id, ctx.source, adjusted, 0, reason);
+                crate::mana_payment::maximum_waterbend_x(game, &request).map_err(|failure| match failure {
+                    crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => error,
+                    _ => ExecutionError::IncompleteEvidence("unable to establish Waterbend X bound".into()),
+                })?
             } else {
                 crate::derived_view::DerivedGameView::new(game)
                     .potential_mana(player_id)
@@ -692,5 +700,39 @@ mod tests {
             game.player(alice).expect("alice exists").mana_pool.total(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod waterbend_x_contracts {
+    use super::*;
+    use crate::effects::EffectExecutor;
+    struct ChooseMaximum { maximum: Option<u32> }
+    impl crate::decision::DecisionMaker for ChooseMaximum {
+        fn decide_number(&mut self, _game: &GameState, context: &crate::decisions::context::NumberContext) -> u32 {
+            self.maximum = Some(context.max); context.max
+        }
+    }
+    #[test]
+    fn freely_chosen_waterbend_x_counts_tap_resources_and_keeps_multiple_x_symbols() {
+        for symbols in [1, 2] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let payer = PlayerId::from_index(0);
+            let mut resources = Vec::new();
+            for index in 0..2 {
+                let card = crate::card::CardBuilder::new(crate::CardId::new(), format!("Resource {index}"))
+                    .card_types(vec![crate::CardType::Artifact]).build();
+                resources.push(game.create_object_from_card(&card, payer, crate::Zone::Battlefield));
+            }
+            let cost = crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X; symbols]).with_waterbend();
+            let effect = PayManaEffect::new(cost, ChooseSpec::Player(PlayerFilter::You));
+            let mut chooser = ChooseMaximum { maximum: None };
+            let mut context = ExecutionContext::new(resources[0], payer, &mut chooser);
+            let outcome = effect.execute(&mut game, &mut context).unwrap();
+            assert!(outcome.execution_facts().contains(&ExecutionFact::ManaPaid { x_value: (2 / symbols) as u32 }));
+            assert_eq!(chooser.maximum, Some((2 / symbols) as u32));
+            assert!(resources.iter().all(|id| game.is_tapped(*id)));
+            assert_eq!(game.player(payer).unwrap().mana_pool.total(), 0);
+        }
     }
 }

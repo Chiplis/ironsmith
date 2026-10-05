@@ -3328,7 +3328,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
             })
             .count();
 
-        if potential.total() < total_mana_needed as u32 {
+        if !cost.has_waterbend_obligation() && potential.total() < total_mana_needed as u32 {
             return Err(GameLoopError::InvalidState(format!(
                 "Cannot afford spell: need {} mana but only have {} available. \
                 Consider paying life for Phyrexian mana or choosing a lower X value.",
@@ -3834,7 +3834,7 @@ fn assist_payment_request(
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         assistant, pending.spell_id, crate::costs::PaymentReason::CastSpell, cost,
     ).with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
-    if total.has_x_spending_restriction() {
+    if total.has_x_spending_restriction() || total.has_waterbend_obligation() {
         let mut caster_pending = pending.clone();
         caster_pending.assist_generic_contribution = amount;
         caster_pending.pending_mana_payment = None;
@@ -4231,14 +4231,7 @@ pub(super) fn activation_mana_payment_request(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    if pending.activation_cost_has_tap
-        && !request
-            .preferences
-            .excluded_sources
-            .contains(&pending.source)
-    {
-        request.preferences.excluded_sources.push(pending.source);
-    }
+    if pending.activation_cost_has_tap { request.reserved_tap_sources.push(pending.source); }
     request.preferences.normalize();
     Ok(request)
 }
@@ -6842,13 +6835,22 @@ pub(super) fn continue_activation(
                             Some(pending.source),
                             pending.payment_reason,
                         );
-                    compute_potential_mana(game, pending.activator)
+                    if cost.has_waterbend_obligation() {
+                        let mut request = crate::mana_payment::ManaPaymentRequest::new(pending.activator,
+                            pending.source, pending.payment_reason, cost.clone()).with_spend_policy(mana_spend_policy);
+                        request.allow_black_life = allow_black_life;
+                        if pending.activation_cost_has_tap { request.reserved_tap_sources.push(pending.source); }
+                        Some(crate::mana_payment::maximum_waterbend_x(game, &request).map_err(|failure| match failure {
+                            crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
+                            _ => GameLoopError::InvalidState("cannot price Waterbend X".into()),
+                        })?)
+                    } else { compute_potential_mana(game, pending.activator)
                         .max_x_for_cost_with_mana_spend_policy_and_black_life(
                             cost,
                             &mana_spend_policy,
                             allow_black_life,
                         )
-                        .into()
+                        .into() }
                 } else {
                     None
                 };
@@ -7028,7 +7030,7 @@ pub(super) fn continue_activation(
                             })
                             .count();
 
-                        if potential.total() < total_mana_needed as u32 {
+                        if !cost.has_waterbend_obligation() && potential.total() < total_mana_needed as u32 {
                             return Err(GameLoopError::InvalidState(format!(
                                 "Cannot afford ability: need {} mana but only have {} available. \
                             Consider paying life for Phyrexian mana or choosing a lower X value.",

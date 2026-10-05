@@ -173,20 +173,6 @@ pub fn materialize_compiler_total_cost(
 ) -> Result<TotalCost, CardTextError> {
     let mut materialized = Vec::with_capacity(cost.branches.len());
     for branch in &cost.branches {
-        if let [CompilerCost::VariableMana { generic }] = branch.as_slice() {
-            materialized.push(crate::compile_support::waterbend_optional_total_cost(
-                *generic,
-            ));
-            continue;
-        }
-        if branch
-            .iter()
-            .any(|cost| matches!(cost, CompilerCost::VariableMana { .. }))
-        {
-            return Err(CardTextError::ParseError(
-                "variable waterbend cost cannot be combined with another cost".to_string(),
-            ));
-        }
         let segments = branch.iter().map(materialization_cost).collect::<Vec<_>>();
         materialized.push(lower_materialization_costs(&segments)?);
     }
@@ -256,9 +242,9 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
     match cost {
         CompilerCost::Mana(cost) => MaterializationCost::Mana(cost.clone()),
         CompilerCost::DynamicMana(cost) => MaterializationCost::DynamicMana(cost.clone()),
-        CompilerCost::VariableMana { .. } => {
-            unreachable!("variable mana is handled at the total-cost boundary")
-        }
+        CompilerCost::VariableMana { generic } => MaterializationCost::Mana(
+            ManaCost::new().add_generic(*generic).with_waterbend(),
+        ),
         CompilerCost::Tap => MaterializationCost::Tap,
         CompilerCost::TapChosen { count, filter } => MaterializationCost::TapChosen {
             count: *count,

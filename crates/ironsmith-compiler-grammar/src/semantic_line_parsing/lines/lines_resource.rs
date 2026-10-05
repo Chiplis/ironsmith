@@ -44,17 +44,21 @@ pub fn try_parse_optional_waterbend_additional_cost(
         return Ok(None);
     }
 
-    let Some(generic) = semantic_grammar::parse_optional_waterbend_generic_tokens(parse_tokens)
-    else {
+    let Some((optional, mana)) = semantic_grammar::parse_waterbend_additional_cost_tokens(parse_tokens) else {
         return Ok(None);
     };
-
-    let total_cost =
-        ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::VariableMana { generic });
-    Ok(Some(LineAst::OptionalCost(OptionalCost::custom(
-        line.info.raw_line.trim(),
-        total_cost,
-    ))))
+    if !optional {
+        return Ok(Some(LineAst::AdditionalCost {
+            effects: vec![EffectAst::subject_verb_pay_mana(PlayerAst::You, mana)],
+        }));
+    }
+    let total_cost = ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(mana));
+    Ok(Some(LineAst::OptionalCost(OptionalCost {
+        kind: crate::cost::OptionalCostKind::Waterbend,
+        reference: crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::Waterbend),
+        source_label: line.info.raw_line.trim().to_string(), cost: total_cost,
+        repeatable: false, returns_to_hand: false,
+    })))
 }
 
 pub fn try_parse_optional_behold_additional_cost(

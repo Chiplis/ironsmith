@@ -31,6 +31,8 @@ type JsonMap = serde_json::Map<String, Value>;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManabrewMatchConfigInput {
+    #[serde(default)]
+    protocol_version: u32,
     player_names: Vec<String>,
     starting_life: i32,
     #[serde(default)]
@@ -54,6 +56,7 @@ struct ManabrewMatchConfigInput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManabrewViewResult {
+    protocol_version: u32,
     state: StateUpdate,
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt: Option<AgentPrompt>,
@@ -67,6 +70,13 @@ enum ManabrewResponseAction {
         input: PromptInput,
         binding: ManabrewPromptBinding,
     },
+}
+
+fn validate_manabrew_protocol_version(version: u32) -> Result<(), String> {
+    let expected = manabrew_protocol::protocol::PROTOCOL_VERSION;
+    if version == expected { Ok(()) } else {
+        Err(format!("Manabrew protocol version mismatch: expected {expected}, received {version}"))
+    }
 }
 
 const MANABREW_TEXT_OPTIONS_PER_PROMPT: usize = 100;
@@ -491,6 +501,7 @@ fn manabrew_replan_command(
                 let payment_kind = match alternative.kind {
                     ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => "convoke",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => "improvise",
+                    ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => "waterbend",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Delve => "delve",
                     ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => return None,
                 };
@@ -592,6 +603,15 @@ fn manabrew_plan_is_fully_selected(
                         )
                     })
                 }
+                ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                    preferences.required_alternatives.iter().any(|selected| {
+                        selected_alternative_matches(
+                            selected,
+                            source,
+                            ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
+                        )
+                    })
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
                     preferences.required_alternatives.iter().any(|selected| {
                         selected_alternative_matches(
@@ -649,6 +669,15 @@ fn manabrew_remaining_mana_cost(
                         selected,
                         source,
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+                    )
+                })
+            }
+            ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                !preferences.required_alternatives.iter().any(|selected| {
+                    selected_alternative_matches(
+                        selected,
+                        source,
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
                     )
                 })
             }
@@ -993,6 +1022,7 @@ impl WasmGame {
                             selected.kind,
                             ironsmith::mana_payment::ManaPaymentSourceKind::Convoke
                                 | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend
                         )
                 })
     }
@@ -1758,6 +1788,7 @@ impl WasmGame {
                     kind,
                     ironsmith::mana_payment::ManaPaymentSourceKind::Convoke
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Delve
                 )
             }) {
@@ -1792,6 +1823,9 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
                             PaymentResourceKind::Improvise
                         }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
+                            PaymentResourceKind::Waterbend
+                        }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -1817,6 +1851,9 @@ impl WasmGame {
                         }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
                             PaymentResourceKind::Improvise
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
+                            PaymentResourceKind::Waterbend
                         }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
@@ -2532,6 +2569,7 @@ impl WasmGame {
             }),
             Err(prompt_error) => {
                 return ManabrewViewResult {
+                    protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
                     state: self.manabrew_state(viewer),
                     prompt: None,
                     error: error.or(Some(prompt_error)),
@@ -2539,6 +2577,7 @@ impl WasmGame {
             }
         };
         ManabrewViewResult {
+            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
             state: self.manabrew_state(viewer),
             prompt,
             error,
@@ -3104,6 +3143,9 @@ impl WasmGame {
 
 #[wasm_bindgen]
 impl WasmGame {
+    #[wasm_bindgen(js_name = manabrewProtocolVersion)]
+    pub fn manabrew_protocol_version(&self) -> u32 { manabrew_protocol::protocol::PROTOCOL_VERSION }
+
     #[wasm_bindgen(js_name = registerManabrewDeckSources)]
     pub fn register_manabrew_deck_sources(&mut self, decks: JsValue) -> Result<JsValue, JsValue> {
         let decks: Vec<Value> = serde_wasm_bindgen::from_value(decks)
@@ -3118,6 +3160,8 @@ impl WasmGame {
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
             })?;
+        validate_manabrew_protocol_version(input.protocol_version)
+            .map_err(|error| JsValue::from_str(&error))?;
         self.register_manabrew_deck_sources_input(&input.decks);
         let validation = self.validate_match_setup_input(&manabrew_match_setup(&input))?;
         manabrew_to_js(&validation, "Manabrew match validation")
@@ -3129,6 +3173,8 @@ impl WasmGame {
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
             })?;
+        validate_manabrew_protocol_version(input.protocol_version)
+            .map_err(|error| JsValue::from_str(&error))?;
         self.register_manabrew_deck_sources_input(&input.decks);
         let setup = manabrew_match_setup(&input);
         let seed = setup.seed;
@@ -3159,6 +3205,7 @@ impl WasmGame {
                 Err(error) => {
                     return manabrew_to_js(
                         &ManabrewViewResult {
+                            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
                             state: self.manabrew_state(None),
                             prompt: None,
                             error: Some(error),
@@ -3345,6 +3392,7 @@ mod manabrew_tests {
     #[test]
     fn manabrew_brawl_import_uses_distinct_format_and_rules_life() {
         let two_player = ManabrewMatchConfigInput {
+            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
             player_names: vec!["Alice".to_string(), "Bob".to_string()],
             starting_life: 40,
             seed: Some(7),

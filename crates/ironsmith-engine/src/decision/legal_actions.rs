@@ -2212,6 +2212,14 @@ fn activation_printed_costs_precheck_with_view(
     reason: crate::costs::PaymentReason,
     view: &DerivedGameView<'_>,
 ) -> bool {
+    for mana in costs.iter().filter_map(|cost| cost.mana_cost_ref()).filter(|cost| cost.has_waterbend_obligation()) {
+        let adjusted = game.adjust_mana_cost_for_payment_reason(controller, Some(source), mana, reason);
+        let mut request = crate::mana_payment::ManaPaymentRequest::new(controller, source, reason, adjusted)
+            .with_spend_policy(game.mana_spend_policy(controller, Some(source)));
+        if costs.iter().any(|cost| cost.requires_tap()) { request.reserved_tap_sources.push(source); }
+        request.allow_black_life = game.player_can_pay_black_with_life_for_reason(controller, Some(source), reason);
+        if !super::mana::check_scoped_mana_payment(game, &request) { return false; }
+    }
     let mut idx = 0usize;
     while idx < costs.len() {
         if let Some(choose) = costs[idx]

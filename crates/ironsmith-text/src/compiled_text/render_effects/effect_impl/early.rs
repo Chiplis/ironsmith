@@ -3491,6 +3491,8 @@
                 ("exile", "exiles", rest)
             } else if let Some(rest) = payment.strip_prefix("Mill ") {
                 ("mill", "mills", rest)
+            } else if let Some(rest) = payment.strip_prefix("Waterbend ") {
+                ("waterbend", "waterbends", rest)
             } else {
                 return None;
             };

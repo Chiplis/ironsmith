@@ -37,8 +37,12 @@ if (registration.failed.length > 0) {
   throw new Error(JSON.stringify(registration.failed));
 }
 
-const validation = engine.validateManabrewMatchConfig(matchConfig);
-const initialState = engine.startManabrewMatch(matchConfig);
+// The host and every Manabrew peer must implement protocol 3, including
+// useResource/releaseResource with resource: "waterbend".
+if (engine.manabrewProtocolVersion() !== 3) throw new Error("Unsupported Manabrew protocol");
+const protocolConfig = { ...matchConfig, protocolVersion: 3 };
+const validation = engine.validateManabrewMatchConfig(protocolConfig);
+const initialState = engine.startManabrewMatch(protocolConfig);
 ```
 
 `validateManabrewMatchConfig` and `startManabrewMatch` also register the decks they receive, so calling `registerManabrewDeckSources` separately is optional. It is useful when an application wants to surface compilation failures before building the full match configuration.
@@ -92,6 +96,7 @@ Linked cards are registered atomically so their two internal face identifiers ca
 
 The main compatibility methods are:
 
+- `manabrewProtocolVersion()`
 - `registerManabrewDeckSources(decks)`
 - `validateManabrewMatchConfig(config)`
 - `startManabrewMatch(config)`
@@ -100,3 +105,15 @@ The main compatibility methods are:
 - `manabrewApplyDirective(player, directive)`
 
 The generated TypeScript declaration file documents the complete `WasmGame` API.
+
+The optional Manabrew adapter uses a local version-3 extension of the pinned
+upstream protocol. Both setup methods reject a missing or mismatched
+`protocolVersion` before registering sources. A host must enable the version
+only after confirming every peer implements its typed Waterbend resource;
+copying the version number alone does not establish compatibility. Returned
+Manabrew views identify the version as `protocolVersion: 3`.
+
+The in-repository browser game and multiplayer replay use `startMatch`, native
+UI commands, and their own audit protocol. They do not call Manabrew setup or
+inherit this adapter's protocol version. Standalone deck registration is also
+independent of the Manabrew prompt protocol.

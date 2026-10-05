@@ -82,7 +82,7 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_optional_behold_additional_cost(input)),
     },
     Reading {
-        id: RuleId::new("optional-waterbend-additional-cost"),
+        id: RuleId::new("waterbend-additional-cost"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
         read: |input| input.outcome(read_optional_waterbend_additional_cost(input)),

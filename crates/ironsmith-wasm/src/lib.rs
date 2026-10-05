@@ -378,6 +378,7 @@ struct ManaPaymentEditorView {
     payment_pips: Vec<Vec<String>>,
     transaction_id: String,
     fixed_excluded_source_ids: Vec<String>,
+    fixed_activation_excluded_source_ids: Vec<String>,
     required_activations: Vec<ManaPaymentActivationCommand>,
     required_alternatives: Vec<ManaPaymentAlternativeCommand>,
     required_life_pips: Vec<u32>,
@@ -1077,14 +1078,8 @@ fn mana_payment_editor_view(
             .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
             .collect(),
         transaction_id: ironsmith::mana_payment::mana_payment_transaction_id(request).to_string(),
-        fixed_excluded_source_ids: if matches!(
-            request.reason,
-            ironsmith::costs::PaymentReason::ActivateManaAbility
-        ) {
-            vec![request.source.0.to_string()]
-        } else {
-            Vec::new()
-        },
+        fixed_excluded_source_ids: request.reserved_tap_sources.iter().map(|id| id.0.to_string()).collect(),
+        fixed_activation_excluded_source_ids: request.activation_excluded_sources.iter().map(|id| id.0.to_string()).collect(),
         required_activations: preferences
             .required_activations
             .iter()
@@ -1199,6 +1194,7 @@ fn planned_mana_source_views(
             ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => (source, "convoke"),
             ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (source, "improvise"),
             ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (source, "delve"),
+            ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => (source, "waterbend"),
             _ => continue,
         };
         if sources
@@ -1269,6 +1265,9 @@ fn planned_pip_allocation_views(
                     None,
                     None,
                 ),
+                ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                    ("waterbend".to_string(), Some(source.0.to_string()), None, None)
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
                     ("delve".to_string(), Some(source.0.to_string()), None, None)
                 }
@@ -4002,6 +4001,7 @@ impl ManaPaymentAlternativeCommand {
             "convoke" => ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
             "improvise" => ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
             "delve" => ironsmith::mana_payment::ManaPaymentSourceKind::Delve,
+            "waterbend" => ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
             other => {
                 return Err(JsValue::from_str(&format!(
                     "invalid mana payment alternative kind: {other}"

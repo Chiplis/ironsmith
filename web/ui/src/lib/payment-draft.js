@@ -43,7 +43,7 @@ export function selectPaymentSource(draft, source, { replace = false, step = nul
     if (index >= 0) next.required_activations = next.required_activations.filter((_, i) => i !== index);
   }
   next.excluded_source_ids = next.excluded_source_ids.filter(value => value !== id);
-  if (["convoke", "improvise", "delve"].includes(source.payment_kind)) {
+  if (["convoke", "improvise", "delve", "waterbend"].includes(source.payment_kind)) {
     // A permanent cannot also be tapped for mana in this payment.
     next = clearSourcePreferences(next, id);
     next.required_alternatives = [...next.required_alternatives, { source_id: id, payment_kind: source.payment_kind }];
@@ -72,9 +72,10 @@ export function removePaymentStep(draft, source, occurrence = 0) {
 export function paymentSourceOptions(payment) {
   const options = (payment?.activation_options || []).map(option => ({ ...option, payment_kind: "mana_ability" }));
   for (const source of payment?.available_sources || []) for (const kind of source.payment_kinds || []) {
-    if (["convoke", "improvise", "delve"].includes(kind)) options.push({ ...source, payment_kind: kind });
+    if (["convoke", "improvise", "delve", "waterbend"].includes(kind)) options.push({ ...source, payment_kind: kind });
   }
-  return options.filter(option => !(payment?.fixed_excluded_source_ids || []).includes(String(option.source_id)));
+  return options.filter(option => !(payment?.fixed_excluded_source_ids || []).includes(String(option.source_id))
+    && (option.payment_kind !== "mana_ability" || !(payment?.fixed_activation_excluded_source_ids || []).includes(String(option.source_id))));
 }
 export function paymentDraftRows(payment, draft) {
   const rows = [];
