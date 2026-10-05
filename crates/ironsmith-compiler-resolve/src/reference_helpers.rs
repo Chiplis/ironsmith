@@ -1639,7 +1639,10 @@ pub fn resolve_restriction_it_tag(
 /// looked at, milled, or discarded) became the last object.
 fn spell_demonstrative_prior_antecedent(refs: &ReferenceEnv) -> Option<TagKey> {
     let last = refs.known_last_object_tag()?;
-    if !is_noun_restricted_object_result_tag(last) {
+    if !(is_noun_restricted_object_result_tag(last)
+        || last.as_str().starts_with("destroyed_")
+        || is_sacrificed_object_reference_tag(last.as_str()))
+    {
         return None;
     }
     refs.snapshot_tag_aliases
@@ -3213,4 +3216,41 @@ pub fn sacrifice_filter_uses_source_antecedent(
         })
         && object_filter_as_tagged_reference(filter)
             .is_some_and(|tag| tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+}
+
+#[cfg(test)]
+mod spell_quantity_after_object_actions_tests {
+    use super::*;
+    use crate::model::reference_state::RefState;
+    #[test]
+    fn a_spell_demonstrative_skips_destroyed_permanents_but_keeps_a_new_spell_target() {
+        let value = ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
+            .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::ThisPermanentType("that spell".into()),
+            ));
+        for current in ["destroyed_0", "sacrificed_0"] {
+            let refs = ReferenceEnv {
+                last_object_tag: RefState::Known(current.into()),
+                snapshot_tag_aliases: vec![(
+                    crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key(),
+                    "triggering".into(),
+                )],
+                ..Default::default()
+            };
+            let resolved = resolve_choose_spec_it_tag(&value, &refs).unwrap();
+            assert_eq!(resolved.base(), &ChooseSpec::Tagged("triggering".into()));
+        }
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known("targeted_1".into()),
+            snapshot_tag_aliases: vec![(
+                crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key(),
+                "triggering".into(),
+            )],
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_choose_spec_it_tag(&value, &refs).unwrap().base(),
+            &ChooseSpec::Tagged("targeted_1".into())
+        );
+    }
 }

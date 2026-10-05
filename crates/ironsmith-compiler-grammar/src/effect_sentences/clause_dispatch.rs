@@ -912,6 +912,17 @@ pub(crate) fn parse_get_pump_clause(
     action_tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    parse_get_pump_clause_with_bound_values(subject_tokens, action_tokens, full_tokens, None)
+}
+
+/// A complete local X/Y binding supplies each component independently. The
+/// ordinary pump grammar still owns subject, condition, and duration.
+pub(crate) fn parse_get_pump_clause_with_bound_values(
+    subject_tokens: &[OwnedLexToken],
+    action_tokens: &[OwnedLexToken],
+    full_tokens: &[OwnedLexToken],
+    bound_values: Option<(Value, Value)>,
+) -> Result<Option<EffectAst>, CardTextError> {
     // "It gets +2/+2 until end of turn and can block an additional creature
     // this turn" (Act of Heroism) — the block permission is its own granted
     // effect on the pump subject, not part of the P/T modifier tail.
@@ -1013,9 +1024,14 @@ pub(crate) fn parse_get_pump_clause(
         parser_trace("parse_get_pump_clause:missing-modifier", action_tokens);
         return Ok(None);
     };
-    let Ok((power, toughness)) = parse_pt_modifier_values(mod_token) else {
-        parser_trace("parse_get_pump_clause:modifier-shape-miss", modifier_tail);
-        return Ok(None);
+    let (power, toughness) = if let Some(values) = bound_values {
+        values
+    } else {
+        let Ok(values) = parse_pt_modifier_values(mod_token) else {
+            parser_trace("parse_get_pump_clause:modifier-shape-miss", modifier_tail);
+            return Ok(None);
+        };
+        values
     };
     let mut duration_before_for_each = false;
     let mut count = parse_get_for_each_count_value(modifier_tail)?;

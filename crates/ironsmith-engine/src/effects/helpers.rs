@@ -992,11 +992,13 @@ fn latest_tagged_lki_snapshot<'a>(
         .chain(game.turn_store.turn_history.staged_event_records.iter())
         .rev()
         .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-        .filter_map(|event| event.snapshot.as_ref())
+        .flat_map(|event| event.snapshots())
         .find(|snapshot| {
+            // CR 400.7: a later incarnation of the same physical card is not
+            // this tagged object. Authorized movement links update the tag
+            // separately; LKI lookup must not invent such permission.
             snapshot.zone == tagged_snapshot.zone
-                && (snapshot.object_id == tagged_snapshot.object_id
-                    || snapshot.stable_id == tagged_snapshot.stable_id)
+                && snapshot.object_id == tagged_snapshot.object_id
         })
 }
 
@@ -5737,3 +5739,7 @@ mod replacement_object_selection_contract_tests {
         assert_eq!(game.effect_store.replacement_effects.count_one_shot_effects_from_source(second), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "helpers/tagged_lki_identity_tests.rs"]
+mod tagged_lki_identity_tests;
