@@ -397,6 +397,7 @@ fn parse_object_damage_source_shape_lexed<'a>(
             primitives::phrase(&["would", "deal", "combat", "damage"]),
             primitives::phrase(&["would", "deal", "noncombat", "damage"]),
             primitives::phrase(&["would", "deal", "damage"]),
+            primitives::phrase(&["would", "deal"]),
         ))),
     )
     .map(|((), _)| ())
@@ -664,4 +665,92 @@ mod imperative_multiplier_tests {
             );
         }
     }
+}
+
+/// Complete single-sentence prevention. Optional prevention and follow-up effects
+/// belong to other productions; this shape never accepts only their prefix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilteredPreventionAmountShape<'a> {
+    All,
+    Fixed(u32),
+    AllBut(u32),
+    Dynamic(&'a [OwnedLexToken]),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FilteredDamagePreventionShape<'a> {
+    pub source: DamageSourceShape<'a>,
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub maximum_damage: Option<u32>,
+    pub amount: FilteredPreventionAmountShape<'a>,
+}
+
+pub fn parse_filtered_damage_prevention_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<FilteredDamagePreventionShape<'_>> {
+    primitives::probe_all(tokens, parse_filtered_damage_prevention_lexed,
+        "filtered damage prevention replacement")
+}
+
+fn parse_filtered_damage_prevention_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<FilteredDamagePreventionShape<'a>> {
+    primitives::kw("if").parse_next(input)?;
+    let source = parse_damage_source_shape_lexed(input)?;
+    primitives::phrase(&["would", "deal"]).parse_next(input)?;
+    let maximum_damage = opt((
+        leaf::parse_leaf_number_prefix_lexed,
+        primitives::phrase(&["or", "less"]),
+    )).map(|value| value.map(|(maximum, _)| maximum)).parse_next(input)?;
+    let damage_kind = opt(alt((
+        primitives::kw("combat").value(true),
+        primitives::kw("noncombat").value(false),
+    ))).parse_next(input)?;
+    primitives::phrase(&["damage", "to"]).parse_next(input)?;
+    let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1.., any.void(),
+        peek((primitives::comma(), primitives::kw("prevent"))),
+    ).map(|((), _)| ()).take().parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::kw("prevent").parse_next(input)?;
+    let amount = if opt(primitives::phrase(&["all", "but"]))
+        .parse_next(input)?.is_some()
+    {
+        let remaining = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+        primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        FilteredPreventionAmountShape::AllBut(remaining)
+    } else if opt(primitives::phrase(&["that", "damage"]))
+        .parse_next(input)?.is_some()
+    {
+        primitives::sentence_end().parse_next(input)?;
+        FilteredPreventionAmountShape::All
+    } else if opt(primitives::kw("x")).parse_next(input)?.is_some() {
+        primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
+        primitives::comma().parse_next(input)?;
+        primitives::phrase(&["where", "x", "is"]).parse_next(input)?;
+        let value_tokens: &'a [OwnedLexToken] = winnow::token::rest.parse_next(input)?;
+        let value_tokens = if value_tokens.last().is_some_and(|token|
+            token.kind == crate::lexer::TokenKind::Period)
+        { &value_tokens[..value_tokens.len() - 1] } else { value_tokens };
+        if value_tokens.is_empty() {
+            return Err(primitives::backtrack_err("prevention amount", "complete bound value"));
+        }
+        FilteredPreventionAmountShape::Dynamic(value_tokens)
+    } else {
+        let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+        primitives::phrase(&["of", "that", "damage"]).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        FilteredPreventionAmountShape::Fixed(amount)
+    };
+    Ok(FilteredDamagePreventionShape {
+        source,
+        damaged_tokens: trim_lexed_commas(damaged_tokens),
+        combat_only: damage_kind == Some(true),
+        noncombat_only: damage_kind == Some(false),
+        maximum_damage,
+        amount,
+    })
 }

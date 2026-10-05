@@ -372,6 +372,8 @@ pub enum StaticAbilityId {
     CanBlockAnyNumber,
     /// Additional capacity scaled by a live typed permanent filter.
     CanBlockAdditionalForEach,
+    /// Filtered, amount-based damage prevention. Appended for wire compatibility.
+    PreventMatchingDamage,
 }
 
 impl StaticAbilityId {
@@ -670,6 +672,7 @@ impl StaticAbilityId {
             | RedirectZoneChange
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
+            | PreventMatchingDamage
             | DoubleCountersReplacement
             | AddCountersPlacementReplacement
             | PlayerCounterPerTurnLimitReplacement

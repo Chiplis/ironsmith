@@ -121,6 +121,7 @@ impl StaticAbilityKind for RedirectDamageToSourceController {
                 combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::Redirect {
                 target: RedirectTarget::ToSourceController,
@@ -210,6 +211,7 @@ struct DamageAmountReplacementMatcher {
     combat_only: bool,
     noncombat_only: bool,
     amount_less_than: Option<Value>,
+    maximum_damage: Option<u32>,
 }
 
 impl DamageAmountReplacementMatcher {
@@ -298,6 +300,9 @@ impl DamageAmountReplacementMatcher {
             return false;
         }
         if self.noncombat_only && damage.is_combat {
+            return false;
+        }
+        if self.maximum_damage.is_some_and(|maximum| damage.amount > maximum) {
             return false;
         }
         let Some(value) = &self.amount_less_than else {
@@ -396,6 +401,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::Modify(EventModification::Add(self.delta)),
         ))
@@ -427,6 +433,7 @@ impl StaticAbilityKind for MinimumDamageAmountReplacement {
                 combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: Some(self.floor.clone()),
+                maximum_damage: None,
             },
             ReplacementAction::Modify(EventModification::SetToAtLeast(self.floor.clone())),
         ))
@@ -495,6 +502,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 combat_only: self.combat_only,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::Modify(EventModification::Multiply(self.factor)),
         ))
@@ -555,6 +563,7 @@ impl StaticAbilityKind for PreventHalfDamageReplacement {
                 combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
+                maximum_damage: None,
             },
             ReplacementAction::PreventHalfDamage {
                 round_up: self.round_up,
@@ -4510,5 +4519,43 @@ impl StaticAbilityKind for UnsupportedParserLine {
             self.raw_line.trim(),
             self.reason
         )
+    }
+}
+
+/// One typed prevention family, preserving live source/recipient filters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventMatchingDamage {
+    pub spec: ironsmith_core::PreventMatchingDamageSpec,
+}
+
+impl StaticAbilityKind for PreventMatchingDamage {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventMatchingDamage
+    }
+
+    fn display(&self) -> String {
+        self.spec.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageAmountReplacementMatcher {
+                source_filter: self.spec.source_filter.clone(),
+                target_player_filter: self.spec.target_player_filter.clone(),
+                target_object_filter: self.spec.target_object_filter.clone(),
+                condition: None,
+                combat_only: self.spec.combat_only,
+                noncombat_only: self.spec.noncombat_only,
+                amount_less_than: None,
+                maximum_damage: self.spec.maximum_damage,
+            },
+            ReplacementAction::PreventDamageByRule(self.spec.amount.clone()),
+        ))
     }
 }

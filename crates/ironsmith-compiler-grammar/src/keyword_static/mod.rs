@@ -5,6 +5,8 @@ use crate::cards::builders::TurnEventPredicateAst;
 mod blocking_permissions;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;
+mod damage_prevention;
+pub use damage_prevention::parse_filtered_damage_prevention_line;
 mod leading_conditional_sentence_chain;
 pub use costs_replacements_and_permissions::*;
 
@@ -647,6 +649,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         }
         "parse_prevent_all_damage_to_you_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
+        }
+        "parse_filtered_damage_prevention_line" => {
+            vec![StaticAbilityLineHeadHint::Single("if")]
         }
         "parse_prevent_damage_to_you_from_source_filter_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "a"),
@@ -1391,6 +1396,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_prevent_damage_to_source_put_counters_line
         ),
         single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
+        single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),

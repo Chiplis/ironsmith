@@ -49,6 +49,29 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub display: String,
 }
 
+/// A prevention amount retains prevention semantics, including unpreventable damage.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum StaticDamagePreventionAmount {
+    All,
+    Amount(Value),
+    /// Prevent the portion above this amount, not a damage-setting replacement.
+    AllBut(u32),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct PreventMatchingDamageSpec {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+    pub maximum_damage: Option<u32>,
+    pub amount: StaticDamagePreventionAmount,
+    pub display: String,
+}
+
 /// A scoped rule permission to ignore one targeting-protection ability.
 /// The permission changes targeting legality; it does not remove the ability.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1313,6 +1336,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     // Append new payloads so existing serialized variant positions stay stable.
     BlockingAsThoughNoLandwalk(BlockingAsThoughNoLandwalkSpec),
     CanBlockAdditionalForEach { additional: u32, filter: ObjectFilter },
+    PreventMatchingDamage(PreventMatchingDamageSpec),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2574,6 +2598,8 @@ where
                 noncombat_only,
                 display,
             },
+            StaticAbilityPayload::PreventMatchingDamage(spec) =>
+                StaticAbilityPayload::PreventMatchingDamage(spec),
             StaticAbilityPayload::PreventHalfDamageReplacement {
                 source_filter,
                 target_player_filter,
@@ -6626,6 +6652,14 @@ impl<
                 noncombat_only: false,
                 display,
             },
+        }
+    }
+
+    pub fn prevent_matching_damage(spec: PreventMatchingDamageSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::PreventMatchingDamage(spec),
         }
     }
 
