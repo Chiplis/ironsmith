@@ -946,6 +946,9 @@ pub enum OptionalCostKind {
     /// A later condition referring to a verified alternative casting method.
     AlternativeCast(AlternativeCostReference),
     CustomUnsupported(String),
+    /// The choice to pay a spell's dash alternative cost (CR 702.109).
+    /// Appended to preserve the indices of existing serialized variants.
+    Dash,
 }
 
 impl OptionalCostKind {
@@ -970,6 +973,7 @@ impl OptionalCostKind {
             "offering" => Self::Offering,
             "castduringyourmainphase" => Self::CastDuringYourMainPhase,
             "escape" => Self::Escape,
+            "dash" => Self::Dash,
             "blitz" => Self::Blitz,
             "evoke" => Self::Evoke,
             "madness" => Self::Madness,
@@ -1018,6 +1022,7 @@ impl OptionalCostKind {
             Self::Offering => "Offering",
             Self::CastDuringYourMainPhase => "CastDuringYourMainPhase",
             Self::Escape => "Escape",
+            Self::Dash => "Dash",
             Self::Blitz => "Blitz",
             Self::Evoke => "Evoke",
             Self::Madness => "Madness",
@@ -1510,5 +1515,30 @@ mod alternative_cost_reference_tests {
                 AlternativeCostReference::by_mana_cost("Sneak", &other_cost,)
             ),))
         );
+    }
+}
+
+#[cfg(test)]
+mod dash_cost_identity_tests {
+    use super::*;
+
+    #[test]
+    fn dash_cost_identity_is_typed_and_case_insensitive() {
+        let dash = OptionalCostRef::new(OptionalCostKind::Dash);
+        for label in ["Dash", "dash", " DASH "] {
+            assert_eq!(OptionalCostRef::from_label(label), dash);
+        }
+        assert_eq!(dash.display_label(), "Dash");
+        let mut paid = OptionalCostsPaid::default();
+        assert!(!paid.was_paid_label(dash.clone()));
+        paid.mark_label_paid("Dash");
+        assert!(paid.was_paid_label(dash));
+        assert!(paid.was_paid_label("dash"));
+        assert!(!paid.was_paid_label("Blitz"));
+        assert!(!paid.was_paid_label("Kicker"));
+        assert!(matches!(
+            OptionalCostKind::from_label("Unknown cost"),
+            OptionalCostKind::CustomUnsupported(_)
+        ));
     }
 }

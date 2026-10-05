@@ -1,0 +1,128 @@
+[
+  {
+    "name": "Alesha's Vanguard",
+    "oracle_id": "be662217-41c2-4caa-89da-ae7f6f817c34",
+    "source": "https://scryfall.com/card/plst/FRF-60/aleshas-vanguard?utm_source=api",
+    "text": "Mana cost: {3}{B}\nType: Creature — Orc Warrior\nPower/Toughness: 3/3\nDash {2}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Ambuscade Shaman",
+    "oracle_id": "96e1d890-4ebb-4c79-8df9-24e3adaf4d9b",
+    "source": "https://scryfall.com/card/dtk/87/ambuscade-shaman?utm_source=api",
+    "text": "Mana cost: {2}{B}\nType: Creature — Orc Shaman\nPower/Toughness: 2/2\nWhenever this creature or another creature you control enters, that creature gets +2/+2 until end of turn.\nDash {3}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Death-Greeter's Champion",
+    "oracle_id": "81abb451-5ee0-4f90-bacc-a8ff69726a27",
+    "source": "https://scryfall.com/card/moc/30/death-greeters-champion?utm_source=api",
+    "text": "Mana cost: {2}{R}\nType: Creature — Human Warrior\nPower/Toughness: 2/1\nDash {3}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)\nBackup 1 (When this creature enters, put a +1/+1 counter on target creature. If that's another creature, it gains the following ability until end of turn.)\nDouble strike"
+  },
+  {
+    "name": "Flamerush Rider",
+    "oracle_id": "f797a325-ec2a-4142-b0ff-90cac1356da9",
+    "source": "https://scryfall.com/card/ltc/216/flamerush-rider?utm_source=api",
+    "text": "Mana cost: {4}{R}\nType: Creature — Human Warrior\nPower/Toughness: 3/3\nWhenever this creature attacks, create a token that's a copy of another target attacking creature and that's tapped and attacking. Exile the token at end of combat.\nDash {2}{R}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Goblin Heelcutter",
+    "oracle_id": "ab52988f-ffd0-4154-9052-593a9d450d98",
+    "source": "https://scryfall.com/card/frf/102/goblin-heelcutter?utm_source=api",
+    "text": "Mana cost: {3}{R}\nType: Creature — Goblin Berserker\nPower/Toughness: 3/2\nWhenever this creature attacks, target creature can't block this turn.\nDash {2}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Kolaghan Forerunners",
+    "oracle_id": "07b6fbd3-03f9-4aef-929e-514c799d75b9",
+    "source": "https://scryfall.com/card/dtk/144/kolaghan-forerunners?utm_source=api",
+    "text": "Mana cost: {2}{R}\nType: Creature — Human Berserker\nPower/Toughness: */3\nTrample\nKolaghan Forerunners's power is equal to the number of creatures you control.\nDash {2}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Kolaghan Skirmisher",
+    "oracle_id": "ade4ffa5-6609-44eb-8f1a-45e7203d90e3",
+    "source": "https://scryfall.com/card/dtk/107/kolaghan-skirmisher?utm_source=api",
+    "text": "Mana cost: {1}{B}\nType: Creature — Human Warrior\nPower/Toughness: 2/2\nDash {2}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Kolaghan, the Storm's Fury",
+    "oracle_id": "f6e160c1-b29f-4f3d-ab55-43ffe3ab4acf",
+    "source": "https://scryfall.com/card/c17/176/kolaghan-the-storms-fury?utm_source=api",
+    "text": "Mana cost: {3}{B}{R}\nType: Legendary Creature — Dragon\nPower/Toughness: 4/5\nFlying\nWhenever a Dragon you control attacks, creatures you control get +1/+0 until end of turn.\nDash {3}{B}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Lightning Berserker",
+    "oracle_id": "1e474772-3fe4-46be-8c5f-6e477b9fd74e",
+    "source": "https://scryfall.com/card/dtk/146/lightning-berserker?utm_source=api",
+    "text": "Mana cost: {R}\nType: Creature — Human Berserker\nPower/Toughness: 1/1\n{R}: This creature gets +1/+0 until end of turn.\nDash {R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Mardu Scout",
+    "oracle_id": "c18ab011-c5e0-4174-b623-d89e4d745ce6",
+    "source": "https://scryfall.com/card/frf/108/mardu-scout?utm_source=api",
+    "text": "Mana cost: {R}{R}\nType: Creature — Goblin Scout\nPower/Toughness: 3/1\nDash {1}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Mardu Shadowspear",
+    "oracle_id": "b6e972ae-cc2d-4c7e-9f49-c0616dc82064",
+    "source": "https://scryfall.com/card/pfrf/74/mardu-shadowspear?utm_source=api",
+    "text": "Mana cost: {B}\nType: Creature — Human Warrior\nPower/Toughness: 1/1\nWhenever this creature attacks, each opponent loses 1 life.\nDash {1}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Mardu Strike Leader",
+    "oracle_id": "9be8e04f-f87f-4477-93f3-c546e9b346f0",
+    "source": "https://scryfall.com/card/clb/761/mardu-strike-leader?utm_source=api",
+    "text": "Mana cost: {2}{B}\nType: Creature — Human Warrior\nPower/Toughness: 3/2\nWhenever this creature attacks, create a 2/1 black Warrior creature token.\nDash {3}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Pitiless Horde",
+    "oracle_id": "d5726b60-60f6-4481-bc76-759fbb55bb49",
+    "source": "https://scryfall.com/card/plst/DTK-112/pitiless-horde?utm_source=api",
+    "text": "Mana cost: {2}{B}\nType: Creature — Orc Berserker\nPower/Toughness: 5/3\nAt the beginning of your upkeep, you lose 2 life.\nDash {2}{B}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Ragavan, Nimble Pilferer",
+    "oracle_id": "37108cd4-bbab-4ce3-9ed6-f60e8422e703",
+    "source": "https://scryfall.com/card/h2r/11/ragavan-nimble-pilferer?utm_source=api",
+    "text": "Mana cost: {R}\nType: Legendary Creature — Monkey Pirate\nPower/Toughness: 2/1\nWhenever Ragavan deals combat damage to a player, create a Treasure token and exile the top card of that player's library. Until end of turn, you may cast that card.\nDash {1}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Reckless Imp",
+    "oracle_id": "e8e88e9a-0097-49ac-8b23-482a3190f21b",
+    "source": "https://scryfall.com/card/plst/DTK-115/reckless-imp?utm_source=api",
+    "text": "Mana cost: {2}{B}\nType: Creature — Imp\nPower/Toughness: 2/2\nFlying\nThis creature can't block.\nDash {1}{B} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Riders of Rohan",
+    "oracle_id": "688a559d-249f-4d03-98e6-581843e7ddc3",
+    "source": "https://scryfall.com/card/ltc/474/riders-of-rohan?utm_source=api",
+    "text": "Mana cost: {3}{R}{W}\nType: Creature — Human Knight\nPower/Toughness: 4/4\nWhen this creature enters, create two 2/2 red Human Knight creature tokens with trample and haste.\nDash {4}{R}{W} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Screamreach Brawler",
+    "oracle_id": "ffc84ff4-22eb-4652-9723-2f40d637a427",
+    "source": "https://scryfall.com/card/plst/DTK-155/screamreach-brawler?utm_source=api",
+    "text": "Mana cost: {2}{R}\nType: Creature — Orc Berserker\nPower/Toughness: 2/3\nDash {1}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Sprinting Warbrute",
+    "oracle_id": "e680f3e9-5c76-41e6-a4a5-662ee05ac3af",
+    "source": "https://scryfall.com/card/dtk/157/sprinting-warbrute?utm_source=api",
+    "text": "Mana cost: {4}{R}\nType: Creature — Ogre Berserker\nPower/Toughness: 5/4\nThis creature attacks each combat if able.\nDash {3}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Treetop Ambusher",
+    "oracle_id": "72949d87-76cd-472c-86b3-2b7d5fce3159",
+    "source": "https://scryfall.com/card/mh1/186/treetop-ambusher?utm_source=api",
+    "text": "Mana cost: {1}{G}\nType: Creature — Elf Berserker\nPower/Toughness: 2/1\nDash {1}{G} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)\nWhenever this creature attacks, target creature you control gets +1/+1 until end of turn."
+  },
+  {
+    "name": "Vaultbreaker",
+    "oracle_id": "2577860a-663a-4b56-880c-05576522e3b7",
+    "source": "https://scryfall.com/card/frf/117/vaultbreaker?utm_source=api",
+    "text": "Mana cost: {3}{R}\nType: Creature — Orc Rogue\nPower/Toughness: 4/2\nWhenever this creature attacks, you may discard a card. If you do, draw a card.\nDash {2}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  },
+  {
+    "name": "Zurgo Bellstriker",
+    "oracle_id": "46808926-d95b-4313-89d1-6bdfe13fcb77",
+    "source": "https://scryfall.com/card/pdtk/169s/zurgo-bellstriker?utm_source=api",
+    "text": "Mana cost: {R}\nType: Legendary Creature — Orc Warrior\nPower/Toughness: 2/2\nZurgo can't block creatures with power 2 or greater.\nDash {1}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)"
+  }
+]
