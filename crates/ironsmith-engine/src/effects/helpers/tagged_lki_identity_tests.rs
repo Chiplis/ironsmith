@@ -80,6 +80,75 @@ fn tagged_number_reads_exact_departure_not_a_later_incarnation_of_same_card() {
 }
 
 #[test]
+fn emerge_receipt_reads_immutable_characteristics_rather_than_a_live_object() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let source = creature(&mut game);
+    let material = creature(&mut game);
+    let paid = snapshot(&game, material);
+    pump(&mut game, source, material, 7);
+    let mut ctx = ExecutionContext::new_default(source, PlayerId::from_index(0));
+    ctx.tag_object(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG, paid);
+    let value = Value::ToughnessOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into())));
+    assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 2);
+    assert_eq!(game.current_toughness(material), Some(9));
+}
+
+#[test]
+fn malformed_emerge_receipts_are_incomplete_through_positive_negated_and_outer_rollback_paths() {
+    for kind in ["absent", "multiple", "wrong-zone", "noncreature", "missing-toughness"] {
+        for negated in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let source = creature(&mut game);
+            let material = creature(&mut game);
+            let mut receipt = snapshot(&game, material);
+            match kind {
+                "wrong-zone" => receipt.zone = Zone::Graveyard,
+                "noncreature" => receipt.card_types = vec![CardType::Artifact],
+                "missing-toughness" => receipt.toughness = None,
+                _ => {}
+            }
+            let mut ctx = ExecutionContext::new_default(source, PlayerId::from_index(0));
+            if kind != "absent" {
+                ctx.set_tagged_objects(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG, match kind {
+                    "multiple" => vec![receipt.clone(), receipt], _ => vec![receipt],
+                });
+            }
+            let value = Value::ToughnessOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into())));
+            let (root, meter) = game.begin_token_resource_scope();
+            assert!(matches!(resolve_value(&game, &value, &ctx), Err(ExecutionError::IncompleteEvidence(_))));
+            assert!(matches!(game.token_resource_failure(), Some(ExecutionError::IncompleteEvidence(_))));
+            game.end_token_resource_scope(root, &meter);
+            let mut condition = crate::effect::Condition::ValueComparison {
+                left: value, operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                right: Value::Fixed(0),
+            };
+            if negated { condition = crate::effect::Condition::Not(Box::new(condition)); }
+            let effect = Effect::new(crate::effects::SequenceEffect::new(vec![
+                Effect::gain_life(4), Effect::conditional(condition,
+                    vec![Effect::gain_life(8)], vec![Effect::gain_life(16)]),
+            ]));
+            assert!(matches!(execute_effect(&mut game, &effect, &mut ctx),
+                Err(ExecutionError::IncompleteEvidence(_))), "{kind}, negated={negated}");
+            assert_eq!(game.player(PlayerId::from_index(0)).unwrap().life, 20,
+                "outer mutation rolls back rather than selecting either branch");
+        }
+    }
+}
+
+#[test]
+fn known_empty_emerge_sacrifice_receipt_is_zero_and_does_not_latch_missing_evidence() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let source = creature(&mut game);
+    let mut ctx = ExecutionContext::new_default(source, PlayerId::from_index(0));
+    ctx.set_tagged_objects(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG, vec![]);
+    let (root, meter) = game.begin_token_resource_scope();
+    let value = Value::ToughnessOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into())));
+    assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 0);
+    assert!(game.token_resource_failure().is_none());
+    game.end_token_resource_scope(root, &meter);
+}
+
+#[test]
 fn tagged_lki_searches_every_member_of_a_simultaneous_departure() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = creature(&mut game);

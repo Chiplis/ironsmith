@@ -912,6 +912,13 @@ pub fn parse_value_binding_clause_lexed(tokens: &[crate::lexer::OwnedLexToken]) 
 pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let parsed = etb_grammar::parse_where_x_source_stat_tokens(tokens)?;
     let reference_words = crate::lexer::parser_token_word_refs(parsed.reference_tokens);
+    let normalized_reference = reference_words.iter().map(|word|
+        match crate::grammar::leaf::strip_leaf_source_possessive_suffix(word) {
+            "creatures" => "creature", "artifacts" => "artifact",
+            "enchantments" => "enchantment", "permanents" => "permanent", other => other,
+        }
+    ).collect::<Vec<_>>();
+    let sacrificed_kind = crate::grammar::shared_util::target_semantics::sacrificed_object_kind(&normalized_reference);
     let value = if let Some(surface) =
         source_reference_surface_for_possessive_words(&reference_words)
     {
@@ -930,8 +937,13 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
                 Value::ManaValueOf(Box::new(ChooseSpec::Source))
             }
             (EtbSourceStatFallback::TaggedObject, kind) => {
+                // The explicit sacrificed noun names payment/action evidence,
+                // never the ambient "it" (which an ETB binds to the entrant).
+                let reference = if sacrificed_kind.is_some() {
+                    crate::tag::CompilerReferenceTag::AdditionalCostObject
+                } else { crate::tag::CompilerReferenceTag::It };
                 let tagged = Box::new(ChooseSpec::Tagged(
-                    (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    reference.bind().into(),
                 ));
                 match kind {
                     EtbSourceStatKind::Power => Value::PowerOf(tagged),
@@ -947,13 +959,7 @@ pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value
             (EtbSourceStatFallback::TriggeringSpell, _) => return None,
         }
     };
-    let reference_words = reference_words.iter().map(|word|
-        match crate::grammar::leaf::strip_leaf_source_possessive_suffix(word) {
-            "creatures" => "creature", "artifacts" => "artifact",
-            "enchantments" => "enchantment", "permanents" => "permanent", other => other,
-        }
-    ).collect::<Vec<_>>();
-    let value = if let Some(kind) = crate::grammar::shared_util::target_semantics::sacrificed_object_kind(&reference_words) {
+    let value = if let Some(kind) = sacrificed_kind {
         value.with_surface_hint(ValueSurfaceHint::SacrificedObject(kind))
     } else { value };
     Some(if parsed.as_this_ability_resolves {

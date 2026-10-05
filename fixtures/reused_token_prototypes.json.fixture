@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Adipose Offspring",
+    "id": "d333c352-9edd-425e-80d8-7d61c76da298",
+    "oracle_id": "1e21e57e-3bc9-41a8-9746-57b583a5ad63",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature — Alien",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Emerge {5}{W} (You may cast this spell by sacrificing a creature and paying the emerge cost reduced by that creature's mana value.)\nWhen this creature enters, create a 2/2 white Alien creature token. If this creature's emerge cost was paid, instead create X of those tokens, where X is the sacrificed creature's toughness."
+  },
+  {
+    "name": "Andúril, Flame of the West",
+    "id": "47e706bd-4b4c-435d-882a-659dad68dc4d",
+    "oracle_id": "e6521404-8474-4727-b2d0-537d15d8a63f",
+    "mana_cost": "{3}",
+    "type_line": "Legendary Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +3/+1.\nWhenever equipped creature attacks, create two tapped 1/1 white Spirit creature tokens with flying. If that creature is legendary, instead create two of those tokens that are tapped and attacking.\nEquip {2}"
+  },
+  {
+    "name": "Brood Birthing",
+    "id": "0e44f7ff-1cfa-4bc4-a0f7-9d71ba48a97a",
+    "oracle_id": "e7d1c762-69d0-401d-8035-6e9744baf9d8",
+    "mana_cost": "{1}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "If you control an Eldrazi Spawn, create three 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\" Otherwise, create one of those tokens."
+  },
+  {
+    "name": "From Under the Floorboards",
+    "id": "cf31fec2-40d6-4810-8575-c7814bb4b6b4",
+    "oracle_id": "a1fc4269-f3e4-4a59-849d-aa1727eef23a",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Madness {X}{B}{B} (If you discard this card, discard it into exile. When you do, cast it for its madness cost or put it into your graveyard.)\nCreate three tapped 2/2 black Zombie creature tokens and you gain 3 life. If this spell's madness cost was paid, instead create X of those tokens and you gain X life."
+  },
+  {
+    "name": "Safana, Calimport Cutthroat",
+    "id": "bb19fe09-d1d9-40bc-9af7-b19d129f5519",
+    "oracle_id": "afc1c443-93e3-4ef4-a404-1d9fc13e0b02",
+    "mana_cost": "{2}{B}",
+    "type_line": "Legendary Creature — Human Rogue",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Menace\nAt the beginning of your end step, if you have the initiative, create a Treasure token. Create three of those tokens instead if you've completed a dungeon.\nChoose a Background (You can have a Background as a second commander.)"
+  },
+  {
+    "name": "Swarming Goblins",
+    "id": "24025e76-0016-46a6-93cd-366071953c36",
+    "oracle_id": "6a038dec-2d9c-4422-a0f3-94bf70e55217",
+    "mana_cost": "{4}{R}",
+    "type_line": "Creature — Goblin",
+    "power": "4",
+    "toughness": "3",
+    "oracle_text": "When this creature enters, roll a d20.\n1—9 | Create a 1/1 red Goblin creature token.\n10—19 | Create two of those tokens.\n20 | Create three of those tokens."
+  },
+  {
+    "name": "The Final Days",
+    "id": "bbf01770-6d0f-4015-b4b4-a74a53cb767a",
+    "oracle_id": "f2b88031-bfb7-46c4-abdd-3b6b5f5acfa4",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create two tapped 2/2 black Horror creature tokens. If this spell was cast from a graveyard, instead create X of those tokens, where X is the number of creature cards in your graveyard.\nFlashback {4}{B}{B} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+  },
+  {
+    "name": "Throne of Empires",
+    "id": "87352716-4cf6-4b2f-bb0a-b7aafae64478",
+    "oracle_id": "12afe8e6-eaf0-45c9-8086-4c658db7cb7e",
+    "mana_cost": "{4}",
+    "type_line": "Artifact",
+    "oracle_text": "{1}, {T}: Create a 1/1 white Soldier creature token. Create five of those tokens instead if you control artifacts named Crown of Empires and Scepter of Empires."
+  }
+]

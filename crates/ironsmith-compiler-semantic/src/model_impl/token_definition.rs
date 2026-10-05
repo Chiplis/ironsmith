@@ -319,10 +319,17 @@ pub struct ConstructTokenShape {
     pub artifact_scaling: Option<ConstructArtifactScalingShape>,
 }
 
+/// A lexical reference to an authored token blueprint, not to any objects
+/// created while resolving it. The antecedent may be in an unexecuted branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TokenPrototypeReference {
+    PreviousDefinition,
+}
+
 /// Parser-owned semantic token definition carried through preparation into lowering.
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenDefinitionSpec {
-    PriorCreated,
+    PrototypeReference(TokenPrototypeReference),
     Builtin(BuiltinTokenShape),
     Vehicle(VehicleTokenShape),
     Artifact(ArtifactTokenShape),
@@ -360,7 +367,7 @@ impl TokenDefinitionSpec {
             // Named and built-in token shapes may carry abilities during
             // lowering even when their compact parser shape has no fields for
             // them. Treat them conservatively as nonempty.
-            Self::PriorCreated
+            Self::PrototypeReference(_)
             | Self::Builtin(_)
             | Self::Angel
             | Self::Wall

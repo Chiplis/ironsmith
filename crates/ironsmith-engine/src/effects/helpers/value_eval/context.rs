@@ -708,6 +708,32 @@ impl EvaluationContext<'_, '_> {
         spec: &ChooseSpec,
         property: NumericProperty,
     ) -> Result<i32, ExecutionError> {
+        if matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::SOURCE_EMERGE_SACRIFICE_TAG)
+        {
+            let missing = || {
+                let error = ExecutionError::IncompleteEvidence(
+                    "Emerge requires a complete original sacrifice receipt".into(),
+                );
+                self.game.record_token_resource_failure(&error);
+                error
+            };
+            let ctx = self.execution().ok_or_else(missing)?;
+            let receipts = ctx.tagged_objects.get(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG)
+                .filter(|receipts| receipts.len() <= 1).ok_or_else(missing)?;
+            // A paid cost may be wholly prevented/replaced (CR 118.11,
+            // 614.6). The known absence of any sacrificed creature gives
+            // zero (CR 107.2), distinct from unavailable payment evidence.
+            if receipts.is_empty() { return Ok(0); }
+            let receipt = &receipts[0];
+            if receipt.zone != crate::zone::Zone::Battlefield
+                || !receipt.card_types.contains(&crate::types::CardType::Creature)
+                || receipt.toughness.is_none()
+            { return Err(missing()); }
+            // A completed sacrifice may be redirected. Later changes or new
+            // incarnations cannot overwrite its immutable pre-departure LKI.
+            return property.snapshot(receipt).ok_or_else(missing);
+        }
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };

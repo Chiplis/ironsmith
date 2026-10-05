@@ -62,6 +62,9 @@ pub struct EnterBattlefieldEvent {
     pub(crate) program_choices: crate::game_state::PreparedEtbChoices,
     /// As-entry choices already collected against this provisional object.
     pub(crate) prepared_choices: Option<crate::game_state::PreparedEtbChoices>,
+    /// Frozen paid-cost evidence for this exact stack-to-battlefield
+    /// incarnation; it is not part of the permanent's copiable values.
+    pub emerge_sacrifice: Option<Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 impl EnterBattlefieldEvent {
@@ -70,6 +73,7 @@ impl EnterBattlefieldEvent {
         Self {
             object,
             completed_snapshot: None,
+            emerge_sacrifice: None,
             from,
             enters_tapped: false,
             enters_with_counters: Vec::new(),
@@ -98,6 +102,7 @@ impl EnterBattlefieldEvent {
         Self {
             object,
             completed_snapshot: None,
+            emerge_sacrifice: None,
             from,
             enters_tapped: true,
             enters_with_counters: Vec::new(),

@@ -3513,9 +3513,20 @@ impl GameState {
                     .unwrap()
                     .clone();
                 entry.completed_snapshot = snapshot;
+                if entry.from == Zone::Stack {
+                    entry.emerge_sacrifice = observed.object(entry.object)
+                        .filter(|object| object.optional_costs_paid.was_paid_label("Emerge"))
+                        .and_then(|object| object.cast_tagged_objects.get(
+                            crate::tag::SOURCE_EMERGE_SACRIFICE_TAG))
+                        .filter(|receipts| receipts.len() <= 1).cloned();
+                }
                 **event = event.with_inner_event(entry);
                 self.stage_turn_history_event(event);
             }
+            let emerge_receipts = entries.iter().filter_map(|event| {
+                let entry = event.downcast::<crate::events::EnterBattlefieldEvent>()?;
+                entry.emerge_sacrifice.clone().map(|receipt| (entry.object, receipt))
+            }).collect::<std::collections::HashMap<_, _>>();
             drop(entries);
             // Preserve origin LKI and attach the same exact destination receipt
             // to zone notifications, including reported and queued token events.
@@ -3532,6 +3543,13 @@ impl GameState {
                         && zone.destination_snapshot(snapshot.object_id).is_none()
                     {
                         zone.destination_snapshots.push(snapshot.clone());
+                    }
+                }
+                if zone.from == Zone::Stack {
+                    for destination in zone.destination_objects().to_vec() {
+                        if let Some(receipt) = emerge_receipts.get(&destination) {
+                            zone.destination_emerge_sacrifices.insert(destination, receipt.clone());
+                        }
                     }
                 }
                 **event = event.with_inner_event(zone);

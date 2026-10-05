@@ -857,6 +857,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/827"
+    },
+    {
+      "stage": 62,
+      "branch": "fix/card-failures-62-same-name-bodies",
+      "base": "fix/card-failures-61-cumulative-action-costs",
+      "source_integration_commit": "6be36b88253949cb4fc4a4c001545da034330293",
+      "remote_commit": "5ebc1556efcc9225f72c2ea6ed76609bb3478b38",
+      "tree": "a6f10d41a7a0e64e6ff6b35ed5a4150f6d5728d7",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 828,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/828"
     }
   ]
 }

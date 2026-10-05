@@ -1919,7 +1919,9 @@ pub fn parse_create(
         token_definition_grammar::parse_token_definition_shape_tokens(&definition_tokens)
             .or_else(|| {
                 parse_prior_created_token_reference_words(&name_words)
-                    .map(|_| crate::model::token_definition::TokenDefinitionSpec::PriorCreated)
+                    .map(|_| crate::model::token_definition::TokenDefinitionSpec::PrototypeReference(
+                        crate::model::token_definition::TokenPrototypeReference::PreviousDefinition,
+                    ))
             })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(

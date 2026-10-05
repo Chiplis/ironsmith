@@ -332,6 +332,7 @@ impl Event {
             EnterBattlefieldEvent {
                 object,
             completed_snapshot: None,
+                emerge_sacrifice: None,
                 from,
                 enters_tapped,
                 enters_with_counters,

@@ -387,6 +387,9 @@ fn public_claim_outcome(
             ExecutionFact::AffectedObjectMemory(memories) => {
                 ExecutionFact::AffectedObjectMemory(memories.iter().map(memory).collect())
             }
+            ExecutionFact::OriginalSacrificeObjects(memories) => {
+                ExecutionFact::OriginalSacrificeObjects(memories.iter().map(memory).collect())
+            }
             ExecutionFact::PlayerAffectedObjectMemory(entries) => {
                 ExecutionFact::PlayerAffectedObjectMemory(
                     entries

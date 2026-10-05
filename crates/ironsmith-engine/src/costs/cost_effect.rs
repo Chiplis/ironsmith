@@ -977,6 +977,19 @@ impl CostPayer for CostEffect {
         }
 
         // Copy any new tags back to CostContext for subsequent costs
+        ctx.completed_sacrifice = if transparent_cost_effect(&self.effect)
+            .downcast_ref::<crate::effects::SacrificeEffect>().is_some()
+            || transparent_cost_effect(&self.effect)
+                .downcast_ref::<crate::effects::SacrificeTargetEffect>().is_some()
+        {
+            let memory = outcome.instruction_result().execution_facts.iter().rev().find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
+                _ => None,
+            }).ok_or_else(|| CostPaymentError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                "completed sacrifice cost lacks its original-action receipt".into(),
+            )))?;
+            Some(memory.iter().map(|object| object.to_snapshot(game)).collect())
+        } else { None };
         ctx.tagged_objects = exec_ctx.tagged_objects;
         ctx.effect_outcomes = exec_ctx.effect_outcomes;
         ctx.pre_chosen_cards.clear();

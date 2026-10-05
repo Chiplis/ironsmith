@@ -108,6 +108,9 @@ pub struct CostContext<'dm> {
     pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
     /// Exact resources reserved by other unpaid components of this cost.
     pub reserved_tap_sources: Vec<ObjectId>,
+    /// Exact last native sacrifice action, including a known empty result.
+    /// Selection tags and cost-paid status alone cannot establish this fact.
+    pub completed_sacrifice: Option<Vec<ObjectSnapshot>>,
 }
 
 impl std::fmt::Debug for CostContext<'_> {
@@ -154,6 +157,7 @@ impl<'dm> CostContext<'dm> {
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
             reserved_tap_sources: Vec::new(),
+            completed_sacrifice: None,
         }
     }
 
@@ -263,6 +267,7 @@ impl CostCheckContext {
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
             reserved_tap_sources: Vec::new(),
+            completed_sacrifice: None,
         }
     }
 }

@@ -397,6 +397,7 @@ pub enum CompilerReferenceTag {
     CoordinatedCreatedResult,
     JobSelectCreated,
     SourceExiledSelf,
+    SourceEmergeSacrifice,
 }
 
 impl CompilerReferenceTag {
@@ -409,6 +410,7 @@ impl CompilerReferenceTag {
             Self::RevealedThisWay => "__revealed_this_way__",
             Self::LookedAtHand => "__looked_at_hand__",
             Self::SourceObject => "__source_object__",
+            Self::SourceEmergeSacrifice => ironsmith_core::tag::SOURCE_EMERGE_SACRIFICE_TAG,
             Self::Exploited => "exploited",
             Self::Exploiter => "exploiter",
             Self::ManifestDreadGraveyard => "__manifest_dread_graveyard__",
@@ -634,6 +636,7 @@ impl CompilerReferenceTag {
             | Self::TapCost0
             | Self::ConvokedThisSpell
             | Self::AdditionalCostObject
+            | Self::SourceEmergeSacrifice
             | Self::BeheldCost0 => (R::CostPaid, D::Object),
             Self::SourceObject => (R::Source, D::Object),
             _ => (R::Affected, D::Object),

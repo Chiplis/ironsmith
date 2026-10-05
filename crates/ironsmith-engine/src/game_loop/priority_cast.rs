@@ -4813,12 +4813,17 @@ pub(super) fn continue_to_mana_payment(
         }
         if let Some(resource) = pending.cost_resource {
             let original_filter = cast_resource_sacrifice_filter(game, &pending);
+            let emerge = game.object(pending.spell_id).and_then(|spell|
+                crate::decision::alternative_method_for_casting_method(
+                    game, pending.caster, spell, &pending.casting_method,
+                )).is_some_and(|method| method.name().eq_ignore_ascii_case("Emerge"));
             if pending.cost_resource_is_tap {
                 pending.remaining_cost_steps.push(ActivationCostStep::Cost(crate::costs::Cost::validated_effect(
                     crate::effect::Effect::tap(ChooseSpec::SpecificObject(resource)))));
-            } else if let Some(ActivationCostStep::Sacrifice { filter, .. }) = pending.remaining_cost_steps.iter_mut()
+            } else if let Some(ActivationCostStep::Sacrifice { filter, is_emerge_resource, .. }) = pending.remaining_cost_steps.iter_mut()
                 .find(|step| matches!(step, ActivationCostStep::Sacrifice { filter, .. } if Some(filter) == original_filter.as_ref())) {
                 *filter = ObjectFilter::specific(resource);
+                *is_emerge_resource = emerge;
             }
         }
     }

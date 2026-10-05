@@ -1962,6 +1962,26 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
+    // Only this entrant's own ETB ability imports its cast payment receipt.
+    // The completed event froze the pre-cost LKI, so departure or a new
+    // incarnation before stacking/resolution cannot change the amount.
+    if let Some(entry) = trigger_event.downcast::<crate::events::EnterBattlefieldEvent>()
+        && entry.object == ctx.source_id
+        && entry.from == crate::zone::Zone::Stack
+        && let Some(sacrificed) = &entry.emerge_sacrifice
+    {
+        tagged.insert(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), sacrificed.clone());
+    }
+    // Ordinary ETB matchers observe the normalized ZoneChangeEvent. Its
+    // completed destination receipt is frozen by the same entry batch owner.
+    if let Some(zone) = trigger_event.downcast::<crate::events::ZoneChangeEvent>()
+        && zone.from == crate::zone::Zone::Stack
+        && zone.to == crate::zone::Zone::Battlefield
+        && zone.destination_objects().contains(&ctx.source_id)
+        && let Some(sacrificed) = zone.destination_emerge_sacrifices.get(&ctx.source_id)
+    {
+        tagged.insert(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), sacrificed.clone());
+    }
     let blocking = if let Some(event) =
         trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
     {

@@ -86,6 +86,10 @@ pub const SPELLS_CAST_THIS_TURN_TAG: &str = "__spells_cast_this_turn__";
 /// references without inventing a separate player-filter primitive.
 pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
 
+/// The actual pre-payment creature snapshot sacrificed for this source's
+/// Emerge alternative cost. Imported only by that incarnation's ETB event.
+pub const SOURCE_EMERGE_SACRIFICE_TAG: &str = "__source_emerge_sacrifice__";
+
 /// Runtime player tag for the opponent a resolving clash was performed with
 /// (CR 701.30a). "Clash with an opponent. ... Otherwise, that player ..."
 /// refers back to this player.
@@ -252,6 +256,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     CAST_MODIFIED_CREATURES_TAG,
     CAST_CONTROLLED_OBJECTS_TAG,
     SOURCE_COST_PUBLIC_ARRIVAL_TAG,
+    SOURCE_EMERGE_SACRIFICE_TAG,
 ];
 
 /// Dynamic tag key used by the tagging system.

@@ -287,6 +287,24 @@ pub fn creation_body_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     }
 }
 
+/// Exact lexical head for "N of those tokens". Punctuation may not be
+/// discarded to turn a malformed noun phrase into a blueprint reference.
+pub fn parse_token_prototype_reference_head(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, &[OwnedLexToken])> {
+    primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
+        opt(primitives::kw("create")).parse_next(input)?;
+        let count = alt((
+            primitives::kw("x").value(Value::X),
+            leaf::parse_leaf_number_prefix_lexed
+                .verify(|count: &u32| i32::try_from(*count).is_ok())
+                .map(|count| Value::Fixed(count as i32)),
+        )).parse_next(input)?;
+        primitives::phrase(&["of", "those", "tokens"]).parse_next(input)?;
+        Ok(count)
+    })
+}
+
 pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSpec<'_>> {
     let body_tokens = creation_body_tokens(tokens);
     let token_surface = CreationTokens::new(body_tokens);

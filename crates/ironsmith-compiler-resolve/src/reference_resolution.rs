@@ -227,6 +227,8 @@ pub fn annotate_effect_sequence_owned(
     env.die_result_producers = config.die_result_producers.clone();
     let mut id_gen = id_gen;
     let mut effects = effects;
+    crate::token_prototypes::resolve_token_prototypes(&mut effects)?;
+    crate::source_cast_costs::bind_source_cast_cost_references(&mut effects);
     // Persist result identities before transparent wrappers are traversed again
     // during lowering. Otherwise their consumers can reference an earlier ID.
     fn assign_persistent_result_tags(effects: &mut Vec<EffectAst>, ids: &mut IdGenContext) {

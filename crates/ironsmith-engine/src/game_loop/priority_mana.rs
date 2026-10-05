@@ -50,7 +50,7 @@ fn pay_selected_cost(
     >,
     effect_outcomes: &mut std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     decision_maker: &mut impl DecisionMaker,
-) -> Result<(), GameLoopError> {
+) -> Result<Option<Vec<ObjectSnapshot>>, GameLoopError> {
     let processing_mode = cost.processing_mode();
     let effective_choice_tag = choice_tag.cloned().or_else(|| match &processing_mode {
         crate::costs::CostProcessingMode::ExileFromHand { .. }
@@ -90,7 +90,7 @@ fn pay_selected_cost(
 
     match cost.pay(game, &mut cost_ctx) {
         Ok(crate::costs::CostPaymentResult::Paid) => {
-            if cost_ctx.decision_maker.awaiting_choice() { return Ok(()); }
+            if cost_ctx.decision_maker.awaiting_choice() { return Ok(None); }
             if !preserve_chosen_snapshot
                 && let Some(tag) = effective_choice_tag.as_ref()
                 && let Some(snapshot) = chosen_snapshot.as_ref()
@@ -110,14 +110,99 @@ fn pay_selected_cost(
                 tagged.retain(|existing| existing.stable_id != snapshot.stable_id);
                 tagged.push(snapshot);
             }
+            let completed_sacrifice = cost_ctx.completed_sacrifice.take();
             *tagged_objects = cost_ctx.tagged_objects;
             *effect_outcomes = cost_ctx.effect_outcomes;
-            Ok(())
+            Ok(completed_sacrifice)
         }
         Ok(crate::costs::CostPaymentResult::NeedsChoice(_)) => Err(GameLoopError::InvalidState(
             "Cost still needed a choice after preselection".to_string(),
         )),
         Err(err) => Err(activation_cost_error(err)),
+    }
+}
+
+#[cfg(test)]
+mod emerge_receipt_payment_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn invalid_sacrifice_characteristics_cannot_publish_a_cast_receipt_or_mutation() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let material = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Emerge material")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, i32::MAX)).build();
+        let material = game.create_object_from_card(&material, player, Zone::Battlefield);
+        let spell = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Emerge spell")
+            .card_types(vec![crate::types::CardType::Creature]).build();
+        let spell = game.create_object_from_card(&spell, player, Zone::Stack);
+        // Corrupt imported/derived state after announcement. The legacy
+        // receipt snapshot may see it, but checked payment must reject the
+        // out-of-range final toughness before sacrificing or publishing tags.
+        game.object_mut(material).unwrap().counters.insert(crate::object::CounterType::PlusOnePlusOne, 1);
+        let cost = crate::costs::Cost::sacrifice(ObjectFilter::creature().you_control());
+        let tag = crate::tag::TagKey::from("sacrifice_cost_0");
+        let mut tagged = std::collections::HashMap::new();
+        let mut outcomes = std::collections::HashMap::new();
+        let before = game.battlefield.clone();
+        let result = pay_selected_cost(&mut game, &cost, spell, player,
+            crate::costs::PaymentReason::CastSpell, Default::default(), material,
+            Some(&tag), &mut tagged, &mut outcomes, &mut crate::decision::SelectFirstDecisionMaker);
+        assert!(result.is_err(), "required material evidence must fail closed");
+        assert_eq!(game.battlefield, before);
+        assert_eq!(game.object(material).unwrap().zone, Zone::Battlefield);
+        assert!(tagged.is_empty() && outcomes.is_empty());
+        assert!(game.object(spell).unwrap().cast_tagged_objects.is_empty());
+        assert!(game.battlefield.iter().all(|id| game.object(*id).unwrap().kind != crate::object::ObjectKind::Token));
+    }
+
+    #[test]
+    fn suspended_sacrifice_addition_replays_once_without_becoming_missing_receipt_failure() {
+        struct Pause { pending: bool, pause: bool }
+        impl crate::decision::DecisionMaker for Pause {
+            fn decide_boolean(&mut self, _: &GameState, _: &crate::decisions::context::BooleanContext) -> bool {
+                self.pending = self.pause;
+                !self.pause
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Material")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 5)).build();
+        let material = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let source = game.create_object_from_card(&card, player, Zone::Stack);
+        game.effect_store.replacement_effects.add_one_shot_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, player,
+            crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(material), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::may(vec![crate::effect::Effect::gain_life(3)])]),
+        ));
+        game.take_pending_trigger_events();
+        let cost = crate::costs::Cost::sacrifice(ObjectFilter::creature().you_control());
+        let tag = crate::tag::TagKey::from("sacrifice_cost_0");
+        let mut tags = std::collections::HashMap::new(); let mut outcomes = std::collections::HashMap::new();
+        let mut dm = Pause { pending: false, pause: true };
+        let pending = pay_selected_cost(&mut game, &cost, source, player,
+            crate::costs::PaymentReason::CastSpell, Default::default(), material,
+            Some(&tag), &mut tags, &mut outcomes, &mut dm).unwrap();
+        assert!(pending.is_none() && dm.pending);
+        assert!(tags.is_empty() && outcomes.is_empty());
+        assert_eq!(game.object(material).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.player(player).unwrap().life, 20);
+        assert!(game.token_resource_failure().is_none());
+        dm.pending = false; dm.pause = false;
+        let completed = pay_selected_cost(&mut game, &cost, source, player,
+            crate::costs::PaymentReason::CastSpell, Default::default(), material,
+            Some(&tag), &mut tags, &mut outcomes, &mut dm).unwrap().unwrap();
+        assert_eq!(completed.len(), 1);
+        assert_eq!(completed[0].object_id, material);
+        assert_eq!(completed[0].toughness, Some(5));
+        assert_eq!(game.player(player).unwrap().life, 23);
+        assert!(game.object(material).is_none_or(|object| object.zone != Zone::Battlefield));
+        assert_eq!(game.take_pending_trigger_events().iter().filter(|event|
+            event.downcast::<crate::events::permanents::SacrificeEvent>().is_some()).count(), 1);
     }
 }
 
@@ -2717,13 +2802,14 @@ pub(super) fn apply_card_cost_choice_response(
 
     match pending.stage {
         CastStage::ChoosingSacrifice => {
-            let (cost, filter, choice_tag) = match pending.remaining_cost_steps.first() {
+            let (cost, filter, choice_tag, is_emerge_resource) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
                     cost,
                     filter,
                     choice_tag,
+                    is_emerge_resource,
                     ..
-                }) => (cost.clone(), filter.clone(), choice_tag.clone()),
+                }) => (cost.clone(), filter.clone(), choice_tag.clone(), *is_emerge_resource),
                 _ => {
                     return Err(GameLoopError::InvalidState(
                         "No pending sacrifice cost for spell cast".to_string(),
@@ -2748,7 +2834,7 @@ pub(super) fn apply_card_cost_choice_response(
                 pending.next_sacrifice_cost_tag_index += 1;
                 crate::tag::TagKey::from(tag)
             });
-            pay_selected_cost(
+            let completed_sacrifice = pay_selected_cost(
                 game,
                 &cost,
                 pending.spell_id,
@@ -2764,6 +2850,21 @@ pub(super) fn apply_card_cost_choice_response(
             if decision_maker.awaiting_choice() {
                 state.pending_cast = Some(pending);
                 return Ok(GameProgress::Continue);
+            }
+
+            // The preannounced Emerge resource is the exact creature whose
+            // mana value reduced the cost. Retain the paid snapshot, not a
+            // later battlefield/graveyard lookup or an arbitrary sacrifice.
+            if is_emerge_resource {
+                let receipt = completed_sacrifice
+                    .filter(|snapshots| snapshots.is_empty()
+                        || (snapshots.len() == 1 && snapshots[0].object_id == chosen_id))
+                    .ok_or_else(|| GameLoopError::InvalidState(
+                        "paid Emerge cost is missing its original sacrifice receipt".into(),
+                    ))?;
+                pending.tagged_objects.insert(
+                    crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), receipt,
+                );
             }
 
             drain_pending_trigger_events(game, trigger_queue);
@@ -5732,7 +5833,7 @@ mod replacement_owner_tests {
                         tags,
                         &mut activation.effect_outcomes,
                         dm,
-                    ),
+                    ).map(|_| ()),
                     1 => super::super::priority_cast::auto_pay_spell_tap_cost_steps(
                         game, queue, cast, dm,
                     ),

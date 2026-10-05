@@ -394,6 +394,11 @@ pub enum ExecutionFact {
         player: PlayerId,
         cards: Vec<OutcomeObjectMemory>,
     },
+    /// Exact completed original sacrifice action, before replacement programs.
+    /// An empty receipt is a known prevented/substituted action, not missing
+    /// evidence. Appended after deferred additions so nested sacrifices cannot
+    /// supply the outer action's result.
+    OriginalSacrificeObjects(Vec<OutcomeObjectMemory>),
 }
 
 impl ExecutionFact {

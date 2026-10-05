@@ -568,6 +568,7 @@ fn sacrifice_selected_objects(
     let mut sacrificed_count = 0;
     let mut sacrificed_objects = Vec::new();
     let mut sacrificed_memory = Vec::new();
+    let mut original_sacrifice_memory = Vec::new();
     let mut sacrifice_events = Vec::new();
     let (batch_lookback, pinned_lookback) =
         begin_sacrifice_batch_lookback(game, to_sacrifice.len());
@@ -611,6 +612,12 @@ fn sacrifice_selected_objects(
                 continue;
             }
             EventOutcome::Proceed(result) => {
+                if result.final_zone != Zone::Battlefield
+                    && (result.new_object_id.is_some() || !result.new_object_ids.is_empty())
+                    && let Some(snapshot) = pre_snapshot.as_ref()
+                {
+                    original_sacrifice_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
+                }
                 tag_sacrifice_zone_change_event(
                     game,
                     id,
@@ -681,7 +688,8 @@ fn sacrifice_selected_objects(
     end_sacrifice_batch_lookback(game, pinned_lookback);
     let original = original?;
     if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    super::finish_zone_change_receipts(game, ctx, original, receipts)
+    let completed = super::finish_zone_change_receipts(game, ctx, original, receipts)?;
+    Ok(completed.with_execution_fact(ExecutionFact::OriginalSacrificeObjects(original_sacrifice_memory)))
     })();
     if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
         *game = checkpoint;

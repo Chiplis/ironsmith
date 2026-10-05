@@ -43,6 +43,9 @@ pub struct ZoneChangeEvent {
     pub destination_snapshots: Vec<ObjectSnapshot>,
     /// Optional tagged object snapshots attached to this zone-change event.
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Paid Emerge sacrifice LKI, keyed by exact completed battlefield
+    /// destination. Kept separate from origin LKI and unrelated object tags.
+    pub destination_emerge_sacrifices: HashMap<ObjectId, Vec<ObjectSnapshot>>,
 }
 
 impl ZoneChangeEvent {
@@ -64,6 +67,7 @@ impl ZoneChangeEvent {
             snapshot,
             object_tags: HashMap::new(),
             destination_snapshots: Vec::new(),
+            destination_emerge_sacrifices: HashMap::new(),
         }
     }
 
@@ -86,6 +90,7 @@ impl ZoneChangeEvent {
             snapshot,
             object_tags: HashMap::new(),
             destination_snapshots: Vec::new(),
+            destination_emerge_sacrifices: HashMap::new(),
         }
     }
 
@@ -113,6 +118,7 @@ impl ZoneChangeEvent {
             snapshots,
             object_tags: HashMap::new(),
             destination_snapshots: Vec::new(),
+            destination_emerge_sacrifices: HashMap::new(),
         }
     }
 
@@ -218,6 +224,9 @@ impl ZoneChangeEvent {
                 snapshot,
                 object_tags: self.object_tags.clone(),
                 destination_snapshots,
+                destination_emerge_sacrifices: self.destination_emerge_sacrifices.iter()
+                    .filter(|(destination, _)| destinations.contains(destination))
+                    .map(|(destination, receipt)| (*destination, receipt.clone())).collect(),
             });
         }
         Some(events)

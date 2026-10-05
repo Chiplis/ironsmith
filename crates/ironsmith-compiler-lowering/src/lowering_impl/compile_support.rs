@@ -3484,7 +3484,9 @@ fn build_creature_token_definition(
 
 pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefinition> {
     match shape {
-        TokenDefinitionSpec::PriorCreated => None,
+        // Prototype references must be resolved from the authored AST before
+        // lowering. Never infer their blueprint from runtime token objects.
+        TokenDefinitionSpec::PrototypeReference(_) => None,
         TokenDefinitionSpec::Builtin(builtin) => Some(build_builtin_token_definition(builtin)),
         TokenDefinitionSpec::Vehicle(vehicle) => build_vehicle_token_definition(vehicle),
         TokenDefinitionSpec::Artifact(artifact) => build_artifact_token_definition(artifact),
