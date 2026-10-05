@@ -34,6 +34,7 @@ pub enum KeywordActionAst {
     Casualty {
         power: u32,
     },
+    EmpowerJace { amount: Value },
     Amass {
         subtype: Option<Subtype>,
         amount: Value,

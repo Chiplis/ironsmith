@@ -45,6 +45,7 @@ pub enum KeywordSubjectShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeywordMechanicShape<'a> {
+    EmpowerJace { amount_and_binding_tokens: &'a [OwnedLexToken] },
     Amass {
         subtype: Option<Subtype>,
         amount_and_binding_tokens: &'a [OwnedLexToken],
@@ -163,6 +164,13 @@ fn classify_subject(tokens: &[OwnedLexToken]) -> KeywordSubjectShape<'_> {
     } else {
         KeywordSubjectShape::Target(tokens)
     }
+}
+
+fn parse_empower_jace<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
+    primitives::phrase(&["empower", "jace"]).parse_next(input)?;
+    let amount_and_binding_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::EmpowerJace { amount_and_binding_tokens })
 }
 
 fn parse_amass<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
@@ -585,3 +593,21 @@ use ability_programs::parse_keyword_mechanic_lexed;
 #[path = "keywords/core.rs"]
 mod core_programs;
 use core_programs::{parse_endure, parse_explore};
+
+#[cfg(test)]
+mod empower_jace_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    #[test]
+    fn empower_jace_keeps_amount_and_where_binding_in_one_typed_clause() {
+        for text in ["Empower Jace 2.", "Empower Jace X.", "Empower Jace X, where X is the number of Islands you control."] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(matches!(super::super::parse_keyword_mechanic_tokens(&tokens),
+                Some(KeywordMechanicShape::EmpowerJace { .. })), "{text}");
+        }
+        for text in ["Empower Jace.", "Empower Chandra 2."] {
+            assert!(super::super::parse_keyword_mechanic_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
+    }
+}

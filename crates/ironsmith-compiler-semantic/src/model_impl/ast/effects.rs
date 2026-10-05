@@ -3761,6 +3761,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_empower_jace(amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount }),
+        )
+    }
+
     pub fn subject_verb_amass(subtype: Option<Subtype>, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

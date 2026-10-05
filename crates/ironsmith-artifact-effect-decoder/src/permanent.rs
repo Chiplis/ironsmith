@@ -9,6 +9,7 @@ use super::{ErasedPayload, decode_as};
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
         "AmassEffect" => decode_as::<ironsmith_core::AmassEffect>(payload).map(Some),
+        "EmpowerJaceEffect" => decode_as::<ironsmith_core::EmpowerJaceEffect>(payload).map(Some),
         "ApplyContinuousEffect" => decode_as::<
             ironsmith_core::ApplyContinuousEffect<
                 wire::WireContinuousTarget,
@@ -106,6 +107,10 @@ pub(super) fn map_card_ids(
     context: &super::card_graph::Context<'_>,
 ) -> Result<Option<Value>, String> {
     match kind {
+        "EmpowerJaceEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::EmpowerJaceEffect>(payload, context)
+                .map(Some)
+        }
         "AmassEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::AmassEffect>(payload, context)
                 .map(Some)

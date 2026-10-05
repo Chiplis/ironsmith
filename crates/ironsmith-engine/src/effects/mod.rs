@@ -219,7 +219,7 @@ pub use stack::{
     VariableCasualtyPlaneswalkerCopyEffect,
 };
 pub use tokens::{
-    AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
+    AmassEffect, EmpowerJaceEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
     InvestigateEffect, TokenCopyReferenceSurface,
 };
 pub use zones::{

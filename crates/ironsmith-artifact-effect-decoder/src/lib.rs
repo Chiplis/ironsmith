@@ -57,6 +57,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "AdditionalLandPlaysEffect" => Some(EffectFamily::Player),
         "AdditionalPhasesEffect" => Some(EffectFamily::Player),
         "AmassEffect" => Some(EffectFamily::Permanent),
+        "EmpowerJaceEffect" => Some(EffectFamily::Permanent),
         "AmplifyEffect" => Some(EffectFamily::CompositionAL),
         "ApplyContinuousEffect" => Some(EffectFamily::Permanent),
         "AscendEffect" => Some(EffectFamily::Player),

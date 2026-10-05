@@ -210,6 +210,8 @@ fn is_structural_action(word: &str) -> bool {
             | "airbend"
             | "attack"
             | "attacks"
+            | "empower"
+            | "empowers"
             | "amass"
             | "amasses"
             | "assemble"

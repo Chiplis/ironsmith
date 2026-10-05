@@ -1721,6 +1721,15 @@
             player_verb(&player, "incubate", "incubates")
         );
     }
+    if let Some(empower) = effect.downcast_ref::<crate::effects::EmpowerJaceEffect>() {
+        let (amount, where_x) = if value_prefers_where_x(&empower.amount) {
+            ("X".to_string(), describe_where_x_basis(&empower.amount)
+                .map(|basis| format!(", where X is {basis}")).unwrap_or_default())
+        } else {
+            (describe_value(&empower.amount), String::new())
+        };
+        return format!("Empower Jace {amount}{where_x}");
+    }
     if let Some(amass) = effect.downcast_ref::<crate::effects::AmassEffect>() {
         let (amount, where_x) = if value_prefers_where_x(&amass.amount) {
             (

@@ -80,7 +80,7 @@ pub use effect::{
     AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
     AddManaOfImprintedColorsEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
     AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect, AdditionalLandPlaysEffect,
-    AdditionalPhase, AdditionalPhasesEffect, AmassEffect, AmplifyEffect, AnimationDurationSurface,
+    AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, AmplifyEffect, AnimationDurationSurface,
     AnimationPtSurface, ApplyContinuousEffect, AscendEffect, AssignNoCombatDamageEffect,
     AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect, BattlefieldController,
     BattlefieldEntryCounterSpec, BattlefieldEntryCounterSurface, BecomeBasicLandTypeChoiceEffect,
