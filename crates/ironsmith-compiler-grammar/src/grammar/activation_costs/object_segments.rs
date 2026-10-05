@@ -46,7 +46,7 @@ enum UnattachCostShape<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TapChosenShape<'a> {
-    count: u32,
+    count: ChoiceCount,
     other: bool,
     filter_tokens: &'a [OwnedLexToken],
 }

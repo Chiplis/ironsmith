@@ -1645,9 +1645,9 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
     assert!(matches!(
         tap_cst.segments.as_slice(),
         [crate::grammar::activation_costs::ActivationCostSegmentCst::TapChosen {
-            count: 1,
+            count,
             filter,
-        }] if filter.card_types == [CardType::Creature]
+        }] if *count == ChoiceCount::exactly(1) && filter.card_types == [CardType::Creature]
             && filter.controller == Some(crate::target::PlayerFilter::You)
             && filter.untapped
             && filter.other

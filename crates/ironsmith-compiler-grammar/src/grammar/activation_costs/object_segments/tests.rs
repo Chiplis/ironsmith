@@ -116,7 +116,7 @@ fn unattach_and_tap_segments_return_typed_filters() {
     assert_eq!(
         parse_tap_chosen_segment_tokens(&tap).unwrap(),
         ActivationCostSegmentCst::TapChosen {
-            count: 2,
+            count: ChoiceCount::exactly(2),
             filter: ObjectFilter {
                 other: true,
                 untapped: true,
@@ -136,4 +136,49 @@ fn unattach_and_tap_segments_return_typed_filters() {
             filter: ObjectFilter::source(),
         }
     );
+}
+
+#[test]
+fn tap_x_untapped_costs_preserve_exact_variable_count_and_filter() {
+    for (text, expected) in [
+        (
+            "Tap X untapped artifacts you control",
+            ObjectFilter::artifact().you_control(),
+        ),
+        (
+            "Tap X untapped creatures you control",
+            ObjectFilter::creature().you_control(),
+        ),
+        (
+            "Tap X untapped Knights you control",
+            ObjectFilter::default()
+                .with_subtype(Subtype::Knight)
+                .you_control(),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let ActivationCostSegmentCst::TapChosen { count, filter } =
+            parse_tap_chosen_segment_tokens(&tokens).unwrap()
+        else {
+            panic!("expected a tap-chosen cost");
+        };
+        assert_eq!(count, ChoiceCount::dynamic_x());
+        assert_eq!(
+            filter,
+            ObjectFilter {
+                untapped: true,
+                ..expected
+            }
+        );
+    }
+    for text in [
+        "Tap X untapped",
+        "Tap X tapped creatures you control",
+        "Tap X untapped creatures you control at random",
+    ] {
+        assert!(
+            parse_tap_chosen_segment_tokens(&lex_line(text, 0).unwrap()).is_err(),
+            "{text}"
+        );
+    }
 }
