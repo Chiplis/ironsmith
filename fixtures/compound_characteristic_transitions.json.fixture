@@ -1,0 +1,94 @@
+[
+  {
+    "name": "Defiling Tears",
+    "oracle_id": "0decd8ea-a3d6-436b-81e9-bdd836537a1c",
+    "mana_cost": "{2}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Until end of turn, target creature becomes black, gets +1/-1, and gains \"{B}: Regenerate this creature.\"",
+    "proposed_complete": true
+  },
+  {
+    "name": "Dragonsoul Knight",
+    "oracle_id": "f8fb5a40-4e32-4817-bf56-484add976475",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Human Knight",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "First strike\n{W}{U}{B}{R}{G}: Until end of turn, this creature becomes a Dragon, gets +5/+3, and gains flying and trample.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Paragon of the Amesha",
+    "oracle_id": "4e4991b3-11c4-4408-a752-67e51f0fae44",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Knight",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "First strike\n{W}{U}{B}{R}{G}: Until end of turn, this creature becomes an Angel, gets +3/+3, and gains flying and lifelink.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Kellan, Planar Trailblazer",
+    "oracle_id": "e8fd428f-7521-4e6a-86b7-835f20ee3c5c",
+    "mana_cost": "{R}",
+    "type_line": "Legendary Creature — Human Faerie Scout",
+    "power": "2",
+    "toughness": "1",
+    "oracle_text": "{1}{R}: If Kellan is a Scout, it becomes a Human Faerie Detective and gains \"Whenever Kellan deals combat damage to a player, exile the top card of your library. You may play that card this turn.\"\n{2}{R}: If Kellan is a Detective, it becomes a 3/2 Human Faerie Rogue and gains double strike.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Origin of Spider-Man",
+    "oracle_id": "7fbe9056-190f-40a1-bee9-59ebd6f981f5",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Create a 2/1 green Spider creature token with reach.\nII — Put a +1/+1 counter on target creature you control. It becomes a legendary Spider Hero in addition to its other types.\nIII — Target creature you control gains double strike until end of turn.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Possessed Goat",
+    "oracle_id": "821f4ff3-ebc7-4f47-ac35-d00093b6d35b",
+    "mana_cost": "{W}",
+    "type_line": "Creature — Goat",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "{3}, Discard a card: Put three +1/+1 counters on this creature and it becomes a black Demon in addition to its other colors and types. Activate only once.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Surge Engine",
+    "oracle_id": "864d9db7-34ca-4440-8d6d-096f9eddedd4",
+    "mana_cost": "{2}",
+    "type_line": "Artifact Creature — Construct",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Defender\n{U}: This creature loses defender and gains \"This creature can't be blocked.\"\n{2}{U}: This creature becomes blue and has base power and toughness 5/4. Activate only if this creature doesn't have defender.\n{4}{U}{U}: Draw three cards. Activate only if this creature is blue and only once.",
+    "proposed_complete": true
+  },
+  {
+    "name": "Kitesail Larcenist",
+    "oracle_id": "2452be47-cc23-47f7-a3a1-fec900bb0119",
+    "mana_cost": "{2}{U}",
+    "type_line": "Creature — Human Pirate",
+    "power": "2",
+    "toughness": "3",
+    "oracle_text": "Flying, ward {1}\nWhen this creature enters, for each player, choose up to one other target artifact or creature that player controls. For as long as this creature remains on the battlefield, the chosen permanents become Treasure artifacts with \"{T}, Sacrifice this artifact: Add one mana of any color\" and lose all other abilities.",
+    "proposed_complete": true
+  },
+  {
+    "name": "The Irencrag",
+    "oracle_id": "8c89ba89-9bb3-4609-873c-6f5a961733ce",
+    "mana_cost": "{2}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "{T}: Add {C}.\nWhenever a legendary creature you control enters, you may have The Irencrag become a legendary Equipment artifact named Everflame, Heroes' Legacy. If you do, it gains equip {3} and \"Equipped creature gets +3/+3\" and loses all other abilities.",
+    "proposed_complete": false
+  },
+  {
+    "name": "Thermal Flux",
+    "oracle_id": "90fe98df-4f87-49ff-b562-0ed51d1d3a1c",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Target nonsnow permanent becomes snow until end of turn.\n• Target snow permanent isn't snow until end of turn.\nDraw a card at the beginning of the next turn's upkeep.",
+    "proposed_complete": false
+  }
+]

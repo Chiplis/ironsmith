@@ -26,7 +26,7 @@ use super::{
     parse_exert_segment_tokens, parse_exile_segment_tokens as parse_typed_exile_segment_tokens,
     parse_mill_segment_tokens, parse_move_source_to_library_bottom_cost_tokens,
     parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
-    parse_put_counter_segment_tokens, parse_remove_counter_segment_tokens,
+    parse_put_counter_segment_tokens,
     parse_return_segment_tokens, parse_reveal_segment_tokens,
     parse_sacrifice_segment_tokens as parse_typed_sacrifice_segment_tokens,
     parse_tap_chosen_segment_tokens, parse_unattach_segment_tokens,
@@ -165,7 +165,9 @@ fn parse_activation_cost_segment_tokens(
                 })
         }
         ActivationCostSegmentKind::RemoveCounter => {
-            Some(parse_remove_counter_segment_tokens(tokens))
+            Some(super::counter_segments::parse_remove_counter_segment_tokens_with_source(tokens, &|words| {
+                is_source_reference_words(words) || named_source(words).is_some()
+            }))
         }
         ActivationCostSegmentKind::BareSymbol => parse_bare_symbol_segment_tokens(tokens).map(Ok),
     }

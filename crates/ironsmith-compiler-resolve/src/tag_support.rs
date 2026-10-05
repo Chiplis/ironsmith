@@ -413,6 +413,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) => {
                 visit(target)
             }
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement { player_target, .. }) => {
+                if let Some(target) = player_target { visit(target); }
+            }
             SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { target, scope, .. }) => {
                 visit(target);
                 if let Some(scope) = scope {

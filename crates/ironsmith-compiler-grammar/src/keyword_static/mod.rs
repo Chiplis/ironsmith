@@ -453,6 +453,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             vec![StaticAbilityLineHeadHint::Single("enchant")]
         }
         "parse_characteristic_defining_pt_line" => Vec::new(),
+        // The complete assignment suffix proves its grammar; its source,
+        // filtered-set and leading-condition subjects have no single head.
+        "parse_filtered_toughness_assignment_line" => Vec::new(),
         // These rule names describe semantic operations, not the lexical
         // subjects accepted by their complete grammars. Deriving a head from
         // the name silently made already-supported static families unreachable.
@@ -1494,6 +1497,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_as_long_as_condition_can_attack_as_though_no_defender_line
         ),
+        multi_static_ability_ast_passthrough_rule!(parse_filtered_toughness_assignment_line),
         multi_static_ability_ast_passthrough_rule!(parse_filter_has_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_equipped_gets_and_has_activated_ability_line
@@ -6832,3 +6836,7 @@ mod zero_loyalty_exception_tests {
 
 #[cfg(test)]
 mod damage_multiplier_scope_tests;
+
+#[path = "toughness_assignment.rs"]
+mod toughness_assignment;
+use toughness_assignment::parse_filtered_toughness_assignment_line;

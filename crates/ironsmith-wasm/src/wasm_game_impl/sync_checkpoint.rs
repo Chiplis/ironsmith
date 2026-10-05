@@ -863,6 +863,9 @@ fn unsupported_checkpoint_replacement_payload<T, U>(_: T) -> Result<U, String> {
 fn retain_checkpoint_replacement_state(game: &GameState)
     -> Result<(SyncRegisteredReplacementState, SyncPreventionState), String>
 {
+    if !game.effect_store.restriction_effects.is_empty() {
+        return Err("registered runtime restrictions require accepted-transcript replay or a runtime savepoint".into());
+    }
     if game.effect_store.pending_replacement_choice.is_some() {
         return Err("pending replacement choice requires accepted-transcript replay or a runtime savepoint".into());
     }
@@ -913,6 +916,10 @@ pub(crate) struct SyncCheckpoint {
     registered_replacements: Option<SyncRegisteredReplacementState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     prevention: Option<SyncPreventionState>,
+    /// A wire checkpoint has no executable/bound temporary restriction carrier.
+    /// Require an explicit empty-state certificate from the local exporter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_restrictions_empty: Option<bool>,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -3326,6 +3333,7 @@ impl WasmGame {
                 .map_err(|error| JsValue::from_str(&error))?),
             registered_replacements: Some(registered_replacements),
             prevention: Some(prevention),
+            runtime_restrictions_empty: Some(true),
             format: self.match_format,
             perspective: self.perspective.0,
             snapshot_serial: self.snapshot_serial,
@@ -4719,6 +4727,9 @@ impl WasmGame {
         if checkpoint.players.is_empty() {
             return Err("checkpoint has no players".to_string());
         }
+        if checkpoint.runtime_restrictions_empty != Some(true) {
+            return Err("checkpoint has no valid runtime-restriction completeness carrier; replay accepted transcript".into());
+        }
         let (replacement_state, prevention_state) = restore_checkpoint_replacement_state(
             checkpoint.registered_replacements.clone().ok_or_else(||
                 "legacy checkpoint has no replacement-state completeness carrier; replay accepted transcript".to_string())?,
@@ -5254,6 +5265,7 @@ impl WasmGame {
                     object.id, object.controller, restored));
             }
         }
+        self.game.initialize_control_transition_baseline();
         self.pending_decision = self.game.turn.priority_player.map(|player| {
             ironsmith::game_loop::priority_context(&self.game, player).map(DecisionContext::Priority)
         }).transpose().map_err(|error| format!("priority action analysis failed: {error}"))?;
@@ -8308,6 +8320,13 @@ mod sync_checkpoint_tests {
         assert_eq!(guest.game.current_controller(permanent), Some(bob),
             "removing the actual control source reveals initial control, not a frozen imported assignment");
         assert_eq!(guest.game.object(permanent).unwrap().owner, alice);
+        let changes = guest.game.effect_store.pending_trigger_events.iter().filter_map(|event|
+            event.downcast::<ironsmith::events::ControlChangedEvent>()).collect::<Vec<_>>();
+        assert_eq!(changes.len(), 1, "import is not a new control event; source departure is");
+        assert_eq!((changes[0].permanent, changes[0].previous_controller, changes[0].new_controller),
+            (permanent, alice, bob));
+        assert_eq!(changes[0].previous_snapshot.as_ref().unwrap().object_id, permanent);
+        assert_eq!(changes[0].snapshot.as_ref().unwrap().object_id, permanent);
     }
 
     #[test]
@@ -10293,6 +10312,21 @@ mod replacement_checkpoint_safety_tests {
     }
 
     #[test]
+    fn temporary_restriction_uses_exact_runtime_recovery_and_cannot_be_dropped_from_analysis() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = host(); let alice = PlayerId::from_index(0);
+        wasm.game.add_restriction_effect(
+            ironsmith::effect::Restriction::cast_spells(PlayerFilter::You),
+            ironsmith::effect::Until::EndOfTurn, ObjectId::from_raw(77), alice, None,
+        );
+        assert!(retain_checkpoint_replacement_state(&wasm.game).unwrap_err().contains("registered runtime restrictions"));
+        let point = RuntimeSavepoint::capture(&wasm);
+        wasm.game.effect_store.restriction_effects.clear(); point.restore(&mut wasm);
+        assert_eq!(wasm.game.effect_store.restriction_effects.len(), 1);
+        assert!(!wasm.is_replay_checkpoint_boundary());
+    }
+
+    #[test]
     fn empty_carriers_retain_allocator_gaps_and_exhausted_prevention_metrics() {
         let _ids = crate::test_id_counter_guard();
         let mut wasm = host(); let alice = PlayerId::from_index(0);
@@ -10319,7 +10353,7 @@ mod replacement_checkpoint_safety_tests {
     fn legacy_and_forged_carriers_are_rejected_before_replacing_the_live_game() {
         let _ids = crate::test_id_counter_guard();
         let source = host(); let checkpoint = source.build_sync_checkpoint();
-        for field in ["registeredReplacements", "prevention"] {
+        for field in ["registeredReplacements", "prevention", "runtimeRestrictionsEmpty"] {
             let mut legacy = serde_json::to_value(&checkpoint).unwrap();
             legacy.as_object_mut().unwrap().remove(field);
             let mut peer = host(); peer.game.player_mut(PlayerId::from_index(0)).unwrap().life = 31;

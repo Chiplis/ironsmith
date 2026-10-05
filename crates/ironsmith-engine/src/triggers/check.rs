@@ -2569,6 +2569,12 @@ fn skip_post_event_source_discovery(
     {
         return true;
     }
+    if trigger_event.downcast::<crate::events::ControlChangedEvent>()
+        .is_some_and(|event| event.complete_source_lookback)
+        && trigger_ability.trigger.looks_back_for_source(trigger_event)
+    {
+        return true;
+    }
     // A look-back matcher describes which abilities can function from an
     // object's LKI; it does not mean every still-present permanent with that
     // matcher must be skipped. Only suppress the current-state copy when this

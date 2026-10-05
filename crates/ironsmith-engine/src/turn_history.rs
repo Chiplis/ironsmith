@@ -823,6 +823,21 @@ impl TurnHistory {
         })
     }
 
+    /// Characteristics immediately before this source left its zone, left the
+    /// game, or phased out this turn. Timed programs can outlive these transitions.
+    pub fn source_last_known_snapshot(&self, object: ObjectId) -> Option<&ObjectSnapshot> {
+        self.projected_records().rev().find_map(|record| {
+            if let Some(event) = record.event.downcast::<crate::events::PermanentPhasedOutEvent>() {
+                return (event.permanent == object).then_some(event.snapshot.as_ref()).flatten();
+            }
+            if let Some(event) = record.event.downcast::<crate::events::zones::ObjectLeavesGameEvent>() {
+                return (event.object == object).then_some(&event.snapshot);
+            }
+            let event = record.event.downcast::<ZoneChangeEvent>()?;
+            event.snapshots().iter().find(|snapshot| snapshot.object_id == object)
+        })
+    }
+
     /// Whether this object fought this turn (CR 701.14): a fight keyword
     /// action names each fighter as its source.
     pub fn object_fought_this_turn(&self, object_id: ObjectId, stable_id: StableId) -> bool {

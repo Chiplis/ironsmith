@@ -239,6 +239,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             TriggerSubjectAst::Object(filter.clone())
         }
+        TriggerSpec::ControlChanged(trigger) => TriggerSubjectAst::Object(trigger.filter.clone()),
         TriggerSpec::SpellCast {
             filter: Some(filter),
             ..

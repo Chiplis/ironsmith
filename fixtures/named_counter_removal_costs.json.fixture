@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Marath, Will of the Wild",
+    "oracle_id": "fae87115-8749-4d25-a594-7139dd01a034",
+    "text": "Mana cost: {R}{G}{W}\nType: Legendary Creature — Elemental Beast\nPower/Toughness: 0/0\nMarath enters with a number of +1/+1 counters on it equal to the amount of mana spent to cast it.\n{X}, Remove X +1/+1 counters from Marath: Choose one —\n• Put X +1/+1 counters on target creature. X can't be 0.\n• Marath deals X damage to any target. X can't be 0.\n• Create an X/X green Elemental creature token. X can't be 0.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Ulasht, the Hate Seed",
+    "oracle_id": "796f1e1f-7fec-429d-82ae-125f541d6cc7",
+    "text": "Mana cost: {2}{R}{G}\nType: Legendary Creature — Hellion Hydra\nPower/Toughness: 0/0\nUlasht enters with a +1/+1 counter on it for each other red creature you control and a +1/+1 counter on it for each other green creature you control.\n{1}, Remove a +1/+1 counter from Ulasht: Choose one —\n• Ulasht deals 1 damage to target creature.\n• Create a 1/1 green Saproling creature token.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

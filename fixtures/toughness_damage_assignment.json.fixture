@@ -1,0 +1,118 @@
+[
+  {
+    "name": "Ancient Lumberknot",
+    "oracle_id": "d714f1f6-539e-4a2a-b738-226854d7ff09",
+    "mana_cost": "{2}{B}{G}",
+    "type_line": "Creature — Treefolk",
+    "power": "1",
+    "toughness": "4",
+    "oracle_text": "Each creature you control with toughness greater than its power assigns combat damage equal to its toughness rather than its power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Arcades, the Strategist",
+    "oracle_id": "e7fc5ad6-f2f0-4b06-a61b-05022db9d93b",
+    "mana_cost": "{1}{G}{W}{U}",
+    "type_line": "Legendary Creature — Elder Dragon",
+    "power": "3",
+    "toughness": "5",
+    "oracle_text": "Flying, vigilance\nWhenever a creature you control with defender enters, draw a card.\nEach creature you control with defender assigns combat damage equal to its toughness rather than its power and can attack as though it didn't have defender.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Baldin, Century Herdmaster",
+    "oracle_id": "14493624-fdc7-4630-9b1e-f35668651108",
+    "mana_cost": "{4}{W}{W}",
+    "type_line": "Legendary Creature — Human Warrior",
+    "power": "0",
+    "toughness": "7",
+    "oracle_text": "During your turn, each creature assigns combat damage equal to its toughness rather than its power.\nWhenever Baldin attacks, up to one hundred target creatures each get +0/+X until end of turn, where X is the number of cards in your hand.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Bark of Doran",
+    "oracle_id": "db3ba239-2239-4e9d-ad70-cff32ed24578",
+    "mana_cost": "{1}{W}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +0/+1.\nAs long as equipped creature's toughness is greater than its power, it assigns combat damage equal to its toughness rather than its power.\nEquip {1} ({1}: Attach to target creature you control. Equip only as a sorcery.)",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Bedrock Tortoise",
+    "oracle_id": "d9c2e674-11a9-47f0-8790-a53b62c43fe6",
+    "mana_cost": "{3}{G}",
+    "type_line": "Creature — Turtle",
+    "power": "0",
+    "toughness": "6",
+    "oracle_text": "During your turn, creatures you control have hexproof.\nEach creature you control with toughness greater than its power assigns combat damage equal to its toughness rather than its power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Bill the Pony",
+    "oracle_id": "e461ef8d-59ca-440a-8773-da1de3b6b195",
+    "mana_cost": "{3}{W}",
+    "type_line": "Legendary Creature — Horse",
+    "power": "1",
+    "toughness": "4",
+    "oracle_text": "When Bill the Pony enters, create two Food tokens. (They're artifacts with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nSacrifice a Food: Until end of turn, target creature you control assigns combat damage equal to its toughness rather than its power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Ghalta the Immovable",
+    "oracle_id": "0d496c6e-8f7b-420f-9197-dacd2feb528f",
+    "mana_cost": "{8}{W}",
+    "type_line": "Legendary Creature — Elder Dinosaur",
+    "power": "0",
+    "toughness": "7",
+    "oracle_text": "This spell costs {X} less to cast, where X is the greatest toughness among creatures you control.\nCreatures you control can attack as though they didn't have defender.\nEach creature you control with toughness greater than its power assigns combat damage equal to its toughness rather than its power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Plagon, Lord of the Beach",
+    "oracle_id": "1c95b7cf-be4d-4961-9073-3e39487492c8",
+    "mana_cost": "{2}{U}",
+    "type_line": "Legendary Creature — Starfish Wizard",
+    "power": "0",
+    "toughness": "3",
+    "oracle_text": "When Plagon enters, draw a card for each creature you control with toughness greater than its power.\n{W/U}: Target creature you control assigns combat damage equal to its toughness rather than its power this turn.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Solid Footing",
+    "oracle_id": "edc91e1a-a305-4c14-9d85-077a410528fa",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Flash\nEnchant creature\nEnchanted creature gets +1/+1.\nAs long as enchanted creature has vigilance, it assigns combat damage equal to its toughness rather than its power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Tapestry Warden",
+    "oracle_id": "981138d0-bf61-406a-85be-68cc5e58796c",
+    "mana_cost": "{3}{G}",
+    "type_line": "Artifact Creature — Robot Soldier",
+    "power": "3",
+    "toughness": "4",
+    "oracle_text": "Vigilance\nEach creature you control with toughness greater than its power assigns combat damage equal to its toughness rather than its power.\nEach creature you control with toughness greater than its power stations permanents using its toughness rather than its power.",
+    "coverage_status": "partial_station_payment"
+  },
+  {
+    "name": "The Kingpin of Crime",
+    "oracle_id": "3eeeb159-aa45-4a9b-9618-8542604b9830",
+    "mana_cost": "{1}{W}{B}",
+    "type_line": "Legendary Creature — Human Villain",
+    "power": "1",
+    "toughness": "5",
+    "oracle_text": "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)\nWhenever you attack, you may pay 2 life. If you do, until end of turn, creatures you control with toughness greater than their power assign combat damage equal to their toughness rather than their power.",
+    "coverage_status": "proposed_complete"
+  },
+  {
+    "name": "Walking Bulwark",
+    "oracle_id": "8ad0d89b-beef-40f7-8ce8-65589e3970be",
+    "mana_cost": "{1}",
+    "type_line": "Artifact Creature — Golem",
+    "power": "0",
+    "toughness": "3",
+    "oracle_text": "Defender\n{2}: Until end of turn, target creature with defender gains haste, can attack as though it didn't have defender, and assigns combat damage equal to its toughness rather than its power. Activate only as a sorcery.",
+    "coverage_status": "proposed_complete"
+  }
+]

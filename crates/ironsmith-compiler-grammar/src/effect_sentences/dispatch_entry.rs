@@ -6061,6 +6061,9 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::timed_draw_replacement::parse_timed_draw_replacement_sentence(tokens)? {
+        return Ok(effects);
+    }
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(effects);
     }

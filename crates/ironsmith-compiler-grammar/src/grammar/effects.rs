@@ -1,3 +1,4 @@
+pub mod timed_draw_replacement;
 use super::super::activation_and_restrictions::{
     normalize_cant_words, parse_cant_restriction_clause, parse_cant_restrictions,
 };
@@ -53,6 +54,8 @@ pub mod chain_splitting;
 pub mod combat_damage_family_shapes;
 #[path = "effects/combat_shapes.rs"]
 pub mod combat_shapes;
+#[path = "effects/toughness_assignment.rs"]
+pub mod toughness_assignment;
 #[path = "effects/control_copy_attach_shapes.rs"]
 pub mod control_copy_attach_shapes;
 #[path = "effects/control_flow.rs"]

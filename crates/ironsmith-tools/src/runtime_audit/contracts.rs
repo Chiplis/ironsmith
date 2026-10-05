@@ -977,6 +977,11 @@ impl Auditor {
                 scope.event_object = Binding::Present;
                 scope.amount = Binding::Present;
             }
+            "ControlChanged" => {
+                // The typed matcher requires exact transition/departure
+                // snapshots. Loss clauses do not bind the event's new player.
+                scope.event_object = Binding::Present;
+            }
             "AttachmentChanged" => {
                 // Both attachment and recipient snapshots are mandatory in
                 // the typed matcher; the recipient is the body event object.

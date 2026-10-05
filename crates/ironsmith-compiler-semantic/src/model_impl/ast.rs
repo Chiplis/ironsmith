@@ -182,6 +182,7 @@ pub enum TriggerSpec {
     /// A complete zone-change event, including origin, destination, owner,
     /// controller, quantifier, and event-time turn restrictions.
     ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger),
+    ControlChanged(ironsmith_core::trigger_model::ControlChangeTrigger),
     ThisPhasesOut,
     PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
     CardsMilled { player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool },

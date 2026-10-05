@@ -516,6 +516,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerChangesTapState { player, filter, tapped, one_or_more, during_untap_step } => {
             Trigger::player_changes_tap_state(player, filter, tapped, one_or_more, during_untap_step)
         }
+        TriggerSpec::ControlChanged(trigger) => Trigger::control_changed(trigger),
         TriggerSpec::AttachmentChanged { attachment, recipient, attached } => Trigger::attachment_changed(attachment, recipient, attached),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),

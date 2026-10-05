@@ -772,26 +772,28 @@ pub fn parse_become_clause(
             .with_animation_color_retention(preserve_other_colors));
     }
 
-    if let Some(shape) = become_grammar::parse_unsized_object_template_tokens(become_body_tokens) {
+    if let Some(shape) = become_grammar::parse_object_template_tokens(become_body_tokens) {
         let words = crate::lexer::parser_token_word_refs(shape.ability_tokens);
-        let (grants, choice) = parse_granted_abilities_for_gain_clause(shape.ability_tokens, &words, false)?;
-        if choice || grants.is_empty() {
-            return Err(CardTextError::ParseError("unsupported complete unsized object-template grant".into()));
+        let (grants, choice) = if shape.ability_tokens.is_empty() { (Vec::new(), false) }
+            else { parse_granted_abilities_for_gain_clause(shape.ability_tokens, &words, false)? };
+        if choice || (!shape.ability_tokens.is_empty() && grants.is_empty()) {
+            return Err(CardTextError::ParseError("unsupported complete object-template grant".into()));
         }
         let mut effect = EffectAst::subject_verb_become_object_template(
-            None, target, shape.card_types, shape.subtypes, Vec::new(), shape.colors,
+            shape.base_power_toughness.clone(), target, shape.card_types, shape.subtypes, Vec::new(), shape.colors,
             Vec::new(), grants, shape.preserve_other_types,
             shape.preserve_other_types.then_some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes),
-            None, animation_duration_surface, duration,
+            shape.base_power_toughness.is_some().then_some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness), animation_duration_surface, duration,
         ).with_set_quantifier_surface(set_quantifier_surface)
          .with_animation_color_retention(shape.preserve_other_colors);
         if let EffectAst::SubjectVerb(subject) = &mut effect
             && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
                 crate::cards::builders::CharacteristicActionAst::BecomeBasePtCreature {
-                    add_supertypes, remove_other_abilities, ..
+                    add_supertypes, remove_other_abilities, name_override, ..
                 }) = &mut subject.action {
             *add_supertypes = shape.supertypes;
             *remove_other_abilities = shape.remove_other_abilities;
+            *name_override = shape.name_override;
         }
         return Ok(effect);
     }

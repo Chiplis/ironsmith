@@ -299,6 +299,7 @@ pub(crate) fn interpret_trigger_model(
                 player, filter, tapped, one_or_more, during_untap_step,
             })
         }
+        TriggerKind::ControlChanged(trigger) => crate::triggers::Trigger::new(trigger),
         TriggerKind::AttachmentChanged { attachment, recipient, attached } => crate::triggers::Trigger::new(crate::triggers::AttachmentChangedTrigger { attachment, recipient, attached }),
         TriggerKind::PlayerAttackDeclaration { attacker, defender, grouping } => crate::triggers::Trigger::new(crate::triggers::PlayerAttackDeclarationTrigger { attacker, defender, grouping }),
         TriggerKind::CardsMilled { player, filter, one_or_more, per_player } => crate::triggers::Trigger::new(crate::triggers::CardsMilledTrigger { player, filter, one_or_more, per_player }),
@@ -915,6 +916,8 @@ impl super::Trigger {
                 Self::beginning_of_postcombat_main_phase(player)
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
+            ironsmith_core::DelayedTriggerSpec::ControlChanged(trigger) => Self::new(trigger),
+            ironsmith_core::DelayedTriggerSpec::PermanentBecomesUntapped { filter } => Self::new(crate::triggers::PermanentBecomesUntappedTrigger { filter, one_or_more: false }),
             ironsmith_core::DelayedTriggerSpec::SourceControllerLosesControl {
                 source_description,
             } => Self::source_controller_loses_control(source_description),

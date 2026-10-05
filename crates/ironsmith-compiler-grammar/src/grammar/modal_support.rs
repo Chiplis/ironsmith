@@ -213,6 +213,7 @@ pub fn parse_modal_header(
                 },
                 is_loyalty_ability: loyalty_shorthand,
                 once_per_turn: loyalty_shorthand,
+                x_cant_be_zero: false,
                 activation_restrictions: Vec::new(),
             });
             effect_start_idx = colon_idx + 1;
@@ -221,7 +222,9 @@ pub fn parse_modal_header(
 
     if let Some(activated) = activated.as_mut() {
         for sentence in split_lexed_sentences(&tokens[choose_idx + 1..]) {
-            if let Some(timing) = parse_activate_only_timing_lexed(sentence) {
+            if crate::grammar::effects::dispatch_entry_shapes::is_x_cant_be_zero_tokens(sentence) {
+                activated.x_cant_be_zero = true;
+            } else if let Some(timing) = parse_activate_only_timing_lexed(sentence) {
                 activated.timing = timing;
             } else if let Some(condition) = parse_activation_condition_lexed(sentence) {
                 activated.activation_restrictions.push(condition);

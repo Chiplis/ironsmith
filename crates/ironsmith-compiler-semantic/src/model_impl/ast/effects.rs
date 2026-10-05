@@ -3523,8 +3523,20 @@ impl EffectAst {
                 player,
                 replacement_effects,
                 duration,
+                player_target: None,
+                display: None,
             }),
         )
+    }
+
+    pub fn subject_verb_register_timed_draw_replacement(
+        player: PlayerFilter, player_target: Option<TargetAst>, replacement_effects: Vec<Self>,
+        duration: ZoneReplacementDurationAst, display: String,
+    ) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
+                player, replacement_effects, duration, player_target, display: Some(display),
+            }))
     }
 
     pub fn subject_verb_register_counter_placement_replacement(

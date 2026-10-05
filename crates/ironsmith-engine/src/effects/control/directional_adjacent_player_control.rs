@@ -6,11 +6,9 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{Effect, EffectOutcome, Until};
 use crate::effects::{ApplyContinuousEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
-use crate::events::ControlChangedEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 pub type DirectionalAdjacentPlayerControlEffect =
@@ -100,6 +98,7 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
         let direction = chosen_direction(game, ctx.source, self)?;
         let ordered_players = players_in_direction(game, ctx.controller, direction);
         if ordered_players.is_empty() {
@@ -142,36 +141,15 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
 
         let mut outcomes = Vec::new();
         for (new_controller, object_id) in chosen {
-            let previous_controller = game.current_controller(object_id);
-            let lookback_source_snapshots = game.trigger_source_lookback_snapshots();
+            let pending_start = game.effect_store.pending_trigger_events.len();
             let apply = ApplyContinuousEffect::new(
                 EffectTarget::Specific(object_id),
                 Modification::ChangeController(new_controller),
                 Until::Forever,
             );
             let mut outcome = execute_effect(game, &Effect::new(apply), ctx)?;
-            if let Some(previous_controller) = previous_controller
-                && previous_controller != new_controller
-            {
-                game.clear_soulbond_pair(object_id);
-                if let Some(stable_id) = game.object(object_id).map(|o| o.stable_id) {
-                    game.record_ui_effect_event(
-                        "control_change",
-                        Some(new_controller),
-                        Some(previous_controller),
-                        vec![stable_id],
-                        None,
-                        None,
-                    );
-                }
-                outcome = outcome.with_event(
-                    TriggerEvent::new_with_provenance(
-                        ControlChangedEvent::new(object_id, previous_controller, new_controller),
-                        ctx.provenance,
-                    )
-                    .with_lookback_source_snapshots(lookback_source_snapshots),
-                );
-            }
+            outcome.events.extend(game.remove_pending_trigger_events_matching_from(pending_start,
+                |event| event.kind() == crate::events::EventKind::ControlChanged));
             outcomes.push(outcome);
         }
 

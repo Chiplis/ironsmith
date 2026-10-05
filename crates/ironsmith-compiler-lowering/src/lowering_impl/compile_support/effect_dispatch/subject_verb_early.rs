@@ -1805,9 +1805,16 @@ pub(super) fn compile_subject_verb_early(
             player,
             replacement_effects,
             duration,
+            player_target,
+            display,
         }) => {
             let player_filter = player.clone();
             let mut choices = Vec::new();
+            let player_target = if let Some(target) = player_target {
+                let (spec, added) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                for choice in added { push_choice(&mut choices, choice); }
+                Some(spec)
+            } else { None };
             let (replacement_effects, replacement_choices) =
                 compile_effects(replacement_effects, ctx)?;
             for choice in replacement_choices {
@@ -1824,11 +1831,10 @@ pub(super) fn compile_subject_verb_early(
                     crate::effects::ReplacementApplyMode::Resolution
                 }
             };
-            let effect = Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
-                player_filter,
-                replacement_effects,
-                mode,
-            ));
+            let mut registration = crate::effects::RegisterDrawReplacementEffect::new(player_filter, replacement_effects, mode);
+            registration.player_target = player_target;
+            registration.display = display.clone();
+            let effect = Effect::new(registration);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {

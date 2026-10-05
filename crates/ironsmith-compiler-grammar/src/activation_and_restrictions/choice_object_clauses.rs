@@ -777,3 +777,61 @@ mod hand_remainder_tests {
         );
     }
 }
+
+/// One authored choose instruction may name two independent semantic domains.
+/// Parse both complete operands with the existing typed readers; never turn
+/// the player operand into an object-filter suffix or discard the first choice.
+pub fn parse_coordinated_object_and_player_choice(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    if tokens.iter().any(OwnedLexToken::is_period) { return Ok(None); }
+    let prefix = if tokens.first().is_some_and(|token| token.is_word("choose")) { 1 }
+        else if tokens.len() >= 2 && tokens[0].is_word("you") && tokens[1].is_word("choose") { 2 }
+        else { return Ok(None); };
+    let separators = tokens.iter().enumerate().filter(|(_, token)| token.is_word("and"))
+        .map(|(index, _)| index).collect::<Vec<_>>();
+    let [separator] = separators.as_slice() else { return Ok(None); };
+    if *separator <= prefix || *separator + 1 >= tokens.len() { return Ok(None); }
+    let mut player_tokens = tokens[..prefix].to_vec();
+    player_tokens.extend_from_slice(&tokens[*separator + 1..]);
+    let Some((player_chooser, player_filter, random, exclude_previous_choices)) =
+        parse_you_choose_player_clause(&player_tokens)? else { return Ok(None); };
+    let Some((object_chooser, object_filter, count, count_value)) =
+        parse_you_choose_objects_clause_with_count_value(&tokens[..*separator])? else { return Ok(None); };
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: object_filter, count, count_value, player: object_chooser,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+            }),
+            EffectAst::subject_verb_choose_player(player_chooser, player_filter,
+                crate::tag::CompilerReferenceTag::It.bind(), random, exclude_previous_choices),
+        ],
+        leading_duration: false,
+        result_conjunction: false,
+    }]))
+}
+
+#[cfg(test)]
+mod coordinated_object_player_tests {
+    use super::*;
+    #[test]
+    fn a_shared_choose_verb_retains_both_domains_and_exact_controller_filter() {
+        let tokens = crate::lexer::lex_line("Choose a creature you control and an opponent.", 0).unwrap();
+        let effects = parse_coordinated_object_and_player_choice(&tokens).unwrap().unwrap();
+        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else { panic!("coordinated choices"); };
+        assert_eq!(effects.len(), 2);
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = &effects[0] else { panic!("object choice"); };
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert!(format!("{:?}", effects[1]).contains("Opponent"));
+    }
+    #[test]
+    fn incomplete_or_object_only_conjunctions_are_not_reinterpreted() {
+        for text in ["Choose a creature and", "Choose a creature and an artifact", "Choose a creature and an opponent then draw a card", "Choose a creature and a land and an opponent"] {
+            let result = parse_coordinated_object_and_player_choice(&crate::lexer::lex_line(text, 0).unwrap());
+            assert!(!matches!(result, Ok(Some(_))), "{text}");
+        }
+    }
+}
