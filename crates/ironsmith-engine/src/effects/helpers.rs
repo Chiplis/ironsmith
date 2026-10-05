@@ -679,6 +679,9 @@ fn resolve_effect_metric(
     source: EffectMetricSource,
     metric: EffectMetric,
 ) -> Result<i64, ExecutionError> {
+    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
+        return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+    }
     // "the other result" of a roll-and-choose die roll (Wild Endeavor) is
     // recorded on the roll itself. When the bound producer is a later
     // instruction, read the nearest earlier roll that recorded one.
@@ -941,6 +944,9 @@ fn resolve_prior_effect_metric(
     effect_id: crate::effect::EffectId,
     query: &PriorEffectMetricQuery,
 ) -> Result<i64, ExecutionError> {
+    if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
+        return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+    }
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }

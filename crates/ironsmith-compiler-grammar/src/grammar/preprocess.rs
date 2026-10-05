@@ -1,3 +1,6 @@
+#[path = "preprocess/attachment_grant_scopes.rs"]
+mod attachment_grant_scopes;
+pub use attachment_grant_scopes::*;
 #[path = "preprocess/borrow_expansion.rs"]
 mod borrow_expansion;
 #[path = "preprocess/borrow_shapes.rs"]

@@ -133,6 +133,7 @@ fn sacrifice_cost_precheck(
                 .with_tagged_objects(ctx.tagged_objects.clone());
             exec.replacement = ctx.replacement.clone();
             exec.x_value = ctx.x_value;
+            exec.effect_outcomes = ctx.effect_outcomes.clone();
             match crate::effects::helpers::resolve_value(game, count, &exec) {
                 Ok(value) => value.max(0) as usize,
                 Err(error) => {
@@ -365,7 +366,7 @@ fn dynamic_counter_removal_cost_precheck(
     let effect = transparent_cost_effect(effect)
         .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()?;
     let announced_x = ctx.x_value?;
-    if !effect.dynamic_count {
+    if !effect.dynamic_count || !effect.display_x {
         return None;
     }
     let available = crate::effects::counters::remove_any_counters_among_total_available(
@@ -498,6 +499,7 @@ impl CostPayer for CostEffect {
             exec.source_snapshot = ctx.source_snapshot.clone();
             exec.replacement = ctx.replacement.clone();
             exec.x_value = ctx.x_value;
+            exec.effect_outcomes = ctx.effect_outcomes.clone();
             crate::effects::composition::choose_objects::check_relation_cost_with_context(
                 choose, game, &exec,
             )
@@ -621,6 +623,7 @@ impl CostPayer for CostEffect {
             exec.replacement = ctx.replacement.clone();
             exec.source_snapshot = ctx.source_snapshot.clone();
             exec.x_value = ctx.x_value.or(Some(0));
+            exec.effect_outcomes = ctx.effect_outcomes.clone();
             let payer =
                 crate::effects::helpers::resolve_player_from_spec(game, &life.player, &exec)
                     .map_err(CostPaymentError::ExecutionFailed)?;
@@ -661,6 +664,7 @@ impl CostPayer for CostEffect {
             exec_ctx.replacement = ctx.replacement.clone();
             exec_ctx.source_snapshot = ctx.source_snapshot.clone();
             exec_ctx.x_value = ctx.x_value.or(Some(0));
+            exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
             let payer = crate::effects::helpers::resolve_player_from_spec(
                 game,
                 &pay_energy.player,
@@ -1783,5 +1787,28 @@ mod unsigned_counter_cost_contract_tests {
             assert_eq!(game.counter_count(source, CounterType::Charge), amount);
             assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 7);
         }
+    }
+}
+
+#[cfg(test)]
+mod retained_counter_x_independence {
+    use super::*;
+    #[test]
+    fn an_unannounced_counter_quantity_does_not_borrow_a_larger_mana_x() {
+        struct Two;
+        impl crate::decision::DecisionMaker for Two {
+            fn decide_number(&mut self, _: &GameState, context: &crate::decisions::context::NumberContext) -> u32 {
+                assert!(!context.is_x_value); assert_eq!((context.min,context.max),(1,2)); 2
+            }
+        }
+        let payer=crate::PlayerId::from_index(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Independent cost X").card_types(vec![crate::CardType::Artifact]).build();
+        let source=game.create_object_from_card(&card,payer,crate::Zone::Battlefield);game.add_counters(source,crate::CounterType::Charge,2);
+        let removal=crate::effects::RemoveAnyCountersAmongEffect::dynamic(1,u32::MAX,crate::ObjectFilter::source().in_zone(crate::Zone::Battlefield),false)
+            .with_counter_type(Some(crate::CounterType::Charge)).from_single_object();
+        let cost=crate::costs::Cost::effect(crate::effects::WithIdEffect::new(crate::effect::EffectId::ACTIVATION_COUNTER_COST,Effect::new(removal)));
+        let mut dm=Two;let mut context=CostContext::new(source,payer,&mut dm).with_x(17);
+        cost.pay(&mut game,&mut context).unwrap();assert_eq!(context.x_value,Some(17));assert_eq!(game.counter_count(source,crate::CounterType::Charge),0);
+        assert_eq!(context.effect_outcomes[&crate::effect::EffectId::ACTIVATION_COUNTER_COST].instruction_result().count_or_zero(),2);
     }
 }

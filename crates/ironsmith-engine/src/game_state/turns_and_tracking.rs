@@ -3532,6 +3532,7 @@ impl GameState {
             your_commanders,
             iterated_player: None,
             x_value: None,
+                counter_removal_declaration: None,
             chosen_player: source.and_then(|source_id| self.chosen_player(source_id)),
             target_players: Vec::new(),
             target_objects: Vec::new(),

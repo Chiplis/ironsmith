@@ -130,6 +130,10 @@ impl EffectExecutor for CastTaggedEffect {
                         }
                         copy_obj.zone = Zone::Command;
                         game.add_object(copy_obj);
+                        // Reserve against the actual provisional face before
+                        // entry programs can create a later next-play grant.
+                        // The enclosing transaction restores pending/errors.
+                        game.reserve_next_land_play_timing(caster, copy_id);
                         let entry = move_to_battlefield_with_options(
                             game,
                             ctx,
@@ -222,6 +226,7 @@ impl EffectExecutor for CastTaggedEffect {
                         return Ok(EffectOutcome::target_invalid());
                     }
 
+                    game.reserve_next_land_play_timing(caster, object_id);
                     let entry = move_to_battlefield_with_options(
                         game,
                         ctx,

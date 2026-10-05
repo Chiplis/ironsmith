@@ -175,6 +175,7 @@ pub struct LoweringFrame {
     pub declared_target_references: Vec<crate::TargetAst>,
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
+    pub counter_removal_cost: Option<super::reference_state::CounterRemovalCostReference>,
     pub last_object_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub last_it_choice_is_set: bool,
@@ -359,6 +360,7 @@ impl EffectLoweringContext {
         self.last_value_comparison = frame.last_value_comparison;
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
+        self.counter_removal_cost = frame.counter_removal_cost;
         self.last_object_tag = frame.last_object_tag;
         self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;

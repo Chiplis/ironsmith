@@ -481,7 +481,7 @@ pub(crate) fn link_unproduced_result_references_in_program(
     }
     let mut missing: Vec<EffectId> = Vec::new();
     for id in referenced {
-        if !defined.contains(&id) && !missing.contains(&id) {
+        if id != EffectId::ACTIVATION_COUNTER_COST && !defined.contains(&id) && !missing.contains(&id) {
             missing.push(id);
         }
     }

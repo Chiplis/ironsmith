@@ -1880,6 +1880,14 @@ pub(super) fn captured_activation_reference_branch(pending: &PendingActivation, 
         .ok_or_else(|| GameLoopError::InvalidState("captured raw activation branch is absent".into()))
 }
 
+/// The original producer contract survives target-specific repricing.
+pub(super) fn pending_counter_declaration_cost(pending: &PendingActivation) -> Result<Option<crate::cost::TotalCost>, GameLoopError> {
+    if crate::cost::counter_declaration::target_spec(pending.effects.flattened_default_effects()).is_none() { return Ok(None); }
+    let base = pending.cost_reference_base.as_ref().ok_or_else(|| GameLoopError::InvalidState("counter declaration lost captured cost".into()))?;
+    let base = selected_activation_cost_branch(base, pending.selected_alternative_cost).ok_or_else(|| GameLoopError::InvalidState("counter declaration has no selected branch".into()))?;
+    Ok(Some(pending.x_value.map_or_else(|| base.clone(), |x| activation_cost_with_locked_x(&base, x as u32))))
+}
+
 /// The selected branch of an activation cost (or the cost itself).
 fn selected_activation_cost_branch(
     cost: &crate::cost::TotalCost,
@@ -1946,6 +1954,9 @@ pub(super) fn assign_pending_activation_cost(
     cost: &crate::cost::TotalCost,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    if let Some(declaration) = pending.counter_removal_declaration {
+        crate::cost::counter_declaration::validate_locked(cost, declaration).map_err(|error| GameLoopError::InvalidState(format!("declared payment: {error:?}")))?;
+    }
     let components = cost.as_all().ok_or_else(|| {
         GameLoopError::InvalidState(
             "an alternative activation cost must be selected before locking payment".to_string(),
@@ -2547,7 +2558,8 @@ fn pending_cast_base_mana_cost(game: &GameState, pending: &PendingCast) -> Optio
 fn lock_effect_cast_price(game: &GameState, pending: &mut PendingCast) -> Result<(), GameLoopError> {
     let Some(cost) = pending.effect_alternative_cost.take() else { return Ok(()); };
     let mut context = crate::effects::ExecutionContext::new_default(pending.spell_id, pending.caster)
-        .with_tagged_objects(pending.tagged_objects.clone());
+        .with_tagged_objects(pending.tagged_objects.clone())
+                        .with_effect_outcomes(pending.effect_outcomes.clone());
     context.x_value = pending.x_value;
     context.announced_targets = Some(pending.chosen_targets.iter().map(|target| match target {
         Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
@@ -3226,6 +3238,8 @@ fn specialize_target_requirement_for_chooser(
     source: ObjectId,
     chooser: PlayerId,
     requirement: &mut TargetRequirement,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
 ) {
     requirement.spec =
         super::targeting::specialize_iterated_player_choose_spec(&requirement.spec, chooser);
@@ -3237,7 +3251,7 @@ fn specialize_target_requirement_for_chooser(
         requirement.spec.clone()
     };
     requirement.legal_targets =
-        compute_legal_targets(game, &candidate_spec, controller, Some(source));
+        super::targeting::compute_legal_targets_with_counter_declaration(game, &candidate_spec, controller, Some(source), references, declaration);
     if let Some(group) = requirement.shared_player_group.as_mut() {
         group
             .target_players
@@ -3372,7 +3386,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
             .iter_mut()
             .take(requirement_count)
         {
-            specialize_target_requirement_for_chooser(game, player, source, chooser, requirement);
+            specialize_target_requirement_for_chooser(game, player, source, chooser, requirement, None, None);
         }
         // When a single target remains, omit choices that cannot supply the only
         // available timing permission. Keep the permission out of the resolution
@@ -4679,7 +4693,8 @@ pub(super) fn continue_to_mana_payment(
             .with_casting_method(pending.casting_method.clone())
             .with_optional_costs_paid(pending.optional_costs_paid.clone())
             .with_chosen_modes(pending.chosen_modes.clone())
-            .with_tagged_objects(pending.tagged_objects.clone());
+            .with_tagged_objects(pending.tagged_objects.clone())
+                        .with_effect_outcomes(pending.effect_outcomes.clone());
         if let Some(x) = pending.x_value { entry = entry.with_x(x); }
         pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
     }
@@ -6102,6 +6117,11 @@ pub(super) fn activation_stage_after_announcements(pending: &PendingActivation) 
     }
 }
 
+fn observed_counter_removal_among_cost(cost: &crate::costs::Cost) -> bool {
+    cost.effect_ref().and_then(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+        .is_some_and(|observed| observed.effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>().is_some())
+}
+
 pub(super) fn remove_any_counters_among_effect(
     cost: &crate::costs::Cost,
 ) -> Option<&crate::effects::RemoveAnyCountersAmongEffect> {
@@ -6446,6 +6466,7 @@ pub(super) fn continue_activation_cost_payment(
     match step {
         ActivationCostStep::Cost(cost) => {
             if remove_any_counters_among_effect(&cost).is_none()
+                && !observed_counter_removal_among_cost(&cost)
                 && cost.display().to_ascii_lowercase().contains("from among")
             {
                 return Err(GameLoopError::InvalidState(format!(
@@ -6471,6 +6492,7 @@ pub(super) fn continue_activation_cost_payment(
                     .with_reason(pending.payment_reason)
                     .with_provenance(pending.provenance);
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
+            cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
             cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
             let pre_cost_source_snapshot = game.object(pending.source).map(|obj| {
                 crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -6512,6 +6534,11 @@ pub(super) fn continue_activation_cost_payment(
                         pending.x_value = cost_ctx.x_value.map(|x| x as usize);
                     }
                     pending.tagged_objects = cost_ctx.tagged_objects;
+                    pending.effect_outcomes = cost_ctx.effect_outcomes;
+                    if pending.counter_removal_declaration.is_some() && pending.effect_outcomes.contains_key(&crate::effect::EffectId::ACTIVATION_COUNTER_COST)
+                        && let Err(error) = crate::cost::counter_declaration::validate_paid(&pending.effect_outcomes) {
+                        state.rollback_action(game); return Err(GameLoopError::InvalidState(format!("declared payment receipt: {error:?}")));
+                    }
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);
                     pending.stage = activation_stage_after_targets(&pending);
@@ -6684,7 +6711,8 @@ pub(super) fn continue_activation(
                 .with_targets(pending.chosen_targets.clone())
                 .with_target_assignments(pending.chosen_target_assignments.clone())
                 .with_target_distributions(pending.target_distributions.clone())
-                .with_tagged_objects(pending.tagged_objects.clone());
+                .with_tagged_objects(pending.tagged_objects.clone())
+                        .with_effect_outcomes(pending.effect_outcomes.clone());
             entry.ability_id = Some(ability_id);
             if let Some(x) = pending.x_value { entry = entry.with_x(x as u32); }
             pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
@@ -6692,6 +6720,17 @@ pub(super) fn continue_activation(
 
         match pending.stage {
             ActivationStage::ChoosingCostReferences => {
+                if pending.counter_removal_declaration.is_none() && let Some(base) = pending_counter_declaration_cost(&pending)? {
+                    let bounds = crate::cost::counter_declaration::bounds(game, pending.source, &base).map_err(|error| GameLoopError::InvalidState(format!("counter declaration: {error:?}")))?;
+                    if bounds.minimum == bounds.maximum {
+                        pending.counter_removal_declaration = Some(crate::cost::counter_declaration::declare(game, pending.source, &base, bounds.minimum)
+                            .map_err(|error| GameLoopError::InvalidState(format!("counter declaration: {error:?}")))?);
+                    } else {
+                        let context = crate::decisions::context::NumberContext::new(pending.activator, Some(pending.source), bounds.minimum, bounds.maximum, "Choose the number of counters to remove for this activation");
+                        state.pending_activation = Some(pending);
+                        return Ok(GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Number(context)));
+                    }
+                }
                 if let Some(choice) = pending.cost_reference_choices.first() {
                     let candidates = crate::cost::prospective_references::public_reference_candidates(
                         game, pending.source, pending.activator, choice, &pending.tagged_objects,
@@ -6719,17 +6758,20 @@ pub(super) fn continue_activation(
                     game, pending.source, pending.activator, &base, &pending.tagged_objects,
                     &pending.announced_cost_objects, pending.x_value.map(|x| x as u32),
                 ).map_err(|error| GameLoopError::InvalidState(format!("referenced activation cost: {error:?}")))?;
+                let base = if let Some(declaration) = pending.counter_removal_declaration {
+                    crate::cost::counter_declaration::lock(game, pending.source, &base, declaration).map_err(|error| GameLoopError::InvalidState(format!("declared cost: {error:?}")))?
+                } else { base };
                 let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                     game, pending.activator, pending.source, &base, &pending.chosen_targets,
                     crate::decision::ActivationCostAbility::at(game, pending.activator, pending.source, pending.ability_index),
                 );
                 pending.cost_references_ready = true;
                 assign_pending_activation_cost(game, &mut pending, &cost, decision_maker)?;
-                pending.remaining_requirements = extract_target_requirements_with_modes_and_references(
+                pending.remaining_requirements = super::targeting::extract_target_requirements_with_modes_and_announcements(
                     game, pending.effects.flattened_default_effects(), pending.activator, Some(pending.source),
-                    pending.chosen_modes.as_deref(), Some(&pending.tagged_objects),
+                    pending.chosen_modes.as_deref(), Some(&pending.tagged_objects), pending.counter_removal_declaration,
                 );
-                let view = crate::derived_view::DerivedGameView::new(game).with_target_reference_bindings(pending.tagged_objects.clone());
+                let view = crate::derived_view::DerivedGameView::new(game).with_target_reference_bindings(pending.tagged_objects.clone()).with_counter_removal_declaration(pending.counter_removal_declaration);
                 if !view.spell_has_legal_targets(pending.effects.flattened_default_effects(), pending.activator, Some(pending.source), pending.chosen_modes.as_deref()) {
                     return Err(GameLoopError::InvalidState("announced cost object leaves no legal target selection".into()));
                 }
@@ -7087,6 +7129,8 @@ pub(super) fn continue_activation(
                             source,
                             chooser,
                             requirement,
+                            Some(&pending.tagged_objects),
+                            pending.counter_removal_declaration,
                         );
                     }
                     enforce_flagbearer_targeting(
@@ -7197,6 +7241,10 @@ pub(super) fn continue_activation(
                 ));
             }
             ActivationStage::ReadyToFinalize => {
+                if pending.counter_removal_declaration.is_some() && let Err(error) = crate::cost::counter_declaration::validate_paid(&pending.effect_outcomes) {
+                    state.rollback_action(game);
+                    return Err(GameLoopError::InvalidState(format!("declared payment receipt: {error:?}")));
+                }
                 // Record every committed activation. Lifetime limits and
                 // activation-history effects need the same event as turn caps.
                 game.record_ability_activation_with_origin(
@@ -7224,7 +7272,8 @@ pub(super) fn continue_activation(
                             pending.mana_usage_restrictions.clone(),
                             pending.mana_source_chosen_creature_type,
                         )
-                        .with_tagged_objects(pending.tagged_objects.clone());
+                        .with_tagged_objects(pending.tagged_objects.clone())
+                        .with_effect_outcomes(pending.effect_outcomes.clone());
                 entry.targets = pending.chosen_targets.clone();
                 entry.target_assignments = pending.chosen_target_assignments.clone();
 
@@ -7301,6 +7350,7 @@ fn auto_pay_activation_tap_cost_steps_inner(
             CostContext::new(pending.source, pending.activator, &mut *decision_maker)
                 .with_provenance(pending.provenance);
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
+        cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
         cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
 
         let payment = cost.pay(game, &mut cost_ctx);
@@ -7309,6 +7359,7 @@ fn auto_pay_activation_tap_cost_steps_inner(
             crate::costs::CostPaymentResult::Paid => {
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.source);
                 pending.tagged_objects = cost_ctx.tagged_objects;
+                pending.effect_outcomes = cost_ctx.effect_outcomes;
                 drain_pending_trigger_events(game, trigger_queue);
             }
             crate::costs::CostPaymentResult::NeedsChoice(description) => {

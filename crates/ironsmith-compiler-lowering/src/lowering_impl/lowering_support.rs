@@ -56,72 +56,6 @@ use crate::model::reference_state::{
     LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
 
-pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
-    fn replace_value(value: &mut Value) {
-        let hints = value.surface_hints().to_vec();
-        if matches!(
-            value.unhinted(),
-            Value::PendingPriorEffectMetric(query)
-                if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
-        ) {
-            *value = Value::X.with_surface_hints(hints);
-            return;
-        }
-        match value {
-            Value::Add(left, right) | Value::Min(left, right) => {
-                replace_value(left);
-                replace_value(right);
-            }
-            Value::Scaled(inner, _)
-            | Value::DividedRoundedDown(inner, _)
-            | Value::HalfRoundedDown(inner)
-            | Value::SurfaceHinted { value: inner, .. } => replace_value(inner),
-            _ => {}
-        }
-    }
-
-    fn replace_effect(effect: &mut EffectAst) {
-        if let EffectAst::SubjectVerb(subject_verb) = effect {
-            match &mut subject_verb.action {
-                SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
-                    amount, ..
-                })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
-                    amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
-                    count: amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
-                    count: amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll {
-                    count: amount,
-                    ..
-                }) => replace_value(amount),
-                _ => {}
-            }
-        }
-        for_each_nested_effects_mut(effect, true, |nested| {
-            for nested_effect in nested {
-                replace_effect(nested_effect);
-            }
-        });
-    }
-
-    for effect in effects {
-        replace_effect(effect);
-    }
-}
-
 fn value_counts_creature_deaths(value: &Value) -> bool {
     match value {
         Value::CreaturesDiedThisTurn
@@ -4291,6 +4225,7 @@ fn lower_parsed_ability_internal(
     };
 
     if !activated.effects.is_empty() || !activated.choices.is_empty() {
+        validate_counter_cost_target_program(activated)?;
         mark_activated_mana_output_if_needed(activated);
         return Ok(ability);
     }
@@ -4306,8 +4241,21 @@ fn lower_parsed_ability_internal(
     )?;
     activated.effects = lowered.effects;
     activated.choices = lowered.choices;
+    validate_counter_cost_target_program(activated)?;
     mark_activated_mana_output_if_needed(activated);
     Ok(ability)
+}
+
+fn validate_counter_cost_target_program(activated: &crate::ability::ActivatedAbility) -> Result<(), CardTextError> {
+    fn collect(effect: &Effect, targets: &mut Vec<ChooseSpec>) {
+        if let Some(spec) = effect.target_spec().filter(|spec| spec.is_target()) && !targets.contains(spec) { targets.push(spec.clone()); }
+        effect.visit_child_effects(&mut |child| collect(child, targets));
+    }
+    let mut targets = Vec::new(); for effect in &activated.effects { collect(effect, &mut targets); }
+    if targets.iter().any(ChooseSpec::is_activation_counter_power_bound) && (targets.len() != 1 || !targets[0].is_activation_counter_power_bound()) {
+        return Err(CardTextError::ParseError("counter-cost declaration supports one power-bounded target requirement".into()));
+    }
+    Ok(())
 }
 
 fn mark_activated_mana_output_if_needed(activated: &mut crate::ability::ActivatedAbility) {
@@ -5931,7 +5879,7 @@ fn lower_compiler_activated_ability_core(
         mana_usage_restrictions.push(lowered);
     }
     Ok(crate::ability::ActivatedAbility {
-        mana_cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+        mana_cost: crate::lowering::cost_materialization::materialize_compiler_activation_total_cost(
             &activated.mana_cost,
         )?,
         effects,
@@ -7081,34 +7029,7 @@ mod tests {
         assert!(control_loss.watch_ability_source);
     }
 
-    #[test]
-    fn dynamic_remove_counter_cost_metrics_bind_counter_followups_to_x() {
-        let query = ironsmith_core::PriorEffectMetricQuery::new(
-            ironsmith_core::EffectMetricSource::AffectedObjects,
-            ironsmith_core::EffectMetric::Count,
-        )
-        .with_action(ironsmith_core::PriorEffectAction::Removed);
-        let mut effects = vec![EffectAst::subject_verb_put_counters(
-            crate::object::CounterType::PlusOnePlusOne,
-            Value::PendingPriorEffectMetric(query)
-                .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-            None,
-            false,
-        )];
 
-        replace_pending_removed_counter_metrics_with_x(&mut effects);
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }),
-            ..
-        }) = &effects[0]
-        else {
-            panic!("expected a typed counter-placement effect");
-        };
-        assert_eq!(count.unhinted(), &Value::X);
-        assert!(count.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay));
-    }
 
     #[test]
     fn triggering_blocker_prelude_uses_event_identity_not_live_blocking_state() {

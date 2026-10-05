@@ -114,5 +114,6 @@ pub enum GrantActionAst {
     GrantNextSpellAbilityThisTurn {
         filter: ObjectFilter,
         ability: Box<GrantedAbilityAst>,
+        mode: ironsmith_core::NextSpellGrantMode,
     },
 }

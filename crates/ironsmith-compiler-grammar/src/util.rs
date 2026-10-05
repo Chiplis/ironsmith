@@ -825,7 +825,7 @@ fn compiler_activation_cost_object_reference(
 pub fn compiler_activation_cost_reference_imports(
     cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
 ) -> ReferenceImports {
-    match compiler_activation_cost_object_reference(cost) {
+    let mut imports = match compiler_activation_cost_object_reference(cost) {
         Some(CompilerActivationCostObjectReference::Tagged(tag)) => {
             let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
             if crate::tag::CompilerCostObjectTag::Sacrifice.matches(&tag) {
@@ -849,7 +849,12 @@ pub fn compiler_activation_cost_reference_imports(
             ..Default::default()
         },
         None => ReferenceImports::default(),
+    };
+    if let Some(producer) = crate::model::costs::unique_counter_removal_cost(cost) {
+        imports.counter_removal_cost = Some(producer);
+        imports.last_effect_id = Some(producer.effect_id);
     }
+    imports
 }
 
 fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {

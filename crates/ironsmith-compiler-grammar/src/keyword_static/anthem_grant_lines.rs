@@ -1446,6 +1446,35 @@ pub fn parse_granted_keyword_static_line(
         (None, None) => None,
     };
 
+    // A fixed flashback price belongs to the ordinary alternative-cast
+    // model. Source grants are explicitly self/graveyard scoped; the live
+    // predicate is retained by the conditional static owner.
+    if keyword_tokens.first().is_some_and(|token| token.is_word("flashback"))
+        && keyword_tokens.len() > 1 && trailing_clause_tokens.is_empty()
+        && let Some(method) = crate::util::parse_flashback_line(&keyword_tokens)?
+    {
+        let spec = match parse_anthem_subject(&subject_tokens)? {
+            AnthemSubjectAst::Source => crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::AlternativeCast(method),
+                ObjectFilter::source(), Zone::Graveyard,
+            ),
+            AnthemSubjectAst::Filter(mut filter) => {
+                let zone = filter.zone.unwrap_or(Zone::Graveyard);
+                filter.zone = None;
+                crate::model::CompilerGrantSpecCore::new(
+                    crate::model::CompilerGrantableCore::AlternativeCast(method), filter, zone,
+                )
+            }
+        };
+        let ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+        return Ok(Some(vec![match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability), condition,
+            },
+            None => ability,
+        }]));
+    }
+
     let keyword_kind = anthem_grant_grammar::classify_granted_keyword_tokens(&keyword_tokens);
     if keyword_kind == anthem_grant_grammar::GrantedKeywordTokenKind::Blitz
         && (trailing_clause_tokens.is_empty()

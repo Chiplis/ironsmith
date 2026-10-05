@@ -100,6 +100,7 @@ mod looked_cards_family;
 mod looked_procedure;
 mod mill_procedure;
 mod next_spell_family;
+pub(crate) mod flashback_grants;
 mod optional_companion_fanout;
 mod pair_procedure;
 mod toughness_assignment;

@@ -78,7 +78,7 @@ mod priority_mana;
 mod priority_state;
 mod saga;
 pub(crate) use sba_triggers::announce_trigger_target_distributions;
-pub(crate) use targeting::extract_target_requirements_with_modes;
+pub(crate) use targeting::{extract_target_requirements_with_modes, extract_target_requirements_with_modes_and_announcements};
 mod sba_triggers;
 mod stack_resolution;
 pub(crate) use targeting::{

@@ -1875,9 +1875,9 @@ fn loyalty_activation_special_rules_allow(
 }
 
 fn loyalty_remove_counters_cost_amount(cost: &crate::costs::Cost) -> Option<u32> {
-    let effect = cost
-        .effect_ref()?
-        .downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+    let effect = cost.effect_ref()?;
+    let effect = effect.downcast_ref::<crate::effects::WithIdEffect>().map_or(effect, |observed| &observed.effect);
+    let effect = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()?;
     if effect.counter_type != crate::CounterType::Loyalty {
         return None;
     }

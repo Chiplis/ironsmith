@@ -82,6 +82,10 @@ impl EffectExecutor for RemoveCountersEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
+            if *kind == self.counter_type && spec.base() == self.target.base()) {
+            return Some(format!("Remove all {} counters from that permanent", self.counter_type.description()));
+        }
         if matches!(self.target.base(), ChooseSpec::Source)
             && let Some(count) = self.count.constant_integer()
         {
@@ -203,21 +207,23 @@ impl CostExecutableEffect for RemoveCountersEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if !matches!(self.target.base(), ChooseSpec::Source) {
-            return Err(crate::effects::CostValidationError::Other(
-                "remove-counters cost supports only source".to_string(),
-            ));
-        }
-        let quantity = self.count.constant_integer().ok_or_else(||
-            crate::effects::CostValidationError::Other(
-                "remove-counters cost requires representable constant integer arithmetic".to_string()))?;
-        let count = u32::try_from(quantity.max(0)).map_err(|_| crate::effects::CostValidationError::Other(
-            "remove-counters cost exceeds the unsigned counter range".to_string()))?;
-        if game.counter_count(source, self.counter_type) < count {
-            return Err(crate::effects::CostValidationError::Other(
-                "not enough counters".to_string(),
-            ));
-        }
+        let target = match self.target.base() {
+            ChooseSpec::Source => source,
+            ChooseSpec::SpecificObject(id) => {
+                if !game.battlefield.contains(id) || !game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    || game.is_phased_out(*id) { return Err(crate::effects::CostValidationError::Other("counter-cost object is unavailable".into())); }
+                *id
+            }
+            _ => return Err(crate::effects::CostValidationError::Other("counter cost requires an exact source or granting object".into())),
+        };
+        let available = game.counter_count(target, self.counter_type);
+        let count = if matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
+            if *kind == self.counter_type && spec.base() == self.target.base()) { available }
+        else {
+            let quantity = self.count.constant_integer().ok_or_else(|| crate::effects::CostValidationError::Other("counter cost requires fixed arithmetic or its exact object's matching counters".into()))?;
+            u32::try_from(quantity.max(0)).map_err(|_| crate::effects::CostValidationError::Other("counter-cost quantity exceeds unsigned range".into()))?
+        };
+        if available < count { return Err(crate::effects::CostValidationError::Other("not enough counters".into())); }
         Ok(())
     }
 }

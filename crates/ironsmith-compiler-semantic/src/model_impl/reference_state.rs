@@ -219,10 +219,19 @@ pub fn join_object_target_bindings(
     )
 }
 
+/// One exact activation counter-removal producer, separate from announced X.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CounterRemovalCostReference {
+    pub effect_id: EffectId,
+    pub counter_type: Option<ironsmith_core::CounterType>,
+    pub can_announce_quantity: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ReferenceFrame {
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
+    pub counter_removal_cost: Option<CounterRemovalCostReference>,
     pub last_object_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub recent_object_target_bindings: Arc<Vec<ObjectTargetBinding>>,
@@ -251,6 +260,7 @@ impl ReferenceFrame {
         Self {
             last_effect_id: frame.last_effect_id,
             last_library_search_effect_id: frame.last_library_search_effect_id,
+            counter_removal_cost: frame.counter_removal_cost,
             last_object_tag: frame.last_object_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: Arc::default(),
@@ -280,6 +290,7 @@ impl ReferenceFrame {
             declared_target_references: Vec::new(),
             last_effect_id: self.last_effect_id,
             last_library_search_effect_id: self.last_library_search_effect_id,
+            counter_removal_cost: self.counter_removal_cost,
             last_object_tag: self.last_object_tag.clone(),
             last_value_comparison: self.last_value_comparison.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
@@ -352,6 +363,7 @@ pub struct ReferenceImports {
     pub source_object_antecedent: bool,
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
+    pub counter_removal_cost: Option<CounterRemovalCostReference>,
 }
 
 impl ReferenceImports {
@@ -366,6 +378,7 @@ impl ReferenceImports {
             && !self.source_object_antecedent
             && self.last_effect_id.is_none()
             && self.last_library_search_effect_id.is_none()
+            && self.counter_removal_cost.is_none()
     }
 
     pub fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
@@ -389,6 +402,7 @@ impl ReferenceImports {
             source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: frame.last_effect_id,
             last_library_search_effect_id: frame.last_library_search_effect_id,
+            counter_removal_cost: frame.counter_removal_cost,
         }
     }
 
@@ -412,6 +426,7 @@ pub struct ReferenceEnv {
     pub source_object_antecedent: bool,
     pub last_effect_id: RefState<EffectId>,
     pub last_library_search_effect_id: RefState<EffectId>,
+    pub counter_removal_cost: Option<CounterRemovalCostReference>,
     pub iterated_player: bool,
     pub iterated_object: bool,
     pub allow_life_event_value: bool,
@@ -437,6 +452,7 @@ impl Default for ReferenceEnv {
             source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
             last_library_search_effect_id: RefState::Unknown,
+            counter_removal_cost: None,
             iterated_player: false,
             iterated_object: false,
             allow_life_event_value: false,
@@ -474,6 +490,7 @@ impl ReferenceEnv {
             last_library_search_effect_id: RefState::from_option(
                 imports.last_library_search_effect_id,
             ),
+            counter_removal_cost: imports.counter_removal_cost,
             iterated_player,
             iterated_object: imports.iterated_object,
             allow_life_event_value,
@@ -501,6 +518,7 @@ impl ReferenceEnv {
             last_library_search_effect_id: RefState::from_option(
                 frame.last_library_search_effect_id,
             ),
+            counter_removal_cost: frame.counter_removal_cost,
             iterated_player: frame.iterated_player,
             iterated_object: frame.iterated_object,
             allow_life_event_value: frame.allow_life_event_value,
@@ -527,6 +545,7 @@ impl ReferenceEnv {
         ReferenceFrame {
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
+            counter_removal_cost: self.counter_removal_cost,
             last_object_tag: self.last_object_tag.clone().into_option(),
             last_value_comparison: self.last_value_comparison.clone().into_option(),
             recent_object_target_bindings: self.recent_object_target_bindings.clone(),
@@ -596,6 +615,7 @@ pub struct ReferenceExports {
     pub source_object_antecedent: bool,
     pub last_effect_id: RefState<EffectId>,
     pub last_library_search_effect_id: RefState<EffectId>,
+    pub counter_removal_cost: Option<CounterRemovalCostReference>,
     pub iterated_player: bool,
 }
 
@@ -610,6 +630,7 @@ impl Default for ReferenceExports {
             source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
             last_library_search_effect_id: RefState::Unknown,
+            counter_removal_cost: None,
             iterated_player: false,
         }
     }
@@ -626,6 +647,7 @@ impl ReferenceExports {
             source_object_antecedent: env.source_object_antecedent,
             last_effect_id: env.last_effect_id.clone(),
             last_library_search_effect_id: env.last_library_search_effect_id.clone(),
+            counter_removal_cost: env.counter_removal_cost,
             iterated_player: env.iterated_player,
         }
     }
@@ -650,6 +672,7 @@ impl ReferenceExports {
                 &left.last_library_search_effect_id,
                 &right.last_library_search_effect_id,
             ),
+            counter_removal_cost: if left.counter_removal_cost == right.counter_removal_cost { left.counter_removal_cost } else { None },
             iterated_player: left.iterated_player && right.iterated_player,
         }
     }
@@ -666,6 +689,7 @@ impl ReferenceExports {
             source_object_antecedent: self.source_object_antecedent,
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
+            counter_removal_cost: self.counter_removal_cost,
         }
     }
 }

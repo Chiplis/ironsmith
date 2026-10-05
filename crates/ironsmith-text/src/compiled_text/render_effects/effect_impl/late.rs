@@ -5861,6 +5861,13 @@
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
             .unwrap_or(spell_text.as_str());
+        if matches!(grant_next_spell_ability.mode, ironsmith_core::NextSpellGrantMode::CastTiming | ironsmith_core::NextSpellGrantMode::PlayTiming) {
+            let play = grant_next_spell_ability.mode == ironsmith_core::NextSpellGrantMode::PlayTiming;
+            let verb = if play { "play" } else { "cast" };
+            let participle = if play { "played" } else { "cast" };
+            let subject = if play { spell_text.replace("spell", "card") } else { spell_text.to_string() };
+            return format!("The next {subject} {player_text} {verb} this turn can be {participle} as though it had flash");
+        }
         let granted_text = describe_inline_ability(&grant_next_spell_ability.ability);
         if spell_text.contains("from your hand") && player_text == "you" {
             return format!(

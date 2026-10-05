@@ -35,6 +35,9 @@ impl EffectId {
 
     /// The zone change performed by a replacement, for reflexive follow-ups.
     pub const REPLACED_EVENT: Self = Self(u32::MAX - 1);
+
+    /// The unique retained counter-removal producer of one activation.
+    pub const ACTIVATION_COUNTER_COST: Self = Self(u32::MAX - 2);
 }
 
 impl From<u32> for EffectId {
@@ -5241,21 +5244,37 @@ impl<A> CreateTokenCopyEffect<A> {
     }
 }
 
+/// The event that owns a one-shot next-spell grant. Timing permissions do
+/// not add the flash keyword to the chosen object.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, TagKeyWalk)]
+pub enum NextSpellGrantMode {
+    #[default]
+    Ability,
+    CastTiming,
+    PlayTiming,
+    /// Noncopiable static rider attached to the chosen spell incarnation.
+    IncarnationAbility,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct GrantNextSpellAbilityEffect<A> {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub ability: A,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mode: NextSpellGrantMode,
 }
 
 impl<A> GrantNextSpellAbilityEffect<A> {
     pub fn new(player: PlayerFilter, filter: ObjectFilter, ability: A) -> Self {
-        Self {
-            player,
-            filter,
-            ability,
-        }
+        Self { player, filter, ability, mode: NextSpellGrantMode::Ability }
+    }
+
+    pub fn with_mode(mut self, mode: NextSpellGrantMode) -> Self {
+        self.mode = mode;
+        self
     }
 }
 

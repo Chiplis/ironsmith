@@ -590,7 +590,7 @@ where
                 payload.player.clone(),
                 payload.filter.clone(),
                 hooks.runtime_ability_hook(payload.ability.clone())?,
-            ),
+            ).with_mode(payload.mode),
         ));
     }
     if let Some(payload) = M::downcast_ref::<

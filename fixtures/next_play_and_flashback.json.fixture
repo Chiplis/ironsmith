@@ -1,0 +1,170 @@
+[
+  {
+    "name": "Archmage's Newt",
+    "id": "52f18f3a-8239-4737-b737-a94ccc05daac",
+    "oracle_id": "75ffebc4-8db9-4de6-a330-e3f41cdccecc",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Salamander Mount",
+    "oracle_text": "Whenever this creature deals combat damage to a player, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled. (You may cast that card from your graveyard for its flashback cost. Then exile it.)\nSaddle 3",
+    "power": "2",
+    "toughness": "2",
+    "text": "Mana cost: {1}{U}\nType: Creature — Salamander Mount\nPower/Toughness: 2/2\nWhenever this creature deals combat damage to a player, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled. (You may cast that card from your graveyard for its flashback cost. Then exile it.)\nSaddle 3",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "compiled card still contains unsupported parser fallback marker KeywordFallbackText; oracle-only fallback also failed: compiled card still contains unsupported parser fallback marker KeywordFallbackText",
+      "content_hash": "ae7848b2e5b8343fffc7b0c74fd91427729db8cb85389e3139be944f63812097",
+      "raw_oracle_text": "Whenever this creature deals combat damage to a player, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled. (You may cast that card from your graveyard for its flashback cost. Then exile it.)\nSaddle 3"
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Progenitor's Icon",
+    "id": "5457025c-9720-4717-8ee5-fb048815a895",
+    "oracle_id": "747f6d0f-3c10-4fef-b7ae-f578c8964ab5",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "As this artifact enters, choose a creature type.\n{T}: Add one mana of any color.\n{T}: The next spell of the chosen type you cast this turn can be cast as though it had flash.",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {3}\nType: Artifact\nAs this artifact enters, choose a creature type.\n{T}: Add one mana of any color.\n{T}: The next spell of the chosen type you cast this turn can be cast as though it had flash.",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "could not find verb in effect clause (clause: 'the next spell of the chosen type you cast this turn can be cast as though it had flash'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end); oracle-only fallback also failed: could not find verb in effect clause (clause: 'the next spell of the chosen type you cast this turn can be cast as though it had flash'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end)",
+      "content_hash": "258d6624f882eb7c87425a96ac517f0e17d8e884037bccfacc5877fdb8790c58",
+      "raw_oracle_text": "As this artifact enters, choose a creature type.\n{T}: Add one mana of any color.\n{T}: The next spell of the chosen type you cast this turn can be cast as though it had flash."
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Quicken",
+    "id": "67751745-61c9-488f-b5b3-310c0bafdda7",
+    "oracle_id": "cf188dd3-1927-481b-b8c0-93b1222dbf53",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "The next sorcery spell you cast this turn can be cast as though it had flash. (It can be cast any time you could cast an instant.)\nDraw a card.",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {U}\nType: Instant\nThe next sorcery spell you cast this turn can be cast as though it had flash. (It can be cast any time you could cast an instant.)\nDraw a card.",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "parser does not yet support line family: 'The next sorcery spell you cast this turn can be cast as though it had flash. (It can be cast any time you could cast an instant.)' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'The next sorcery spell you cast this turn can be cast as though it had flash.' [rule-path=unsupported-line-family]",
+      "content_hash": "ab7634f2fdd47d921d0395b6b52ace53949134d57d7a4f06add9665d150413fc",
+      "raw_oracle_text": "The next sorcery spell you cast this turn can be cast as though it had flash. (It can be cast any time you could cast an instant.)\nDraw a card."
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Ride the Avalanche",
+    "id": "9e32eded-f9a2-4512-b82e-64445f8df8a3",
+    "oracle_id": "d49c94fa-712a-47c0-b571-4db7e064a590",
+    "mana_cost": "{G}{U}",
+    "type_line": "Instant",
+    "oracle_text": "The next spell you cast this turn can be cast as though it had flash. When you next cast a spell this turn, put X +1/+1 counters on up to one target creature, where X is the mana value of that spell.",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {G}{U}\nType: Instant\nThe next spell you cast this turn can be cast as though it had flash. When you next cast a spell this turn, put X +1/+1 counters on up to one target creature, where X is the mana value of that spell.",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "parser does not yet support line family: 'The next spell you cast this turn can be cast as though it had flash. When you next cast a spell this turn, put X +1/+1 counters on up to one target creature, where X is the mana value of that spell.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'The next spell you cast this turn can be cast as though it had flash. When you next cast a spell this turn, put X +1/+1 counters on up to one target creature, where X is the mana value of that spell.' [rule-path=unsupported-line-family]",
+      "content_hash": "69af279b80b92ffc8a8d7e70a0e2480b6db768fbcb32c743aa484ea4734e657b",
+      "raw_oracle_text": "The next spell you cast this turn can be cast as though it had flash. When you next cast a spell this turn, put X +1/+1 counters on up to one target creature, where X is the mana value of that spell."
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Savage Summoning",
+    "id": "b5346ed7-2e17-4d8c-9c4b-b5efdd26380d",
+    "oracle_id": "30c09562-0bca-4382-ae84-aca00e0eb89b",
+    "mana_cost": "{G}",
+    "type_line": "Instant",
+    "oracle_text": "This spell can't be countered.\nThe next creature spell you cast this turn can be cast as though it had flash. That spell can't be countered. That creature enters with an additional +1/+1 counter on it.",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {G}\nType: Instant\nThis spell can't be countered.\nThe next creature spell you cast this turn can be cast as though it had flash. That spell can't be countered. That creature enters with an additional +1/+1 counter on it.",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "parser does not yet support line family: 'The next creature spell you cast this turn can be cast as though it had flash. That spell can't be countered. That creature enters with an additional +1/+1 counter on it.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'The next creature spell you cast this turn can be cast as though it had flash. That spell can't be countered. That creature enters with an additional +1/+1 counter on it.' [rule-path=unsupported-line-family]",
+      "content_hash": "07b2ec30ad82fb372773258cc4f8d730fee556cc31d4703b542d90b0249ea196",
+      "raw_oracle_text": "This spell can't be countered.\nThe next creature spell you cast this turn can be cast as though it had flash. That spell can't be countered. That creature enters with an additional +1/+1 counter on it."
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Scout's Warning",
+    "id": "e6639e3d-b0c4-4c08-83d5-f3fc58fac9b2",
+    "oracle_id": "f65cba6a-3ef4-4841-b2c1-578b2a2c3300",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "The next creature card you play this turn can be played as though it had flash.\nDraw a card.",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {W}\nType: Instant\nThe next creature card you play this turn can be played as though it had flash.\nDraw a card.",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "parser does not yet support line family: 'The next creature card you play this turn can be played as though it had flash.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'The next creature card you play this turn can be played as though it had flash.' [rule-path=unsupported-line-family]",
+      "content_hash": "ce2856c3c9deea9fcabd2d52f5a10d1a04e69f05230a02e4bd2b34ad21f3275b",
+      "raw_oracle_text": "The next creature card you play this turn can be played as though it had flash.\nDraw a card."
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "The Fugitive Doctor",
+    "id": "4c8ed973-a94d-46b1-8584-12d553d170e6",
+    "oracle_id": "b3a03768-7676-4b33-a813-cc69dea77c4d",
+    "mana_cost": "{3}{R}{G}",
+    "type_line": "Legendary Creature — Time Lord Doctor",
+    "oracle_text": "When The Fugitive Doctor enters, investigate.\nWhenever The Fugitive Doctor attacks, you may sacrifice a Clue. When you do, target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn. (You may cast that card from your graveyard for its flashback cost. Then exile it.)",
+    "power": "4",
+    "toughness": "4",
+    "text": "Mana cost: {3}{R}{G}\nType: Legendary Creature — Time Lord Doctor\nPower/Toughness: 4/4\nWhen The Fugitive Doctor enters, investigate.\nWhenever The Fugitive Doctor attacks, you may sacrifice a Clue. When you do, target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn. (You may cast that card from your graveyard for its flashback cost. Then exile it.)",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "compiled card still contains unsupported parser fallback marker KeywordFallbackText; oracle-only fallback also failed: compiled card still contains unsupported parser fallback marker KeywordFallbackText",
+      "content_hash": "c26cd4065813609e48f8f861c26a184e8193cfe0ce43bbeb07a7c0a002d6eb4f",
+      "raw_oracle_text": "When The Fugitive Doctor enters, investigate.\nWhenever The Fugitive Doctor attacks, you may sacrifice a Clue. When you do, target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn. (You may cast that card from your graveyard for its flashback cost. Then exile it.)"
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  },
+  {
+    "name": "Viral Spawning",
+    "id": "85ad30a1-3ecc-42ca-afe8-85df5bad9196",
+    "oracle_id": "9945c7eb-97a9-42df-a051-1ea514973280",
+    "mana_cost": "{2}{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 3/3 green Phyrexian Beast creature token with toxic 1. (Players dealt combat damage by it also get a poison counter.)\nCorrupted — As long as an opponent has three or more poison counters and this card is in your graveyard, it has flashback {2}{G}. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "power": null,
+    "toughness": null,
+    "text": "Mana cost: {2}{G}\nType: Sorcery\nCreate a 3/3 green Phyrexian Beast creature token with toxic 1. (Players dealt combat damage by it also get a poison counter.)\nCorrupted — As long as an opponent has three or more poison counters and this card is in your graveyard, it has flashback {2}{G}. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "granted object ability compiled to unsupported static ability fallback KeywordFallbackText: Flashback {2}{G}; oracle-only fallback also failed: granted object ability compiled to unsupported static ability fallback KeywordFallbackText: Flashback {2}{G}",
+      "content_hash": "7a728034d03782f2b97fe26eadf8de4a367aa9b4446c6fb047deab73114b7ae8",
+      "raw_oracle_text": "Create a 3/3 green Phyrexian Beast creature token with toxic 1. (Players dealt combat damage by it also get a poison counter.)\nCorrupted — As long as an opponent has three or more poison counters and this card is in your graveyard, it has flashback {2}{G}. (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044"
+  }
+]

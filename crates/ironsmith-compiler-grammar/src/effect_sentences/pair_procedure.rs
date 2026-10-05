@@ -143,6 +143,18 @@ struct Shape {
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
     Shape {
+        id: RuleId::new("next-spell-timing-with-incarnation-riders"),
+        head: HeadDiscriminator::words(&["the"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, kinds::open_next_spell_riders(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("flashback-conditional-price-replacement"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, kinds::open_flashback_price_replacement(sentences, index)),
+    },
+    Shape {
         id: RuleId::new("top-zone-choice-complement"),
         head: HeadDiscriminator::words(&["target", "you"]),
         consumed: 2,

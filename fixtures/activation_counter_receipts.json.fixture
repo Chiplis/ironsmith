@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Hankyu",
+    "id": "6f22a88a-4f04-4500-9e05-909b54ad43e3",
+    "oracle_id": "940909b2-f59e-4f87-a119-675efd60a5bc",
+    "mana_cost": "{1}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature has \"{T}: Put an aim counter on Hankyu\" and \"{T}, Remove all aim counters from Hankyu: This creature deals damage to any target equal to the number of aim counters removed this way.\"\nEquip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)",
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "7292b05bd0d0da7d9dc0450fa2ae7579840c9508"
+  },
+  {
+    "name": "Jar of Eyeballs",
+    "id": "72da56bd-dd1c-4b3c-a655-afa31e9adca0",
+    "oracle_id": "3075dadd-240f-4455-9286-9f1d48f53a3f",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "Whenever a creature you control dies, put two eyeball counters on this artifact.\n{3}, {T}, Remove all eyeball counters from this artifact: Look at the top X cards of your library, where X is the number of eyeball counters removed this way. Put one of them into your hand and the rest on the bottom of your library in any order.",
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "7292b05bd0d0da7d9dc0450fa2ae7579840c9508"
+  },
+  {
+    "name": "Rasputin, the Oneiromancer",
+    "id": "fc545089-cf48-49e1-99b4-660946260da8",
+    "oracle_id": "c16fd2b9-9147-43bc-aa08-6d1bddf1d3e8",
+    "mana_cost": "{1}{W}{U}",
+    "type_line": "Legendary Creature — Human Wizard",
+    "oracle_text": "When Rasputin enters, put a dream counter on it for each opponent you have. Each opponent creates a 1/1 red Goblin creature token.\n{T}, Remove one or more dream counters from Rasputin: Add that much {C}.\n{T}, Remove a dream counter from Rasputin: Create a 2/2 white Knight creature token with protection from red.",
+    "power": "4",
+    "toughness": "1",
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "7292b05bd0d0da7d9dc0450fa2ae7579840c9508"
+  },
+  {
+    "name": "Simic Manipulator",
+    "id": "e3dff9e6-5e0c-4e5b-8184-f0ae9cf347b3",
+    "oracle_id": "8f06fcc9-9018-4c55-af63-c44350a6cfeb",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Creature — Mutant Wizard",
+    "oracle_text": "Evolve (Whenever a creature you control enters, if that creature has greater power or toughness than this creature, put a +1/+1 counter on this creature.)\n{T}, Remove one or more +1/+1 counters from this creature: Gain control of target creature with power less than or equal to the number of +1/+1 counters removed this way.",
+    "power": "0",
+    "toughness": "1",
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "7292b05bd0d0da7d9dc0450fa2ae7579840c9508"
+  },
+  {
+    "name": "The Astonishing Ant-Man",
+    "id": "15850911-bfeb-4e9e-aec9-34a22faac896",
+    "oracle_id": "6c7e4e51-099a-4398-a4b7-e2f0ddd36429",
+    "mana_cost": "{G}{U}",
+    "type_line": "Legendary Creature — Human Scientist Hero",
+    "oracle_text": "Whenever you draw a card, put a +1/+1 counter on The Astonishing Ant-Man.\n{2}{G}, {T}, Remove any number of +1/+1 counters from The Astonishing Ant-Man: Create that many 1/1 green Insect creature tokens.",
+    "power": "1",
+    "toughness": "1",
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "7292b05bd0d0da7d9dc0450fa2ae7579840c9508"
+  }
+]

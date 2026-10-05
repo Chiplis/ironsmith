@@ -9,6 +9,9 @@
 
 pub(crate) mod prospective_references;
 
+pub(crate) mod counter_declaration;
+pub use counter_declaration::CounterRemovalDeclaration;
+
 use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -85,6 +88,7 @@ impl ironsmith_core::CostComponent for Cost {
         }
 
         self.effect_ref().is_some_and(|effect| {
+            let effect = effect.downcast_ref::<crate::effects::WithIdEffect>().map_or(effect, |observed| &observed.effect);
             effect
                 .downcast_ref::<crate::effects::PutCountersEffect>()
                 .is_some_and(|put| {

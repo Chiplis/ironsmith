@@ -83,6 +83,12 @@ impl EffectExecutor for WithIdEffect {
             .map(|_| self as &dyn CostExecutableEffect)
     }
 
+    fn cost_description(&self) -> Option<String> { self.effect.0.cost_description() }
+    fn references_cost_x(&self) -> bool { self.effect.0.references_cost_x() }
+    fn max_cost_x(&self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId) -> Option<u32> {
+        self.effect.0.max_cost_x(game, source, controller)
+    }
+
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
         visitor(&self.effect);
     }

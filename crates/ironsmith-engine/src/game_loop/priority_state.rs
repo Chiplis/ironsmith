@@ -922,6 +922,8 @@ pub struct PendingActivation {
     /// This preserves cost-time references such as `sacrifice_cost_0` for
     /// later resolution-time value lookups.
     pub tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    /// Completed activation-cost producers, retained through native recovery.
+    pub effect_outcomes: std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Next `sacrifice_cost_{N}` tag index to assign for choose-and-sacrifice costs.
     pub next_sacrifice_cost_tag_index: usize,
     /// Whether this ability is once per turn (needs recording).
@@ -960,6 +962,7 @@ pub struct PendingActivation {
     pub cost_reference_choices: Vec<crate::effects::ChooseObjectsEffect>,
     pub announced_cost_objects: crate::cost::prospective_references::CostReferenceBindings,
     pub cost_references_ready: bool,
+    pub counter_removal_declaration: Option<crate::cost::CounterRemovalDeclaration>,
 
 }
 
@@ -999,6 +1002,7 @@ impl PendingActivation {
             cost_reference_choices: Vec::new(),
             announced_cost_objects: Default::default(),
             cost_references_ready: true,
+            counter_removal_declaration: None,
 
             source,
             ability_index,
@@ -1027,6 +1031,7 @@ impl PendingActivation {
             mana_spent_on_activation: ManaPool::default(),
             remaining_cost_steps,
             tagged_objects,
+            effect_outcomes: Default::default(),
             next_sacrifice_cost_tag_index,
             is_once_per_turn,
             is_loyalty_ability,

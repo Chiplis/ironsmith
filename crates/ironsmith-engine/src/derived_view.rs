@@ -32,6 +32,7 @@ use crate::zone::Zone;
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
     target_reference_bindings: crate::cost::prospective_references::CostReferenceBindings,
+    counter_removal_declaration: Option<crate::cost::CounterRemovalDeclaration>,
     memo_characteristic_context: Cell<Option<u64>>,
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
@@ -397,6 +398,13 @@ impl<'a> DerivedGameView<'a> {
         self
     }
 
+    pub(crate) fn with_counter_removal_declaration(mut self, declaration: Option<crate::cost::CounterRemovalDeclaration>) -> Self {
+        self.counter_removal_declaration = declaration;
+        self.spell_target_legality.get_mut().clear();
+        self
+    }
+    pub(crate) fn counter_removal_declaration(&self) -> Option<crate::cost::CounterRemovalDeclaration> { self.counter_removal_declaration }
+
     pub(crate) fn target_reference_bindings(
         &self,
     ) -> Option<&crate::cost::prospective_references::CostReferenceBindings> {
@@ -421,6 +429,7 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
+            counter_removal_declaration: None,
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
                 game,
             )),
@@ -464,6 +473,7 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
+            counter_removal_declaration: None,
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
                 game,
             )),

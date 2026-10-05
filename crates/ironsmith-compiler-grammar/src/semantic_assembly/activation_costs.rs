@@ -265,6 +265,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             display_x,
             dynamic,
             single_object,
+            remove_all,
         } => CompilerCost::RemoveCounters {
             counter_type: *counter_type,
             count: *count,
@@ -272,7 +273,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             display_x: *display_x,
             dynamic: *dynamic,
             single_object: *single_object,
-            remove_all: false,
+            remove_all: *remove_all,
         },
         ActivationCostSegmentCst::RemoveCountersDynamic {
             counter_type,

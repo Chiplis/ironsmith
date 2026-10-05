@@ -136,7 +136,9 @@ pub fn parse_remove_counter_segment_tokens_with_source(
         primitives::parse_all(target, parse_remove_counter_source_lexed, "remove-counter-source").is_ok()
             || is_contextual_source(&crate::lexer::parser_token_word_refs(filter_tokens))
     );
+    let granting_target = crate::lexer::parser_token_word_refs(filter_tokens).as_slice() == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS;
     let filter = if source_target { crate::target::ObjectFilter::source() }
+        else if granting_target { crate::target::ObjectFilter::tagged(crate::tag::CompilerReferenceTag::GrantingSource.key()).in_zone(crate::zone::Zone::Battlefield) }
         else { filters::parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)? };
     let (count, display_x, dynamic, remove_all) = match parsed.quantity {
         RemovalQuantity::Fixed(count) => (count, false, false, false),
@@ -161,6 +163,7 @@ pub fn parse_remove_counter_segment_tokens_with_source(
                 display_x,
                 dynamic: true,
                 single_object: !target_among,
+                remove_all,
             })
         };
     }
@@ -181,6 +184,7 @@ pub fn parse_remove_counter_segment_tokens_with_source(
         display_x: false,
         dynamic: false,
         single_object: !target_among,
+                remove_all,
     })
 }
 
@@ -393,6 +397,7 @@ mod tests {
                 display_x: true,
                 dynamic: true,
                 single_object: false,
+                remove_all: false,
             }
         );
 
@@ -421,6 +426,7 @@ mod tests {
                 display_x: true,
                 dynamic: true,
                 single_object: true,
+                remove_all: false,
             } if filter.card_types
                 == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
                 && filter.controller == Some(crate::target::PlayerFilter::You)
@@ -440,6 +446,7 @@ mod tests {
                 display_x: false,
                 dynamic: false,
                 single_object: true,
+                remove_all: false,
             } if filter.any_of.is_empty()
                 && filter.card_types
                     == [
@@ -497,6 +504,7 @@ mod contextual_removal_source_tests {
             parse_remove_counter_segment_tokens_with_source(&unrelated, &source).unwrap(),
             ActivationCostSegmentCst::RemoveCountersAmong {
                 single_object: true,
+                remove_all: false,
                 ..
             }
         ));

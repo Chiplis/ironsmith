@@ -287,6 +287,7 @@ pub(super) fn begin_mana_ability_activation(
                 // The effects may refer to objects the costs chose
                 // ("the exiled creature's mana value", Food Chain).
                 let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+                let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
                 drop(cost_ctx);
 
                 if decision_maker.awaiting_choice() {
@@ -302,7 +303,8 @@ pub(super) fn begin_mana_ability_activation(
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                     .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
                     .with_mana_production_provenance(mana_production_provenance)
-                    .with_tagged_objects(cost_tagged_objects.clone());
+                    .with_tagged_objects(cost_tagged_objects.clone())
+                    .with_effect_outcomes(cost_effect_outcomes.clone());
                 if let Some(snapshot) = source_snapshot.clone() {
                     mana_ctx = mana_ctx.with_source_snapshot(snapshot);
                 }
@@ -336,7 +338,7 @@ pub(super) fn begin_mana_ability_activation(
                     if let Some(x) = x_value_from_costs {
                         ctx = ctx.with_x(x);
                     }
-                    ctx = ctx.with_tagged_objects(cost_tagged_objects);
+                    ctx = ctx.with_tagged_objects(cost_tagged_objects).with_effect_outcomes(cost_effect_outcomes);
                     let mut emitted_events = Vec::new();
 
                     for effect in &effects_to_run {
@@ -663,6 +665,7 @@ fn apply_priority_response_with_dm_inner(
                     return Ok(());
                 }
                 permission.reserve(game, player)?;
+                game.reserve_next_land_play_timing(player, *land_id);
                 let permission_forces_tapped = permission.enters_tapped;
                 let result = game
                     .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
@@ -1354,6 +1357,17 @@ pub(super) fn apply_targets_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
+        let declaration = pending.counter_removal_declaration;
+        if declaration.is_some() && decision_maker.awaiting_choice() { state.pending_activation = Some(pending); return Ok(GameProgress::Continue); }
+        let result = (|| {
+        if declaration.is_some() {
+            if pending.stage != ActivationStage::ChoosingTargets { return Err(GameLoopError::InvalidState("counter-bound targets arrived outside target announcement".into())); }
+            let current = super::targeting::extract_target_requirements_with_modes_and_announcements(game,
+                pending.effects.flattened_default_effects(), pending.activator, Some(pending.source), pending.chosen_modes.as_deref(), Some(&pending.tagged_objects), declaration);
+            if current.len() != 1 || targets.len() != 1 || !current[0].legal_targets.contains(&targets[0]) {
+                return Err(GameLoopError::InvalidState("declared quantity no longer admits this target".into()));
+            }
+        }
         let prompt_count = pending.active_target_requirement_count.max(1);
         let requirements = pending
             .remaining_requirements
@@ -1390,12 +1404,13 @@ pub(super) fn apply_targets_response(
         {
             // X was announced before targets (CR 602.2b, 601.2b); price the
             // cost with it locked so reductions apply to the X part too.
-            let base_cost = match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
+            let base_cost = if let Some(captured) = super::priority_cast::pending_counter_declaration_cost(&pending)? { captured }
+            else { match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
                 Some(x) => {
                     super::priority_cast::activation_cost_with_locked_x(&activated.mana_cost, x)
                 }
                 None => activated.mana_cost.clone(),
-            };
+            }};
             let base_cost = if pending.cost_reference_base.is_some() {
                 match base_cost.as_one_of() {
                     Some(branches) => branches
@@ -1427,6 +1442,9 @@ pub(super) fn apply_targets_response(
             .map_err(|error| {
                 GameLoopError::InvalidState(format!("activation reference pricing: {error:?}"))
             })?;
+            let base_cost = if let Some(declaration) = declaration {
+                crate::cost::counter_declaration::lock(game, pending.source, &base_cost, declaration).map_err(|error| GameLoopError::InvalidState(format!("declared counter repricing: {error:?}")))?
+            } else { base_cost };
             let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 pending.activator,
@@ -1465,7 +1483,10 @@ pub(super) fn apply_targets_response(
             ActivationStage::ChoosingTargets
         };
 
-        return continue_activation(game, trigger_queue, state, pending, decision_maker);
+        continue_activation(game, trigger_queue, state, pending, decision_maker)
+        })();
+        if result.is_err() && declaration.is_some() { state.rollback_action(game); }
+        return result;
     }
 
     let pending = state.pending_cast.take().ok_or_else(|| {
@@ -1607,6 +1628,27 @@ pub(super) fn apply_x_value_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
+        if pending.counter_removal_declaration.is_some() && pending.stage != ActivationStage::ChoosingCostReferences {
+            state.pending_activation = Some(pending);
+            return Err(GameLoopError::InvalidState("counter declaration is locked; no numeric choice is pending".into()));
+        }
+        if pending.stage == ActivationStage::ChoosingCostReferences {
+            if decision_maker.awaiting_choice() { state.pending_activation = Some(pending); return Ok(GameProgress::Continue); }
+            let base = match super::priority_cast::pending_counter_declaration_cost(&pending) {
+                Ok(Some(base)) => base,
+                Ok(None) => { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState("number response has no counter declaration".into())); }
+                Err(error) => { state.rollback_action(game); return Err(error); }
+            };
+            if pending.counter_removal_declaration.is_some() { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState("counter amount was already declared".into())); }
+            let declaration = match crate::cost::counter_declaration::declare(game, pending.source, &base, x_value) {
+                Ok(declaration) => declaration,
+                Err(error) => { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState(format!("counter declaration: {error:?}"))); }
+            };
+            pending.counter_removal_declaration = Some(declaration);
+            let result = continue_activation(game, trigger_queue, state, pending, decision_maker);
+            if result.is_err() { state.rollback_action(game); }
+            return result;
+        }
         let min_x = game
             .current_ability(pending.source, pending.ability_index)
             .and_then(|ability| match &ability.kind {

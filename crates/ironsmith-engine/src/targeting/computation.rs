@@ -1666,6 +1666,7 @@ fn compute_object_targets_with_filter_context(
     // Build filter context
     let mut filter_ctx =
         execution_filter.unwrap_or_else(|| target_filter_context(game, caster, source_id));
+    filter_ctx.counter_removal_declaration = view.counter_removal_declaration();
     if filter_ctx.source_snapshot.is_none() {
         filter_ctx.source_snapshot = source_snapshot.cloned();
     }

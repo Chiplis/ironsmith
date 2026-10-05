@@ -72,6 +72,13 @@ fn lower_next_spell_grant(
             EffectAst::subject_verb_free_cast_next_spell_this_turn(shape.player, filter),
         ]);
     }
+    if matches!(shape.ability, NextSpellGrantAbilitySurface::CastTiming | NextSpellGrantAbilitySurface::PlayTiming) {
+        return Some(shape.filters.into_iter().map(|filter| {
+            EffectAst::subject_verb_next_play_timing_this_turn(
+                shape.player, filter, shape.ability == NextSpellGrantAbilitySurface::PlayTiming,
+            )
+        }).collect());
+    }
     let ability = parse_next_spell_grant_ability(shape.ability)?;
     let effects = shape
         .filters

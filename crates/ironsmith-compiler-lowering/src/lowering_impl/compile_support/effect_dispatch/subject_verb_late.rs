@@ -2735,6 +2735,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
             filter,
             ability,
+            mode,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let mut player_filter = subject.clone_player_filter();
@@ -2758,11 +2759,11 @@ pub(super) fn compile_subject_verb_late(
                 lowered
                     .into_iter()
                     .map(|ability| {
-                        Effect::grant_next_spell_ability_this_turn(
+                        Effect::new(crate::effects::GrantNextSpellAbilityEffect::new(
                             player_filter.clone(),
                             resolved_filter.clone(),
                             ability,
-                        )
+                        ).with_mode(*mode))
                     })
                     .collect(),
                 subject.into_choices(),

@@ -1301,24 +1301,13 @@ fn quoted_attachment_grant_token_replacements(
         }
         return replacements;
     }
-    let mut span_start: Option<usize> = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if token.kind != TokenKind::Quote {
-            continue;
+    let mut text = String::new(); let mut offsets = Vec::new();
+    for token in tokens { if !text.is_empty() { text.push(' '); } offsets.push(text.len()); text.push_str(&token.slice.to_ascii_lowercase()); }
+    let scopes = crate::grammar::preprocess::attachment_grant_quote_scopes(&text);
+    for (index, offset) in offsets.into_iter().enumerate() {
+        if scopes.iter().any(|scope| scope.start <= offset && offset < scope.end) {
+            replacements[index] = Some(crate::preprocess::GRANTING_SOURCE_SURFACE);
         }
-        if let Some(start) = span_start.take() {
-            let head_start = tokens[..start - 1]
-                .iter()
-                .rposition(|token| {
-                    matches!(token.kind, TokenKind::Period | TokenKind::Quote)
-                        || matches!(token.slice.as_str(), "—" | "-" | "–")
-                })
-                .map_or(0, |separator| separator + 1);
-            let replacement = host_for_head(&tokens[head_start..start - 1]);
-            replacements[start..index].fill(replacement);
-            continue;
-        }
-        span_start = Some(index + 1);
     }
     replacements
 }
@@ -1422,16 +1411,11 @@ fn replace_named_source_alias_tokens(
                     && all_alias_words
                         .iter()
                         .all(|other| other.len() <= alias_words.len())
-                    && word_idx.checked_sub(1).is_some_and(|previous| {
-                        matches!(
-                            pieces[previous].text,
-                            "sacrifice" | "return" | "exile" | "destroy" | "tap" | "untap"
-                        )
-                    })
-                    && !tokens[piece_tokens[end_word - 1] + 1..]
-                        .iter()
-                        .take_while(|token| token.kind != TokenKind::Quote)
-                        .any(|token| token.kind == TokenKind::Colon)
+                    && crate::grammar::preprocess::attachment_grant_name_is_operand(
+                        word_idx.checked_sub(1).map(|index| pieces[index].text),
+                        word_idx.checked_sub(2).map(|index| pieces[index].text),
+                        tokens[piece_tokens[end_word - 1] + 1..].iter().take_while(|token| token.kind != TokenKind::Quote)
+                            .any(|token| token.kind == TokenKind::Colon))
             });
         let preserve_surface = attachment_replacement.is_none()
             && (alias_is_strict_prefix_of_compound_subtype

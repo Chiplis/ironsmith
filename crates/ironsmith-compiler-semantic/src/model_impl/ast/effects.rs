@@ -225,6 +225,29 @@ impl EffectAst {
             SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
                 filter,
                 ability: Box::new(ability),
+                mode: ironsmith_core::NextSpellGrantMode::Ability,
+            }),
+        )
+    }
+
+    pub fn subject_verb_next_play_timing_this_turn(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        includes_land_plays: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
+                filter,
+                ability: Box::new(GrantedAbilityAst::KeywordAction(Box::new(
+                    crate::payload::KeywordAction::Flash,
+                ))),
+                mode: if includes_land_plays {
+                    ironsmith_core::NextSpellGrantMode::PlayTiming
+                } else {
+                    ironsmith_core::NextSpellGrantMode::CastTiming
+                },
             }),
         )
     }

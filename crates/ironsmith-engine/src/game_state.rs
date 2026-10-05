@@ -2287,6 +2287,7 @@ pub struct TemporarySpellAbilityGrantEffectInstance {
     pub ability: crate::ability::Ability,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
+    pub mode: ironsmith_core::NextSpellGrantMode,
 }
 
 /// A repeatable special action available at instant timing through end of turn.
@@ -6625,6 +6626,20 @@ impl GameState {
         ability: crate::ability::Ability,
         remaining_uses: u32,
     ) {
+        self.add_temporary_spell_ability_grant_with_mode(
+            player, source, filter, ability, remaining_uses, ironsmith_core::NextSpellGrantMode::Ability,
+        );
+    }
+
+    pub fn add_temporary_spell_ability_grant_with_mode(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        filter: crate::target::ObjectFilter,
+        ability: crate::ability::Ability,
+        remaining_uses: u32,
+        mode: ironsmith_core::NextSpellGrantMode,
+    ) {
         self.effect_store.temporary_spell_ability_grants.push(
             TemporarySpellAbilityGrantEffectInstance {
                 player,
@@ -6633,6 +6648,7 @@ impl GameState {
                 ability,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
+                mode,
             },
         );
     }
@@ -6742,6 +6758,7 @@ impl GameState {
             .iter()
             .filter(|effect| {
                 effect.player == player
+                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6789,6 +6806,7 @@ impl GameState {
             .enumerate()
             .filter_map(|(idx, effect)| {
                 (effect.player == player
+                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6805,11 +6823,16 @@ impl GameState {
                 self.effect_store
                     .temporary_spell_ability_grants
                     .get(*idx)
-                    .map(|effect| effect.ability.clone())
+                    .filter(|effect| matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility))
+                    .map(|effect| (effect.mode, effect.ability.clone()))
             })
             .collect::<Vec<_>>();
-        if let Some(spell) = self.object_mut(spell_id) {
-            for ability in granted_abilities {
+        for (mode, ability) in granted_abilities {
+            if mode == ironsmith_core::NextSpellGrantMode::IncarnationAbility {
+                if let crate::ability::AbilityKind::Static(ability) = ability.kind {
+                    self.grant_incarnation_static_ability(spell_id, ability);
+                }
+            } else if let Some(spell) = self.object_mut(spell_id) {
                 spell.abilities_mut().push(ability);
             }
         }
@@ -6822,6 +6845,59 @@ impl GameState {
             {
                 effect.remaining_uses -= 1;
             }
+        }
+    }
+
+    /// Pure timing query against the already selected prospective face. It
+    /// grants no origin, price, priority, land-drop, or opponent-turn right.
+    pub(crate) fn next_play_timing_allows(
+        &self, player: PlayerId, object: &crate::object::Object, land_play: bool,
+    ) -> bool {
+        let ctx = self.filter_context_for(player, Some(object.id)).with_caster(Some(player));
+        let mut proposed = object.clone();
+        if !land_play { proposed.zone = Zone::Stack; }
+        self.effect_store.temporary_spell_ability_grants.iter().any(|grant| {
+            grant.player == player && !grant.is_expired(self.turn.turn_number)
+                && match grant.mode {
+                    ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility => false,
+                    ironsmith_core::NextSpellGrantMode::CastTiming => !land_play,
+                    ironsmith_core::NextSpellGrantMode::PlayTiming => true,
+                }
+                && grant.filter.matches(&proposed, &ctx, self)
+        })
+    }
+
+    /// Every completed matching cast consumes its timing budget, regardless
+    /// of whether another origin, price, or timing permission was selected.
+    pub(crate) fn consume_next_cast_timing(&mut self, player: PlayerId, id: ObjectId) {
+        let Some(object) = self.object(id) else { return; };
+        let ctx = self.filter_context_for(player, Some(id)).with_caster(Some(player));
+        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+            .filter_map(|(index, grant)| {
+                (matches!(grant.mode, ironsmith_core::NextSpellGrantMode::CastTiming | ironsmith_core::NextSpellGrantMode::PlayTiming)
+                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
+                    && self.temporary_spell_filter_matches(&grant.filter, id, object, &ctx))
+                    .then_some(index)
+            }).collect::<Vec<_>>();
+        for index in matching {
+            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
+        }
+    }
+
+    /// Reserve every matching next-play budget before entry replacements can
+    /// expose nested choices. The land owners' checkpoint restores pending,
+    /// cancelled, and failed instructions, including these reservations.
+    pub(crate) fn reserve_next_land_play_timing(&mut self, player: PlayerId, id: ObjectId) {
+        let Some(object) = self.object(id) else { return; };
+        let ctx = self.filter_context_for(player, Some(id));
+        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+            .filter_map(|(index, grant)| {
+                (grant.mode == ironsmith_core::NextSpellGrantMode::PlayTiming
+                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
+                    && grant.filter.matches(object, &ctx, self)).then_some(index)
+            }).collect::<Vec<_>>();
+        for index in matching {
+            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
         }
     }
 
@@ -7050,7 +7126,7 @@ impl GameState {
         let current_turn = self.turn.turn_number;
         self.effect_store
             .temporary_spell_ability_grants
-            .retain(|effect| !effect.is_expired(current_turn));
+            .retain(|effect| effect.remaining_uses > 0 && effect.expires_end_of_turn > current_turn);
     }
 
     pub fn cleanup_repeatable_mana_payment_actions_end_of_turn(&mut self) {

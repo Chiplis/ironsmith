@@ -14,6 +14,8 @@ pub enum NextSpellGrantAbilitySurface<'a> {
     CantBeCountered,
     /// "can be cast without paying its mana cost"
     WithoutPayingManaCost,
+    CastTiming,
+    PlayTiming,
     Keyword(&'a [OwnedLexToken]),
 }
 
@@ -245,6 +247,24 @@ fn direct_free_cast_ability<'a>(
     Ok(NextSpellGrantAbilitySurface::WithoutPayingManaCost)
 }
 
+fn direct_timing_ability<'a>(input: &mut LexStream<'a>) -> WResult<NextSpellGrantAbilitySurface<'a>> {
+    primitives::phrase(&["can", "be", "cast", "as", "though", "it", "had", "flash"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(NextSpellGrantAbilitySurface::CastTiming)
+}
+
+fn parse_next_card_play_timing<'a>(input: &mut LexStream<'a>) -> WResult<RawNextSpellGrant<'a>> {
+    primitives::phrase(&["the", "next"]).parse_next(input)?;
+    let first_subject = repeat_till(1.., any.void(), peek(primitives::phrase(&["you", "play"])))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::phrase(&["you", "play", "this", "turn", "can", "be", "played", "as", "though", "it", "had", "flash"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(RawNextSpellGrant {
+        player: PlayerAst::You, cast_by: PlayerFilter::You,
+        first_subject, second_subject: None, ability: NextSpellGrantAbilitySurface::PlayTiming,
+    })
+}
+
 fn parse_standard_next_spell_grant<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<RawNextSpellGrant<'a>> {
@@ -264,6 +284,7 @@ fn parse_standard_next_spell_grant<'a>(
             .map(|(_, ability)| ability),
         direct_cant_ability,
         direct_free_cast_ability,
+        direct_timing_ability,
     ))
     .parse_next(input)?;
     Ok(RawNextSpellGrant {
@@ -335,6 +356,7 @@ fn parse_when_next_spell_grant<'a>(input: &mut LexStream<'a>) -> WResult<RawNext
 
 fn parse_raw_next_spell_grant<'a>(input: &mut LexStream<'a>) -> WResult<RawNextSpellGrant<'a>> {
     alt((
+        parse_next_card_play_timing,
         parse_paired_next_spell_grant,
         parse_when_next_spell_grant,
         parse_standard_next_spell_grant,
@@ -386,6 +408,18 @@ pub fn parse_next_spell_grant_tokens(
     let mut filters = vec![spell_filter(raw.first_subject, raw.cast_by.clone())?];
     if let Some(second_subject) = raw.second_subject {
         filters.push(spell_filter(second_subject, raw.cast_by)?);
+    }
+    if matches!(raw.ability, NextSpellGrantAbilitySurface::CastTiming | NextSpellGrantAbilitySurface::PlayTiming) {
+        for filter in &mut filters {
+            filter.has_mana_cost = false;
+            if raw.ability == NextSpellGrantAbilitySurface::PlayTiming {
+                // Playing a card includes playing a land. Origin authorization
+                // remains with the normal cast/land owner.
+                filter.zone = None;
+                filter.stack_kind = None;
+                filter.cast_by = None;
+            }
+        }
     }
     Ok(Some(NextSpellGrantShape {
         player: raw.player,

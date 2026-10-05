@@ -284,3 +284,9 @@ pub(super) fn read_keyword_mechanic(
     }
     Ok(None)
 }
+
+pub(super) fn read_fixed_flashback_grant(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    crate::effect_sentences::flashback_grants::parse_fixed_flashback_grant(input.tokens)
+}

@@ -91,6 +91,7 @@ struct EffectReferenceResolutionState<'a> {
     /// numeric producer for a later sibling (for example, drawing cards).
     pinned_effect_metric_id: Option<EffectId>,
     last_library_search_effect_id: Option<EffectId>,
+    counter_removal_cost: Option<crate::model::reference_state::CounterRemovalCostReference>,
     /// Index of the object-set tag exported by a sacrifice activation cost.
     ///
     /// Cost effects execute before the resolution program and therefore do
@@ -3642,6 +3643,38 @@ fn effect_comparison_operands(effect: &EffectAst, env: &ReferenceEnv) -> Option<
     }
 }
 
+pub(crate) fn target_reads_unpaid_counter_cost(spec: &crate::target::ChooseSpec) -> bool {
+    fn reads(value: &Value) -> bool {
+        match value {
+            Value::EffectValue(id) | Value::EffectValueOffset(id, _) | Value::EffectMetric { effect_id: id, .. }
+            | Value::EffectMetricOffset { effect_id: id, .. } | Value::PriorEffectMetric { effect_id: id, .. } => *id == EffectId::ACTIVATION_COUNTER_COST,
+            Value::SurfaceHinted { value, .. } | Value::Scaled(value, _) | Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => reads(value),
+            Value::Add(left, right) | Value::Min(left, right) => reads(left) || reads(right),
+            _ => false,
+        }
+    }
+    match spec {
+        crate::target::ChooseSpec::SurfaceHinted { spec, .. } | crate::target::ChooseSpec::Target(spec)
+        | crate::target::ChooseSpec::WithCount(spec, _) => target_reads_unpaid_counter_cost(spec),
+        crate::target::ChooseSpec::WithCountValue(spec, _, count) => reads(count) || target_reads_unpaid_counter_cost(spec),
+        crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter)
+        | crate::target::ChooseSpec::ObjectOrPlayer(filter, _) => {
+            let mut found = false; visit_filter_values(filter, &mut |value| found |= reads(value)); found
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn bind_counter_cost_quantity(query: &ironsmith_core::PriorEffectMetricQuery,
+    producer: Option<crate::model::reference_state::CounterRemovalCostReference>) -> Result<Value, CardTextError> {
+    let compatible = producer.is_some_and(|producer| query.source == EffectMetricSource::Outcome
+        && query.metric == EffectMetric::Count && query.action == Some(PriorEffectAction::Removed)
+        && query.filter.is_none() && query.player.is_none()
+        && (query.counter_type.is_none() || query.counter_type == producer.counter_type));
+    if !compatible { return Err(CardTextError::ParseError("counter-cost quantity requires the matching counter kind and exact paid scope".into())); }
+    Ok(Value::PriorEffectMetric { effect_id: EffectId::ACTIVATION_COUNTER_COST, query: query.clone() })
+}
+
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState<'_> {
     EffectReferenceResolutionState {
         last_value_comparison: match &env.last_value_comparison {
@@ -3651,6 +3684,7 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         last_effect_id: env.last_effect_id.clone().into_option(),
         pinned_effect_metric_id: None,
         last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
+            counter_removal_cost: env.counter_removal_cost,
         last_sacrifice_cost_tag_index: cost_tag_index_from_env(env, "sacrifice_cost_"),
         last_exile_cost_tag_index: cost_tag_index_from_env(env, "exile_cost_"),
         last_tap_cost_tag: tap_cost_tag_from_env(env),
@@ -5761,6 +5795,7 @@ fn resolve_effect_references_in_effect(
                     &predicate, &effects, condition,
                 ),
                 last_library_search_effect_id: state.last_library_search_effect_id,
+            counter_removal_cost: state.counter_removal_cost,
                 last_value_comparison: comparison.as_ref().or(state.last_value_comparison),
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
@@ -5801,6 +5836,7 @@ fn resolve_effect_references_in_effect(
                     &predicate, &effects, condition,
                 ),
                 last_library_search_effect_id: state.last_library_search_effect_id,
+            counter_removal_cost: state.counter_removal_cost,
                 last_value_comparison: state.last_value_comparison,
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 last_exile_cost_tag_index: state.last_exile_cost_tag_index,
@@ -5867,6 +5903,7 @@ fn resolve_effect_references_in_effect(
             last_effect_id: None,
             pinned_effect_metric_id: None,
             last_library_search_effect_id: state.last_library_search_effect_id,
+            counter_removal_cost: state.counter_removal_cost,
             last_value_comparison: state.last_value_comparison,
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
@@ -5903,6 +5940,7 @@ fn resolve_effect_references_in_effect(
             last_effect_id: state.last_effect_id,
             pinned_effect_metric_id: state.pinned_effect_metric_id,
             last_library_search_effect_id: state.last_library_search_effect_id,
+            counter_removal_cost: state.counter_removal_cost,
             last_value_comparison: state.last_value_comparison,
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             last_exile_cost_tag_index: state.last_exile_cost_tag_index,
@@ -6215,6 +6253,7 @@ fn advance_reference_env_for_effect(
                         ] if filter.source)),
                     last_effect_id: env.last_effect_id.clone(),
                     last_library_search_effect_id: env.last_library_search_effect_id.clone(),
+                    counter_removal_cost: env.counter_removal_cost,
                     iterated_player: env.iterated_player,
                     iterated_object: env.iterated_object,
                     allow_life_event_value: env.allow_life_event_value,
@@ -6256,6 +6295,7 @@ fn advance_reference_env_for_effect(
                     && false_sequence.final_env.source_object_antecedent,
                 last_effect_id: env.last_effect_id.clone(),
                 last_library_search_effect_id: env.last_library_search_effect_id.clone(),
+                    counter_removal_cost: env.counter_removal_cost,
                 iterated_player: env.iterated_player,
                 iterated_object: env.iterated_object,
                 allow_life_event_value: env.allow_life_event_value,
@@ -7504,6 +7544,11 @@ fn resolve_effect_result_value(
             *value = life_amount_bindings::bind_life_query(query, state)?;
         }
         Value::PendingPriorEffectMetric(query) => {
+            if state.pinned_effect_metric_id.or(state.last_effect_id) == Some(EffectId::ACTIVATION_COUNTER_COST) {
+                *value = bind_counter_cost_quantity(query, state.counter_removal_cost)?;
+                return Ok(());
+            }
+
             if let Some(id) = state.pinned_effect_metric_id.or(state.last_effect_id)
                 && state.delayed_registration_effect_id == Some(id)
                 && let Some(tagged_metric) = resolve_delayed_registration_tagged_metric(query)
@@ -10071,6 +10116,7 @@ mod tests {
                 last_effect_id: Some(EffectId(7)),
                 pinned_effect_metric_id: None,
                 last_library_search_effect_id: None,
+                counter_removal_cost: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 last_tap_cost_tag: None,
@@ -10104,6 +10150,7 @@ mod tests {
                 last_effect_id: None,
                 pinned_effect_metric_id: None,
                 last_library_search_effect_id: None,
+                counter_removal_cost: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 last_tap_cost_tag: None,
@@ -10138,6 +10185,7 @@ mod tests {
                 last_effect_id: Some(EffectId(7)),
                 pinned_effect_metric_id: None,
                 last_library_search_effect_id: None,
+                counter_removal_cost: None,
                 last_sacrifice_cost_tag_index: None,
                 last_exile_cost_tag_index: None,
                 last_tap_cost_tag: None,
@@ -12083,6 +12131,7 @@ mod excess_damage_binding_tests {
             last_effect_id: None,
             pinned_effect_metric_id: None,
             last_library_search_effect_id: None,
+                counter_removal_cost: None,
             last_sacrifice_cost_tag_index: None,
             last_exile_cost_tag_index: None,
             last_tap_cost_tag: None,

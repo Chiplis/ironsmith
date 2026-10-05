@@ -773,6 +773,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/821"
+    },
+    {
+      "stage": 56,
+      "branch": "fix/card-failures-56-references-and-defenders",
+      "base": "fix/card-failures-55-recovery-on-d51",
+      "source_integration_commit": "e722bc5bd695a286f9d1b7ef589d7d8b24debd14",
+      "remote_commit": "2a9490fb3ed70c6228d38310007d644e7a71b0eb",
+      "tree": "cecc9c36a9bdedbe042ae8f2b8c4732de703de06",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 822,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/822"
     }
   ]
 }

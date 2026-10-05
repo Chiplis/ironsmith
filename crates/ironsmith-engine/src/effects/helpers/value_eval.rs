@@ -1132,6 +1132,9 @@ pub(crate) fn resolve_wide(
             }),
         Value::EffectValue(effect_id) => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            if *effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(*effect_id).is_none() {
+                return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+            }
             {
                 // "That many" of an instruction that never ran is zero.
                 Ok(i64::from(ctx.get_outcome(*effect_id).map_or(
@@ -1148,6 +1151,9 @@ pub(crate) fn resolve_wide(
         }
         Value::EffectValueOffset(effect_id, offset) => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            if *effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(*effect_id).is_none() {
+                return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+            }
             {
                 Ok(i64::from(
                     ctx.get_outcome(*effect_id).map_or(0, |outcome| {

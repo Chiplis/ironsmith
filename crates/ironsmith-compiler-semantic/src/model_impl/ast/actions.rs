@@ -2580,8 +2580,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("next_only", next_only)
                 .field("increase", increase)
                 .finish(),
-            Self::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability }) => f
+            Self::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn { filter, ability, mode }) => f
                 .debug_struct("GrantNextSpellAbilityThisTurn")
+                .field("mode", mode)
                 .field("filter", filter)
                 .field("ability", ability)
                 .finish(),

@@ -119,7 +119,7 @@ pub use effect::{
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
     ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GoadEffect,
     GrantAbilitiesTargetEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
-    GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
+    GrantNextSpellCostReductionEffect, NextSpellGrantMode, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantPlayTaggedManaReferenceSurface, GrantPlayTaggedObjectSurface, GrantPlayTaggedSurface,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,

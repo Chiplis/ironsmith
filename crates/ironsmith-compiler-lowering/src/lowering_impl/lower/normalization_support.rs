@@ -75,20 +75,6 @@ fn materialize_alternative_casting_method(
 fn normalize_parsed_ability(
     mut parsed: ParsedAbility,
 ) -> Result<NormalizedParsedAbility, CardTextError> {
-    fn cost_removes_source_counters(cost: &crate::model::CompilerCost) -> bool {
-        matches!(cost, crate::model::CompilerCost::RemoveCounters { .. })
-    }
-
-    fn total_cost_removes_source_counters(
-        cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
-    ) -> bool {
-        cost.as_all()
-            .is_some_and(|costs| costs.iter().any(cost_removes_source_counters))
-            || cost
-                .as_one_of()
-                .is_some_and(|branches| branches.iter().any(total_cost_removes_source_counters))
-    }
-
     let runtime_payload_present = match parsed.kind() {
         crate::model::CompilerAbilityKindCore::Activated(activated) => {
             !activated.effects.is_empty() || !activated.choices.is_empty()
@@ -104,12 +90,6 @@ fn normalize_parsed_ability(
     )
     .then(|| parsed.trigger_spec.as_deref().cloned())
     .flatten();
-    let activated_removes_source_counters = match parsed.kind() {
-        crate::model::CompilerAbilityKindCore::Activated(activated) => {
-            total_cost_removes_source_counters(&activated.mana_cost)
-        }
-        _ => false,
-    };
     let prepared = if parsed.effects_ast.is_none() || runtime_payload_present {
         None
     } else {
@@ -130,12 +110,6 @@ fn normalize_parsed_ability(
             parsed.kind(),
             crate::model::CompilerAbilityKindCore::Activated(_)
         ) {
-            let mut effects = effects;
-            if activated_removes_source_counters {
-                super::super::lowering_support::replace_pending_removed_counter_metrics_with_x(
-                    &mut effects,
-                );
-            }
             Some(NormalizedPreparedAbility::Activated(
                 stage_effects_with_trigger_context_for_lowering(
                     None,

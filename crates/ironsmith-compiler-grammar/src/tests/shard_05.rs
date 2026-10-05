@@ -1262,6 +1262,7 @@ pub(super) fn rewrite_activation_cost_parses_energy_and_counter_variants() {
             display_x: false,
             dynamic: false,
             single_object: true,
+            remove_all: false,
         }] if filter.source
     ));
     assert!(matches!(
@@ -1823,6 +1824,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             display_x: false,
             dynamic: true,
             single_object: false,
+            remove_all: false,
         }] if filter.card_types == [CardType::Artifact]
             && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
@@ -1843,6 +1845,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             display_x: false,
             dynamic: true,
             single_object: false,
+            remove_all: false,
         }] if filter.card_types == [CardType::Creature]
             && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
@@ -1865,6 +1868,7 @@ pub(super) fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one
             display_x: false,
             dynamic: false,
             single_object: false,
+            remove_all: false,
         },
     ] = cst.segments.as_slice()
     else {

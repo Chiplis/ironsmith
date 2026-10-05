@@ -1558,6 +1558,15 @@ pub fn encode_runtime_effect(
         };
     }
     with_native_direct_effect_types!(encode_direct);
+    if let Some(payload) = effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>() {
+        let converted = ironsmith_core::GrantNextSpellAbilityEffect::new(
+            payload.player.clone(), payload.filter.clone(),
+            encode_runtime_ability(payload.ability.clone())?,
+        ).with_mode(payload.mode);
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("GrantNextSpellAbilityEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
         let converted = payload.clone().try_map_effects(encode_runtime_effect)?;
         return serde_json::to_value(converted)

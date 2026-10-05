@@ -606,13 +606,6 @@ fn parse_activated_line_with_raw_remaining(
     }
     let mut effects_ast = parse_effect_sentences_lexed(&effect_tokens_joined)?;
     effects_ast.extend(inline_effects_ast);
-    let counter_result_comes_from_cost = activation_cost_removes_dynamic_counters(&mana_cost);
-    for effect in &mut effects_ast {
-        replace_removed_counter_metric_with_x(effect);
-        if counter_result_comes_from_cost {
-            replace_counter_removed_pump_with_x(effect);
-        }
-    }
     if effects_ast.is_empty() {
         return Ok(None);
     }
@@ -680,12 +673,6 @@ pub fn resolve_activated_mana_x_requirements(
         replace_unbound_x_in_effect_anywhere(effect, &where_value, &clause)?;
     }
 
-    // A phrase such as "for each counter removed this way" refers to the
-    // preceding activation cost, not to an EffectAst producer. The cost
-    // executor exposes that count as activation X, so bind the parser's
-    // pending filtered metric before the normal reference pass sees it.
-    replace_removed_counter_metric_with_x(effect);
-
     if mana_effect_contains_unbound_x(effect)
         && !x_defined_by_cost
         && !x_clause.removed_counters_this_way
@@ -697,109 +684,6 @@ pub fn resolve_activated_mana_x_requirements(
     }
 
     Ok(())
-}
-
-fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
-    fn replace_value(value: &mut Value) {
-        let hints = value.surface_hints().to_vec();
-        if matches!(
-            value.unhinted(),
-            Value::PendingPriorEffectMetric(query)
-                if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
-        ) {
-            *value = Value::X.with_surface_hints(hints);
-            return;
-        }
-        match value {
-            Value::Add(left, right) | Value::Min(left, right) => {
-                replace_value(left);
-                replace_value(right);
-            }
-            Value::Scaled(inner, _)
-            | Value::DividedRoundedDown(inner, _)
-            | Value::HalfRoundedDown(inner)
-            | Value::SurfaceHinted { value: inner, .. } => replace_value(inner),
-            _ => {}
-        }
-    }
-
-    if let EffectAst::SubjectVerb(subject_verb) = effect {
-        match &mut subject_verb.action {
-            SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
-                amount,
-                ..
-            })
-            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
-                replace_value(amount)
-            }
-            _ => {}
-        }
-    }
-    for_each_nested_effects_mut(effect, true, |nested| {
-        for nested_effect in nested {
-            replace_removed_counter_metric_with_x(nested_effect);
-        }
-    });
-}
-
-fn activation_cost_removes_dynamic_counters(
-    cost: &ironsmith_core::TotalCost<crate::model::CompilerCost>,
-) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| {
-            matches!(
-                cost,
-                crate::model::CompilerCost::RemoveCounters {
-                    display_x: true,
-                    ..
-                }
-            )
-        }),
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches
-            .iter()
-            .any(activation_cost_removes_dynamic_counters),
-    }
-}
-
-fn replace_counter_removed_pump_with_x(effect: &mut EffectAst) {
-    if let EffectAst::SubjectVerb(subject_verb) = effect
-        && let SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpByLastEffect {
-            power,
-            toughness,
-            target,
-            duration,
-            includes_this_way,
-        }) = &subject_verb.action
-    {
-        let basis = Value::X.with_surface_hint(if *includes_this_way {
-            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
-        } else {
-            ironsmith_core::ValueSurfaceHint::CountersRemoved
-        });
-        let scale = |multiplier: i32| match multiplier {
-            0 => Value::Fixed(0),
-            1 => basis.clone(),
-            _ => Value::Scaled(Box::new(basis.clone()), multiplier),
-        };
-        *effect = EffectAst::subject_verb_pump(
-            scale(*power),
-            scale(*toughness),
-            target.clone(),
-            duration.clone(),
-            None,
-        );
-        return;
-    }
-    for_each_nested_effects_mut(effect, true, |nested| {
-        for nested_effect in nested {
-            replace_counter_removed_pump_with_x(nested_effect);
-        }
-    });
 }
 
 pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {

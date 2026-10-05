@@ -2105,6 +2105,7 @@ pub(crate) fn has_valid_spell_timing_without_target_permission(
 
     if !is_sorcery_speed_spell(spell)
         || spell_has_active_flash_with_view(game, player, spell, spell_id, view)
+        || game.next_play_timing_allows(player, spell, false)
     {
         return true;
     }

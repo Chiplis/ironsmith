@@ -236,6 +236,7 @@ impl OutcomeObjectMemory {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
                 noted_life_total: None,
+                saddled: None,
                 chosen_object: None,
                 object_id: self.object_id,
                 stable_id: self.stable_id,

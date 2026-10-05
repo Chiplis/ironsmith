@@ -219,6 +219,7 @@ fn target_has_exact_mana_x(effect: &Effect) -> bool {
 }
 
 pub(crate) fn needs_activation_reference_context(cost: &TotalCost, effects: &[Effect]) -> bool {
+    if super::counter_declaration::target_spec(effects).is_some() { return true; }
     if effects.iter().any(target_has_exact_mana_x) {
         return true;
     }
@@ -268,6 +269,7 @@ pub(crate) fn activation_reference_preflight(
     payer: PlayerId,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<bool> {
+    if let Some(result) = super::counter_declaration::preflight(game, source, ability_index, payer, activated) { return Some(result); }
     let effects = activated.effects.flattened_default_effects();
     if !needs_activation_reference_context(&activated.mana_cost, effects) {
         return None;

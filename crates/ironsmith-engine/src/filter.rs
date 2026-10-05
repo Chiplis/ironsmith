@@ -1559,6 +1559,7 @@ pub struct FilterContext {
     pub iterated_player: Option<PlayerId>,
 
     /// X value carried by the current resolving spell or ability, if any.
+    pub counter_removal_declaration: Option<crate::cost::CounterRemovalDeclaration>,
     pub x_value: Option<u32>,
 
     /// The player chosen for the source permanent or spell, if any.
@@ -2043,6 +2044,10 @@ fn resolve_filter_comparison_rhs_value(
         Value::X => resolve_x_value(game, ctx, stack_entry),
         Value::XTimes(multiplier) => {
             resolve_x_value(game, ctx, stack_entry).map(|value| value * i64::from(*multiplier))
+        }
+        value if !ctx.effect_outcomes.contains_key(&crate::effect::EffectId::ACTIVATION_COUNTER_COST)
+            && ctx.counter_removal_declaration.is_some_and(|declared| declared.value(ctx.source, value).is_some()) => {
+            ctx.counter_removal_declaration.and_then(|declared| declared.value(ctx.source, value))
         }
         Value::EffectMetric { .. }
         | Value::EffectMetricOffset { .. }

@@ -28,6 +28,11 @@ pub(super) fn open_flashback_grant(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Pair>, CardTextError> {
+    // A replacement continuation owns the whole procedure, including its
+    // diagnostics. Do not let this shorter reading reclaim a malformed one.
+    if open_flashback_price_replacement(sentences, sentence_idx)?.is_some() {
+        return Ok(None);
+    }
     let Some(sentence) = sentences.get(sentence_idx) else {
         return Ok(None);
     };
@@ -574,5 +579,159 @@ mod catalog_grant_tests {
             format!("{effects:?}").contains("ForEachObject"),
             "{effects:#?}"
         );
+    }
+}
+
+/// The delayed selector owns both spell riders; neither refers to the
+/// resolving instant or creates a post-cast trigger.
+pub(super) fn open_next_spell_riders(
+    sentences: &[SentenceInput], index: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(index) else { return Ok(None); };
+    let Some(second) = sentences.get(index + 1) else { return Ok(None); };
+    let Some(third) = sentences.get(index + 2) else { return Ok(None); };
+    let Some(shape) = effect_grammar::parse_next_spell_grant_tokens(first.lowered())? else { return Ok(None); };
+    if shape.ability != effect_grammar::NextSpellGrantAbilitySurface::CastTiming {
+        return Ok(None);
+    }
+    let rider_tokens = second.lowered();
+    let complete_rider = matches!(rider_tokens, [that, spell, cant, be, countered]
+        if that.is_word("that") && spell.is_word("spell")
+            && cant.is_any_word(&["cant", "can't"]) && be.is_word("be")
+            && countered.is_word("countered"));
+    if !complete_rider {
+        // The word projection is only a malformed-shape diagnostic, never
+        // evidence that the complete sentence was consumed.
+        if matches!(crate::lexer::token_word_refs(rider_tokens).as_slice(),
+            ["that", "spell", "cant" | "can't", "be", "countered"])
+        {
+            return Err(CardTextError::ParseError(
+                "unexpected token in next-spell uncounterable continuation".into(),
+            ));
+        }
+        return Ok(None);
+    }
+    let Some(counter) = effect_grammar::counter_marker_shapes::parse_tagged_enters_additional_tokens(third.lowered()) else {
+        return Ok(None);
+    };
+    if !counter.descriptor.additional || counter.descriptor.fewer { return Ok(None); }
+    let count = i32::try_from(counter.descriptor.count).map_err(|_| CardTextError::ParseError(
+        "next-spell entry counter count is outside the supported range".into(),
+    ))?;
+    let mut effects = Vec::new();
+    for filter in shape.filters {
+        effects.push(EffectAst::subject_verb_next_play_timing_this_turn(shape.player, filter.clone(), false));
+        let riders = [
+            crate::cards::builders::GrantedAbilityAst::KeywordAction(Box::new(crate::payload::KeywordAction::CantBeCountered)),
+            crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
+                crate::cards::builders::StaticAbilityAst::from(
+                    crate::model::CompilerStaticAbilityCore::enters_with_counters_value(counter.descriptor.counter_type, Value::Fixed(count)),
+                ),
+            )),
+        ];
+        for ability in riders {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer, shape.player,
+                SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantNextSpellAbilityThisTurn {
+                    filter: filter.clone(), ability: Box::new(ability),
+                    mode: ironsmith_core::NextSpellGrantMode::IncarnationAbility,
+                }),
+            ));
+        }
+    }
+    Ok(Some(effects))
+}
+
+/// An "instead if" price replaces the earlier grant. Resolve the condition
+/// once and create one price, so the default and replacement cannot coexist.
+pub(super) fn open_flashback_price_replacement(
+    sentences: &[SentenceInput], index: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first) = sentences.get(index) else { return Ok(None); };
+    let Some(second) = sentences.get(index + 1) else { return Ok(None); };
+    let Some(third) = sentences.get(index + 2) else { return Ok(None); };
+    let Some(shape) = sequence_grammar::parse_flashback_grant_shape(first.lowered(), second.lowered()) else { return Ok(None); };
+    let tokens = third.lowered();
+    let Some(split) = crate::slice_primitives::find_window_by(tokens, 2, |tokens| tokens[0].is_word("instead") && tokens[1].is_word("if")) else { return Ok(None); };
+    let Some((subject, method)) = crate::effect_sentences::flashback_grants::fixed_grant_parts(&tokens[..split])? else { return Ok(None); };
+    if !matches!(subject, [that, card] if that.is_word("that") && card.is_word("card")) {
+        return Err(CardTextError::ParseError(
+            "flashback price replacement requires the complete subject 'that card'".into(),
+        ));
+    }
+    let target = crate::effect_sentences::parse_target_phrase(shape.target_tokens)?;
+    let predicate = crate::grammar::filters::predicate_phrases::parse_predicate(&tokens[split + 2..])?;
+    let tag = helper_tag_for_tokens(first.lowered(), "flashback_target");
+    let grant = |grantable| EffectAst::subject_verb_grant_to_target(
+        TargetAst::Tagged(tag.clone(), None), grantable, crate::grant::GrantDuration::UntilEndOfTurn,
+    );
+    Ok(Some(vec![
+        EffectAst::TagReferenced {
+            effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+            tag: tag.clone(),
+        },
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![grant(crate::model::CompilerGrantableCore::AlternativeCast(method))],
+            if_false: vec![grant(crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost())],
+        }),
+    ]))
+}
+
+#[cfg(test)]
+mod next_play_continuation_tests {
+    use super::*;
+
+    fn parse(text: &str) -> Result<Vec<EffectAst>, CardTextError> {
+        let tokens = crate::lexer::lex_line(text, 0)?;
+        crate::effect_sentences::parse_effect_sentences_lexed(&tokens)
+    }
+
+    #[test]
+    fn complete_next_spell_riders_keep_their_shared_selector() {
+        for contraction in ["can't", "can’t", "cant"] {
+            let effects = parse(&format!(
+                "The next creature spell you cast this turn can be cast as though it had flash. That spell {contraction} be countered. That creature enters with an additional +1/+1 counter on it."
+            )).unwrap();
+            let debug = format!("{effects:?}");
+            assert_eq!(debug.matches("IncarnationAbility").count(), 2, "{debug}");
+            assert_eq!(debug.matches("CastTiming").count(), 1, "{debug}");
+        }
+    }
+
+    #[test]
+    fn next_spell_riders_reject_symbols_and_punctuation_in_the_fixed_sentence() {
+        for sentence in [
+            "That spell can't be countered {R}",
+            "That {R} spell can't be countered",
+            "That spell: can't be countered",
+            "That spell can't be countered:",
+            "That spell can't, be countered",
+        ] {
+            let text = format!(
+                "The next creature spell you cast this turn can be cast as though it had flash. {sentence}. That creature enters with an additional +1/+1 counter on it."
+            );
+            assert!(parse(&text).is_err(), "malformed continuation was reclaimed: {text}");
+        }
+    }
+
+    #[test]
+    fn complete_flashback_replacement_keeps_one_target_and_mutually_exclusive_prices() {
+        let effects = parse("Target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled.").unwrap();
+        assert_eq!(effects.len(), 2);
+        assert!(matches!(&effects[0], EffectAst::TagReferenced { .. }));
+        assert!(matches!(&effects[1], EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            if_true, if_false, ..
+        }) if if_true.len() == 1 && if_false.len() == 1));
+    }
+
+    #[test]
+    fn flashback_replacement_rejects_symbols_and_punctuation_in_its_subject() {
+        for subject in ["That {R} card", "That card {R}", "That: card", "That card:", "That, card"] {
+            let text = format!(
+                "Target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. {subject} gains flashback {{0}} until end of turn instead if this creature is saddled."
+            );
+            assert!(parse(&text).is_err(), "shorter flashback grant reclaimed: {text}");
+        }
     }
 }

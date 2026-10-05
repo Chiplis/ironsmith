@@ -446,6 +446,10 @@ pub struct ObjectSnapshot {
     /// Missing evidence in older/public snapshots is not an unsuspicious result.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub suspected: Option<bool>,
+    /// Exact incarnation's saddle designation. Missing historical/public
+    /// evidence is unknown, never an unsaddled receipt.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub saddled: Option<bool>,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -547,6 +551,7 @@ impl ObjectSnapshot {
             is_commander: false,
             zone,
             noted_life_total: None,
+            saddled: None,
         }
     }
 
@@ -693,6 +698,7 @@ impl ObjectSnapshot {
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
             noted_life_total: game.noted_life_total_for_source(obj.id),
+            saddled: Some(game.is_saddled(obj.id)),
         }
     }
 
@@ -1087,6 +1093,7 @@ impl ObjectSnapshot {
             is_commander: false,
             zone: Zone::Battlefield,
             noted_life_total: None,
+            saddled: None,
         }
     }
 

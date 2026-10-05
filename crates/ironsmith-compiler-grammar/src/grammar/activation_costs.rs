@@ -186,6 +186,7 @@ pub enum ActivationCostSegmentCst {
         display_x: bool,
         dynamic: bool,
         single_object: bool,
+        remove_all: bool,
     },
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,

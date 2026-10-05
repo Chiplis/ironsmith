@@ -1282,20 +1282,6 @@ fn can_play_land(
         return Err(ActionError::NotYourPriority);
     }
 
-    // Must be in a main phase
-    let is_main_phase = game.turn.phase == Phase::FirstMain || game.turn.phase == Phase::NextMain;
-    if !is_main_phase {
-        return Err(ActionError::WrongPhase {
-            required: Phase::FirstMain,
-            actual: game.turn.phase,
-        });
-    }
-
-    // Stack must be empty
-    if !game.stack_is_empty() {
-        return Err(ActionError::StackNotEmpty);
-    }
-
     // Check player can still play lands
     let player_data = game.player(player).ok_or(ActionError::PlayerNotFound)?;
     if !player_data.can_play_land() {
@@ -1328,6 +1314,17 @@ fn can_play_land(
     };
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
     let proposed_land = object;
+    let timing_permission = game.next_play_timing_allows(player, proposed_land, true);
+    let is_main_phase = game.turn.phase == Phase::FirstMain || game.turn.phase == Phase::NextMain;
+    if !is_main_phase && !timing_permission {
+        return Err(ActionError::WrongPhase {
+            required: Phase::FirstMain,
+            actual: game.turn.phase,
+        });
+    }
+    if !game.stack_is_empty() && !timing_permission {
+        return Err(ActionError::StackNotEmpty);
+    }
     if game
         .effect_store
         .cant_effects
@@ -1580,6 +1577,7 @@ fn perform_play_land(
                 error,
             })?;
         let initial_tapped = permission.enters_tapped;
+        game.reserve_next_land_play_timing(player, card_id);
 
         // Move the land to the battlefield with ETB replacement processing.
         let result = game
@@ -3095,6 +3093,8 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                 pay_total_cost_without_preflight_with_choice(game, &total_cost, &mut cost_ctx)
                     .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
             let x_value_from_costs = cost_summary.x_value;
+            let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
+            let cost_tags = cost_ctx.tagged_objects.clone();
             drop(cost_ctx);
             if decision_maker.awaiting_choice() {
                 return Ok(Vec::new());
@@ -3109,7 +3109,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                 .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(source_chosen_creature_type)
                 .with_mana_production_provenance(mana_production_provenance)
-                .with_source_snapshot(source_snapshot.clone());
+                .with_source_snapshot(source_snapshot.clone())
+                .with_tagged_objects(cost_tags.clone())
+                .with_effect_outcomes(cost_effect_outcomes.clone());
             if let Some(x) = x_value_from_costs {
                 mana_ctx = mana_ctx.with_x(x);
             }
@@ -3138,7 +3140,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                     .with_mana_usage_restrictions(mana_usage_restrictions)
                     .with_mana_source_chosen_creature_type(source_chosen_creature_type)
                     .with_mana_production_provenance(mana_production_provenance)
-                    .with_source_snapshot(source_snapshot.clone());
+                    .with_source_snapshot(source_snapshot.clone())
+                    .with_tagged_objects(cost_tags.clone())
+                    .with_effect_outcomes(cost_effect_outcomes.clone());
                 if let Some(x) = x_value_from_costs {
                     effect_ctx = effect_ctx.with_x(x);
                 }
@@ -3266,6 +3270,7 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
     let checkpoint = game.clone();
     let x_checkpoint = cost_ctx.x_value;
     let tags_checkpoint = cost_ctx.tagged_objects.clone();
+    let outcomes_checkpoint = cost_ctx.effect_outcomes.clone();
     let pre_chosen_checkpoint = cost_ctx.pre_chosen_cards.clone();
 
     if let Err(err) = pay_total_cost_branch_without_execution_context(game, cost, cost_ctx) {
@@ -3279,6 +3284,7 @@ pub(crate) fn pay_total_cost_without_preflight_with_choice(
         *game = checkpoint;
         cost_ctx.x_value = x_checkpoint;
         cost_ctx.tagged_objects = tags_checkpoint;
+        cost_ctx.effect_outcomes = outcomes_checkpoint;
         cost_ctx.pre_chosen_cards = pre_chosen_checkpoint;
         return Err(err);
     }
@@ -3323,6 +3329,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                 cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = speculative_tagged_objects.clone();
+                cost_ctx.effect_outcomes = execution_ctx.effect_outcomes.clone();
                 adjusted_component.0.can_pay(game, &cost_ctx)?;
 
                 // Some multi-object costs are represented as a choice that tags the
@@ -3661,9 +3668,10 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
     can_pay_total_cost_with_reason_in_context(game, payer, source, cost, reason, execution_ctx)?;
 
     let checkpoint = game.clone();
+    let execution_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
     let provenance = execution_ctx.provenance;
 
-    if let Err(err) = pay_total_cost_branch_in_context(
+    let result = pay_total_cost_branch_in_context(
         game,
         payer,
         source,
@@ -3671,12 +3679,12 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
         reason,
         provenance,
         execution_ctx,
-    ) {
-        *game = checkpoint;
-        return Err(err);
+    );
+    if result.is_err() || execution_ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && execution_ctx.decision_maker.awaiting_choice());
+        execution_checkpoint.restore(execution_ctx);
     }
-
-    Ok(())
+    result
 }
 
 fn pay_total_cost_branch_without_execution_context(
@@ -4088,7 +4096,7 @@ fn pay_selected_cost_without_execution_context(
 
     game.validate_cost_for_payment_reason(payer, source, cost, reason)?;
 
-    let (paid_x_value, paid_tags) = {
+    let (paid_x_value, paid_tags, paid_outcomes) = {
         let requesting_effect_cause = cost_ctx.requesting_effect_cause.clone();
         let mut selected_ctx = CostContext::new(source, payer, &mut *cost_ctx.decision_maker)
             .with_reason(reason)
@@ -4099,9 +4107,11 @@ fn pay_selected_cost_without_execution_context(
         selected_ctx.requesting_effect_cause = requesting_effect_cause;
         selected_ctx.x_value = x_value;
         selected_ctx.tagged_objects = tagged_objects;
+        selected_ctx.effect_outcomes = cost_ctx.effect_outcomes.clone();
 
         match cost.pay(game, &mut selected_ctx)? {
-            CostPaymentResult::Paid => (selected_ctx.x_value, selected_ctx.tagged_objects),
+            CostPaymentResult::Paid if selected_ctx.decision_maker.awaiting_choice() => return Ok(()),
+            CostPaymentResult::Paid => (selected_ctx.x_value, selected_ctx.tagged_objects, selected_ctx.effect_outcomes),
             CostPaymentResult::NeedsChoice(_) => {
                 return Err(CostPaymentError::Other(
                     "Cost still needed a choice after preselection".to_string(),
@@ -4112,6 +4122,7 @@ fn pay_selected_cost_without_execution_context(
 
     cost_ctx.x_value = paid_x_value;
     cost_ctx.tagged_objects = paid_tags;
+    cost_ctx.effect_outcomes = paid_outcomes;
     Ok(())
 }
 
@@ -4263,6 +4274,7 @@ fn pay_component_without_execution_context(
         execution.source_snapshot = cost_ctx.source_snapshot.clone();
         execution.replacement = cost_ctx.replacement.clone();
         execution.x_value = cost_ctx.x_value;
+        execution.effect_outcomes = cost_ctx.effect_outcomes.clone();
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, &mut execution)?;
         return pay_component_without_execution_context(
             game,
@@ -4306,8 +4318,10 @@ fn pay_component_in_context(
     cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
     cost_ctx.x_value = execution_ctx.x_value;
     cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
+    cost_ctx.effect_outcomes = execution_ctx.effect_outcomes.clone();
     let result = pay_component_without_execution_context(game, component, &mut cost_ctx);
     execution_ctx.tagged_objects = cost_ctx.tagged_objects;
+    execution_ctx.effect_outcomes = cost_ctx.effect_outcomes;
     result
 }
 
@@ -7362,5 +7376,100 @@ mod replacement_sacrifice_cost_owner_contract_tests {
     #[test]
     fn instead_cost_paid_without_sacrifice_event() {
         check(6);
+    }
+}
+
+#[cfg(test)]
+mod recovered_activation_counter_receipts {
+    use super::*;
+    use crate::effect::{Effect, EffectId, EffectOutcome, Value};
+    use crate::effects::{ExecutionContext, WithIdEffect};
+    #[test]
+    fn native_in_context_owner_retains_exact_paid_count_and_independent_x() {
+        for count in [0, 3, i32::MAX as u32 + 1, u32::MAX] {
+            let payer = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Receipt source")
+                .card_types(vec![crate::CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, payer, crate::Zone::Battlefield);
+            game.object_mut(source).unwrap().counters.insert(crate::CounterType::Charge, count);
+            let cost = crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::effect(WithIdEffect::new(
+                EffectId::ACTIVATION_COUNTER_COST, Effect::new(crate::effects::RemoveAnyCountersFromSourceEffect::all(Some(crate::CounterType::Charge)))))]);
+            let mut context = ExecutionContext::new_default(source, payer).with_x(17);
+            context.effect_outcomes.insert(EffectId(9), EffectOutcome::count(11));
+            pay_total_cost_with_choice_in_context(&mut game, payer, source, &cost,
+                crate::costs::PaymentReason::ActivateAbility, &mut context).unwrap();
+            assert_eq!(context.x_value, Some(17));
+            assert_eq!(context.effect_outcomes[&EffectId(9)].count_or_zero(), 11);
+            assert_eq!(crate::effects::helpers::resolve_value_wide(&game, &Value::EffectValue(EffectId::ACTIVATION_COUNTER_COST), &context).unwrap(), i64::from(count));
+            assert_eq!(game.counter_count(source, crate::CounterType::Charge), 0);
+        }
+    }
+    #[test]
+    fn reserved_missing_receipt_is_incomplete_evidence_and_pending_keeps_previous_memory() {
+        struct Pending;
+        impl crate::decision::DecisionMaker for Pending { fn awaiting_choice(&self) -> bool { true } }
+        let payer = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::CardId::new(), "Pending receipt source")
+            .card_types(vec![crate::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, payer, crate::Zone::Battlefield);
+        game.add_counters(source, crate::CounterType::Charge, 3);
+        let mut dm = Pending;
+        let mut context = ExecutionContext::new(source, payer, &mut dm);
+        context.effect_outcomes.insert(EffectId(9), EffectOutcome::count(11));
+        assert!(matches!(crate::effects::helpers::resolve_value_wide(&game, &Value::EffectValue(EffectId::ACTIVATION_COUNTER_COST), &context), Err(crate::effects::ExecutionError::IncompleteEvidence(_))));
+        let cost = crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::effect(WithIdEffect::new(
+            EffectId::ACTIVATION_COUNTER_COST, Effect::remove_counters(crate::CounterType::Charge, 2, crate::ChooseSpec::Source)))]);
+        pay_total_cost_with_choice_in_context(&mut game, payer, source, &cost,
+            crate::costs::PaymentReason::ActivateAbility, &mut context).unwrap();
+        assert_eq!(game.counter_count(source, crate::CounterType::Charge), 3);
+        assert_eq!(context.effect_outcomes.len(), 1);
+        assert_eq!(context.effect_outcomes[&EffectId(9)].count_or_zero(), 11);
+    }
+}
+
+#[cfg(test)]
+mod retained_counter_follow_on_costs {
+    use super::*;
+    use crate::effect::{Effect, EffectId, EffectOutcome, Value};
+    use crate::effects::{ExecutionContext, ExecutionError, EffectExecutor, CostExecutableEffect, CostValidationError, WithIdEffect};
+    #[derive(Clone, Debug)]
+    struct CompletionGate { fail: bool }
+    impl EffectExecutor for CompletionGate {
+        fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+            if self.fail { return Err(ExecutionError::InternalError("failure after paid prefix".into())); }
+            ctx.decision_maker.decide_boolean(game, &crate::decisions::context::BooleanContext::new(ctx.controller, Some(ctx.source), "Pending suffix"));
+            Ok(EffectOutcome::resolved())
+        }
+        fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> { Some(self) }
+    }
+    impl CostExecutableEffect for CompletionGate {
+        fn can_execute_as_cost(&self, _: &GameState, _: ObjectId, _: PlayerId) -> Result<(), CostValidationError> { Ok(()) }
+    }
+    #[derive(Default)]
+    struct Pause { pending: bool }
+    impl DecisionMaker for Pause {
+        fn decide_boolean(&mut self, _: &GameState, _: &crate::decisions::context::BooleanContext) -> bool { self.pending = true; false }
+        fn awaiting_choice(&self) -> bool { self.pending }
+    }
+    #[test]
+    fn retained_receipt_drives_native_follow_on_life_cost_and_paid_prefix_rolls_back() {
+        for suffix in [None, Some(true), Some(false)] {
+            let payer=PlayerId::from_index(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+            let card=crate::card::CardBuilder::new(crate::CardId::new(),"Follow-on receipt").card_types(vec![crate::CardType::Artifact]).build();
+            let source=game.create_object_from_card(&card,payer,Zone::Battlefield);game.add_counters(source,crate::CounterType::Charge,3);
+            let mut dm=Pause::default();let mut ctx=ExecutionContext::new(source,payer,&mut dm).with_x(17);
+            let remove=crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::effect(WithIdEffect::new(EffectId::ACTIVATION_COUNTER_COST,
+                Effect::remove_counters(crate::CounterType::Charge,3,crate::ChooseSpec::Source)))]);
+            pay_total_cost_with_choice_in_context(&mut game,payer,source,&remove,crate::costs::PaymentReason::ActivateAbility,&mut ctx).unwrap();
+            let mut components=vec![crate::costs::Cost::effect(WithIdEffect::new(EffectId(33),Effect::pay_life(Value::EffectValue(EffectId::ACTIVATION_COUNTER_COST))))];
+            if let Some(fail)=suffix {components.push(crate::costs::Cost::effect(CompletionGate {fail}));}
+            let result=pay_total_cost_with_choice_in_context(&mut game,payer,source,&crate::cost::TotalCost::from_costs(components),crate::costs::PaymentReason::ActivateAbility,&mut ctx);
+            assert_eq!(result.is_err(),suffix==Some(true));assert_eq!(game.counter_count(source,crate::CounterType::Charge),0);
+            assert_eq!(ctx.effect_outcomes[&EffectId::ACTIVATION_COUNTER_COST].instruction_result().count_or_zero(),3);assert_eq!(ctx.x_value,Some(17));
+            assert_eq!(game.player(payer).unwrap().life,if suffix.is_none(){17}else{20});
+            assert_eq!(ctx.effect_outcomes.contains_key(&EffectId(33)),suffix.is_none());
+        }
     }
 }

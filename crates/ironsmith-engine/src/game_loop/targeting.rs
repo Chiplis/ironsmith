@@ -2019,6 +2019,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
     references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
 ) {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         extract_target_requirements_from_effect_internal(
@@ -2031,6 +2032,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             declared_targets,
             requirements,
             references,
+            declaration,
         );
         return;
     }
@@ -2052,6 +2054,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 declared_targets,
                 requirements,
                 references,
+                declaration,
             );
         }
         return;
@@ -2072,6 +2075,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 &mut child_declared_targets,
                 requirements,
                 references,
+                declaration,
             );
             coordinated.merge_child_state(child_declared_targets);
         }
@@ -2089,6 +2093,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             declared_targets,
             requirements,
             references,
+            declaration,
         );
         return;
     }
@@ -2126,6 +2131,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             &mut mode_declared_targets,
                             requirements,
                             references,
+                            declaration,
                         );
                     }
                     for requirement in &mut requirements[mode_requirement_start..] {
@@ -2230,8 +2236,8 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
             };
             declare_target(&profile, declared_targets);
-            let legal_targets = compute_legal_targets_with_tagged_objects(
-                game, &spec, caster, source_id, references,
+            let legal_targets = compute_legal_targets_with_counter_declaration(
+                game, &spec, caster, source_id, references, declaration,
             );
             if !legal_targets.is_empty() {
                 let legal_target_sets =
@@ -2271,12 +2277,13 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             // constraints; a dependent target can require both at once.
             relaxed_spec = relax_target_player_relation(&relaxed_spec);
         }
-        let mut legal_targets = compute_legal_targets_with_tagged_objects(
+        let mut legal_targets = compute_legal_targets_with_counter_declaration(
             game,
             &relaxed_spec,
             caster,
             source_id,
             references,
+            declaration,
         );
         retain_targets_satisfying_announcement_condition(
             game,
@@ -2626,6 +2633,7 @@ fn extract_for_players_target_requirements(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
     references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
 ) {
     let mut filter_ctx = crate::filter::FilterContext::new(caster)
         .with_active_player(game.turn.active_player)
@@ -2660,6 +2668,7 @@ fn extract_for_players_target_requirements(
                 declared_targets,
                 requirements,
                 references,
+                declaration,
             );
         }
     }
@@ -2675,6 +2684,7 @@ fn extract_target_requirements_from_iterated_effect(
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
     references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
 ) {
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
@@ -2696,7 +2706,7 @@ fn extract_target_requirements_from_iterated_effect(
         }
         declare_target(&profile, declared_targets);
         let legal_targets =
-            compute_legal_targets_with_tagged_objects(game, &spec, caster, source_id, references);
+            compute_legal_targets_with_counter_declaration(game, &spec, caster, source_id, references, declaration);
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -2744,6 +2754,7 @@ fn extract_target_requirements_from_iterated_effect(
         declared_targets,
         requirements,
         references,
+        declaration,
     );
 }
 
@@ -3180,6 +3191,7 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
         &mut declared_targets,
         &mut requirements,
         None,
+        None,
     );
     requirements
 }
@@ -3436,6 +3448,18 @@ pub(crate) fn extract_target_requirements_with_modes_and_references(
     chosen_modes: Option<&[usize]>,
     references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) -> Vec<TargetRequirement> {
+    extract_target_requirements_with_modes_and_announcements(game, effects, caster, source_id, chosen_modes, references, None)
+}
+
+pub(crate) fn extract_target_requirements_with_modes_and_announcements(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
+) -> Vec<TargetRequirement> {
     let mut requirements = Vec::new();
     let mut consumed_modal_selection = false;
     let mut declared_targets = Vec::new();
@@ -3451,6 +3475,7 @@ pub(crate) fn extract_target_requirements_with_modes_and_references(
             &mut declared_targets,
             &mut requirements,
             references,
+            declaration,
         );
     }
 
@@ -5664,4 +5689,14 @@ fn prior_player_or_planeswalker_target(
                         .and_then(|_| view.current_controller(*object)),
                 })
         })
+}
+
+pub(super) fn compute_legal_targets_with_counter_declaration(
+    game: &GameState, spec: &ChooseSpec, caster: PlayerId, source_id: Option<ObjectId>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+    declaration: Option<crate::cost::CounterRemovalDeclaration>,
+) -> Vec<Target> {
+    let view = crate::derived_view::DerivedGameView::new(game).with_target_reference_bindings(references.cloned().unwrap_or_default())
+        .with_counter_removal_declaration(declaration);
+    crate::targeting::compute_legal_targets_with_tagged_objects_with_view(game, spec, caster, source_id, references, &view)
 }

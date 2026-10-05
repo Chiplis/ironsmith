@@ -48,6 +48,7 @@ fn pay_selected_cost(
         crate::tag::TagKey,
         Vec<crate::snapshot::ObjectSnapshot>,
     >,
+    effect_outcomes: &mut std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     let processing_mode = cost.processing_mode();
@@ -69,6 +70,7 @@ fn pay_selected_cost(
         .with_pre_chosen_cards(vec![chosen_id])
         .with_provenance(provenance);
     cost_ctx.tagged_objects = tagged_objects.clone();
+    cost_ctx.effect_outcomes = effect_outcomes.clone();
     let chosen_snapshot = game.object(chosen_id).map(|obj| {
         if preserve_chosen_snapshot {
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
@@ -88,6 +90,7 @@ fn pay_selected_cost(
 
     match cost.pay(game, &mut cost_ctx) {
         Ok(crate::costs::CostPaymentResult::Paid) => {
+            if cost_ctx.decision_maker.awaiting_choice() { return Ok(()); }
             if !preserve_chosen_snapshot
                 && let Some(tag) = effective_choice_tag.as_ref()
                 && let Some(snapshot) = chosen_snapshot.as_ref()
@@ -108,6 +111,7 @@ fn pay_selected_cost(
                 tagged.push(snapshot);
             }
             *tagged_objects = cost_ctx.tagged_objects;
+            *effect_outcomes = cost_ctx.effect_outcomes;
             Ok(())
         }
         Ok(crate::costs::CostPaymentResult::NeedsChoice(_)) => Err(GameLoopError::InvalidState(
@@ -375,6 +379,7 @@ fn execute_planned_keyword_payments(
                     card_id,
                     None,
                     &mut pending.tagged_objects,
+                    &mut pending.effect_outcomes,
                     _decision_maker,
                 )?;
                 continue;
@@ -2028,6 +2033,7 @@ pub(super) fn execute_pending_mana_ability(
         // paid ("Remove X storage counters"); the effect reads that value.
         let x_value_from_costs = cost_ctx.x_value;
         let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+        let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
         drop(cost_ctx);
         game.finish_library_top_announcement(
             crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance),
@@ -2040,7 +2046,8 @@ pub(super) fn execute_pending_mana_ability(
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
                 .with_mana_production_provenance(pending.mana_production_provenance)
-                .with_tagged_objects(cost_tagged_objects.clone());
+                .with_tagged_objects(cost_tagged_objects.clone())
+                .with_effect_outcomes(cost_effect_outcomes.clone());
         if let Some(snapshot) = source_snapshot.clone() {
             mana_ctx = mana_ctx.with_source_snapshot(snapshot);
         }
@@ -2074,7 +2081,7 @@ pub(super) fn execute_pending_mana_ability(
             if let Some(x) = x_value_from_costs {
                 ctx = ctx.with_x(x);
             }
-            ctx = ctx.with_tagged_objects(cost_tagged_objects);
+            ctx = ctx.with_tagged_objects(cost_tagged_objects).with_effect_outcomes(cost_effect_outcomes);
             let emitted_events = crate::game_loop::execute_resolution_program(
                 game,
                 &mut ctx,
@@ -2385,6 +2392,7 @@ pub(super) fn apply_sacrifice_target_response(
                 target_id,
                 Some(&choice_tag),
                 &mut pending.tagged_objects,
+                &mut pending.effect_outcomes,
                 decision_maker,
             )?;
             if decision_maker.awaiting_choice() {
@@ -2431,6 +2439,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2465,6 +2474,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2495,6 +2505,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2536,6 +2547,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2574,6 +2586,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2610,6 +2623,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         choice_tag.as_ref(),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2650,6 +2664,7 @@ pub(super) fn apply_sacrifice_target_response(
                         target_id,
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2730,6 +2745,7 @@ pub(super) fn apply_card_cost_choice_response(
                 chosen_id,
                 Some(&choice_tag),
                 &mut pending.tagged_objects,
+                &mut pending.effect_outcomes,
                 decision_maker,
             )?;
             if decision_maker.awaiting_choice() {
@@ -2785,6 +2801,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2820,6 +2837,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2859,6 +2877,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     );
                     game.close_simultaneous_action(opened_batch);
@@ -2904,6 +2923,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2942,6 +2962,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         None,
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -2978,6 +2999,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         choice_tag.as_ref(),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -3019,6 +3041,7 @@ pub(super) fn apply_card_cost_choice_response(
                         chosen_id,
                         Some(&choice_tag),
                         &mut pending.tagged_objects,
+                        &mut pending.effect_outcomes,
                         decision_maker,
                     )?;
                     if decision_maker.awaiting_choice() {
@@ -4307,6 +4330,7 @@ pub(super) fn finalize_spell_cast(
     }
     game.push_to_stack(entry);
     game.complete_cast_grant(new_id);
+    game.consume_next_cast_timing(caster, new_id);
     game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Cast(new_id));
 
     if let Some(spell_obj) = game.object(new_id).cloned() {
@@ -5686,6 +5710,7 @@ mod replacement_owner_tests {
                         source,
                         None,
                         tags,
+                        &mut activation.effect_outcomes,
                         dm,
                     ),
                     1 => super::super::priority_cast::auto_pay_spell_tap_cost_steps(

@@ -4659,10 +4659,16 @@ fn evaluate_condition_in_context(
             Ok(game.is_tapped(ctx.source))
         }
         Condition::SourceIsSaddled => {
-            if ctx.is_cast_time() {
-                return Ok(false);
+            if game.object(ctx.source).is_some() {
+                return Ok(game.is_saddled(ctx.source));
             }
-            Ok(game.is_saddled(ctx.source))
+            // Prefer the exact departure receipt over the earlier trigger
+            // snapshot: saddling may change between triggering and departure.
+            game.turn_store.turn_history.source_departure_snapshot(ctx.source)
+                .and_then(|snapshot| snapshot.saddled)
+                .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "source saddle designation requires the live incarnation or its exact departure receipt".into(),
+                ))
         }
         Condition::SourceCrewedByExactly { count, filter } => {
             if ctx.is_cast_time() {

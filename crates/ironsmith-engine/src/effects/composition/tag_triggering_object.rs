@@ -735,6 +735,7 @@ mod tests {
                     chosen_subtype: None,
                     secret_chosen_subtype: None,
                     noted_life_total: None,
+                saddled: None,
                     chosen_object: None,
                     object_id: ObjectId::from_raw(999),
                     stable_id: StableId::from(ObjectId::from_raw(999)),
