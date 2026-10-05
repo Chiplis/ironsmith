@@ -98,6 +98,7 @@ pub fn apply_keyword_action(
         KeywordAction::Renown(amount) => builder.renown(amount),
         KeywordAction::Myriad => builder.myriad(),
         KeywordAction::Mobilize(amount) => builder.mobilize(amount),
+        KeywordAction::MobilizeValue { amount, .. } => builder.mobilize_value(amount),
         KeywordAction::Impending { time, cost } => builder.impending(time, cost),
         KeywordAction::Cipher => builder.cipher(),
         KeywordAction::Suspend { time, cost } => builder.suspend(time, cost),
@@ -257,6 +258,15 @@ pub fn apply_keyword_action(
         } => builder.alternative_cast(
             crate::alternative_cast::AlternativeCastingMethod::prototype(cost, power_toughness),
         ),
+        KeywordAction::BolsterValue { amount, .. }
+            if builder.card_builder.card_types_ref().iter()
+                .any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery)) =>
+        {
+            let effect = crate::effect::Effect::bolster_value(amount);
+            if let Some(existing) = &mut builder.spell_effect { existing.push(effect); }
+            else { builder.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![effect])); }
+            builder
+        }
         KeywordAction::Bolster(amount)
             if builder
                 .card_builder

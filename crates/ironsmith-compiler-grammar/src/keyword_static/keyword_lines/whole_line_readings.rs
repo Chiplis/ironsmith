@@ -37,6 +37,13 @@ pub(super) const REGISTRY: RuleId = RuleId::new("whole-keyword-line-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("dynamic-bolster-mobilize-amount"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(input.tokens)
+            .map(|action| vec![action])),
+    },
+    Reading {
         id: RuleId::new("flashback-keyword-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

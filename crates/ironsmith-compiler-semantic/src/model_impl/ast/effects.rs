@@ -3917,7 +3917,8 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_bolster(amount: u32) -> Self {
+    pub fn subject_verb_bolster(amount: impl Into<Value>) -> Self {
+        let amount = amount.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,

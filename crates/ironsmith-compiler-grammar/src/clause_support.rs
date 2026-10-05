@@ -582,6 +582,9 @@ mod keyword_line_readings;
 
 pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+        if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(tokens) {
+            return Some(action);
+        }
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         let words = strip_leading_word_refs_any(&words, &["and"]);

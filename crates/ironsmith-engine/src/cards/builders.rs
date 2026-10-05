@@ -4064,6 +4064,10 @@ impl CardDefinitionBuilder {
     /// attacking 1/1 red Warrior creature tokens. Sacrifice them at the
     /// beginning of the next end step."
     pub fn mobilize(self, amount: u32) -> Self {
+        self.mobilize_value(amount.into())
+    }
+
+    pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
         let effect = crate::effects::CreateTokenEffect::new(
             Self::mobilize_warrior_token(),
             amount,

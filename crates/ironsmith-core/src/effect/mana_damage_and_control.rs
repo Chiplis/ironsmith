@@ -1700,11 +1700,18 @@ impl SetClassLevelEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BolsterEffect {
     pub amount: u32,
+    /// A resolving quantity; fixed legacy payloads omit this field.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub amount_value: Option<Value>,
 }
 
 impl BolsterEffect {
     pub fn new(amount: u32) -> Self {
-        Self { amount }
+        Self { amount, amount_value: None }
+    }
+
+    pub fn with_value(amount: Value) -> Self {
+        Self { amount: 0, amount_value: Some(amount) }
     }
 }
 

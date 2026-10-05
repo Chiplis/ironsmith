@@ -6488,7 +6488,6 @@ fn resolve_effect_result_values_in_fields(
             })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
@@ -7028,6 +7027,9 @@ fn resolve_effect_result_values_in_fields(
                 ..
             }) => {
                 resolve_effect_result_value(power, state)?;
+            }
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) => {
+                resolve_effect_result_value(amount, state)?;
             }
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
                 resolve_effect_result_value(&mut spec.delta, state)?;
@@ -7643,7 +7645,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Exploit)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { .. })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
@@ -8084,6 +8085,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 source_filter,
                 ..
             }) => bind_unresolved_it_in_filter(source_filter, seed_tag),
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) =>
+                bind_unresolved_it_in_value(amount, seed_tag),
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => {
                 bind_unresolved_it_in_filter(&mut spec.source_filter, seed_tag)
                     + spec.target_object_filter.as_mut().map(|filter| bind_unresolved_it_in_filter(filter, seed_tag)).unwrap_or(0)

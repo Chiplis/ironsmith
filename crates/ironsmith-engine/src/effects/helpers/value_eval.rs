@@ -223,13 +223,7 @@ pub(crate) fn resolve_wide(
             });
             Ok(i64::from(seen.len() as i64))
         }
-        Value::DistinctNames(filter) => {
-            let mut seen = HashSet::new();
-            context.visit_property_objects(filter, |object| {
-                seen.insert(object.name().to_string());
-            });
-            Ok(i64::from(seen.len() as i64))
-        }
+        Value::DistinctNames(filter) => context.distinct_names(filter),
         Value::DistinctManaValues(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {

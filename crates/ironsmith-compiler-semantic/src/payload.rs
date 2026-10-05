@@ -203,6 +203,8 @@ pub enum KeywordAction {
     JobSelect,
     /// Cast-triggered growth based on actual mana paid versus current P/T.
     Increment,
+    BolsterValue { amount: Value, display: String },
+    MobilizeValue { amount: Value, display: String },
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -267,6 +269,8 @@ impl KeywordAction {
                 | Self::BattleCry
                 | Self::Melee
                 | Self::Myriad
+                | Self::Mobilize(_)
+                | Self::MobilizeValue { .. }
                 | Self::Afflict(_)
                 | Self::Dethrone
                 | Self::Evolve
@@ -440,6 +444,7 @@ impl KeywordAction {
             Self::Plot(cost) => format!("Plot {}", cost.to_oracle()),
             Self::Melee => "Melee".to_string(),
             Self::Mobilize(amount) => format!("Mobilize {amount}"),
+            Self::MobilizeValue { display, .. } | Self::BolsterValue { display, .. } => display.clone(),
             Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),

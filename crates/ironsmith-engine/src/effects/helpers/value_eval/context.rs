@@ -419,6 +419,39 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         }
     }
 
+    /// Current-name reductions must observe layer-one copy and name changes.
+    /// Tagged historical collections continue to use their captured names.
+    pub(super) fn distinct_names(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
+        let mut names = std::collections::HashSet::new();
+        match self.mode {
+            Mode::Execution(ctx) => {
+                self.game.try_all_continuous_effects_arc()
+                    .map_err(ExecutionError::ContinuousDiscovery)?;
+                let filter_ctx = ctx.filter_context(self.game);
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                    for snapshot in snapshots.iter().filter(|snapshot| {
+                        filter.matches_snapshot(snapshot, &filter_ctx, self.game)
+                    }) {
+                        names.insert(snapshot.name.to_string());
+                    }
+                } else {
+                    for id in value_candidate_ids_for_filter(self.game, filter, ctx) {
+                        let Some(object) = self.game.object(id) else { continue; };
+                        if !filter.matches(object, &filter_ctx, self.game) { continue; }
+                        let Some(chars) = self.game.try_current_characteristics(id)
+                            .map_err(ExecutionError::ContinuousDiscovery)? else { continue; };
+                        names.insert(chars.name.to_string());
+                    }
+                }
+            }
+            Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
+                names.insert(chars.name.to_string());
+            }),
+        }
+        i64::try_from(names.len()).map_err(|_| ExecutionError::UnresolvableValue(
+            "distinct current names exceed the scalar range".into()))
+    }
+
     pub(super) fn visit_property_objects(
         &self,
         filter: &ObjectFilter,
@@ -479,12 +512,6 @@ impl PropertyObject<'_> {
         match self {
             Self::Live(object) | Self::LayerBaseline(object) => object.colors(),
             Self::Snapshot(snapshot) => snapshot.colors,
-        }
-    }
-    pub(super) fn name(&self) -> &str {
-        match self {
-            Self::Live(object) | Self::LayerBaseline(object) => &object.name,
-            Self::Snapshot(snapshot) => &snapshot.name,
         }
     }
     pub(super) fn counters(&self) -> &std::collections::BTreeMap<crate::object::CounterType, u32> {

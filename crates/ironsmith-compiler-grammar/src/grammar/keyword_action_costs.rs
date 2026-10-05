@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use winnow::combinator::{alt, opt};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -726,3 +726,31 @@ fn parse_keyword_ability_facts_lexed<'a>(
 
 #[cfg(test)]
 mod tests;
+
+/// A local X definition is owned by this keyword occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DynamicAmountKeyword { Bolster, Mobilize }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DynamicKeywordAmountShape<'a> {
+    pub kind: DynamicAmountKeyword,
+    pub definition: Option<&'a [OwnedLexToken]>,
+}
+
+pub fn parse_dynamic_keyword_amount_tokens(tokens: &[OwnedLexToken]) -> Option<DynamicKeywordAmountShape<'_>> {
+    fn read<'a>(input: &mut LexStream<'a>) -> WResult<DynamicKeywordAmountShape<'a>> {
+        let kind = alt((
+            primitives::kw("bolster").value(DynamicAmountKeyword::Bolster),
+            primitives::kw("mobilize").value(DynamicAmountKeyword::Mobilize),
+        )).parse_next(input)?;
+        primitives::kw("x").parse_next(input)?;
+        let definition = opt((opt(primitives::comma()),
+            (primitives::phrase(&["where", "x", "is"]),
+                repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+                    .map(|((), _)| ())).take(),
+        )).parse_next(input)?.map(|(_, definition)| definition);
+        primitives::sentence_end().parse_next(input)?;
+        Ok(DynamicKeywordAmountShape { kind, definition })
+    }
+    primitives::probe_all(tokens, read, "complete dynamic keyword amount")
+}

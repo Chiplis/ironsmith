@@ -1421,7 +1421,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, .. }) => {
             Some(amount)
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. }) => {
@@ -1518,7 +1519,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })

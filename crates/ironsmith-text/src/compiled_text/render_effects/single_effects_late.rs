@@ -5256,11 +5256,7 @@ pub(super) fn describe_structural_mobilize_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
-    let Value::Fixed(amount) = create.count else {
-        return None;
-    };
-    if amount <= 0
-        || create.controller != PlayerFilter::You
+    if create.controller != PlayerFilter::You
         || create.controller_target.is_some()
         || !create.enters_tapped
         || !create.enters_attacking
@@ -5273,7 +5269,11 @@ pub(super) fn describe_structural_mobilize_keyword(
     {
         return None;
     }
-    Some(format!("Mobilize {amount}"))
+    if let Value::Fixed(amount) = create.count.unhinted() {
+        return (*amount >= 0).then(|| format!("Mobilize {amount}"));
+    }
+    let basis = describe_where_x_basis(&create.count)?;
+    Some(format!("Mobilize X, where X is {basis}"))
 }
 
 pub(super) fn describe_structural_casualty_keyword(

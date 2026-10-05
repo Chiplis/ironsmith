@@ -1208,7 +1208,26 @@ const COST_KEYWORDS: &[(&str, KeywordCostFallback, fn(ManaCost) -> KeywordAction
     ),
 ];
 
+pub fn parse_dynamic_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    use crate::grammar::keyword_action_costs::DynamicAmountKeyword;
+    let shape = crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(tokens)?;
+    let amount = match shape.definition {
+        // In a granted keyword, "its power" names the recipient creature.
+        Some(definition) if shape.kind == DynamicAmountKeyword::Mobilize
+            && crate::lexer::parser_token_word_refs(definition) == ["where", "x", "is", "its", "power"] =>
+                crate::effect::Value::SourcePower,
+        Some(definition) => crate::keyword_static::parse_value_binding_clause(definition)?,
+        None => crate::effect::Value::X,
+    };
+    let display = crate::lexer::render_token_slice(tokens);
+    Some(match shape.kind {
+        DynamicAmountKeyword::Bolster => KeywordAction::BolsterValue { amount, display },
+        DynamicAmountKeyword::Mobilize => KeywordAction::MobilizeValue { amount, display },
+    })
+}
+
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    if let Some(action) = parse_dynamic_keyword_amount(tokens) { return Some(action); }
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
     // by more than one creature").
