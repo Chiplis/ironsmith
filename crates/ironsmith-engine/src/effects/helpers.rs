@@ -570,12 +570,15 @@ pub fn get_optional_costs_paid<'a>(
     ctx: &'a ExecutionContext,
 ) -> &'a OptionalCostsPaid {
     // If context has costs tracked, use those (for spell resolution)
-    if !ctx.optional_costs_paid.costs.is_empty() {
+    if !ctx.optional_costs_paid.costs.is_empty() || ctx.optional_costs_paid.cast_payment_turn.is_some() {
         return &ctx.optional_costs_paid;
     }
     // Otherwise, try to get from the source object (for ETB triggers)
     if let Some(source) = game.object(ctx.source) {
         return &source.optional_costs_paid;
+    }
+    if let Some(snapshot) = ctx.source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == ctx.source) {
+        return &snapshot.optional_costs_paid;
     }
     // Fallback to context (empty)
     &ctx.optional_costs_paid

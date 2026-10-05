@@ -188,7 +188,7 @@ fn parse_predicate_paid_cost_labels_use_capture_parser() -> Result<(), CardTextE
             PredicateAst::ThisSpellPaidLabel("Surge".into()),
         ),
         (
-            "If this creature's spectacle cost was paid instead discard your hand",
+            "If this creature's spectacle cost was paid",
             PredicateAst::ThisSpellPaidLabel("Spectacle".into()),
         ),
         (
@@ -4422,4 +4422,42 @@ fn suspected_predicates_distinguish_source_pronoun_and_paid_history() {
     assert!(matches!(parse_predicate(&lex_line("this creature is suspected", 0).unwrap()).unwrap(), PredicateAst::Source(SourcePredicateAst::SourceSuspected)));
     let predicate = parse_predicate(&lex_line("the sacrificed creature was suspected", 0).unwrap()).unwrap();
     assert!(matches!(predicate, PredicateAst::TaggedMatchedLastKnown(tag, filter) if filter.suspected && tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str()));
+}
+
+#[test]
+fn alternative_payment_tails_consume_and_preserve_the_temporal_bound() -> Result<(), CardTextError> {
+    for text in ["her sneak cost was paid this turn", "this creature's sneak cost was paid this turn"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()));
+    }
+    for text in ["her sneak cost was paid last turn", "her sneak cost was paid this turn or last turn",
+        "her sneak cost was paid instead discard your hand"] {
+        assert!(advanced::parse_paid_cost_label_predicate(&lex_line(text, 0)?).is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn public_paid_predicate_reader_rejects_tokens_hidden_by_word_projection() -> Result<(), CardTextError> {
+    for text in [
+        "her sneak cost was paid {R} this turn",
+        "her sneak cost was paid this turn {R}",
+        "her sneak cost was paid (this turn)",
+        "her sneak cost was paid: this turn",
+        "her sneak cost was paid this; turn",
+        "her sneak cost was paid this turn;",
+        "her sneak: cost was paid this turn",
+        "her sneak cost was paid this turn)",
+    ] {
+        assert!(parse_predicate(&lex_line(text, 0)?).is_err(), "{text}");
+    }
+    for text in ["her sneak cost was paid this turn.", "her sneak cost was paid this turn,"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()));
+    }
+    for text in ["her sneak cost wasn't paid this turn", "her sneak cost was not paid this turn"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()))));
+    }
+    Ok(())
 }

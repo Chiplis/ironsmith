@@ -4201,6 +4201,13 @@ pub(super) fn finalize_spell_cast(
                 .mark_label_paid(super::priority_cast::PROTOTYPE_CHOICE_LABEL);
         }
     }
+    // Only the completed payment transaction authors a date; proposal and
+    // unknown recovered receipts never acquire inferred payment evidence.
+    let payment_turn = game.turn.turn_number;
+    optional_costs_paid.record_completed_cast_payment(payment_turn);
+    if let Some(spell_obj) = game.object_mut(new_id) {
+        spell_obj.optional_costs_paid.record_completed_cast_payment(payment_turn);
+    }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
     if let Some(reference) =
         selected_alternative_cost_reference(game, caster, new_id, &casting_method)

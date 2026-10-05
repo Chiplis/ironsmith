@@ -177,6 +177,28 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
 ) -> Result<bool, ExecutionError> {
+    let mut reported: Vec<_> = reported.into_iter().collect();
+    let event_checkpoint: Vec<_> = reported.iter().map(|event| (**event).clone()).collect();
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let mut result = capture_triggers_before_added_program_inner(game, ctx, next,
+        reported.iter_mut().map(|event| &mut **event));
+    if let Err(error) = &result { game.record_token_resource_failure(error); }
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, false);
+        for (event, previous) in reported.iter_mut().zip(event_checkpoint) { **event = previous; }
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+fn capture_triggers_before_added_program_inner<'a>(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    next: Option<&Effect>,
+    reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
+) -> Result<bool, ExecutionError> {
     if game.has_open_simultaneous_action()
         || game.effect_store.trigger_matching_holds > 0
         || ctx.decision_maker.awaiting_choice()
@@ -206,6 +228,7 @@ pub(crate) fn capture_triggers_before_added_program<'a>(
     }
     crate::game_loop::queue_triggers_from_reported_events(game, &mut matched, fresh, true);
     crate::game_loop::drain_pending_trigger_events(game, &mut matched);
+    if let Some(error) = game.token_resource_failure() { return Err(error); }
     game.defer_trigger_entries(matched.take_all());
     for event in &mut reported {
         event.mark_triggers_captured();

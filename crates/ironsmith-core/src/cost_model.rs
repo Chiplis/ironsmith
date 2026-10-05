@@ -1097,6 +1097,17 @@ impl OptionalCostKind {
 pub struct OptionalCostRef {
     pub kind: OptionalCostKind,
     pub discriminator: Option<String>,
+    /// Temporal qualification belongs to the typed query, not its label.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub payment_window: CostPaymentWindow,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, TagKeyWalk)]
+pub enum CostPaymentWindow {
+    #[default]
+    AnyTurn,
+    ThisTurn,
 }
 
 impl OptionalCostRef {
@@ -1104,6 +1115,7 @@ impl OptionalCostRef {
         Self {
             kind,
             discriminator: None,
+            payment_window: CostPaymentWindow::AnyTurn,
         }
     }
 
@@ -1112,6 +1124,7 @@ impl OptionalCostRef {
         Self {
             kind,
             discriminator: (!discriminator.trim().is_empty()).then_some(discriminator),
+            payment_window: CostPaymentWindow::AnyTurn,
         }
     }
 
@@ -1151,7 +1164,17 @@ impl OptionalCostRef {
         Self {
             kind,
             discriminator,
+            payment_window: CostPaymentWindow::AnyTurn,
         }
+    }
+
+    pub fn this_turn(mut self) -> Self {
+        self.payment_window = CostPaymentWindow::ThisTurn;
+        self
+    }
+
+    pub fn requires_current_turn(&self) -> bool {
+        self.payment_window == CostPaymentWindow::ThisTurn
     }
 
     pub fn matches_query(&self, query: &Self) -> bool {
@@ -1385,6 +1408,10 @@ pub struct OptionalCostsPaid {
     /// selected casting price. Missing recovered evidence is unknown.
     #[cfg_attr(feature = "serde", serde(default))]
     pub cast_was_foretold: Option<bool>,
+    /// Successful cast transaction's payment turn. Missing recovered evidence
+    /// cannot establish the date of a known paid alternative cost.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cast_payment_turn: Option<u32>,
 }
 
 impl OptionalCostsPaid {
@@ -1394,6 +1421,7 @@ impl OptionalCostsPaid {
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
             cast_was_foretold: None,
+            cast_payment_turn: None,
         }
     }
 
@@ -1403,6 +1431,7 @@ impl OptionalCostsPaid {
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
             cast_was_foretold: None,
+            cast_payment_turn: None,
         }
     }
 
@@ -1436,9 +1465,22 @@ impl OptionalCostsPaid {
 
     pub fn was_paid_label(&self, label: impl Into<OptionalCostRef>) -> bool {
         let query = label.into();
-        self.costs
+        !query.requires_current_turn() && self.costs
             .iter()
             .any(|(stored, n)| stored.matches_query(&query) && *n > 0)
+    }
+
+    /// None means a matching payment exists without its required date.
+    /// Preserve this unknown evidence through both positive and negated gates.
+    pub fn paid_label_at_turn(&self, label: impl Into<OptionalCostRef>, turn: u32) -> Option<bool> {
+        let query = label.into();
+        let paid = self.costs.iter().any(|(stored, n)| stored.matches_query(&query) && *n > 0);
+        if !paid || !query.requires_current_turn() { return Some(paid); }
+        self.cast_payment_turn.map(|paid_turn| paid_turn == turn)
+    }
+
+    pub fn record_completed_cast_payment(&mut self, turn: u32) {
+        self.cast_payment_turn = Some(turn);
     }
 
     pub fn times_paid(&self, index: usize) -> u32 {
@@ -1447,6 +1489,7 @@ impl OptionalCostsPaid {
 
     pub fn times_paid_label(&self, label: impl Into<OptionalCostRef>) -> u32 {
         let query = label.into();
+        if query.requires_current_turn() { return 0; }
         self.costs
             .iter()
             .filter(|(stored, _)| stored.matches_query(&query))
@@ -1582,5 +1625,27 @@ mod dash_cost_identity_tests {
             OptionalCostKind::from_label("Unknown cost"),
             OptionalCostKind::CustomUnsupported(_)
         ));
+    }
+}
+
+#[cfg(test)]
+mod alternative_payment_window_tests {
+    use super::*;
+    #[test]
+    fn temporal_queries_distinguish_unpaid_paid_now_paid_before_and_unknown() {
+        let marker = OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            AlternativeCostReference::paid_marker("Sneak", None)));
+        let query = OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            AlternativeCostReference::by_name("Sneak", None))).this_turn();
+        let mut paid = OptionalCostsPaid::default();
+        assert_eq!(paid.paid_label_at_turn(&query, 7), Some(false));
+        paid.mark_label_paid(marker.clone());
+        assert_eq!(paid.paid_label_at_turn(&query, 7), None);
+        paid.record_completed_cast_payment(7);
+        assert_eq!(paid.paid_label_at_turn(&query, 7), Some(true));
+        assert_eq!(paid.paid_label_at_turn(&query, 8), Some(false));
+        assert!(paid.was_paid_label(&marker));
+        assert!(!paid.was_paid_label(&query));
+        assert_eq!(paid.clone().paid_label_at_turn(&query, 7), Some(true));
     }
 }

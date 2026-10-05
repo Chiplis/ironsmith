@@ -820,9 +820,10 @@ pub fn drain_pending_trigger_events_with_dm(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
-    let result = drain_pending_trigger_events_inner(game, trigger_queue, |game| {
+    let mut result = drain_pending_trigger_events_inner(game, trigger_queue, |game| {
         if decision_maker.answers_player_choices() && game.has_pending_duration_end_returns() {
             game.process_pending_duration_end_returns(decision_maker)?;
             Ok(!decision_maker.awaiting_choice())
@@ -830,10 +831,12 @@ pub fn drain_pending_trigger_events_with_dm(
             Ok(false)
         }
     });
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
     if result.is_err() || decision_maker.awaiting_choice() {
         *game = checkpoint;
         *trigger_queue = queue_checkpoint;
     }
+    game.end_token_resource_scope(root, &meter);
     result
 }
 

@@ -3319,13 +3319,25 @@ pub fn evaluate_condition_external_checked(
         Condition::Or(left, right) => Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
             || evaluate_condition_external_checked(game, right, ctx, paid)?),
         Condition::ThisSpellWasKicked if paid.is_some() => Ok(paid.unwrap().was_kicked()),
-        Condition::ThisSpellPaidLabel(label) if paid.is_some() => Ok(paid.unwrap().was_paid_label(label.clone())),
+        Condition::ThisSpellPaidLabel(label) if paid.is_some() =>
+            evaluate_paid_cost_receipt(paid.unwrap(), label, game.turn.turn_number),
         Condition::ThisSpellWasForetold if paid.is_some() => paid.unwrap().cast_was_foretold
             .ok_or_else(|| ExecutionError::IncompleteEvidence("missing pre-cast foretell designation".into())),
         _ => evaluate_condition_in_context(game, condition, &ConditionContext::external_context(ctx)),
     };
     if let Some(error) = game.token_resource_failure() { return Err(error); }
     result
+}
+
+/// A known payment without its required date is incomplete, so legacy boolean
+/// adapters must retain it in the existing incomplete-execution latch.
+pub(crate) fn evaluate_paid_cost_receipt(
+    paid: &crate::cost::OptionalCostsPaid,
+    label: &crate::cost::OptionalCostRef,
+    current_turn: u32,
+) -> Result<bool, ExecutionError> {
+    paid.paid_label_at_turn(label, current_turn).ok_or_else(||
+        ExecutionError::IncompleteEvidence("paid cost has no recorded payment turn".into()))
 }
 
 /// Shared dispatcher for condition evaluation.
@@ -4483,9 +4495,12 @@ fn evaluate_condition_in_context(
             if let Some(ctx) = ctx.execution() {
                 Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
             } else {
-                Ok(game
-                    .object(ctx.source)
-                    .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label.clone())))
+                let Some(source) = game.object(ctx.source) else {
+                    return if label.requires_current_turn() {
+                        Err(ExecutionError::IncompleteEvidence("payment source is unavailable".into()))
+                    } else { Ok(false) };
+                };
+                evaluate_paid_cost_receipt(&source.optional_costs_paid, label, game.turn.turn_number)
             }
         }
         Condition::YouHaveFullParty => Ok(player_has_full_party(game, shared.controller)),
@@ -6588,5 +6603,59 @@ mod suspected_current_trigger_evidence_tests {
             assert!(matches!(evaluate_condition_external_checked(&game, &predicate(target_form, negated), &external, None), Err(ExecutionError::IncompleteEvidence(_))));
             assert!(game.token_resource_failure().is_some());
         } } } }
+    }
+}
+
+#[cfg(test)]
+mod alternative_payment_evidence_tests {
+    use super::*;
+    use crate::cost::{OptionalCostKind, OptionalCostRef, OptionalCostsPaid};
+    fn query() -> OptionalCostRef {
+        OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            ironsmith_core::AlternativeCostReference::by_name("Sneak", None))).this_turn()
+    }
+    fn marker() -> OptionalCostRef {
+        OptionalCostRef::new(OptionalCostKind::AlternativeCast(
+            ironsmith_core::AlternativeCostReference::paid_marker("Sneak", None)))
+    }
+    #[test]
+    fn unknown_payment_time_survives_negation_and_the_real_incomplete_error_latch() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Temporal receipt")
+            .card_types(vec![crate::CardType::Creature]).build();
+        let source = game.create_object_from_definition(&card, alice, Zone::Battlefield);
+        let external = ExternalEvaluationContext {
+            controller: alice, source, defending_player: None, attacking_player: None,
+            filter_source: Some(source), iterated_player: None, triggering_event: None,
+            trigger_identity: None, ability_index: None, options: Default::default(),
+        };
+        for negated in [false, true] {
+            for evidence in ["unknown", "current", "old", "unpaid"] {
+                let mut branch = game.clone();
+                let mut paid = OptionalCostsPaid::default();
+                if evidence != "unpaid" { paid.mark_label_paid(marker()); }
+                if evidence == "current" { paid.record_completed_cast_payment(branch.turn.turn_number); }
+                if evidence == "old" { paid.record_completed_cast_payment(branch.turn.turn_number.saturating_sub(1)); }
+                branch.object_mut(source).unwrap().optional_costs_paid = paid.clone();
+                let mut condition = Condition::ThisSpellPaidLabel(query());
+                if negated { condition = Condition::Not(Box::new(condition)); }
+                let (root, meter) = branch.begin_token_resource_scope();
+                let checked = evaluate_condition_external_checked(&branch, &condition, &external, Some(&paid));
+                if evidence == "unknown" {
+                    let error = checked.unwrap_err();
+                    assert!(matches!(error, ExecutionError::IncompleteEvidence(_)));
+                    assert!(error.is_incomplete_execution());
+                    // This exercises the previously missing distinction: an
+                    // ordinary UnresolvableValue is not accepted by this latch.
+                    assert!(!evaluate_condition_external(&branch, &condition, &external));
+                    assert!(matches!(branch.token_resource_failure(), Some(ExecutionError::IncompleteEvidence(_))));
+                } else {
+                    assert_eq!(checked.unwrap(), (evidence == "current") != negated);
+                    assert!(branch.token_resource_failure().is_none());
+                }
+                branch.end_token_resource_scope(root, &meter);
+            }
+        }
     }
 }

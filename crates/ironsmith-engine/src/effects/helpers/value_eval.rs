@@ -1250,11 +1250,15 @@ pub(crate) fn resolve_wide(
         Value::WasPaidLabel(label) => {
             // Check if the optional cost with the given label was paid
             let paid = context.optional_costs_paid(value);
-            Ok(i64::from(if paid.was_paid_label(label.clone()) {
-                1
-            } else {
-                0
-            }))
+            if label.requires_current_turn() && paid.costs.is_empty()
+                && paid.cast_payment_turn.is_none()
+                && context.execution().is_some_and(|ctx| game.object(ctx.source).is_none()
+                    && !ctx.source_snapshot.as_ref().is_some_and(|snapshot| snapshot.object_id == ctx.source))
+            {
+                return Err(ExecutionError::IncompleteEvidence("payment source and receipt are unavailable".into()));
+            }
+            Ok(i64::from(crate::condition_eval::evaluate_paid_cost_receipt(
+                paid, label, game.turn.turn_number)?))
         }
         Value::TimesPaid(index) => {
             // Get the number of times the optional cost was paid

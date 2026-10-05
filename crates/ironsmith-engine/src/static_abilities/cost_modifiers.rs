@@ -2464,14 +2464,12 @@ fn condition_expr_matches_for_cast(
     expr: &crate::effect::Condition,
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
-    if let crate::effect::Condition::ThisSpellPaidLabel(label) = expr
-        && let Some(paid) = optional_costs_paid
-    {
-        return paid.was_paid_label(label.clone());
+    let eval_ctx = this_spell_condition_eval_ctx(source, controller);
+    match crate::condition_eval::evaluate_condition_external_checked(game, expr, &eval_ctx, optional_costs_paid) {
+        Ok(value) => value,
+        Err(error) => { game.record_token_resource_failure(&error); false }
     }
 
-    let eval_ctx = this_spell_condition_eval_ctx(source, controller);
-    crate::condition_eval::evaluate_condition_external(game, expr, &eval_ctx)
 }
 
 fn chosen_targets_match(
@@ -2566,6 +2564,16 @@ pub fn this_spell_cost_condition_is_active_for_player(
     this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
         game, source, caster, condition, chosen_targets, None,
     )
+}
+
+fn completed_combat_qualification(
+    game: &crate::game_state::GameState,
+    result: Result<bool, crate::effects::ExecutionError>,
+) -> bool {
+    match result {
+        Ok(qualified) => qualified,
+        Err(error) => { game.record_token_resource_failure(&error); false }
+    }
 }
 
 pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
@@ -2904,30 +2912,20 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 })
             })
         }
-        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) => game
-            .turn_store
-            .turn_history
-            .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype),
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) =>
+            completed_combat_qualification(game, game.turn_store.turn_history
+                .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype)),
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn => {
             // The spell's current creature types (changeling counts, CR 702.73a).
             let creature_types = crate::filter::object_creature_subtypes_for_cost(source_obj, game);
             !creature_types.is_empty()
-                && game
-                    .turn_store
-                    .turn_history
-                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
-                        controller,
-                        &creature_types,
-                    )
+                && completed_combat_qualification(game, game.turn_store.turn_history
+                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(controller, &creature_types))
         }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
             subtype,
-        ) => game
-            .turn_store
-            .turn_history
-            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
-                controller, *subtype,
-            ),
+        ) => completed_combat_qualification(game, game.turn_store.turn_history
+            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(controller, *subtype)),
     }
 }
 
@@ -4171,5 +4169,31 @@ mod tests {
             reduction.display(),
             "This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone"
         );
+    }
+}
+
+#[cfg(test)]
+mod alternative_payment_cost_gate_tests {
+    use super::*;
+    #[test]
+    fn prospective_receipt_condition_does_not_erase_unknown_dates() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Payment gate")
+            .card_types(vec![crate::CardType::Sorcery]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::Zone::Hand);
+        let reference = crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::AlternativeCast(
+            ironsmith_core::AlternativeCostReference::by_name("Sneak", None)));
+        for negated in [false, true] {
+            let mut branch = game.clone();
+            let mut paid = crate::cost::OptionalCostsPaid::default();
+            paid.mark_label_paid(reference.clone());
+            let mut condition = crate::effect::Condition::ThisSpellPaidLabel(reference.clone().this_turn());
+            if negated { condition = crate::effect::Condition::Not(Box::new(condition)); }
+            let (root, meter) = branch.begin_token_resource_scope();
+            assert!(!condition_expr_matches_for_cast(&branch, source, alice, &condition, Some(&paid)));
+            assert!(matches!(branch.token_resource_failure(), Some(crate::effects::ExecutionError::IncompleteEvidence(_))));
+            branch.end_token_resource_scope(root, &meter);
+        }
     }
 }

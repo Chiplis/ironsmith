@@ -2277,9 +2277,9 @@ fn link_alternative_cast_condition_references(builder: &mut CardDefinitionBuilde
                 } else {
                     return None;
                 };
-                Some(crate::effect::Condition::ThisSpellPaidLabel(
-                    OptionalCostRef::new(OptionalCostKind::AlternativeCast(reference)),
-                ))
+                let mut linked = OptionalCostRef::new(OptionalCostKind::AlternativeCast(reference));
+                linked.payment_window = label.payment_window;
+                Some(crate::effect::Condition::ThisSpellPaidLabel(linked))
             }
             crate::effect::Condition::Not(inner) => {
                 link_condition(inner, method_name, mana_cost, allow_that)
@@ -2325,26 +2325,16 @@ fn link_alternative_cast_condition_references(builder: &mut CardDefinitionBuilde
             if let Some(rewritten) = condition {
                 conditional.condition = rewritten;
             }
-            conditional.if_true = conditional
-                .if_true
-                .iter()
-                .map(|child| {
-                    let (child, changed) =
-                        link_effect(child, method_name, mana_cost, allow_that || any);
+            let branch_antecedent = allow_that || any;
+            for branch in [&mut conditional.if_true, &mut conditional.if_false] {
+                let mut local = branch_antecedent;
+                *branch = branch.iter().map(|child| {
+                    let (child, changed) = link_effect(child, method_name, mana_cost, local);
+                    local |= changed;
                     any |= changed;
                     child
-                })
-                .collect();
-            conditional.if_false = conditional
-                .if_false
-                .iter()
-                .map(|child| {
-                    let (child, changed) =
-                        link_effect(child, method_name, mana_cost, allow_that || any);
-                    any |= changed;
-                    child
-                })
-                .collect();
+                }).collect();
+            }
             return (crate::effect::Effect::new(conditional), any);
         }
         if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
@@ -2393,29 +2383,63 @@ fn link_alternative_cast_condition_references(builder: &mut CardDefinitionBuilde
         (effect.clone(), false)
     }
 
-    let Some(program) = builder.spell_effect.as_mut() else {
-        return;
-    };
-    let mut prior_matched = false;
-    for segment in &mut program.segments {
-        let mut segment_matched = false;
-        segment.default_effects = segment
-            .default_effects
-            .iter()
-            .map(|effect| {
-                let (effect, matched) = link_effect(
-                    effect,
-                    method_name,
-                    mana_cost,
-                    prior_matched || segment_matched,
-                );
-                segment_matched |= matched;
+    fn link_program(
+        program: &mut crate::resolution::ResolutionProgram,
+        method_name: &str,
+        mana_cost: Option<&crate::mana::ManaCost>,
+        header_matched: bool,
+    ) {
+        let mut prior_matched = header_matched;
+        for segment in &mut program.segments {
+            let mut local = prior_matched;
+            segment.default_effects = segment.default_effects.iter().map(|effect| {
+                let (effect, matched) = link_effect(effect, method_name, mana_cost, local);
+                local |= matched;
                 effect
-            })
-            .collect();
-        prior_matched |= segment_matched;
+            }).collect();
+            for branch in &mut segment.self_replacements {
+                let linked = link_condition(&branch.condition, method_name, mana_cost, prior_matched);
+                let mut branch_matched = prior_matched || linked.is_some();
+                if let Some(condition) = linked { branch.condition = condition; }
+                branch.replacement_effects = branch.replacement_effects.iter().map(|effect| {
+                    let (effect, matched) = link_effect(effect, method_name, mana_cost, branch_matched);
+                    branch_matched |= matched;
+                    effect
+                }).collect();
+            }
+            prior_matched = local;
+        }
+        *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
     }
-    *program = crate::resolution::ResolutionProgram::new(std::mem::take(&mut program.segments));
+
+    if let Some(program) = builder.spell_effect.as_mut() {
+        link_program(program, method_name, mana_cost, false);
+    }
+    for ability in &mut builder.abilities {
+        match &mut ability.kind {
+            crate::ability::AbilityKind::Triggered(triggered) => {
+                let linked = triggered.intervening_if.as_ref()
+                    .and_then(|condition| link_condition(condition, method_name, mana_cost, false));
+                let header_matched = linked.is_some();
+                if let Some(condition) = linked { triggered.intervening_if = Some(condition); }
+                link_program(&mut triggered.effects, method_name, mana_cost, header_matched);
+            }
+            crate::ability::AbilityKind::Activated(activated) => {
+                let linked = activated.activation_condition.as_ref()
+                    .and_then(|condition| link_condition(condition, method_name, mana_cost, false));
+                let mut header_matched = linked.is_some();
+                if let Some(condition) = linked { activated.activation_condition = Some(condition); }
+                for condition in &mut activated.activation_restrictions {
+                    if let Some(linked) = link_condition(condition, method_name, mana_cost, false) {
+                        *condition = linked;
+                        header_matched = true;
+                    }
+                }
+                link_program(&mut activated.effects, method_name, mana_cost, header_matched);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Bind a player-relative value inside a quantified damage action to the
@@ -2628,5 +2652,64 @@ mod quantified_player_damage_value_tests {
             life_total_player(&program),
             &crate::target::PlayerFilter::Target(Box::new(crate::target::PlayerFilter::Any))
         );
+    }
+}
+
+#[cfg(test)]
+mod alternative_ability_reference_tests {
+    use super::*;
+    fn condition(label: &str) -> crate::effect::Condition {
+        crate::effect::Condition::ThisSpellPaidLabel(label.into())
+    }
+    fn body(label: &str) -> crate::effect::Effect {
+        crate::effect::Effect::conditional(condition(label), vec![], vec![])
+    }
+    fn seed() -> CardDefinitionBuilder {
+        let mut builder = CardDefinitionBuilder::seed();
+        builder.alternative_casts.push(crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+            "Sneak", Some(crate::mana::ManaCost::new()), vec![]));
+        builder
+    }
+    fn linked(condition: &crate::effect::Condition) -> bool {
+        matches!(condition, crate::effect::Condition::ThisSpellPaidLabel(reference)
+            if matches!(&reference.kind, ironsmith_core::OptionalCostKind::AlternativeCast(method)
+                if method.method_name() == "Sneak"))
+    }
+    #[test]
+    fn header_body_and_top_level_replacement_link_without_cross_ability_antecedents() {
+        let mut builder = seed();
+        let mut first = crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(), vec![body("that")]);
+        let crate::ability::AbilityKind::Triggered(triggered) = &mut first.kind else { unreachable!() };
+        triggered.intervening_if = Some(crate::effect::Condition::ThisSpellPaidLabel(
+            ironsmith_core::OptionalCostRef::from("Sneak").this_turn()));
+        builder.abilities.push(first);
+        builder.abilities.push(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(), vec![body("that")]));
+        builder.spell_effect = Some(crate::resolution::ResolutionProgram::new(vec![
+            crate::resolution::ResolutionSegment {
+                default_effects: vec![body("Prowl")],
+                self_replacements: vec![crate::resolution::SelfReplacementBranch::new(condition("Sneak"), vec![body("that")])],
+                starts_new_source_line: true,
+            },
+        ]));
+        link_alternative_cast_condition_references(&mut builder);
+        for (index, expected) in [true, false].into_iter().enumerate() {
+            let crate::ability::AbilityKind::Triggered(triggered) = &builder.abilities[index].kind else { unreachable!() };
+            let conditional = triggered.effects.segments[0].default_effects[0].downcast_ref::<crate::effects::ConditionalEffect>().unwrap();
+            assert_eq!(linked(&conditional.condition), expected);
+            if index == 0 {
+                let header = triggered.intervening_if.as_ref().unwrap();
+                assert!(linked(header));
+                let crate::effect::Condition::ThisSpellPaidLabel(reference) = header else { unreachable!() };
+                assert!(reference.requires_current_turn());
+            }
+        }
+        let segment = &builder.spell_effect.as_ref().unwrap().segments[0];
+        assert!(segment.starts_new_source_line);
+        assert_eq!(segment.default_effects.len(), 1);
+        assert!(linked(&segment.self_replacements[0].condition));
+        let nested = segment.self_replacements[0].replacement_effects[0].downcast_ref::<crate::effects::ConditionalEffect>().unwrap();
+        assert!(linked(&nested.condition));
     }
 }

@@ -2283,6 +2283,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TriggeringSpellWasKicked => "that spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
+            if label.requires_current_turn() {
+                let mut unrestricted = label.clone();
+                unrestricted.payment_window = Default::default();
+                return format!("{} this turn", describe_condition(&Condition::ThisSpellPaidLabel(unrestricted)));
+            }
             if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
                 return match reference.surface() {
                     ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(
@@ -4509,6 +4514,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) {
                 "you cast this spell any time a sorcery couldn't have been cast".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref() {
+                if label.requires_current_turn() {
+                    let mut unrestricted = label.clone();
+                    unrestricted.payment_window = Default::default();
+                    return format!("{} this turn", describe_condition(&Condition::Not(Box::new(Condition::ThisSpellPaidLabel(unrestricted)))));
+                }
                 if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
                     return match reference.surface() {
                         ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(

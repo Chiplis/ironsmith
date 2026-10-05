@@ -1141,90 +1141,55 @@ impl TurnHistory {
         })
     }
 
-    pub fn player_dealt_combat_damage_to_player_with_subtype_this_turn(
+    fn combat_damage_source_qualified_this_turn(
         &self,
-        dealer: PlayerId,
-        subtype: Subtype,
-    ) -> bool {
-        self.projected_records().any(|record| {
-            let Some(event) = record.event.downcast::<DamageEvent>() else {
-                return false;
-            };
-            if !event.is_combat || event.amount == 0 {
-                return false;
-            }
-            if !matches!(event.target, crate::events::DamageTarget::Player(_)) {
-                return false;
-            }
+        qualifies: impl Fn(&ObjectSnapshot) -> bool,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        let mut missing_source = false;
+        for record in self.projected_records() {
+            let Some(event) = record.event.downcast::<DamageEvent>() else { continue; };
+            if !event.is_combat || event.amount == 0
+                || !matches!(event.target, crate::events::DamageTarget::Player(_))
+            { continue; }
+            let snapshot = record.source_snapshot.as_ref()
+                .filter(|snapshot| snapshot.object_id == event.source)
+                .or_else(|| record.object_snapshot.as_ref()
+                    .filter(|snapshot| snapshot.object_id == event.source));
+            let Some(snapshot) = snapshot else { missing_source = true; continue; };
+            if qualifies(snapshot) { return Ok(true); }
+        }
+        if missing_source {
+            Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "combat qualification is missing event-time source characteristics".into()))
+        } else { Ok(false) }
+    }
 
-            record
-                .source_snapshot
-                .as_ref()
-                .or(record.object_snapshot.as_ref())
-                .is_some_and(|snapshot| {
-                    snapshot.controller == dealer
-                        && snapshot.card_types.contains(&CardType::Creature)
-                        && snapshot_had_subtype(snapshot, subtype)
-                })
+    pub fn player_dealt_combat_damage_to_player_with_subtype_this_turn(
+        &self, dealer: PlayerId, subtype: Subtype,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.combat_damage_source_qualified_this_turn(|snapshot| {
+            snapshot.controller == dealer && snapshot.card_types.contains(&CardType::Creature)
+                && snapshot_had_subtype(snapshot, subtype)
         })
     }
 
-    /// Prowl's check (CR 702.76a): combat damage to a player this turn from a
-    /// source `dealer` controlled that, at the time, had any of `subtypes`.
+    /// Prowl checks the event-time source against all current creature types
+    /// of the proposed spell. Source departure cannot erase the damage fact.
     pub fn player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
-        &self,
-        dealer: PlayerId,
-        subtypes: &[Subtype],
-    ) -> bool {
-        self.projected_records().any(|record| {
-            let Some(event) = record.event.downcast::<DamageEvent>() else {
-                return false;
-            };
-            if !event.is_combat || event.amount == 0 {
-                return false;
-            }
-            if !matches!(event.target, crate::events::DamageTarget::Player(_)) {
-                return false;
-            }
-
-            record
-                .source_snapshot
-                .as_ref()
-                .or(record.object_snapshot.as_ref())
-                .is_some_and(|snapshot| {
-                    snapshot.controller == dealer
-                        && subtypes
-                            .iter()
-                            .any(|subtype| snapshot_had_subtype(snapshot, *subtype))
-                })
+        &self, dealer: PlayerId, subtypes: &[Subtype],
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.combat_damage_source_qualified_this_turn(|snapshot| {
+            snapshot.controller == dealer
+                && subtypes.iter().any(|subtype| snapshot_had_subtype(snapshot, *subtype))
         })
     }
 
     pub fn player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
-        &self,
-        dealer: PlayerId,
-        subtype: Subtype,
-    ) -> bool {
-        self.projected_records().any(|record| {
-            let Some(event) = record.event.downcast::<DamageEvent>() else {
-                return false;
-            };
-            if !event.is_combat || event.amount == 0 {
-                return false;
-            }
-            if !matches!(event.target, crate::events::DamageTarget::Player(_)) {
-                return false;
-            }
-
-            record
-                .source_snapshot
-                .as_ref()
-                .or(record.object_snapshot.as_ref())
-                .is_some_and(|snapshot| {
-                    snapshot.controller == dealer
-                        && snapshot.card_types.contains(&CardType::Creature)
-                        && (snapshot_had_subtype(snapshot, subtype) || snapshot.is_commander)
-                })
+        &self, dealer: PlayerId, subtype: Subtype,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        self.combat_damage_source_qualified_this_turn(|snapshot| {
+            snapshot.controller == dealer && snapshot.card_types.contains(&CardType::Creature)
+                && (snapshot_had_subtype(snapshot, subtype) || snapshot.is_commander)
         })
     }
 

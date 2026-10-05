@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Earwig Squad",
+    "oracle_id": "f8526509-2e14-4ac0-b1de-cf4ee7d4f875",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Goblin Rogue",
+    "oracle_text": "Prowl {2}{B} (You may cast this for its prowl cost if you dealt combat damage to a player this turn with a Goblin or Rogue.)\nWhen this creature enters, if its prowl cost was paid, search target opponent's library for three cards and exile them. Then that player shuffles.",
+    "power": "5",
+    "toughness": "3",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Karai, Future of the Foot",
+    "oracle_id": "7246638e-0361-40e3-8019-3c10210a593e",
+    "mana_cost": "{1}{W}{B}",
+    "type_line": "Legendary Creature — Human Ninja",
+    "oracle_text": "Sneak {2}{W}{B} (You may cast this spell for {2}{W}{B} if you also return an unblocked attacker you control to hand during the declare blockers step. She enters tapped and attacking.)\nWhenever Karai deals combat damage to a player, return target creature card from your graveyard to your hand. If her sneak cost was paid this turn, instead return that card to the battlefield.",
+    "power": "3",
+    "toughness": "3",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Latchkey Faerie",
+    "oracle_id": "7bc4a0a0-f06e-4074-95a8-67a5d8fdfef9",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Faerie Rogue",
+    "oracle_text": "Flying\nProwl {2}{U} (You may cast this for its prowl cost if you dealt combat damage to a player this turn with a Faerie or Rogue.)\nWhen this creature enters, if its prowl cost was paid, draw a card.",
+    "power": "3",
+    "toughness": "1",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Leonardo, Leader in Blue",
+    "oracle_id": "348c7e22-2179-41b8-a5d2-8dd488e7e66d",
+    "mana_cost": "{W}",
+    "type_line": "Legendary Creature — Mutant Ninja Turtle",
+    "oracle_text": "Sneak {3}{W}{W} (You may cast this spell for {3}{W}{W} if you also return an unblocked attacker you control to hand during the declare blockers step. He enters tapped and attacking.)\nWhen Leonardo enters, if his sneak cost was paid, creatures you control get +2/+0 until end of turn.\n{1}{W}: Leonardo gains first strike until end of turn.",
+    "power": "2",
+    "toughness": "1",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Monastery Raid",
+    "oracle_id": "62f4a2db-6d7c-487b-be37-22f06c1e779e",
+    "mana_cost": "{2}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Freerunning {X}{R} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)\nExile the top two cards of your library. If this spell's freerunning cost was paid, exile the top X cards of your library instead. You may play the exiled cards until the end of your next turn.",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Sandman's Quicksand",
+    "oracle_id": "f2b376d2-a2f4-4d23-a1fb-eb7b6ebd0b7a",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Mayhem {3}{B} (You may cast this card from your graveyard for {3}{B} if you discarded it this turn. Timing rules still apply.)\nAll creatures get -2/-2 until end of turn. If this spell's mayhem cost was paid, creatures your opponents control get -2/-2 until end of turn instead.",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Turncoat Kunoichi",
+    "oracle_id": "0f35cf85-6783-4d69-b5e6-a81f7c1f21e7",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Mutant Ninja Fox",
+    "oracle_text": "Sneak {2}{W}{B} (You may cast this spell for {2}{W}{B} if you also return an unblocked attacker you control to hand during the declare blockers step. It enters tapped and attacking.)\nWhen this creature enters, choose target creature an opponent controls. Exile that creature until this creature leaves the battlefield. If this creature's sneak cost was paid, instead exile the chosen creature.",
+    "power": "3",
+    "toughness": "2",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "b7ac3f70ee915286dec6e0ee2adbadf9892fa29d",
+    "validation": "authored_not_run"
+  }
+]

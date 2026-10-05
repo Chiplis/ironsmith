@@ -787,6 +787,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/822"
+    },
+    {
+      "stage": 57,
+      "branch": "fix/card-failures-57-timing-and-counter-costs",
+      "base": "fix/card-failures-56-references-and-defenders",
+      "source_integration_commit": "a07ead1cbf8a871568a0aec3ed4715394904c2d9",
+      "remote_commit": "8e3b9434732784ec5be2c50c8413b24322e5d493",
+      "tree": "da515d74fbab4904d0c3b7696ba2003d4f3cec39",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 823,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/823"
     }
   ]
 }

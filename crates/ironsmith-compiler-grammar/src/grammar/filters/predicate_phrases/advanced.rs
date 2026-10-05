@@ -1932,8 +1932,14 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
         label_words.remove(0);
     }
     let label_words = strip_source_possessive_label_prefix(&label_words);
-    let paid_tail = matched.capture_clause("paid_tail", clause)?;
-    let negated = paid_cost_tail_is_negated(paid_tail)?;
+    // The capture locates the marker by words, but completeness must include
+    // every original token through the actual end (including trailing symbols).
+    let tail_start_word = matched.capture("paid_tail")?.word_range.start;
+    let tail_start = clause.words().token_span_for_words(tail_start_word, tail_start_word + 1)?.start;
+    if tokens[..tail_start].iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::Tilde | TokenKind::ManaGroup)) {
+        return None;
+    }
+    let (negated, this_turn) = paid_cost_tail(LexedClause::new(&tokens[tail_start..]))?;
     let label = if label_words.len() == 3
         && surface::exact_words(&label_words[..1], &["this"])
         && is_this_spell_possessive_word(label_words[1])
@@ -1947,7 +1953,9 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     } else {
         mana_cost_label_from_words(label_words)?
     };
-    let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
+    let mut reference = crate::cost::OptionalCostRef::from(label);
+    if this_turn { reference = reference.this_turn(); }
+    let predicate = PredicateAst::ThisSpellPaidLabel(reference);
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
     } else {
@@ -1955,17 +1963,26 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
-pub(super) fn paid_cost_tail_is_negated(clause: LexedClause<'_>) -> Option<bool> {
-    if surface::prefix(clause, &["cost", "was", "paid"]) {
-        return Some(false);
+fn paid_cost_tail(clause: LexedClause<'_>) -> Option<(bool, bool)> {
+    // Preserve token completeness. Word projections discard punctuation and
+    // can hide malformed mana/parenthesis tails; only a terminal clause or
+    // sentence delimiter is normalization here.
+    let mut tokens = clause.tokens();
+    if tokens.last().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period)) {
+        tokens = &tokens[..tokens.len() - 1];
     }
-    if surface::prefix_any(
-        clause,
-        &[&["cost", "wasnt", "paid"], &["cost", "was", "not", "paid"]],
-    ) {
-        return Some(true);
+    let words: Vec<_> = tokens.iter().map(|token| {
+        if token.kind != TokenKind::Word { return None; }
+        Some(match token.parser_text() { "wasn't" => "wasnt", word => word })
+    }).collect::<Option<_>>()?;
+    let (words, this_turn) = if words.ends_with(&["this", "turn"]) {
+        (&words[..words.len() - 2], true)
+    } else { (words.as_slice(), false) };
+    match words {
+        ["cost", "was", "paid"] => Some((false, this_turn)),
+        ["cost", "wasnt", "paid"] | ["cost", "was", "not", "paid"] => Some((true, this_turn)),
+        _ => None,
     }
-    None
 }
 
 pub(super) fn parse_vote_option_result_predicate(

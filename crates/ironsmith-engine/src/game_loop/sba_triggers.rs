@@ -2300,6 +2300,9 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     }
     if let Some(source_obj) = game.object(trigger.source) {
         entry = entry.with_optional_costs_paid(source_obj.optional_costs_paid.clone());
+    } else if let Some(snapshot) = source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == trigger.source) {
+        // Retain the exact departed source's choices, never a later incarnation.
+        entry = entry.with_optional_costs_paid(snapshot.optional_costs_paid.clone());
     }
     entry = entry.with_chosen_player(game.chosen_player(trigger.source));
     if !trigger.tagged_objects.is_empty() {
