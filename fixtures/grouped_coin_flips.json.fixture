@@ -1,0 +1,94 @@
+[
+  {
+    "name": "Crazed Firecat",
+    "oracle_id": "ba7cc6be-e575-4592-ada7-bbad3ae2225b",
+    "oracle_text": "When this creature enters, flip a coin until you lose a flip. Put a +1/+1 counter on this creature for each flip you won.",
+    "text": "Mana cost: {5}{R}{R}\nType: Creature — Elemental Cat\nPower/Toughness: 4/4\nWhen this creature enters, flip a coin until you lose a flip. Put a +1/+1 counter on this creature for each flip you won.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "fc362b05c67a227f203b4858de22a7753d8b72813d7c9d63c0c6d22f6592cf61",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Ral Zarek",
+    "oracle_id": "75ed6946-e7b1-4bf8-a05c-62a2ba5a6c79",
+    "oracle_text": "+1: Tap target permanent, then untap another target permanent.\n−2: Ral Zarek deals 3 damage to any target.\n−7: Flip five coins. Take an extra turn after this one for each coin that comes up heads.",
+    "text": "Mana cost: {2}{U}{R}\nType: Legendary Planeswalker — Ral\nLoyalty: 4\n+1: Tap target permanent, then untap another target permanent.\n−2: Ral Zarek deals 3 damage to any target.\n−7: Flip five coins. Take an extra turn after this one for each coin that comes up heads.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported complete object filter: five coins; oracle-only fallback also failed: unsupported complete object filter: five coins",
+    "baseline_content_hash": "3b622bca6dcd5a8badeb6debb9559a7bf0aa91d82d62beffb1854407edbc397e",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Goblin Traprunner",
+    "oracle_id": "fbdffef0-9119-4650-9f92-58e8a664db6f",
+    "oracle_text": "Whenever this creature attacks, flip three coins. For each flip you win, create a 1/1 red Goblin creature token that's tapped and attacking.",
+    "text": "Mana cost: {3}{R}\nType: Creature — Goblin\nPower/Toughness: 4/2\nWhenever this creature attacks, flip three coins. For each flip you win, create a 1/1 red Goblin creature token that's tapped and attacking.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported complete object filter: three coins [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported complete object filter: three coins [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "575f6af9075fec91a06869344597e822434c60e09e8098f471afd0749d7845ed",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Two-Headed Giant",
+    "oracle_id": "e0efb48b-e7e5-4ed0-a7de-c8f72d357319",
+    "oracle_text": "Whenever this creature attacks, flip two coins. If both coins come up heads, this creature gains double strike until end of turn. If both coins come up tails, this creature gains menace until end of turn.",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature — Giant Warrior\nPower/Toughness: 4/4\nWhenever this creature attacks, flip two coins. If both coins come up heads, this creature gains double strike until end of turn. If both coins come up tails, this creature gains menace until end of turn.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported complete object filter: two coins [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported complete object filter: two coins [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "f3fe85f5d8ce3f8a679347922c9f7ba8b35d7da4ee65d171f7b8117ab892c6d2",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Okaun, Eye of Chaos",
+    "oracle_id": "7dec219b-96d1-4d4c-b3ac-15eda9d2ccc6",
+    "oracle_text": "Partner with Zndrsplt, Eye of Wisdom (When this creature enters, target player may put Zndrsplt into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, double Okaun's power and toughness until end of turn.",
+    "text": "Mana cost: {4}{R}\nType: Legendary Creature — Cyclops Berserker\nPower/Toughness: 3/3\nPartner with Zndrsplt, Eye of Wisdom (When this creature enters, target player may put Zndrsplt into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, double Okaun's power and toughness until end of turn.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "885101331c64853a3153b158dbc48ea4c2396b7588e1c18f7fab539c7191e2f4",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Okaun, Eye of Chaos // Okaun, Eye of Chaos",
+    "oracle_id": "7dec219b-96d1-4d4c-b3ac-15eda9d2ccc6",
+    "oracle_text": "Partner with Zndrsplt, Eye of Wisdom (When this creature enters, target player may put Zndrsplt into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, double Okaun's power and toughness until end of turn.",
+    "text": "Mana cost: {4}{R}\nType: Legendary Creature — Cyclops Berserker\nPower/Toughness: 3/3\nPartner with Zndrsplt, Eye of Wisdom (When this creature enters, target player may put Zndrsplt into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, double Okaun's power and toughness until end of turn.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "54d571e14f5d735f1453646eb42005d97871f7ef789dabba9a38ca83bac2a747",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun",
+    "source_layout": "reversible_card",
+    "source_face_index": 0
+  },
+  {
+    "name": "Zndrsplt, Eye of Wisdom",
+    "oracle_id": "502849a6-8e65-40f3-b348-a41c4f939768",
+    "oracle_text": "Partner with Okaun, Eye of Chaos (When this creature enters, target player may put Okaun into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, draw a card.",
+    "text": "Mana cost: {4}{U}\nType: Legendary Creature — Homunculus\nPower/Toughness: 1/4\nPartner with Okaun, Eye of Chaos (When this creature enters, target player may put Okaun into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, draw a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "864a757d6f98f58ddd6b345d0e361c07786c097e32767b38a6f72fd4e3f1d475",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun"
+  },
+  {
+    "name": "Zndrsplt, Eye of Wisdom // Zndrsplt, Eye of Wisdom",
+    "oracle_id": "502849a6-8e65-40f3-b348-a41c4f939768",
+    "oracle_text": "Partner with Okaun, Eye of Chaos (When this creature enters, target player may put Okaun into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, draw a card.",
+    "text": "Mana cost: {4}{U}\nType: Legendary Creature — Homunculus\nPower/Toughness: 1/4\nPartner with Okaun, Eye of Chaos (When this creature enters, target player may put Okaun into their hand from their library, then shuffle.)\nAt the beginning of combat on your turn, flip a coin until you lose a flip.\nWhenever a player wins a coin flip, draw a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "5638225fe6b0629b2ad3f0c82bb4009a1e0953bfad8fbc16328673c2462199e9",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; source-authored native runtime and artifact scenarios are unrun",
+    "source_layout": "reversible_card",
+    "source_face_index": 0
+  }
+]

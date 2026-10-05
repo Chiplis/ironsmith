@@ -4578,6 +4578,10 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::NameStickerUniqueVowels => {
             "the number of unique vowels on that sticker".to_string()
         }
+        crate::effect::EffectMetric::CoinFlipsWon => "the number of flips you won".into(),
+        crate::effect::EffectMetric::CoinFlipsLost => "the number of flips you lost".into(),
+        crate::effect::EffectMetric::CoinHeads => "the number of coins that came up heads".into(),
+        crate::effect::EffectMetric::CoinTails => "the number of coins that came up tails".into(),
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
@@ -4594,6 +4598,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "chosen",
         crate::effect::PriorEffectAction::ChosenNumber => "chosen",
+        crate::effect::PriorEffectAction::Flipped => "flipped",
         crate::effect::PriorEffectAction::Rolled => "rolled",
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",

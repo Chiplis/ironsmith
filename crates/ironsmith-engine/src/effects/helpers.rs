@@ -702,6 +702,25 @@ fn resolve_effect_metric(
             .find_map(|id| other_number(crate::effect::EffectId(id)));
         return Ok(found.unwrap_or(0));
     }
+    if matches!(metric, EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails) {
+        if source != EffectMetricSource::Outcome {
+            return Err(ExecutionError::UnresolvableValue("coin metrics require an exact instruction outcome".into()));
+        }
+        let outcome = ctx.get_outcome(effect_id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "coin instruction has no completed receipt".into(),
+        ))?;
+        if outcome.status == crate::effect::OutcomeStatus::Declined { return Ok(0); }
+        let results = outcome.coin_flip_results().ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "coin instruction outcome has no retained-flip receipt".into(),
+        ))?;
+        return Ok(results.iter().filter(|flip| match metric {
+            EffectMetric::CoinFlipsWon => flip.winner == Some(flip.player),
+            EffectMetric::CoinFlipsLost => flip.loser == Some(flip.player),
+            EffectMetric::CoinHeads => flip.face == ironsmith_core::CoinFace::Heads,
+            EffectMetric::CoinTails => flip.face == ironsmith_core::CoinFace::Tails,
+            _ => unreachable!("guarded coin metric"),
+        }).count() as i64);
+    }
     // A metric over an instruction that never ran counts nothing.
     let Some(outcome) = ctx.get_outcome(effect_id) else {
         return Ok(0);
@@ -710,6 +729,7 @@ fn resolve_effect_metric(
     let object_memory = || effect_metric_memory(game, outcome, source);
 
     let resolved = match metric {
+        EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
         EffectMetric::ChosenCount => {
             effect_metric_object_count(game, outcome, EffectMetricSource::ChosenObjects)
@@ -949,6 +969,11 @@ fn resolve_prior_effect_metric(
 ) -> Result<i64, ExecutionError> {
     if effect_id == crate::effect::EffectId::ACTIVATION_COUNTER_COST && ctx.get_outcome(effect_id).is_none() {
         return Err(ExecutionError::IncompleteEvidence("activation counter payment has no completed receipt".into()));
+    }
+    if matches!(query.metric, EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost | EffectMetric::CoinHeads | EffectMetric::CoinTails)
+        && (query.filter.is_some() || query.player.is_some())
+    {
+        return Err(ExecutionError::UnresolvableValue("coin receipts do not accept object or player-memory filters".into()));
     }
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);

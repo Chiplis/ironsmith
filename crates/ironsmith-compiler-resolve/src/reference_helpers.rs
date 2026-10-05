@@ -2585,6 +2585,11 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             }
 
             if let Some(result) =
+                super::reference_resolution::resolve_coin_quantity_query(query, refs)
+            {
+                return result;
+            }
+            if let Some(result) =
                 super::reference_resolution::resolve_dice_quantity_query(query, refs)
             {
                 return result;

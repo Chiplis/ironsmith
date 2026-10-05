@@ -338,6 +338,19 @@ pub enum DamageRecipientBefore {
     },
 }
 
+/// A retained flip from one exact instruction, independent of event draining.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct CoinFlipResult {
+    pub player: PlayerId,
+    pub face: ironsmith_core::CoinFace,
+    pub call: Option<ironsmith_core::CoinFace>,
+    pub winner: Option<PlayerId>,
+    pub loser: Option<PlayerId>,
+    pub turn_ordinal: u32,
+    pub instruction_ordinal: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(
     feature = "serialization",
@@ -399,6 +412,8 @@ pub enum ExecutionFact {
     /// evidence. Appended after deferred additions so nested sacrifices cannot
     /// supply the outer action's result.
     OriginalSacrificeObjects(Vec<OutcomeObjectMemory>),
+    /// Retained results from one exact coin instruction; appended for wire stability.
+    CoinFlips(Vec<CoinFlipResult>),
 }
 
 impl ExecutionFact {
@@ -466,6 +481,13 @@ pub struct EffectOutcome {
 }
 
 impl EffectOutcome {
+    pub fn coin_flip_results(&self) -> Option<&[CoinFlipResult]> {
+        self.execution_facts.iter().rev().find_map(|fact| match fact {
+            ExecutionFact::CoinFlips(results) => Some(results.as_slice()),
+            _ => None,
+        })
+    }
+
     fn object_memory_from_ids(game: &GameState, objects: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
         objects
             .iter()

@@ -1,3 +1,5 @@
+#[path = "dispatch_entry/grouped_coins.rs"]
+mod grouped_coins;
 #[path = "dispatch_entry/dynamic_keyword_instructions.rs"]
 mod dynamic_keyword_instructions;
 #[path = "dispatch_entry/temporary_damage_addition.rs"]
@@ -6356,6 +6358,9 @@ fn parse_effect_sentences_lexed_unfinalized(
         return Ok(vec![effect]);
     }
     if let Some(effects) = parse_coin_batch_and_counted_turn_skip(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = grouped_coins::parse_document(tokens)? {
         return Ok(effects);
     }
     // The complete outside-game selection owns its optional choice, reveal,
@@ -14276,7 +14281,7 @@ fn parse_coin_batch_and_counted_turn_skip(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }),
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false }),
         ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PendingEffectMetric {

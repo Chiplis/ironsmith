@@ -52,6 +52,21 @@ pub fn is_extra_die_ignore_lowest(tokens: &[OwnedLexToken]) -> bool {
     ]
 }
 
+/// Complete bounded coin replacements; these are static instructions, not
+/// conditional effects whose coin text may be split into executable clauses.
+pub fn is_extra_coin_ignore_one(tokens: &[OwnedLexToken]) -> bool {
+    crate::lexer::parser_token_word_refs(tokens) == [
+        "if", "you", "would", "flip", "a", "coin", "instead", "flip", "two", "coins", "and", "ignore", "one",
+    ]
+}
+
+pub fn is_first_coin_batch_heads_win(tokens: &[OwnedLexToken]) -> bool {
+    crate::lexer::parser_token_word_refs(tokens) == [
+        "the", "first", "time", "you", "flip", "one", "or", "more", "coins", "each", "turn",
+        "those", "coins", "come", "up", "heads", "and", "you", "win", "those", "flips",
+    ]
+}
+
 pub fn parse_die_roll_adjustment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DieRollAdjustmentShape> {

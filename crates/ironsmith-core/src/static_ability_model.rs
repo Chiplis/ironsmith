@@ -1499,6 +1499,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// Changes the hand-to-exile action, not the later spell's foretell cost.
     /// Appended to preserve published payload discriminants.
     ForetellSpecialActionModifier { generic_reduction: u32, any_players_turn: bool },
+    ExtraCoinIgnoreOne { player: PlayerFilter },
+    FirstCoinBatchHeadsWin { player: PlayerFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2045,6 +2047,8 @@ where
             StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbilityPayload::DieRollResultAdjustment(spec)
             }
+            StaticAbilityPayload::ExtraCoinIgnoreOne { player } => StaticAbilityPayload::ExtraCoinIgnoreOne { player },
+            StaticAbilityPayload::FirstCoinBatchHeadsWin { player } => StaticAbilityPayload::FirstCoinBatchHeadsWin { player },
             StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional } => {
                 StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional }
             }
@@ -3495,6 +3499,22 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMinimum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMinimum { minimum, display },
+        }
+    }
+
+    pub fn extra_coin_ignore_one(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExtraCoinIgnoreOne),
+            label: display.into(),
+            payload: StaticAbilityPayload::ExtraCoinIgnoreOne { player },
+        }
+    }
+
+    pub fn first_coin_batch_heads_win(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::FirstCoinBatchHeadsWin),
+            label: display.into(),
+            payload: StaticAbilityPayload::FirstCoinBatchHeadsWin { player },
         }
     }
 

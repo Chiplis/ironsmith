@@ -885,6 +885,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/829"
+    },
+    {
+      "stage": 64,
+      "branch": "fix/card-failures-64-random-and-static-bodies",
+      "base": "fix/card-failures-63-reused-token-prototypes",
+      "source_integration_commit": "01303439791961945d3d1a1da62f89c25b265785",
+      "remote_commit": "a6943943ffc560aeb81572a65006c1f1e4c79017",
+      "tree": "955fabc96e38a1486294e454d6a4f386b4081099",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 830,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/830"
     }
   ]
 }

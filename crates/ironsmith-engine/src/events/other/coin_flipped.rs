@@ -6,6 +6,8 @@ use crate::ids::{ObjectId, PlayerId};
 
 #[derive(Debug, Clone)]
 pub struct CoinFlippedEvent {
+    pub turn_ordinal: u32,
+    pub instruction_ordinal: u32,
     pub player: PlayerId,
     pub source: ObjectId,
     pub face: ironsmith_core::CoinFace,

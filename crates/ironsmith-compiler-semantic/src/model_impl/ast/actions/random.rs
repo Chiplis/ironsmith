@@ -9,6 +9,8 @@ pub enum RandomActionAst {
     FlipCoinFaceOnly,
     FlipCoins {
         count: u32,
+        kind: ironsmith_core::CoinFlipKind,
+        repeat_until_loss: bool,
     },
     RollDie {
         sides: u32,

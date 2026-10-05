@@ -1142,11 +1142,13 @@ pub(super) fn compile_subject_verb_early(
                 Effect::flip_coin(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }) => {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss }) => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 let mut effect =
                     crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
                 effect.count = *count;
+                effect.kind = *kind;
+                effect.repeat_until_loss = *repeat_until_loss;
                 Effect::new(effect)
             })
         }

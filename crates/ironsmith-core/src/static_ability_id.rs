@@ -393,6 +393,8 @@ pub enum StaticAbilityId {
     ConvertUnspentMana,
     /// Appended to preserve existing published enum discriminants.
     ForetellSpecialActionModifier,
+    ExtraCoinIgnoreOne,
+    FirstCoinBatchHeadsWin,
 }
 
 impl StaticAbilityId {
@@ -697,6 +699,8 @@ impl StaticAbilityId {
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
             | SpellManaSpendingRestriction
+            | ExtraCoinIgnoreOne
+            | FirstCoinBatchHeadsWin
             | ExtraDieIgnoreLowest
             | RedirectMatchingDamage
             | AddLifeGainReplacement

@@ -1923,6 +1923,20 @@ fn parse_villainous_choice_statement_chunk(
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
+    if crate::grammar::statement_shapes::is_extra_coin_ignore_one(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::extra_coin_ignore_one(PlayerFilter::You, rendered),
+            ),
+        ]));
+    }
+    if crate::grammar::statement_shapes::is_first_coin_batch_heads_win(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::first_coin_batch_heads_win(PlayerFilter::You, rendered),
+            ),
+        ]));
+    }
     if crate::grammar::statement_shapes::is_extra_die_ignore_lowest(tokens) {
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(

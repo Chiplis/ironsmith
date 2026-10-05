@@ -2535,6 +2535,7 @@ fn stage_effects_from_normalized(
     initial_env.life_event_binding = config.life_event_binding.clone();
     initial_env.life_amount_producers = config.life_amount_producers.clone();
     initial_env.die_result_producers = config.die_result_producers.clone();
+    initial_env.coin_result_producers = config.coin_result_producers.clone();
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()

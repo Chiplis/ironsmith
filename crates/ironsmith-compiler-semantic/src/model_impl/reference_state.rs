@@ -252,6 +252,7 @@ pub struct ReferenceFrame {
     pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub coin_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub has_announced_x: bool,
 }
@@ -282,6 +283,7 @@ impl ReferenceFrame {
             life_event_binding: frame.life_event_binding.clone(),
             life_amount_producers: frame.life_amount_producers.clone(),
             die_result_producers: frame.die_result_producers.clone(),
+            coin_result_producers: frame.coin_result_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
             has_announced_x: frame.has_announced_x,
         }
@@ -318,6 +320,7 @@ impl ReferenceFrame {
             life_event_binding: self.life_event_binding.clone(),
             life_amount_producers: self.life_amount_producers.clone(),
             die_result_producers: self.die_result_producers.clone(),
+            coin_result_producers: self.coin_result_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
             has_announced_x: self.has_announced_x,
         }
@@ -440,6 +443,7 @@ pub struct ReferenceEnv {
     pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub coin_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub has_announced_x: bool,
 }
@@ -467,6 +471,7 @@ impl Default for ReferenceEnv {
             life_event_binding: None,
             life_amount_producers: Default::default(),
             die_result_producers: Default::default(),
+            coin_result_producers: Default::default(),
             bind_unbound_x_to_last_effect: false,
             has_announced_x: false,
         }
@@ -506,6 +511,7 @@ impl ReferenceEnv {
             life_event_binding: None,
             life_amount_producers: Default::default(),
             die_result_producers: Default::default(),
+            coin_result_producers: Default::default(),
             bind_unbound_x_to_last_effect,
             has_announced_x: false,
         }
@@ -535,6 +541,7 @@ impl ReferenceEnv {
             life_event_binding: frame.life_event_binding.clone(),
             life_amount_producers: frame.life_amount_producers.clone(),
             die_result_producers: frame.die_result_producers.clone(),
+            coin_result_producers: frame.coin_result_producers.clone(),
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
             has_announced_x: frame.has_announced_x,
         }
@@ -573,6 +580,7 @@ impl ReferenceEnv {
             life_event_binding: self.life_event_binding.clone(),
             life_amount_producers: self.life_amount_producers.clone(),
             die_result_producers: self.die_result_producers.clone(),
+            coin_result_producers: self.coin_result_producers.clone(),
             bind_unbound_x_to_last_effect: self.bind_unbound_x_to_last_effect,
             has_announced_x: self.has_announced_x,
         }

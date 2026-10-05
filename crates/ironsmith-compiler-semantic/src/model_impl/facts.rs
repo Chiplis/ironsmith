@@ -217,6 +217,7 @@ pub struct LoweringFrame {
     pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub coin_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub has_announced_x: bool,
 }
@@ -380,6 +381,7 @@ impl EffectLoweringContext {
         self.life_event_binding = frame.life_event_binding.clone();
         self.life_amount_producers = frame.life_amount_producers.clone();
         self.die_result_producers = frame.die_result_producers.clone();
+        self.coin_result_producers = frame.coin_result_producers.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
         self.has_announced_x = frame.has_announced_x;
     }

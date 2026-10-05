@@ -246,6 +246,8 @@ pub fn events(seed: &Seed) -> Vec<Fixture> {
             add(
                 if won { "coin_win" } else { "coin_loss" },
                 Box::new(CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player,
                     source: seed.source,
                     face: ironsmith::CoinFace::Heads,

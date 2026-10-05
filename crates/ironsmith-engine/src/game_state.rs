@@ -1223,6 +1223,7 @@ struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
+    forced_coin_flips: RefCell<VecDeque<ironsmith_core::CoinFace>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
     transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
     verified_hidden_library_epochs:
@@ -1275,6 +1276,7 @@ impl Clone for RuntimeCacheState {
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
+            forced_coin_flips: RefCell::new(self.forced_coin_flips.borrow().clone()),
             transcript_random_seeds: RefCell::new(self.transcript_random_seeds.borrow().clone()),
             transcript_library_shuffle_orders: RefCell::new(
                 self.transcript_library_shuffle_orders.borrow().clone(),
@@ -1329,6 +1331,7 @@ impl RuntimeCacheState {
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
+            forced_coin_flips: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
             transcript_library_shuffle_orders: RefCell::new(VecDeque::new()),
             verified_hidden_library_epochs: RefCell::new(BTreeMap::new()),
@@ -5895,6 +5898,15 @@ impl GameState {
             .hidden_info_audit_log
             .borrow_mut()
             .push_back(operation);
+    }
+
+    /// Queue a physical coin face; the flip still consumes its normal randomness.
+    pub fn force_next_coin_flip(&mut self, face: ironsmith_core::CoinFace) {
+        self.runtime_cache.forced_coin_flips.borrow_mut().push_back(face);
+    }
+
+    pub(crate) fn take_forced_coin_flip(&self) -> Option<ironsmith_core::CoinFace> {
+        self.runtime_cache.forced_coin_flips.borrow_mut().pop_front()
     }
 
     /// Queue a deterministic die result for test harnesses that mirror external fixtures.

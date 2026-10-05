@@ -2232,6 +2232,8 @@ mod native_random_trigger_model_contract_tests {
             ),
             TriggerEvent::new_with_provenance(
                 crate::events::CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player: bob,
                     source,
                     face: ironsmith_core::CoinFace::Heads,
@@ -2243,6 +2245,8 @@ mod native_random_trigger_model_contract_tests {
             ),
             TriggerEvent::new_with_provenance(
                 crate::events::CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player: bob,
                     source,
                     face: ironsmith_core::CoinFace::Heads,

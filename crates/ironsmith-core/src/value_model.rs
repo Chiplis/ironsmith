@@ -75,6 +75,10 @@ pub enum EffectMetric {
     /// original recipient's pre-damage life/loyalty or current creature
     /// toughness. Auxiliary replacement programs are separate instructions.
     DamageDealtCappedByRecipient,
+    CoinFlipsWon,
+    CoinFlipsLost,
+    CoinHeads,
+    CoinTails,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -116,6 +120,8 @@ pub enum PriorEffectAction {
     Rolled,
     /// An original zone move that actually arrived in a hand, not a draw or reveal.
     PutIntoHand,
+    /// A retained local coin batch, distinct from ambient win/loss triggers.
+    Flipped,
 }
 
 /// A metric over the last-known-information memory emitted by one exact

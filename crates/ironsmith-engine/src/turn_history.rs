@@ -136,6 +136,8 @@ pub struct TurnHistory {
     /// Completed physical rolls, including nonnumeric planar rolls. Ignored
     /// and superseded rerolls never enter this ordinal history.
     pub completed_die_rolls_this_turn: HashMap<PlayerId, u32>,
+    /// Retained coin flips only; ignored replacement coins never count.
+    pub completed_coin_flips_this_turn: HashMap<PlayerId, u32>,
     pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
     /// Source/player pairs for attached-object rule restrictions that player
     /// has paid to ignore until the turn ends.
@@ -198,6 +200,7 @@ impl TurnHistory {
         self.player_counter_locks_this_turn.clear();
         self.die_rolls_this_turn.clear();
         self.completed_die_rolls_this_turn.clear();
+        self.completed_coin_flips_this_turn.clear();
         self.die_roll_result_adjustments_this_turn.clear();
         self.players_ignoring_attached_static_restrictions_this_turn
             .clear();
@@ -1346,6 +1349,33 @@ impl TurnHistory {
                     event.player == player && event.action == KeywordActionKind::CommitCrime
                 })
         })
+    }
+
+    pub fn completed_coin_flip_count(&self, player: PlayerId) -> u32 {
+        self.completed_coin_flips_this_turn.get(&player).copied().unwrap_or(0)
+    }
+
+    pub(crate) fn check_completed_coin_flip_capacity(
+        &self, player: PlayerId, count: usize,
+    ) -> Result<u32, crate::effects::ExecutionError> {
+        let total = u128::from(self.completed_coin_flip_count(player)) + count as u128;
+        let after = i32::try_from(total).map_err(|_| {
+            crate::effects::ExecutionError::ResourceLimitExceeded {
+                resource: "completed coin-flip ordinal",
+                requested: total,
+                maximum: i32::MAX as u128,
+            }
+        })?;
+        Ok(after as u32)
+    }
+
+    pub(crate) fn record_completed_coin_flips(
+        &mut self, player: PlayerId, count: usize,
+    ) -> Result<u32, crate::effects::ExecutionError> {
+        let after = self.check_completed_coin_flip_capacity(player, count)?;
+        let first = self.completed_coin_flip_count(player) + 1;
+        self.completed_coin_flips_this_turn.insert(player, after);
+        Ok(first)
     }
 
     pub fn completed_die_roll_count(&self, player: PlayerId) -> u32 {

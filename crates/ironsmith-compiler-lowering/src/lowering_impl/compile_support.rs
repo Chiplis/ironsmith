@@ -178,6 +178,7 @@ pub fn compile_effects(
             life_event_binding: ctx.life_event_binding.clone(),
             life_amount_producers: ctx.life_amount_producers.clone(),
             die_result_producers: ctx.die_result_producers.clone(),
+            coin_result_producers: ctx.coin_result_producers.clone(),
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             has_announced_x: ctx.has_announced_x,
             initial_last_effect_id: ctx.last_effect_id,

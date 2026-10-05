@@ -1838,6 +1838,9 @@ pub struct FlipCoinEffect {
     pub forced_face: Option<CoinFace>,
     pub forced_winner: Option<PlayerFilter>,
     pub forced_loser: Option<PlayerFilter>,
+    /// Each retained flip is a fresh batch until an actual loss ends the process.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub repeat_until_loss: bool,
 }
 
 fn single_coin_count() -> u32 {
@@ -1847,6 +1850,7 @@ fn single_coin_count() -> u32 {
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
             count: 1,
             player,
             kind: CoinFlipKind::Called,
@@ -1858,6 +1862,7 @@ impl FlipCoinEffect {
 
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
             count: 1,
             player,
             kind: CoinFlipKind::FaceOnly,

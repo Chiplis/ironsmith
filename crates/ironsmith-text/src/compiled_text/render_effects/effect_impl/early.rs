@@ -6544,6 +6544,10 @@
     }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
+        if flip_coin.repeat_until_loss {
+            return if player == "you" { "Flip a coin until you lose a flip".into() }
+                else { format!("{player} flips a coin until they lose a flip") };
+        }
         if flip_coin.count != 1 {
             return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, flip_coin.count);
         }
