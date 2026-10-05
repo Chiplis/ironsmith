@@ -275,4 +275,4 @@ pub use effect::DealDamageBySourcesEffect;
 
 pub use effect::DealDamageEachEffect;
 
-pub use effect::DamageSourceSetBinding;
+pub use effect::{DamageRecipientSetBinding, DamageSourceSetBinding};

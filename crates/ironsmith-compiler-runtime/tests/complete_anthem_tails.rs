@@ -61,7 +61,7 @@ fn game() -> GameState {
 }
 
 fn creature(game: &mut GameState, owner: PlayerId, power: i32, toughness: i32, abilities: Vec<StaticAbility>) -> ObjectId {
-    let mut definition = ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), "Legality witness")
+    let mut definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Legality witness")
         .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Elf])
         .power_toughness(PowerToughness::fixed(power, toughness));
     for ability in abilities { definition = definition.with_ability(ironsmith::ability::Ability::static_ability(ability)); }

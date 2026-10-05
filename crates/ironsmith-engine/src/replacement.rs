@@ -577,6 +577,7 @@ pub enum ReplacementAction<E = Effect, A = Ability, P = crate::resolution::Resol
     TokenCreationTemplates { templates: Vec<E>, mode: ironsmith_core::TokenCreationTemplateMode, choose_one: bool, choice_parent: Option<K> },
     RewriteMana { input: ironsmith_core::ManaRewriteInput, output: ironsmith_core::ManaRewriteOutput,
         quantity: ironsmith_core::ManaRewriteQuantity },
+    ConvertUnspentMana(crate::mana::ManaSymbol),
 }
 
 
@@ -636,6 +637,7 @@ impl<E, A, P, K> ReplacementAction<E, A, P, K> {
             Self::AddTokens { token, count } => ReplacementAction::AddTokens { token, count },
             Self::AddTokensPerCreated { token } => ReplacementAction::AddTokensPerCreated { token },
             Self::AddTokensOfOtherKinds { kinds } => ReplacementAction::AddTokensOfOtherKinds { kinds },
+            Self::ConvertUnspentMana(symbol) => ReplacementAction::ConvertUnspentMana(symbol),
             Self::RewriteMana { input, output, quantity } => ReplacementAction::RewriteMana { input, output, quantity },
             Self::ReplaceMana(value) => ReplacementAction::ReplaceMana(value),
             Self::ReplaceManaExact(value) => ReplacementAction::ReplaceManaExact(value),

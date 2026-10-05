@@ -600,3 +600,6 @@ pub use life_totals::parse_life_total_quantity_words;
 #[path = "value_expr/damage_history_quantities.rs"]
 pub(crate) mod damage_history_quantities;
 mod extrema_quantities;
+
+#[path = "value_expr/capped_damage_quantities.rs"]
+mod capped_damage_quantities;

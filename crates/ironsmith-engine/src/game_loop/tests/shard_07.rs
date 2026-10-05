@@ -3013,7 +3013,7 @@ pub(super) fn test_resolution_target_validation_uses_source_lki_for_protection()
     .with_targets(vec![Target::Object(protected_id)])
     .with_source_snapshot(source_snapshot);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "protection from red should make the target illegal using the departed source's LKI"
@@ -3172,7 +3172,7 @@ pub(super) fn emrakul_the_world_anew_protection_rejects_spell_targets() {
     );
     let entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(emrakul_id)]);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "Emrakul should have protection from spells"
@@ -3203,7 +3203,7 @@ pub(super) fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_thi
     )
     .with_targets(vec![Target::Object(emrakul_id)]);
     let (cast_valid_targets, _, cast_all_invalid) =
-        validate_stack_entry_targets(&game, &cast_entry);
+        validate_stack_entry_targets(&game, &cast_entry).unwrap();
     assert!(
         cast_valid_targets.is_empty(),
         "Emrakul should have protection from permanents that were cast this turn"
@@ -3217,7 +3217,7 @@ pub(super) fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_thi
         vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
     )
     .with_targets(vec![Target::Object(emrakul_id)]);
-    let (old_valid_targets, _, old_all_invalid) = validate_stack_entry_targets(&game, &old_entry);
+    let (old_valid_targets, _, old_all_invalid) = validate_stack_entry_targets(&game, &old_entry).unwrap();
     assert_eq!(
         old_valid_targets,
         vec![crate::effects::ResolvedTarget::Object(emrakul_id)],
@@ -3263,7 +3263,7 @@ pub(super) fn test_resolution_player_target_validation_uses_source_lki_for_sourc
     .with_targets(vec![Target::Player(bob)])
     .with_source_snapshot(source_snapshot);
 
-    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
+    let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry).unwrap();
     assert!(
         valid_targets.is_empty(),
         "player target restrictions from red sources should use departed source LKI"

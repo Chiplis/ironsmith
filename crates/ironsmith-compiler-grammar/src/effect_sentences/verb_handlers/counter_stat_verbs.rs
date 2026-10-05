@@ -886,6 +886,11 @@ pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
 
     let amount_tokens = &tokens[1..];
     let amount_words = crate::lexer::token_word_refs(amount_tokens);
+    if amount_words.starts_with(&["equal", "to", "the", "damage", "dealt", "but", "not", "more"]) {
+        let value_tokens = &amount_tokens[2..];
+        if let Some((value, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(value_tokens)
+            && used == value_tokens.len() { return Ok(Some(value)); }
+    }
     let input = life_equal_amount_readings::LifeAmount {
         tokens: amount_tokens,
         amount_words: &amount_words,

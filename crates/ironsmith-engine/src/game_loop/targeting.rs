@@ -3886,13 +3886,20 @@ pub(super) fn stack_entry_validation_target_specs(
 pub(super) fn validate_stack_entry_targets(
     game: &GameState,
     entry: &StackEntry,
-) -> (
+) -> Result<(
     Vec<ResolvedTarget>,
     Vec<crate::game_state::TargetAssignment>,
     bool,
-) {
-    let view = crate::derived_view::DerivedGameView::new(game);
-    validate_stack_entry_targets_with_view(game, entry, &view)
+), crate::effects::ExecutionError> {
+    validate_stack_entry_targets_with_context(game,entry,None)
+}
+
+pub(super) fn validate_stack_entry_targets_with_context(
+    game:&GameState, entry:&StackEntry, ctx:Option<&crate::effects::ExecutionContext>,
+) -> Result<(Vec<ResolvedTarget>,Vec<crate::game_state::TargetAssignment>,bool),crate::effects::ExecutionError> {
+    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(&checked);
+    validate_stack_entry_targets_with_view(&checked, entry, &view,ctx)
 }
 
 fn combat_attacking_player_for_entry(game: &GameState, entry: &StackEntry) -> Option<PlayerId> {
@@ -4286,22 +4293,75 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     }
 }
 
+/// Target-set restrictions belong to the announced assignment, not to each
+/// candidate independently. Recheck current characteristics without selecting
+/// a convenient smaller subset when the total becomes too large (CR608.2b).
+fn assignment_aggregate_still_legal(
+    game:&GameState, entry:&StackEntry, spec:&ChooseSpec, assigned:&[Target],
+    view:&crate::derived_view::DerivedGameView<'_>,
+    supplied_context:Option<&crate::effects::ExecutionContext>,
+) -> Result<bool,crate::effects::ExecutionError> {
+    use crate::effect::ChoiceAggregateMetric;
+    let Some(constraint)=spec.target_set_aggregate_constraint() else {return Ok(true)};
+    if assigned.is_empty() {return Ok(true)};
+    let mut dm=crate::decision::SelectFirstDecisionMaker;
+    let mut ctx=crate::effects::ExecutionContext::new(entry.object_id,entry.controller,&mut dm);
+    ctx.x_value=entry.x_value;
+    if let Some(snapshot)=entry.source_snapshot.clone() {ctx=ctx.with_source_snapshot(snapshot);}
+    if let Some(event)=entry.triggering_event.clone() {ctx=ctx.with_triggering_event(event);}
+    if let Some(amount)=entry.event_value_amount {ctx=ctx.with_event_value_amount(amount);}
+    ctx=ctx.with_tagged_objects(entry.tagged_objects.clone());
+    ctx.targets=entry.targets.iter().map(|target|match target {Target::Object(id)=>ResolvedTarget::Object(*id),Target::Player(id)=>ResolvedTarget::Player(*id)}).collect();
+    ctx.target_assignments=entry.target_assignments.clone();
+    apply_keyword_payment_tags_for_resolution(game,entry,&mut ctx);
+    let ctx=supplied_context.unwrap_or(&ctx);
+    let maximum=i128::from(crate::effects::helpers::resolve_value(game,&constraint.maximum,ctx)?);
+    let minimum=constraint.minimum.as_ref().map(|value|crate::effects::helpers::resolve_value(game,value,ctx)).transpose()?.map(i128::from);
+    let mut total=0i128;let mut types=0u128;
+    for target in assigned {
+        let Target::Object(id)=target else {continue};
+        // The legality of one member can depend on the other announced
+        // members, including independently illegal targets (CR608.2b;
+        // Run Away Together's controller comparison is the same purpose).
+        // Use exact departure/phasing LKI, never a later stable-card incarnation.
+        let (power,toughness,mana_value,card_types)=if let Some(object)=game.object(*id).filter(|_|!game.is_phased_out(*id)) {
+            let chars=view.current_characteristics_arc(*id).ok_or_else(||crate::effects::ExecutionError::UnresolvableValue("aggregate target characteristics are unavailable".into()))?;
+            let mana_value=chars.linked_face_mana_value.unwrap_or_else(||chars.mana_cost.as_ref().map_or(0,|cost|if object.zone==Zone::Stack {cost.mana_value_with_x(object.x_value.unwrap_or(0))}else{cost.mana_value()}));
+            (chars.power,chars.toughness,mana_value,chars.card_types.to_vec())
+        } else {
+            let snapshot=game.turn_store.turn_history.source_last_known_snapshot(*id)
+                .ok_or_else(||crate::effects::ExecutionError::UnresolvableValue("aggregate target requires exact departed or phased characteristic evidence".into()))?;
+            let mana_value=snapshot.linked_face_mana_value.unwrap_or_else(||snapshot.mana_cost.as_ref().map_or(0,|cost|if snapshot.zone==Zone::Stack {cost.mana_value_with_x(snapshot.x_value.unwrap_or(0))}else{cost.mana_value()}));
+            (snapshot.power,snapshot.toughness,mana_value,snapshot.card_types.clone())
+        };
+        match constraint.metric {
+            ChoiceAggregateMetric::Power => total+=i128::from(if card_types.contains(&crate::types::CardType::Creature) {power.unwrap_or(0)}else{0}),
+            ChoiceAggregateMetric::Toughness => total+=i128::from(if card_types.contains(&crate::types::CardType::Creature) {toughness.unwrap_or(0)}else{0}),
+            ChoiceAggregateMetric::ManaValue => total+=i128::from(mana_value),
+            ChoiceAggregateMetric::DistinctCardTypes => {for ty in card_types {types|=1u128<<(ty as u32);}},
+        }
+    }
+    if constraint.metric==ChoiceAggregateMetric::DistinctCardTypes {total=i128::from(types.count_ones());}
+    Ok(total<=maximum&&minimum.is_none_or(|minimum|total>=minimum))
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
     view: &crate::derived_view::DerivedGameView<'_>,
-) -> (
+    ctx:Option<&crate::effects::ExecutionContext>,
+) -> Result<(
     Vec<ResolvedTarget>,
     Vec<crate::game_state::TargetAssignment>,
     bool,
-) {
+), crate::effects::ExecutionError> {
     if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
         return view.with_casting_spell(entry.object_id, || {
-            validate_stack_entry_targets_with_view(game, entry, view)
+            validate_stack_entry_targets_with_view(game, entry, view,ctx)
         });
     }
     if entry.targets.is_empty() {
-        return (Vec::new(), Vec::new(), false);
+        return Ok((Vec::new(), Vec::new(), false));
     }
 
     if !entry.target_assignments.is_empty() {
@@ -4318,7 +4378,14 @@ pub(super) fn validate_stack_entry_targets_with_view(
             } = stack_entry_assignment_legal_targets(game, entry, assignment_index, view);
 
             let start = valid_targets.len();
-            for target in &entry.targets[assignment.range.clone()] {
+            let assigned = entry.targets.get(assignment.range.clone()).ok_or_else(||
+                crate::effects::ExecutionError::InternalError("target assignment range is outside its retained targets".into()))?;
+            if !assignment_aggregate_still_legal(game,entry,&assignment.spec,assigned,view,ctx)? {
+                invalid_count += assigned.len();
+                valid_assignments.push(crate::game_state::TargetAssignment { spec:assignment.spec.clone(), range:start..start });
+                continue;
+            }
+            for target in assigned {
                 if (legal_targets.contains(target)
                     && (!relative_object_target || !prior_object_targets.contains(target)))
                     || (!exchange_specs.is_empty()
@@ -4346,10 +4413,18 @@ pub(super) fn validate_stack_entry_targets_with_view(
         }
 
         let all_invalid = invalid_count == entry.targets.len();
-        return (valid_targets, valid_assignments, all_invalid);
+        return Ok((valid_targets, valid_assignments, all_invalid));
     }
 
     let validation_specs = stack_entry_validation_target_specs(game, entry);
+    if validation_specs.iter().any(|spec|spec.target_set_aggregate_constraint().is_some()) {
+        let [spec] = validation_specs.as_slice() else {
+            return Err(crate::effects::ExecutionError::UnresolvableValue("aggregate target groups require retained assignment boundaries".into()));
+        };
+        let mut assigned=entry.clone();
+        assigned.target_assignments=vec![crate::game_state::TargetAssignment {spec:spec.clone(),range:0..entry.targets.len()}];
+        return validate_stack_entry_targets_with_view(game,&assigned,view,ctx);
+    }
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
         .map(|spec| {
@@ -4415,7 +4490,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
     }
 
     let all_invalid = invalid_count == entry.targets.len();
-    (valid_targets, Vec::new(), all_invalid)
+    Ok((valid_targets, Vec::new(), all_invalid))
 }
 
 #[cfg(test)]
@@ -4554,5 +4629,26 @@ mod completed_target_history_tests {
         assert_eq!(crate::triggers::check_triggers(&game, &new_incarnation).len(), 1);
         game.turn_store.turn_history.clear_for_new_turn();
         assert!(game.turn_store.turn_history.targeted_object_history_for_checkpoint().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod current_aggregate_validation_tests {
+    use super::*;
+    #[test]
+    fn unknown_dynamic_bound_is_not_silently_an_unrestricted_or_illegal_target() {
+        let mut game=crate::tests::test_helpers::setup_two_player_game();
+        let a=PlayerId::from_index(0);let b=PlayerId::from_index(1);
+        let definition=crate::CardDefinitionBuilder::new(crate::ids::CardId::new(),"Aggregate target")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
+        let source=game.create_object_from_definition(&definition,a,Zone::Battlefield);
+        let target=game.create_object_from_definition(&definition,b,Zone::Battlefield);
+        let mut filter=crate::filter::ObjectFilter::creature();
+        filter.target_set_aggregate_constraint=Some(Box::new(crate::effect::ChoiceAggregateConstraint::at_most(
+            crate::effect::ChoiceAggregateMetric::ManaValue,crate::effect::Value::LastNotedLifeTotal)));
+        let mut entry=StackEntry::new(source,a).with_targets(vec![Target::Object(target)]);
+        entry.target_assignments=vec![crate::game_state::TargetAssignment{spec:ChooseSpec::target(ChooseSpec::Object(filter)),range:0..1}];
+        assert!(matches!(validate_stack_entry_targets(&game,&entry),Err(crate::effects::ExecutionError::UnresolvableValue(_))));
     }
 }

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "877eee0bbc18622314e3de850aeba5823cab32c4",
+  "source_implementation_commit": "b5412994214a8b30cc7c3e44a12c447f673d381b",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 854,
-    "additional_proposed_compile_entries": 856,
+    "additional_proposed_unique_cards": 879,
+    "additional_proposed_compile_entries": 881,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 3,
+    "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 854,
+    "source_proposals_excluding_identified_runtime_gaps": 879,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -771,7 +771,7 @@
         },
         {
           "card_name": "Kylox's Voltstrider",
-          "remaining_blocker": "Its attack permission additionally replaces the cast spell’s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
+          "remaining_blocker": "Its attack permission additionally replaces the cast spell\u2019s graveyard move with owner-library-bottom; that linked cast-destination rider is outside the typed evidence action."
         }
       ],
       "implementation_commit": "0a205e390e05ab76f124378518f2278698dc2dcf",
@@ -1593,7 +1593,7 @@
         "Cradle of Vitality",
         "Lich's Tomb",
         "Lich's Mastery",
-        "Oath of Lim-Dûl",
+        "Oath of Lim-D\u00fbl",
         "Transcendence"
       ],
       "implementation_commit": "3b31b3231dd4575b52d24bdc272c728dcbaaf1bf",
@@ -2424,13 +2424,13 @@
       "fixture": "fixtures/ring_bearer_references.json.fixture",
       "baseline_entries": [
         "Call of the Ring",
-        "Dúnedain Rangers",
+        "D\u00fanedain Rangers",
         "Faramir, Field Commander",
-        "Galadriel of Lothlórien",
+        "Galadriel of Lothl\u00f3rien",
         "Gandalf, Friend of the Shire",
         "Galadriel, Elven-Queen",
         "One Ring to Rule Them All",
-        "Lord of the Nazgûl",
+        "Lord of the Nazg\u00fbl",
         "Frodo Baggins",
         "Sauron, the Necromancer"
       ],
@@ -2631,45 +2631,34 @@
       "baseline_entries": [
         "Imperiosaur",
         "Myr Superion",
-        "Security Rhox"
+        "Security Rhox",
+        "Atalya, Samite Master",
+        "Consume Spirit",
+        "Crimson Hellkite",
+        "Crypt Rats",
+        "Emblazoned Golem",
+        "Drain Life",
+        "Soul Burn"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Atalya, Samite Master",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Consume Spirit",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Crimson Hellkite",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Crypt Rats",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Drain Life",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Emblazoned Golem",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        },
-        {
-          "card_name": "Soul Burn",
-          "remaining_blocker": "Scoped actual-color X allocation (and capped damage-life body for Drain Life/Soul Burn)"
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "47d5644c5",
       "tests": "authored_not_run",
       "semantic_scope": [
         "Producer constraints remain cost-owned across discounts, alternative costs, Assist, assignment, hashes and commit.",
         "Checked production and post-credit discovery errors propagate through native planner/query owners; exact production/LKI traits reject untracked or hand-card producers.",
         "Independent bounded source review clear; no executed recovery/gameplay credit."
-      ]
+      ],
+      "stage51_extension": {
+        "source_review_commit": "f5770d5ee",
+        "implementation_commit": "838d5d541",
+        "scope": "Actual constrained generic-X allocation after reductions/Assist, bound-scope merging, unknown/zero retained receipts, incarnation reset and checked scalar read; complete five bodies authored/unrun.",
+        "capped_damage_followup": {
+          "implementation_commit": "9d0502f57",
+          "source_review_commit": "862f2f209",
+          "scope": "Exact original damage amount, original recipient life/loyalty and resolution-time current/last-known creature toughness caps, bounded by actual black X units for Soul Burn; combined checked-characteristic correction included.",
+          "combined_checked_frame_commit": "3e96b9ce2"
+        }
+      }
     },
     {
       "id": "damage-history-quantities",
@@ -2689,14 +2678,10 @@
         "Sold Out",
         "Hawkeye, Avenging Archer",
         "Thirsting Axe",
-        "Wolverine, Best There Is"
+        "Wolverine, Best There Is",
+        "Impact Resonance"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Impact Resonance",
-          "remaining_blocker": "Damage occurrence identity is not retained across replacement fragmentation."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "9ff56b4f4",
       "tests": "authored_not_run",
       "semantic_scope": [
@@ -2704,7 +2689,13 @@
         "Proper granting-source fight operand and exact current/departed attachment roles preserve complete secondary bodies.",
         "Checked final arithmetic plus shared generic-history/program completeness prevent overflow and silent recovery loss.",
         "Independent bounded source review clear; no executed recovery/gameplay credit."
-      ]
+      ],
+      "stage51_extension": {
+        "card": "Impact Resonance",
+        "source_review_commit": "bee294952",
+        "implementation_commit": "3ee5d4054",
+        "scope": "Largest completed source/recipient occurrence, original announcement amount/division preserved, one checked allocation batch with partial-illegal shares lost."
+      }
     },
     {
       "id": "combat-blocked-status",
@@ -3147,17 +3138,11 @@
         "Cytoplast Manipulator",
         "Giant's Grasp",
         "Scarwood Bandits",
-        "Sower of Temptation"
+        "Sower of Temptation",
+        "The Akroan War",
+        "The Super Hero Civil War"
       ],
       "partial_entries": [
-        {
-          "card_name": "The Akroan War",
-          "remaining_blocker": "Full secondary chapter or upkeep program review and scenarios pending"
-        },
-        {
-          "card_name": "The Super Hero Civil War",
-          "remaining_blocker": "Full secondary chapter or upkeep program review and scenarios pending"
-        },
         {
           "card_name": "Infernal Denizen",
           "remaining_blocker": "Full secondary chapter or upkeep program review and scenarios pending"
@@ -3173,7 +3158,19 @@
         "Complete exact-source lifetime grammar uses latched visible-source predicates, distinct from literal until-leaves event duration.",
         "Shared gain-ability and leading/suffix duration readers retain the same phasing/non-restart semantics.",
         "Five full-card direct/artifact cast, activation, payment, damage, Graft, attachment and phase/identity scenarios authored; bounded source-clear678f4a32c."
-      ]
+      ],
+      "stage51_extension": {
+        "card": "The Akroan War",
+        "source_review_commit": "2ab352273",
+        "implementation_commit": "ead8c5ac0",
+        "scope": "Live nonremovable timed attack rule and one zipped self-damage batch, alongside exact Saga lifetime."
+      },
+      "targeted_saga_extension": {
+        "stage": 51,
+        "implementation_commit": "d4afc5d26",
+        "source_review_commit": "d16f8c5aa+2efce3710",
+        "deferred_rules_gate": "Departure-LKI aggregate legality is an explicit inference from official Run Away Together legality-comparison precedent; retained in authored regressions."
+      }
     },
     {
       "id": "mana-output-replacements",
@@ -3246,6 +3243,74 @@
         "Natural/modified/turn-ordinal facts and same-player completed roll groups are retained through all four real producers.",
         "Exact local numeric-roll antecedents precede ambient trigger fallback; grouped predicates require real batch evidence.",
         "Direct planar/Attraction operations and legal enumeration preserve typed failures with atomic rollback; full six bodies are authored and source-reviewed."
+      ]
+    },
+    {
+      "id": "extra-die-ignore-lowest",
+      "stage": 51,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/dice_replacements.json.fixture",
+      "baseline_entries": [
+        "Pixie Guide",
+        "Barbarian Class",
+        "Wyll, Blade of Frontiers"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ab1ce384f",
+      "source_review_commit": "6633f3667",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Real numeric pre-roll replacement transaction retains source occurrence history and actual roller choice/order.",
+        "Ignored dice are excluded before numeric result modifiers and completed history; planar symbols stay outside numeric comparison.",
+        "Barbarian paid levels and Wyll grouped counter/Background body have complete authored direct/artifact scenarios; no execution."
+      ]
+    },
+    {
+      "id": "mana-retention-conversion",
+      "stage": 51,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/mana_retention_conversion.json.fixture",
+      "baseline_entries": [
+        "Horizon Stone",
+        "Kruphix, God of Horizons",
+        "Ozai, the Phoenix King",
+        "Omnath, Locus of Mana",
+        "Omnath, Locus of the Void"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Omnath, Locus of All",
+          "remaining_blocker": "Full revealed-top-card conditional mana body remains incomplete"
+        }
+      ],
+      "implementation_commit": "acba3f13b",
+      "source_review_commit": "7d30e27be",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Typed mana loss preserves exact per-unit producer/restriction/retention pairing; conversion is not new mana production.",
+        "One atomic resource owner and resumable APNAP choices cover direct and turn-runner boundaries, cleanup/end-combat ordering and expired-marker handling.",
+        "Five full bodies with checked wide mana values and mana-derived characteristic/credit rollback; all scenarios authored and unrun. Omnath, Locus of All remains partial for its separate top-card body."
+      ],
+      "combined_source_correction": "b5412994214a8b30cc7c3e44a12c447f673d381b"
+    },
+    {
+      "id": "combat-declaration-triggers",
+      "stage": 51,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/combat_declaration_triggers.json.fixture",
+      "baseline_entries": [
+        "Hezrou // Demonic Stench",
+        "Neyith of the Dire Hunt",
+        "Righteous Indignation",
+        "Yuriko, Blade of the Mighty"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "38e5e52dd",
+      "source_review_commit": "2b890badf",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Grouped declaration and Fight receipts retain exact current/historical combat participants and per-defender attack scope.",
+        "Complete Adventure/paid hybrid/attack and block restriction bodies; untargeted definite blocker buff survives type changes without borrowing another incarnation."
       ]
     }
   ],
@@ -3817,7 +3882,7 @@
       "source_families": []
     },
     {
-      "card_name": "Altaïr Ibn-La'Ahad",
+      "card_name": "Alta\u00efr Ibn-La'Ahad",
       "oracle_ids": [
         "43dc4b0c-e437-4abc-a3fb-48bd3098de88"
       ],
@@ -4029,7 +4094,7 @@
       "source_families": []
     },
     {
-      "card_name": "Andúril, Flame of the West",
+      "card_name": "And\u00faril, Flame of the West",
       "oracle_ids": [
         "e6521404-8474-4727-b2d0-537d15d8a63f"
       ],
@@ -4572,7 +4637,7 @@
       "source_families": []
     },
     {
-      "card_name": "Arna Kennerüd, Skycaptain",
+      "card_name": "Arna Kenner\u00fcd, Skycaptain",
       "oracle_ids": [
         "436e7548-f8d5-43af-947d-b382da0d19b3"
       ],
@@ -4601,7 +4666,11 @@
       "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "trap-alternative-costs"
-      ]
+      ],
+      "previously_proposed_complete": true,
+      "source_gap_discovered_stage": 51,
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "3ee5d4054"
     },
     {
       "card_name": "Artifact Ward",
@@ -4841,11 +4910,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [],
       "partial_source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "source_review_commit": "f5770d5ee"
     },
     {
       "card_name": "Atemsis, All-Seeing",
@@ -5441,8 +5511,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extra-die-ignore-lowest"
+      ],
+      "source_review_commit": "6633f3667"
     },
     {
       "card_name": "Barbarian Guides",
@@ -5537,15 +5610,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "target-player-reference-bindings"
       ],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 50,
-      "runtime_correctness_gaps": [
-        "Shared FightEffect resolves saved target slots through flat surviving targets and executes opposing damage instructions serially; exact slot ownership and one completed damage batch are required."
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "842d028d8"
     },
     {
       "card_name": "Barrowin of Clan Undurr",
@@ -6880,7 +6952,7 @@
       ]
     },
     {
-      "card_name": "Bösium Strip",
+      "card_name": "B\u00f6sium Strip",
       "oracle_ids": [
         "2fa6f1b1-00af-433f-b8e1-36db99cd9bba"
       ],
@@ -8547,11 +8619,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [],
       "partial_source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "source_review_commit": "f5770d5ee"
     },
     {
       "card_name": "Contagious Vorrac",
@@ -8991,11 +9064,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [],
       "partial_source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "source_review_commit": "f5770d5ee"
     },
     {
       "card_name": "Critical Hit",
@@ -9071,11 +9145,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [],
       "partial_source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "source_review_commit": "f5770d5ee"
     },
     {
       "card_name": "Cryptex",
@@ -9483,7 +9558,7 @@
       "source_review_commit": "678f4a32c"
     },
     {
-      "card_name": "Círdan the Shipwright",
+      "card_name": "C\u00edrdan the Shipwright",
       "oracle_ids": [
         "063e05b0-554f-4b55-9feb-e11f3927f3a6"
       ],
@@ -10935,11 +11010,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "partial_source_families": [],
+      "source_review_commit": "862f2f209"
     },
     {
       "card_name": "Drain Power",
@@ -11246,7 +11322,7 @@
       "source_families": []
     },
     {
-      "card_name": "Dúnedain Rangers",
+      "card_name": "D\u00fanedain Rangers",
       "oracle_ids": [
         "7de2a364-4383-437a-b6d6-55e4721a0141"
       ],
@@ -11646,11 +11722,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [],
       "partial_source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "source_review_commit": "f5770d5ee"
     },
     {
       "card_name": "Embolden",
@@ -14036,7 +14113,7 @@
       "source_families": []
     },
     {
-      "card_name": "Galadriel of Lothlórien",
+      "card_name": "Galadriel of Lothl\u00f3rien",
       "oracle_ids": [
         "8d3c9646-2b6b-4315-939d-5a920efc0a60"
       ],
@@ -15518,15 +15595,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "damage-history-quantities"
       ],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 50,
-      "runtime_correctness_gaps": [
-        "Shared FightEffect resolves saved target slots through flat surviving targets and executes opposing damage instructions serially; exact slot ownership and one completed damage batch are required."
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "842d028d8"
     },
     {
       "card_name": "Ground Seal",
@@ -16350,8 +16426,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-declaration-triggers"
+      ],
+      "source_review_commit": "2b890badf",
+      "partial_source_families": []
     },
     {
       "card_name": "Hibernation's End",
@@ -16619,8 +16699,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "mana-retention-conversion"
+      ],
+      "source_review_commit": "acc3e0075"
     },
     {
       "card_name": "Horn of Plenty",
@@ -17140,11 +17223,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
         "damage-history-quantities"
-      ]
+      ],
+      "source_review_commit": "bee294952"
     },
     {
       "card_name": "Imperiosaur",
@@ -18342,7 +18425,7 @@
       "source_families": []
     },
     {
-      "card_name": "Jötun Grunt",
+      "card_name": "J\u00f6tun Grunt",
       "oracle_ids": [
         "43fbfeec-bcaf-48b8-befe-b7346fec5a3a"
       ],
@@ -18880,7 +18963,7 @@
       "source_families": []
     },
     {
-      "card_name": "Khârn the Betrayer",
+      "card_name": "Kh\u00e2rn the Betrayer",
       "oracle_ids": [
         "3246eff5-8739-469f-a401-e5de927dd6bb"
       ],
@@ -19442,8 +19525,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "mana-retention-conversion"
+      ],
+      "source_review_commit": "acc3e0075"
     },
     {
       "card_name": "Kyler, Sigardian Emissary",
@@ -20094,7 +20180,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lim-Dûl's Vault",
+      "card_name": "Lim-D\u00fbl's Vault",
       "oracle_ids": [
         "3f8e7a45-4c6e-4ee6-93d0-b7de9715ec97"
       ],
@@ -20350,7 +20436,7 @@
       "source_families": []
     },
     {
-      "card_name": "Lord of the Nazgûl",
+      "card_name": "Lord of the Nazg\u00fbl",
       "oracle_ids": [
         "2e94bfb2-9f7d-43af-8995-6cd5ffb15b21"
       ],
@@ -22625,7 +22711,7 @@
       ]
     },
     {
-      "card_name": "Nazgûl",
+      "card_name": "Nazg\u00fbl",
       "oracle_ids": [
         "48a62778-7c11-486f-a0e1-020c283a7ef9"
       ],
@@ -22869,8 +22955,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-declaration-triggers"
+      ],
+      "source_review_commit": "2b890badf",
+      "partial_source_families": []
     },
     {
       "card_name": "Nezumi Graverobber // Nighteyes the Desecrator",
@@ -23339,7 +23429,7 @@
       "source_families": []
     },
     {
-      "card_name": "Oath of Lim-Dûl",
+      "card_name": "Oath of Lim-D\u00fbl",
       "oracle_ids": [
         "64e163c2-2378-4e4c-aefe-5e0d2fd19988"
       ],
@@ -23571,8 +23661,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "mana-retention-conversion"
+      ]
     },
     {
       "card_name": "Omnath, Locus of Creation",
@@ -23593,8 +23685,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "mana-retention-conversion"
+      ],
+      "source_review_commit": "a998d5dad",
+      "partial_source_families": []
     },
     {
       "card_name": "Omnath, Locus of the Void",
@@ -23603,8 +23699,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "mana-retention-conversion"
+      ],
+      "source_review_commit": "a998d5dad",
+      "partial_source_families": []
     },
     {
       "card_name": "Omo, Queen of Vesuva",
@@ -23956,8 +24056,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "mana-retention-conversion"
+      ],
+      "source_review_commit": "a998d5dad",
+      "partial_source_families": []
     },
     {
       "card_name": "Pack Leader",
@@ -24695,8 +24799,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extra-die-ignore-lowest"
+      ],
+      "source_review_commit": "6633f3667"
     },
     {
       "card_name": "Plagiarize",
@@ -26170,7 +26277,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ratonhnhaké꞉ton",
+      "card_name": "Ratonhnhak\u00e9\ua789ton",
       "oracle_ids": [
         "a37f8381-83a4-4b6b-8176-c90f6a61da74"
       ],
@@ -26918,8 +27025,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-declaration-triggers"
+      ],
+      "source_review_commit": "2b890badf",
+      "partial_source_families": []
     },
     {
       "card_name": "Riku of Many Paths",
@@ -26942,7 +27053,7 @@
       "source_families": []
     },
     {
-      "card_name": "Ring of Ma'rûf",
+      "card_name": "Ring of Ma'r\u00fbf",
       "oracle_ids": [
         "c79b9187-cbfe-43a0-bdc8-4f7e0d215607"
       ],
@@ -29388,15 +29499,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "heroic-and-target-participants"
       ],
       "previously_proposed_complete": true,
       "source_gap_discovered_stage": 50,
-      "runtime_correctness_gaps": [
-        "Shared FightEffect resolves saved target slots through flat surviving targets and executes opposing damage instructions serially; exact slot ownership and one completed damage batch are required."
-      ]
+      "runtime_correctness_gaps": [],
+      "source_review_recovery_closure": "842d028d8"
     },
     {
       "card_name": "Skulking Killer",
@@ -29874,11 +29984,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
         "consumer-mana-spending"
-      ]
+      ],
+      "partial_source_families": [],
+      "source_review_commit": "862f2f209"
     },
     {
       "card_name": "Soul Charmer",
@@ -32181,10 +32292,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "source-lifetime-control"
-      ]
+      ],
+      "source_review_commit": "2ab352273"
     },
     {
       "card_name": "The Apprentice's Folly",
@@ -32915,10 +33027,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
         "source-lifetime-control"
-      ]
+      ],
+      "source_review_commit": "d16f8c5aa+2efce3710"
     },
     {
       "card_name": "The Tale of Tamiyo",
@@ -37237,8 +37350,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "extra-die-ignore-lowest"
+      ],
+      "source_review_commit": "6633f3667"
     },
     {
       "card_name": "Xanathar, Guild Kingpin",
@@ -37445,8 +37561,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-declaration-triggers"
+      ],
+      "source_review_commit": "2b890badf",
+      "partial_source_families": []
     },
     {
       "card_name": "Yuriko, the Tiger's Shadow",
@@ -37763,7 +37883,7 @@
       "source_families": []
     },
     {
-      "card_name": "Éowyn, Lady of Rohan",
+      "card_name": "\u00c9owyn, Lady of Rohan",
       "oracle_ids": [
         "1ee3753c-3b6e-4182-9305-2ab757f485f0"
       ],
@@ -37982,18 +38102,18 @@
     },
     {
       "id": "fight-original-and-target-ownership",
-      "status": "source_correction_in_progress_validation_deferred",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
       "affected_previously_proposed_complete": [
         "Barroom Brawl",
         "Grothama, All-Devouring",
         "Skophos Maze-Warden"
       ],
-      "held_new_cards": [
-        "The Super Hero Civil War"
-      ],
+      "held_new_cards": [],
       "evidence": "crates/ironsmith-engine/src/effects/damage/fight.rs",
-      "remaining_boundary": "Shared FightEffect resolves saved target slots through flat surviving targets and executes opposing damage instructions serially; exact slot ownership and one completed damage batch are required.",
-      "source_review": "Independent read-only review2026-10-04T12:51Z; quantity worker assigned repair."
+      "remaining_boundary": "Exact saved-slot ownership, simultaneous original/result damage and typed checked-discovery rollback are source-addressed. All actual validation deferred.",
+      "source_review": "Independent read-only review2026-10-04T12:51Z; quantity worker assigned repair.",
+      "source_correction_commit": "842d028d8",
+      "source_review_commit": "2efce3710"
     },
     {
       "id": "mana-unit-checkpoint-completeness",
@@ -38012,6 +38132,18 @@
       "source_review_commit": "1827b7240",
       "evidence": "architecture/card-failure-mana-provenance-recovery.md",
       "remaining_boundary": "Known unit/provenance export/import omission source-addressed. Native branches and authenticated genesis replay retain exact units; all execution remains deferred."
+    },
+    {
+      "id": "distributed-damage-original-owner",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "affected_previously_proposed_complete": [
+        "Arrow Volley Trap"
+      ],
+      "held_new_cards": [],
+      "remaining_boundary": "Known allocation-owner and locked-announcement defects source-addressed; all actual validation deferred.",
+      "evidence": "crates/ironsmith-engine/src/effects/damage/deal_distributed_damage.rs",
+      "source_correction_commit": "3ee5d4054",
+      "source_review_commit": "bee294952"
     }
   ]
 }

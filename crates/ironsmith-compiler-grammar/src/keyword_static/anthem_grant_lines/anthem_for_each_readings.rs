@@ -170,6 +170,9 @@ fn read_special_shape(
                     })?;
                 return Ok(Some(AnthemCountExpression::AttachedToSource(filter)));
             }
+            anthem_grant_grammar::ForEachSpecialShape::TotalUnspentManaYouHave => {
+                return Ok(Some(AnthemCountExpression::TotalUnspentMana(PlayerFilter::You)));
+            }
             anthem_grant_grammar::ForEachSpecialShape::UnspentGreenManaYouHave => {
                 return Ok(Some(AnthemCountExpression::UnspentMana {
                     player: PlayerFilter::You,

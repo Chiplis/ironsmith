@@ -3106,6 +3106,7 @@ mod live_action_rollback_tests {
                     preserved_source_ids: vec![],
                     prefer_life: false,
                     required_life_pips: vec![],
+                    x_allocation: None,
                 },
             },
         );

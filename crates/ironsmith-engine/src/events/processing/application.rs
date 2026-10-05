@@ -698,6 +698,18 @@ pub(super) fn apply_trait_replacement(
             TraitApplyResult::Modified(event.rewrap(draw.with_player(effect.controller)))
         }
 
+        ReplacementAction::ConvertUnspentMana(symbol) => {
+            let Some(loss) = crate::events::downcast_event::<crate::events::ManaLostEvent>(event.inner()) else {
+                return Ok(TraitApplyResult::Unchanged(event));
+            };
+            if !crate::events::mana::POOL_SYMBOLS.contains(symbol) {
+                return Err(crate::effects::ExecutionError::InternalError("invalid mana conversion type".into()));
+            }
+            let mut converted = loss.clone();
+            converted.converted_to = Some(*symbol);
+            TraitApplyResult::Modified(event.rewrap(converted))
+        }
+
         ReplacementAction::RewriteMana { .. } => {
             let Some(mana) = crate::events::downcast_event::<crate::events::ManaAddedEvent>(event.inner()) else {
                 return Ok(TraitApplyResult::Unchanged(event));

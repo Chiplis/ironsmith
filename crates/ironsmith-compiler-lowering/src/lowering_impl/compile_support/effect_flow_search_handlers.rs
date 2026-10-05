@@ -596,6 +596,27 @@ fn try_compile_for_each_object_as_damage_source(
     } else {
         resolve_value_it_tag(amount, &refs)?
     };
+    if source.is_some_and(|source| source == target) {
+        let recipients = ChooseSpec::All(resolved_filter);
+        let damage = Effect::new(
+            crate::effects::DealDamageBySourcesEffect::new(
+                vec![recipients.clone()],
+                resolved_amount,
+                ChooseSpec::Source,
+            )
+            .with_recipient_binding(ironsmith_core::DamageRecipientSetBinding::EachSource)
+            .with_unpreventable(*unpreventable),
+        );
+        return Ok(Some((
+            vec![tag_object_target_effect(
+                damage,
+                &recipients,
+                ctx,
+                "damaged",
+            )],
+            choices,
+        )));
+    }
     let damage_amount = super::effect_dispatch::bind_source_value_to_damage_source(
         &resolved_amount,
         &ChooseSpec::Iterated,
@@ -1544,4 +1565,74 @@ fn unless_payer_before_consequence(payer: PlayerFilter, consequence: &[Effect]) 
         None
     }
     actor_for(consequence, &tag).unwrap_or(payer)
+}
+
+#[cfg(test)]
+mod zipped_self_damage_lowering_tests {
+    use super::*;
+    fn owners(effect: &Effect, found: &mut Vec<crate::effects::DealDamageBySourcesEffect>) {
+        assert!(
+            effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+                .is_none(),
+            "reflexive source set must not survive as a serial loop"
+        );
+        if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
+            found.push(damage.clone());
+        }
+        effect.visit_child_effects(&mut |child| owners(child, found));
+    }
+    #[test]
+    fn direct_and_explicit_iteration_shapes_lower_to_the_same_zipped_owner() {
+        for nested in [false, true] {
+            for unpreventable in [false, true] {
+                let mut filter = ObjectFilter::creature();
+                filter.tapped = true;
+                filter.set_plural_object_noun_surface(true);
+                let source = TargetAst::Object(filter.clone(), None, None);
+                let mut ast = EffectAst::subject_verb_damage_with_source(
+                    source.clone(),
+                    Value::SourcePower,
+                    source,
+                );
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                            unpreventable: value,
+                            ..
+                        }),
+                    ..
+                }) = &mut ast
+                {
+                    *value = unpreventable;
+                } else {
+                    panic!("expected power damage");
+                }
+                if nested {
+                    ast = EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+                        filter,
+                        effects: vec![ast],
+                    });
+                }
+                let (effects, choices) =
+                    compile_effect(&ast, &mut EffectLoweringContext::new()).unwrap();
+                assert!(choices.is_empty());
+                let mut found = Vec::new();
+                for effect in &effects {
+                    owners(effect, &mut found);
+                }
+                assert_eq!(found.len(), 1);
+                assert_eq!(
+                    found[0].recipient_binding,
+                    ironsmith_core::DamageRecipientSetBinding::EachSource
+                );
+                assert_eq!(
+                    found[0].source_binding,
+                    ironsmith_core::DamageSourceSetBinding::LiveMembers
+                );
+                assert_eq!(found[0].amount, Value::SourcePower);
+                assert_eq!(found[0].unpreventable, unpreventable);
+            }
+        }
+    }
 }

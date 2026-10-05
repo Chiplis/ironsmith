@@ -4,6 +4,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    if let Some(quantity) = capped_damage_quantities::parse(words) { return Some(quantity); }
     if let Some(quantity) = extrema_quantities::parse(words) {
         return Some(quantity);
     }

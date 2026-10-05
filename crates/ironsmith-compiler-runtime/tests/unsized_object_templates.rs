@@ -266,7 +266,7 @@ fn noncreature_template_clears_old_abilities_before_its_new_mana_grant() {
     let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
     for definition in [direct, materialize_artifact(&restored).unwrap()] {
         let mut game = game();
-        let creature = ironsmith::cards::CardDefinitionBuilder::new(CardId::new(), "Old abilities witness")
+        let creature = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Old abilities witness")
             .card_types(vec![CardType::Creature, CardType::Enchantment])
             .subtypes(vec![Subtype::Elf])
             .power_toughness(PowerToughness::fixed(2, 3))

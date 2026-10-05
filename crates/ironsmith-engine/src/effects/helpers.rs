@@ -637,6 +637,12 @@ fn resolve_effect_metric(
             .events_of_type::<LifeGainEvent>()
             .map(|event| event.amount as i32)
             .sum(),
+        EffectMetric::DamageDealtCappedByRecipient => {
+            if source != EffectMetricSource::Outcome {
+                return Err(ExecutionError::UnresolvableValue("capped damage requires an instruction outcome".into()));
+            }
+            return resolve_capped_damage_result(game, outcome);
+        }
         EffectMetric::DamageDealt => outcome
             .events_of_type::<DamageEvent>()
             .map(|event| event.amount as i32)
@@ -750,6 +756,49 @@ fn resolve_effect_metric(
     Ok(resolved)
 }
 
+fn resolve_capped_damage_result(game: &GameState, outcome: &EffectOutcome) -> Result<i32, ExecutionError> {
+    let original = outcome.instruction_result();
+    let mut amount = original.events_of_type::<DamageEvent>().map(|event| u128::from(event.amount)).sum::<u128>();
+    if amount == 0 { return Ok(0); }
+    let recipients = original.execution_facts.iter().filter_map(|fact| match fact {
+        crate::effect::ExecutionFact::DamageRecipientBefore(receipt) => Some(receipt), _ => None,
+    }).collect::<Vec<_>>();
+    let [recipient] = recipients.as_slice() else {
+        return Err(ExecutionError::UnresolvableValue("capped damage requires one exact original-recipient receipt".into()));
+    };
+    match recipient {
+        crate::effect::DamageRecipientBefore::Player { life, .. } => amount = amount.min((*life).max(0) as u128),
+        crate::effect::DamageRecipientBefore::Object { object, was_creature, loyalty } => {
+            if let Some(loyalty) = loyalty { amount = amount.min(u128::from(*loyalty)); }
+            if *was_creature {
+                // CR 608.2h: the printed creature-toughness cap is current
+                // information, unlike the explicitly pre-damage life/loyalty.
+                let toughness = if game.object(*object).is_some_and(|object| object.zone == Zone::Battlefield)
+                    && !game.is_phased_out(*object) {
+                    let checked = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+                    let frame = checked.try_current_characteristics(*object)
+                        .map_err(ExecutionError::ContinuousDiscovery)?
+                        .ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no available current frame".into()))?;
+                    if frame.card_types.contains(&CardType::Creature) {
+                        frame.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no current toughness evidence".into()))?
+                    } else { 0 }
+                } else {
+                    let snapshot = game.turn_store.turn_history.source_last_known_snapshot(*object)
+                        .ok_or_else(|| ExecutionError::UnresolvableValue("original damaged creature has no exact departure LKI".into()))?;
+                    if snapshot.card_types.contains(&CardType::Creature) {
+                        snapshot.toughness.ok_or_else(|| ExecutionError::UnresolvableValue(
+                            "original damaged creature has no retained toughness evidence".into()))?
+                    } else { 0 }
+                };
+                amount = amount.min(toughness.max(0) as u128);
+            }
+        }
+    }
+    crate::events::damage::checked_damage_count(amount, "recipient-capped damage result")
+}
+
 fn resolve_prior_effect_metric(
     game: &GameState,
     ctx: &ExecutionContext,
@@ -758,6 +807,10 @@ fn resolve_prior_effect_metric(
 ) -> Result<i32, ExecutionError> {
     if query.filter.is_none() && query.player.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
+    }
+
+    if query.metric == EffectMetric::DamageDealtCappedByRecipient {
+        return Err(ExecutionError::UnresolvableValue("recipient-capped damage does not accept a memory filter".into()));
     }
 
     let Some(outcome) = ctx.get_outcome(effect_id) else {

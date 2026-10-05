@@ -1,3 +1,5 @@
+#[path = "die_roll_replacements.rs"]
+mod die_roll_replacements;
 use crate::decision::FallbackStrategy;
 use crate::decisions::{ask_choose_multiple, ask_choose_one, ask_may_choice};
 use crate::effect::OutcomeStatus;
@@ -39,7 +41,7 @@ fn available_modifiers(
     game.battlefield
         .iter()
         .flat_map(|source| {
-            let Some(object) = game.object(*source) else {
+            let Some(object) = game.object(*source).filter(|_| !game.is_phased_out(*source)) else {
                 return Vec::new();
             };
             let controller = game.controller_of(object);
@@ -269,15 +271,7 @@ pub(crate) fn roll_dice_with_modifiers(
     count: u32,
     sides: u32,
 ) -> Result<Option<Vec<ResolvedDieRoll>>, ExecutionError> {
-    let mut rolls = (0..count)
-        .map(|_| {
-            let face = draw_die_face(game, sides);
-            ResolvedDieRoll {
-                natural_result: face,
-                result: face,
-            }
-        })
-        .collect::<Vec<_>>();
+    let Some(mut rolls) = die_roll_replacements::roll_replacement_batch(game, ctx, player, count, sides)? else { return Ok(None); };
     if !apply_reroll_modifiers(game, ctx, player, sides, &mut rolls)? {
         return Ok(None);
     }

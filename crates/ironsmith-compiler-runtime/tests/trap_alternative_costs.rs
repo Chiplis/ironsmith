@@ -1304,3 +1304,81 @@ fn each_player_token_entry_and_creation_additions_wait_for_every_original_partic
         }
     }
 }
+
+#[test]
+fn arrow_volley_keeps_announced_shares_and_commits_all_allocations_before_additions() {
+    for definition in definitions("Arrow Volley Trap") {
+        for illegal_first in [false, true] {
+            let mut game = game();
+            let ids = (0..4)
+                .map(|_| creature(&mut game, B, ColorSet::GREEN))
+                .collect::<Vec<_>>();
+            attackers(&mut game, B, &ids);
+            let trap = game.create_object_from_definition(&definition, A, Zone::Hand);
+            mana(&mut game, A, &[ManaSymbol::Colorless, ManaSymbol::White]);
+            let mut choices = Choices {
+                targets: vec![Target::Object(ids[0]), Target::Object(ids[1])],
+                distribution: vec![(Target::Object(ids[0]), 3), (Target::Object(ids[1]), 2)],
+                ..Default::default()
+            };
+            let action = action(&game, A, trap, true).unwrap();
+            announce(&mut game, action, &mut choices);
+            let spell = game.stack.last().unwrap().object_id;
+            if illegal_first {
+                let moved = game.move_object_by_effect(ids[0], Zone::Exile).unwrap();
+                game.move_object(moved, Zone::Battlefield).unwrap();
+            } else {
+                game.effect_store.replacement_effects.add_one_shot_effect(
+                    ironsmith::replacement::ReplacementEffect::with_matcher(
+                        spell,
+                        A,
+                        ironsmith::events::damage::matchers::DamageToObjectMatcher::new(
+                            ironsmith::target::ObjectFilter::specific(ids[0]),
+                        ),
+                        ironsmith::replacement::ReplacementAction::Additionally(vec![
+                            ironsmith::effect::Effect::exile(
+                                ironsmith::target::ChooseSpec::SpecificObject(ids[1]),
+                            ),
+                        ]),
+                    ),
+                );
+            }
+            resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+            let receipts = game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+                .filter(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some_and(|event| event.source == spell)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(receipts.len(), if illegal_first { 1 } else { 2 });
+            assert!(receipts.iter().any(|record| {
+                record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .is_some_and(|event| {
+                        event.target == ironsmith::events::DamageTarget::Object(ids[1])
+                            && event.amount == 2
+                    })
+            }));
+            if illegal_first {
+                assert_eq!(game.damage_on(ids[1]), 2);
+            } else {
+                assert!(!game.battlefield.contains(&ids[1]));
+                assert_eq!(game.damage_on(ids[0]), 3);
+                assert!(receipts[0].event.simultaneous_batch().is_some());
+                assert_eq!(
+                    receipts[0].event.simultaneous_batch(),
+                    receipts[1].event.simultaneous_batch()
+                );
+            }
+            assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
+        }
+    }
+}

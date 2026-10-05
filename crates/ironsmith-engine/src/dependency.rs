@@ -1633,6 +1633,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::CasterManaSpentToCastTriggeringObject
+        | Value::ManaSpentOnX(_)
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
@@ -2335,6 +2336,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::KicksPaidOf(_)
         | Value::ManaSpentToCastTriggeringObject
         | Value::CasterManaSpentToCastTriggeringObject
+        | Value::ManaSpentOnX(_)
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::WasKicked
@@ -3432,6 +3434,7 @@ mod tests {
                 defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -3493,6 +3496,7 @@ mod tests {
                 defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3619,6 +3623,7 @@ mod tests {
                 defense: land.base_defense,
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3805,6 +3810,7 @@ mod tests {
                 defense: object.base_defense,
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
+                numeric_range_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -4035,6 +4041,7 @@ mod tests {
             defense: object.base_defense,
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
+            numeric_range_error: None,
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: object.aura_attach_filter_owned(),
             controller: object.owner,

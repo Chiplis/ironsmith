@@ -87,6 +87,9 @@ fn vanilla(name: &str, cost: &str, subtype: &str, p: i32, t: i32) -> CardDefinit
 #[derive(Default)]
 struct Choices {
     targets: Vec<Target>,
+    targets_explicit: bool,
+    rejected_assignment: Vec<Target>,
+    rejection_checks: usize,
     objects: Vec<ObjectId>,
     objects_explicit: bool,
     x: u32,
@@ -125,10 +128,11 @@ impl DecisionMaker for Choices {
         }
     }
     fn decide_targets(&mut self, game: &GameState, context: &TargetsContext) -> Vec<Target> {
-        if !self.targets.is_empty() {
-            assert_eq!(context.requirements.len(), self.targets.len());
-            for (requirement, target) in context.requirements.iter().zip(&self.targets) {
-                assert!(requirement.legal_targets.contains(target));
+        if self.targets_explicit || !self.targets.is_empty() {
+            assert!(ironsmith::targeting::validate_flat_target_assignment(&context.requirements,&self.targets));
+            if !self.rejected_assignment.is_empty() {
+                assert!(!ironsmith::targeting::validate_flat_target_assignment(&context.requirements,&self.rejected_assignment));
+                self.rejection_checks+=1;
             }
             self.targets.clone()
         } else {
@@ -322,13 +326,18 @@ fn enter(game: &mut GameState, definition: &CardDefinition, owner: PlayerId, dm:
     receipt.original.into_result().unwrap().new_id
 }
 #[test]
-fn five_frozen_complete_bodies_are_strict_and_round_trip() {
-    let rows=fixtures().into_iter().filter(|row|row["proposed_complete"]==true).collect::<Vec<_>>();
-    assert_eq!(rows.len(),5);
-    for row in rows { for definition in definitions(row["name"].as_str().unwrap()) {
-        assert_eq!(definition.card.name,row["name"]);
-        assert!(format!("{definition:?}").contains("ObjectOnBattlefield"));
-    }}
+fn six_frozen_complete_bodies_are_strict_and_round_trip() {
+    let rows = fixtures()
+        .into_iter()
+        .filter(|row| row["proposed_complete"] == true)
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 7);
+    for row in rows {
+        for definition in definitions(row["name"].as_str().unwrap()) {
+            assert_eq!(definition.card.name, row["name"]);
+            assert!(format!("{definition:?}").contains("ObjectOnBattlefield"));
+        }
+    }
 }
 #[test]
 fn sower_source_control_changes_do_not_change_the_beneficiary_and_phasing_latches_expiry() {
@@ -459,5 +468,401 @@ fn common_grant_and_leading_duration_paths_expire_on_phase_out_but_literal_until
         game.phase_out(source);assert_eq!(game.current_controller(victim),Some(A),"literal until-leaves is not a visible-state predicate");
         game.phase_in(source);game.move_object_by_effect(source,Zone::Graveyard).unwrap();
         assert_eq!(game.current_controller(victim),Some(B));
+    }}
+}
+
+#[test]
+fn akroan_all_chapters_keep_source_lifetime_attack_scope_and_zipped_self_damage() {
+    fn visit(effect: &Effect, owners: &mut Vec<ironsmith_core::DealDamageBySourcesEffect>) {
+        if let Some(damage) = effect.downcast_ref::<ironsmith::effects::DealDamageBySourcesEffect>()
+        {
+            owners.push(damage.clone());
+        }
+        if let Some(each) = effect.downcast_ref::<ironsmith::effects::ForEachObject>() {
+            assert!(
+                !format!("{:?}", each.effects).contains("DealDamage"),
+                "self damage must not retain an enclosing serial loop"
+            );
+        }
+        effect.visit_child_effects(&mut |child| visit(child, owners));
+    }
+    for definition in definitions("The Akroan War") {
+        let mut owners = Vec::new();
+        for ability in &definition.abilities {
+            if let ironsmith::ability::AbilityKind::Triggered(trigger) = &ability.kind {
+                for segment in &trigger.effects.segments {
+                    for effect in &segment.default_effects {
+                        visit(effect, &mut owners);
+                    }
+                }
+            }
+        }
+        assert_eq!(owners.len(), 1);
+        assert_eq!(
+            owners[0].recipient_binding,
+            ironsmith_core::DamageRecipientSetBinding::EachSource
+        );
+        assert!(matches!(owners[0].sources.as_slice(), [source]
+            if matches!(source.base(), ChooseSpec::All(filter) if filter.tapped)));
+        assert!(
+            definition
+                .canonical_text
+                .contains("deals damage to itself equal to its power"),
+            "{}",
+            definition.canonical_text
+        );
+        for additions in [false, true] {
+            let mut game = game();
+            let victim = game.create_object_from_definition(
+                &vanilla("Stolen subject", "{2}", "Bear", 1, 50),
+                B,
+                Zone::Battlefield,
+            );
+            let first = game.create_object_from_definition(
+                &compile_to_runtime_definition(
+                    "Lifelink self source",
+                    "Type: Creature — Human\nPower/Toughness: 3/50\nLifelink",
+                    false,
+                )
+                .unwrap(),
+                A,
+                Zone::Battlefield,
+            );
+            let second = game.create_object_from_definition(&compile_to_runtime_definition(
+                "Life-sized self source", "Type: Creature — Human\nPower/Toughness: */*\nThis creature's power and toughness are each equal to your life total.", false).unwrap(), A, Zone::Battlefield);
+            let opponent = game.create_object_from_definition(
+                &vanilla("Opponent self source", "{2}", "Bear", 5, 50),
+                B,
+                Zone::Battlefield,
+            );
+            let untapped = game.create_object_from_definition(
+                &vanilla("Untapped excluded", "{2}", "Bear", 17, 50),
+                C,
+                Zone::Battlefield,
+            );
+            let mut dm = Choices {
+                targets: vec![Target::Object(victim)],
+                ..Default::default()
+            };
+            cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+            flush(&mut game, &mut dm);
+            let saga = named(&game, "The Akroan War");
+            assert_eq!(game.current_controller(victim), Some(A));
+            assert_eq!(
+                game.counter_count(saga, ironsmith::object::CounterType::Lore),
+                1
+            );
+            lore(&mut game, saga, &mut Choices::default());
+            for id in [opponent, untapped] {
+                assert!(ironsmith::rules::combat::must_attack_with_game(
+                    game.object(id).unwrap(),
+                    &game
+                ));
+            }
+            for id in [first, second, victim] {
+                assert!(!ironsmith::rules::combat::must_attack_with_game(
+                    game.object(id).unwrap(),
+                    &game
+                ));
+            }
+            for id in [first, second, opponent] {
+                apply(&mut game, saga, Effect::tap(ChooseSpec::SpecificObject(id)));
+            }
+            if additions {
+                game.effect_store.replacement_effects.add_one_shot_effect(
+                    ironsmith::replacement::ReplacementEffect::with_matcher(
+                        saga,
+                        A,
+                        ironsmith::events::damage::matchers::DamageToObjectMatcher::new(
+                            ironsmith::target::ObjectFilter::specific(first),
+                        ),
+                        ironsmith::replacement::ReplacementAction::Additionally(vec![
+                            Effect::pump(
+                                10,
+                                10,
+                                ChooseSpec::SpecificObject(second),
+                                Until::EndOfTurn,
+                            ),
+                            Effect::tap(ChooseSpec::SpecificObject(untapped)),
+                        ]),
+                    ),
+                );
+            }
+            lore(&mut game, saga, &mut Choices::default());
+            assert_eq!(game.damage_on(first), 3);
+            assert_eq!(
+                game.damage_on(second),
+                20,
+                "all powers precede lifelink or replacement additions"
+            );
+            assert_eq!(game.damage_on(opponent), 5);
+            assert_eq!(game.damage_on(victim), 0);
+            assert_eq!(
+                game.damage_on(untapped),
+                0,
+                "the tapped source set was captured once"
+            );
+            assert_eq!(game.player(A).unwrap().life, 23);
+            assert_eq!(game.player(B).unwrap().life, 20);
+            let damage = game
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .chain(game.turn_store.turn_history.staged_event_records.iter())
+                .filter(|record| {
+                    record
+                        .event
+                        .downcast::<ironsmith::events::DamageEvent>()
+                        .is_some()
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                damage.len(),
+                3,
+                "no Cartesian cross-damage or duplicate receipts"
+            );
+            let batch = damage[0].event.simultaneous_batch();
+            assert!(batch.is_some());
+            for record in damage {
+                let event = record
+                    .event
+                    .downcast::<ironsmith::events::DamageEvent>()
+                    .unwrap();
+                assert_eq!(
+                    event.target,
+                    ironsmith::events::DamageTarget::Object(event.source)
+                );
+                assert_eq!(record.event.simultaneous_batch(), batch);
+            }
+            let mut queue = TriggerQueue::new();
+            ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut queue, &mut dm)
+                .unwrap();
+            assert!(
+                !game.battlefield.contains(&saga),
+                "the final chapter releases the Saga"
+            );
+            assert_eq!(
+                game.current_controller(victim),
+                Some(B),
+                "source-bound chapter I expires"
+            );
+            assert!(
+                ironsmith::rules::combat::must_attack_with_game(
+                    game.object(opponent).unwrap(),
+                    &game
+                ),
+                "chapter II has its own duration, independent of Saga departure"
+            );
+            for expected in [B, C, A] {
+                game.next_turn();
+                assert_eq!(game.turn.active_player, expected);
+                assert_eq!(
+                    ironsmith::rules::combat::must_attack_with_game(
+                        game.object(opponent).unwrap(),
+                        &game
+                    ),
+                    expected != A
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn akroan_attack_rule_tracks_new_creatures_and_current_control_and_survives_ability_loss() {
+    for definition in definitions("The Akroan War") {
+        let mut game = game();
+        let victim = game.create_object_from_definition(
+            &vanilla("Chapter I target", "{2}", "Bear", 1, 50),
+            B,
+            Zone::Battlefield,
+        );
+        let incoming = game.create_object_from_definition(
+            &vanilla("Future opponent", "{2}", "Bear", 2, 50),
+            A,
+            Zone::Battlefield,
+        );
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        lore(
+            &mut game,
+            source,
+            &mut Choices {
+                targets: vec![Target::Object(victim)],
+                ..Default::default()
+            },
+        );
+        lore(&mut game, source, &mut Choices::default());
+        let entrant = enter(
+            &mut game,
+            &vanilla("Later entrant", "{2}", "Bear", 3, 50),
+            B,
+            &mut Choices::default(),
+        );
+        assert!(
+            ironsmith::rules::combat::must_attack_with_game(game.object(entrant).unwrap(), &game),
+            "later entrants satisfy the rule's live filter"
+        );
+        assert!(!ironsmith::rules::combat::must_attack_with_game(
+            game.object(incoming).unwrap(),
+            &game
+        ));
+        let gain = Effect::new(ironsmith::effects::GainControlEffect::permanent(
+            ChooseSpec::SpecificObject(incoming),
+        ));
+        execute_effect(
+            &mut game,
+            &gain,
+            &mut EffectContext::new(source, B, &mut SelectFirstDecisionMaker),
+        )
+        .unwrap();
+        assert!(ironsmith::rules::combat::must_attack_with_game(
+            game.object(incoming).unwrap(),
+            &game
+        ));
+        apply(
+            &mut game,
+            source,
+            Effect::new(ironsmith::effects::GainControlEffect::permanent(
+                ChooseSpec::SpecificObject(entrant),
+            )),
+        );
+        assert!(
+            !ironsmith::rules::combat::must_attack_with_game(game.object(entrant).unwrap(), &game),
+            "leaving the opposing-controller set releases the requirement"
+        );
+        apply(
+            &mut game,
+            source,
+            Effect::new(ironsmith::effects::ApplyContinuousEffect::new(
+                ironsmith::continuous::EffectTarget::Specific(incoming),
+                ironsmith::continuous::Modification::RemoveAllAbilities,
+                Until::Forever,
+            )),
+        );
+        assert!(!has(
+            &game,
+            incoming,
+            ironsmith::static_abilities::StaticAbilityId::MustAttack
+        ));
+        assert!(
+            ironsmith::rules::combat::must_attack_with_game(game.object(incoming).unwrap(), &game),
+            "losing abilities cannot erase a resolving combat rule"
+        );
+        apply(
+            &mut game,
+            source,
+            Effect::exile(ChooseSpec::SpecificObject(source)),
+        );
+        assert_eq!(game.current_controller(victim), Some(B));
+        game.next_turn();
+        assert_eq!(game.turn.active_player, B);
+        let options = ironsmith::decision::compute_legal_attackers(
+            &game,
+            &ironsmith::combat_state::CombatState::default(),
+        );
+        assert!(
+            options
+                .iter()
+                .any(|option| option.creature == incoming && option.must_attack)
+        );
+        assert!(
+            ironsmith::game_loop::apply_attacker_declarations(
+                &mut game,
+                &mut ironsmith::combat_state::CombatState::default(),
+                &mut TriggerQueue::new(),
+                &[]
+            )
+            .is_err(),
+            "the declaration optimizer must enforce the actual rule, not just expose a UI hint"
+        );
+        game.next_turn();
+        game.next_turn();
+        assert_eq!(game.turn.active_player, A);
+        assert!(!ironsmith::rules::combat::must_attack_with_game(
+            game.object(incoming).unwrap(),
+            &game
+        ));
+    }
+}
+
+fn next_saga_chapter(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
+    let mut queue=TriggerQueue::new();
+    ironsmith::game_loop::add_lore_counter_and_check_chapters(game,source,&mut queue).unwrap();
+    put_triggers_on_stack_with_dm(game,&mut queue,dm).unwrap();
+    flush(game,dm);
+}
+#[test]
+fn super_hero_civil_war_full_saga_keeps_aggregate_targets_frozen_pump_and_optional_fight() {
+    for definition in definitions("The Super Hero Civil War") {
+        let mut game=game();
+        let own=game.create_object_from_definition(&vanilla("Own fighter","{3}","Warrior",2,8),A,Zone::Battlefield);
+        let four=game.create_object_from_definition(&vanilla("Four mana","{4}","Bear",2,8),B,Zone::Battlefield);
+        let two=game.create_object_from_definition(&vanilla("Two mana","{2}","Bear",2,8),C,Zone::Battlefield);
+        let three=game.create_object_from_definition(&vanilla("Over-budget alternative","{3}","Bear",1,8),B,Zone::Battlefield);
+        let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+        let mut dm=Choices{targets:vec![Target::Object(four),Target::Object(two)],
+            rejected_assignment:vec![Target::Object(four),Target::Object(three)],..Default::default()};
+        next_saga_chapter(&mut game,source,&mut dm);assert_eq!(dm.rejection_checks,1);
+        assert_eq!(game.current_controller(four),Some(A));assert_eq!(game.current_controller(two),Some(A));
+        dm.targets.clear();dm.rejected_assignment.clear();next_saga_chapter(&mut game,source,&mut dm);
+        for id in [own,four,two] {assert_eq!(pt(&game,id),(3,9));assert!(has(&game,id,ironsmith::static_abilities::StaticAbilityId::Vigilance));}
+        let later=game.create_object_from_definition(&vanilla("Late own entrant","{1}","Bear",1,3),A,Zone::Battlefield);
+        assert_eq!(pt(&game,later),(1,3));assert!(!has(&game,later,ironsmith::static_abilities::StaticAbilityId::Vigilance));
+        dm.targets=vec![Target::Object(own),Target::Object(three)];next_saga_chapter(&mut game,source,&mut dm);
+        assert_eq!(game.damage_on(own),1);assert_eq!(game.damage_on(three),3);
+        ironsmith::game_loop::check_and_apply_sbas(&mut game,&mut TriggerQueue::new()).unwrap();
+        assert!(game.object(source).is_none());
+        assert_eq!(game.current_controller(four),Some(B));assert_eq!(game.current_controller(two),Some(C));
+        assert_eq!(pt(&game,four),(3,9),"chapterII's locked pump does not end with its source");
+        ironsmith::turn::execute_cleanup_step(&mut game);assert_eq!(pt(&game,four),(2,8));
+    }
+}
+#[test]
+fn super_hero_civil_war_can_take_no_creature_then_decline_its_optional_fight_opponent() {
+    for definition in definitions("The Super Hero Civil War") {
+        let mut game=game();let own=game.create_object_from_definition(&vanilla("Only fighter","{1}","Bear",2,8),A,Zone::Battlefield);
+        let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+        let mut dm=Choices{targets_explicit:true,..Default::default()};
+        next_saga_chapter(&mut game,source,&mut dm);
+        dm.targets_explicit=false;next_saga_chapter(&mut game,source,&mut dm);
+        dm.targets=vec![Target::Object(own)];next_saga_chapter(&mut game,source,&mut dm);
+        assert_eq!(game.damage_on(own),0);
+        ironsmith::game_loop::check_and_apply_sbas(&mut game,&mut TriggerQueue::new()).unwrap();assert!(game.object(source).is_none());
+    }
+}
+
+#[test]
+fn control_saga_revalidates_the_whole_current_mana_value_group_without_choosing_a_subset() {
+    for definition in definitions("The Super Hero Civil War") {for case in 0..5 {
+        let mut game=game();
+        let source=game.create_object_from_definition(&definition,A,Zone::Battlefield);
+        let first=game.create_object_from_definition(&vanilla("First target","{4}","Bear",2,8),B,Zone::Battlefield);
+        let second=game.create_object_from_definition(&vanilla("Second target","{2}","Bear",2,8),C,Zone::Battlefield);
+        let mut dm=Choices{targets:if case==0{vec![Target::Object(first)]}else{vec![Target::Object(first),Target::Object(second)]},..Default::default()};
+        let mut queue=TriggerQueue::new();
+        ironsmith::game_loop::add_lore_counter_and_check_chapters(&mut game,source,&mut queue).unwrap();
+        put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
+        if case==2 {game.move_object_by_effect(first,Zone::Exile).unwrap();}
+        else {
+            let donor=game.create_object_from_definition(&vanilla("Copied characteristics",if case==0{"{7}"}else{"{5}"},"Bear",2,8),B,Zone::Battlefield);
+            let copy=ironsmith::effects::ApplyContinuousEffect::new_runtime(
+                ironsmith::continuous::EffectTarget::Specific(first),
+                ironsmith::effects::continuous::RuntimeModification::CopyOf{
+                    source:ChooseSpec::SpecificObject(donor),preserve_source_abilities:false,name_override:None,
+                    name_override_surface:None,add_supertypes:Vec::new(),copy_exception_surface:None,
+                },Until::EndOfTurn);
+            apply(&mut game,source,Effect::new(copy));
+            assert_eq!(game.current_characteristics(first).unwrap().mana_cost.unwrap().mana_value(),if case==0{7}else{5});
+            if case==3 {game.move_object_by_effect(first,Zone::Exile).unwrap();}
+            if case==4 {
+                apply(&mut game,source,Effect::new(ironsmith::effects::ApplyContinuousEffect::new(
+                    ironsmith::continuous::EffectTarget::Specific(first),
+                    ironsmith::continuous::Modification::AddAbility(ironsmith::static_abilities::StaticAbility::shroud()),Until::EndOfTurn)));
+            }
+        }
+        resolve(&mut game,&mut dm);
+        if case!=2 && case!=3 {assert_eq!(game.current_controller(first),Some(B));}
+        assert_eq!(game.current_controller(second),Some(if case==2{A}else{C}));
     }}
 }

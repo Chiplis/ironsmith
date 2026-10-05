@@ -45,7 +45,7 @@
     "mana_cost": "{1}{R}",
     "type_line": "Instant",
     "oracle_text": "Impact Resonance deals X damage divided as you choose among any number of target creatures, where X is the greatest amount of damage dealt by a source to a permanent or player this turn.",
-    "coverage_status": "partial_damage_occurrence_boundary"
+    "coverage_status": "proposed_complete"
   },
   {
     "name": "Grothama, All-Devouring",

@@ -79,8 +79,8 @@
     "source": "https://scryfall.com/card/clb/777/the-akroan-war?utm_source=api",
     "baseline_content_hash": "6dfe5c3e4b8253b9ec585f90371a7d68a8abb2f8406fcab7d4c174bf992bd1d4",
     "baseline_diagnostic": "unsupported control duration [rule-path=complete-simple-subject-verb > document-reading]; oracle-only fallback also failed: unsupported control duration [rule-path=complete-simple-subject-verb > document-reading]",
-    "proposed_complete": false,
-    "remaining_blocker": "Full secondary chapter or upkeep program review and scenarios pending",
+    "proposed_complete": true,
+    "remaining_blocker": null,
     "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
   },
   {
@@ -92,9 +92,9 @@
     "source": "https://scryfall.com/card/msh/308/the-super-hero-civil-war?utm_source=api",
     "baseline_content_hash": "1a1ed2e5d90c2db2aa963b11673bc82f8f18f9e605721d0a2c6dd5a4afd624f6",
     "baseline_diagnostic": "unsupported control duration [rule-path=complete-simple-subject-verb > document-reading]; oracle-only fallback also failed: unsupported control duration [rule-path=complete-simple-subject-verb > document-reading]",
-    "proposed_complete": false,
-    "remaining_blocker": "Full secondary chapter or upkeep program review and scenarios pending",
-    "validation_status": "UNVALIDATED: source only; no builds, tests, or compiler probes."
+    "proposed_complete": true,
+    "remaining_blocker": null,
+    "validation_status": "UNVALIDATED: full chapters source-reviewed through d16f8c5aa and shared Fight2efce3710; LKI legality inference retained as deferred gate."
   },
   {
     "name": "Infernal Denizen",

@@ -756,6 +756,10 @@ pub enum TriggerKind {
     PlayerTurnsFaceUp { player: PlayerFilter, filter: ObjectFilter },
     PlayerRollsResultMatching { player: PlayerFilter, result: Comparison, natural: bool },
     PlayerRollsNthDie { player: PlayerFilter, ordinal: u32 },
+    /// CR506.6: alone relative to this directly attacked player.
+    AttacksPlayerAlone { filter: ObjectFilter },
+    BecomesBlockedOneOrMore { filter: ObjectFilter },
+    KeywordActionMatchingObjectOneOrMore { action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1070,6 +1074,16 @@ impl Trigger {
             },
         )
     }
+    pub fn attacks_player_alone(filter: ObjectFilter) -> Self {
+        Self::typed("attacks_player_alone", TriggerKind::AttacksPlayerAlone { filter })
+    }
+    pub fn becomes_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed("becomes_blocked_one_or_more", TriggerKind::BecomesBlockedOneOrMore { filter })
+    }
+    pub fn keyword_action_matching_object_one_or_more(action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::typed("keyword_action_matching_object_one_or_more", TriggerKind::KeywordActionMatchingObjectOneOrMore { action, player, filter })
+    }
+
     pub fn attacks_alone(filter: ObjectFilter) -> Self {
         Self::typed("attacks_alone", TriggerKind::AttacksAlone { filter })
     }

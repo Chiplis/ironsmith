@@ -682,6 +682,11 @@ pub(crate) fn must_attack_with_view(
     view: &DerivedGameView<'_>,
 ) -> bool {
     view.object_has_static_ability_id(creature.id, StaticAbilityId::MustAttack)
+        || game
+            .effect_store
+            .cant_effects
+            .must_attack
+            .contains_key(&creature.id)
         || game.is_goaded(creature.id)
 }
 
@@ -844,6 +849,7 @@ mod tests {
             optional_costs_paid: OptionalCostsPaid::default(),
             mana_spent_to_cast: crate::player::ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: crate::player::ManaPool::default(),
             temporary_static_ability_grants: crate::object::TemporaryStaticAbilityGrants::new(ObjectId::from_raw(raw)),
             x_value: None,

@@ -71,6 +71,10 @@ pub enum EffectMetric {
     OtherNumber,
     /// Distinct A/E/I/O/U/Y letters in the name sticker applied by this effect.
     NameStickerUniqueVowels,
+    /// The original damage instruction's completed damage, limited by its
+    /// original recipient's pre-damage life/loyalty or current creature
+    /// toughness. Auxiliary replacement programs are separate instructions.
+    DamageDealtCappedByRecipient,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -851,6 +855,9 @@ pub enum Value {
     /// Actual, completed damage receipts from the current turn. This is not
     /// marked damage and never follows a card into a new object incarnation.
     DamageHistory(Box<crate::DamageHistoryQuery>),
+    /// Actual mana of this color allocated to X in this spell's completed
+    /// cast payment, including Assist and excluding fixed/base/tax payments.
+    ManaSpentOnX(Color),
 }
 
 impl Value {
@@ -1087,6 +1094,9 @@ pub enum Restriction {
     PlayLandsMatching(PlayerFilter, ObjectFilter),
     /// Only loyalty abilities of the matching objects are prohibited.
     ActivateLoyaltyAbilitiesOf(ObjectFilter),
+    /// A continuous combat rule, independent of removable granted abilities.
+    /// Its matching set is re-evaluated while the rule's duration is active.
+    MustAttack(ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1423,6 +1433,10 @@ impl Restriction {
 
     pub fn must_block_specific_attacker(blockers: ObjectFilter, attacker: ObjectFilter) -> Self {
         Self::MustBlockSpecificAttacker { blockers, attacker }
+    }
+
+    pub fn must_attack(filter: ObjectFilter) -> Self {
+        Self::MustAttack(filter)
     }
 
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {

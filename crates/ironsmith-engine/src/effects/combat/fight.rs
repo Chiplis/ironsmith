@@ -2,7 +2,9 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::events::processing::{SimultaneousDamageEvent, with_deferred_prevention_follow_ups};
+use crate::events::{DamageTarget, EventKind};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
@@ -64,22 +66,52 @@ impl FightEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<(crate::ids::ObjectId, crate::ids::ObjectId), ExecutionError> {
+        let legacy_operand = |spec: &ChooseSpec| {
+            matches!(spec.base(), ChooseSpec::Object(filter)
+            if !spec.is_target() && filter.tagged_constraints.is_empty() && !filter.source)
+        };
+        let legacy_flat_pair = legacy_operand(&self.creature1) && legacy_operand(&self.creature2);
         if ctx.target_assignments.is_empty()
+            && legacy_flat_pair
             && let Some(fighters) = ctx.resolve_two_object_targets()
         {
             return Ok(fighters);
         }
-        if ctx.target_assignments.is_empty() && !ctx.targets.is_empty() {
+        if ctx.target_assignments.is_empty() && legacy_flat_pair && !ctx.targets.is_empty() {
             return Err(ExecutionError::InvalidTarget);
         }
 
-        if let (Ok(creature1_candidates), Ok(creature2_candidates)) = (
-            Self::resolve_fighter_candidates(game, ctx, &self.creature1),
-            Self::resolve_fighter_candidates(game, ctx, &self.creature2),
-        ) && let Some(fighters) =
-            Self::select_fighter_pair(&creature1_candidates, &creature2_candidates)
-        {
-            return Ok(fighters);
+        let candidates = (
+            Self::resolve_fighter_candidates(game, ctx, &self.creature1, 0),
+            Self::resolve_fighter_candidates(
+                game,
+                ctx,
+                &self.creature2,
+                usize::from(self.creature1 == self.creature2),
+            ),
+        );
+        match candidates {
+            (Ok(first), Ok(second)) => {
+                return Self::select_fighter_pair(
+                    &first,
+                    &second,
+                    !self.mutual_surface
+                        && !(self.creature1 == self.creature2
+                            && self.creature1.count().max.is_none_or(|max| max > 1)),
+                )
+                .ok_or(ExecutionError::InvalidTarget);
+            }
+            (Err(error), _) | (_, Err(error))
+                if !matches!(
+                    error,
+                    ExecutionError::InvalidTarget
+                        | ExecutionError::TagNotFound(_)
+                        | ExecutionError::ObjectNotFound(_)
+                ) =>
+            {
+                return Err(error);
+            }
+            _ => {}
         }
         // CR 701.14b: if a targeted fighter is an illegal (or unchosen)
         // target, neither creature fights. Never substitute another creature.
@@ -98,29 +130,86 @@ impl FightEffect {
         game: &GameState,
         ctx: &ExecutionContext,
         spec: &ChooseSpec,
+        repeated_slot: usize,
     ) -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
-        if let ChooseSpec::Object(filter) = spec.base() {
-            let filter_ctx = ctx.filter_context(game);
-            let scoped = ctx
-                .targets
+        if spec.is_target() && !ctx.target_assignments.is_empty() {
+            // A saved assignment is authoritative even when its surviving
+            // range is empty. Refiltering all other surviving targets would
+            // let a second friendly fighter substitute for the illegal first.
+            let exact = ctx
+                .target_assignments
+                .iter()
+                .filter(|a| a.spec == *spec)
+                .collect::<Vec<_>>();
+            let assignments = if exact.is_empty() {
+                let compatible = ctx
+                    .target_assignments
+                    .iter()
+                    .filter(|a| {
+                        a.spec.base() == spec.base()
+                            || crate::targeting::target_spec_matches_chooser_assignment(
+                                spec, &a.spec,
+                            )
+                    })
+                    .collect::<Vec<_>>();
+                if compatible.len() > 1 {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "fight operand has no unique saved target assignment".into(),
+                    ));
+                }
+                compatible
+            } else {
+                exact
+            };
+            let assignment = if assignments.len() > 1 {
+                assignments.get(repeated_slot).copied()
+            } else {
+                assignments.first().copied()
+            }
+            .ok_or(ExecutionError::InvalidTarget)?;
+            let targets = ctx.targets.get(assignment.range.clone()).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "fight target assignment is outside its saved target frame".into(),
+                )
+            })?;
+            let objects = targets
                 .iter()
                 .filter_map(|target| match target {
-                    ResolvedTarget::Object(id) => Some(*id),
+                    ResolvedTarget::Object(object) => Some(*object),
                     ResolvedTarget::Player(_) => None,
                 })
-                .filter(|id| {
-                    game.object(*id)
-                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-                })
                 .collect::<Vec<_>>();
-            if !scoped.is_empty() {
-                return Ok(scoped);
-            }
-            // A targeted fighter is only ever one of the chosen targets.
+            return if objects.is_empty() {
+                Err(ExecutionError::InvalidTarget)
+            } else {
+                Ok(objects)
+            };
+        }
+        if let ChooseSpec::Object(filter) = spec.base() {
+            let filter_ctx = ctx.filter_context(game);
             if spec.is_target() {
-                return Err(ExecutionError::InvalidTarget);
+                let objects = ctx
+                    .targets
+                    .iter()
+                    .filter_map(|target| match target {
+                        ResolvedTarget::Object(id)
+                            if game.object(*id).is_some_and(|object| {
+                                filter.matches(object, &filter_ctx, game)
+                            }) =>
+                        {
+                            Some(*id)
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                return if objects.is_empty() {
+                    Err(ExecutionError::InvalidTarget)
+                } else {
+                    Ok(objects)
+                };
             }
-
+            // Untargeted object references must not inherit an unrelated
+            // announced target. Their own reference/filter owns the identity.
             let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
             let candidates = game
                 .zone_ids(zone)
@@ -129,18 +218,19 @@ impl FightEffect {
                         .is_some_and(|object| filter.matches(object, &filter_ctx, game))
                 })
                 .collect::<Vec<_>>();
-            if candidates.is_empty() {
-                return Err(ExecutionError::InvalidTarget);
-            }
-            return Ok(candidates);
+            return if candidates.is_empty() {
+                Err(ExecutionError::InvalidTarget)
+            } else {
+                Ok(candidates)
+            };
         }
-
         crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)
     }
 
     fn select_fighter_pair(
         creature1_candidates: &[crate::ids::ObjectId],
         creature2_candidates: &[crate::ids::ObjectId],
+        allow_self: bool,
     ) -> Option<(crate::ids::ObjectId, crate::ids::ObjectId)> {
         for creature1 in creature1_candidates {
             for creature2 in creature2_candidates {
@@ -150,47 +240,23 @@ impl FightEffect {
             }
         }
 
+        if !allow_self {
+            return None;
+        }
         Some((
             *creature1_candidates.first()?,
             *creature2_candidates.first()?,
         ))
     }
 
-    fn execute_fight_damage(
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        damage_source: crate::ids::ObjectId,
-        damage_source_snapshot: Option<ObjectSnapshot>,
-        target: crate::ids::ObjectId,
-        amount: u32,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let original_source = ctx.source;
-        let original_source_snapshot = ctx.source_snapshot.clone();
-        ctx.source = damage_source;
-        ctx.source_snapshot = damage_source_snapshot;
-
-        let result = ctx.with_temp_targets(vec![ResolvedTarget::Object(target)], |ctx| {
-            // Damage values use the engine's signed numeric domain. Doubling
-            // self-fight power must saturate instead of wrapping below zero.
-            let effect = Effect::deal_damage(
-                i32::try_from(amount).unwrap_or(i32::MAX),
-                ChooseSpec::AnyTarget,
-            );
-            execute_effect(game, &effect, ctx)
-        });
-
-        ctx.source = original_source;
-        ctx.source_snapshot = original_source_snapshot;
-        result
-    }
-
     fn fight_events(
-        game: &GameState,
+        game: &mut GameState,
         ctx: &ExecutionContext,
         fighters: &[(crate::ids::ObjectId, Option<ObjectSnapshot>)],
     ) -> Vec<TriggerEvent> {
         let mut seen = Vec::new();
         let mut events = Vec::new();
+        let batch = game.alloc_child_event_provenance(ctx.provenance, EventKind::KeywordAction);
 
         for (fighter, snapshot) in fighters {
             if seen.contains(fighter) {
@@ -208,19 +274,27 @@ impl FightEffect {
 
             let event = KeywordActionEvent::new(KeywordActionKind::Fight, controller, *fighter, 1)
                 .with_snapshot(snapshot.clone());
-            events.push(TriggerEvent::new_with_provenance(event, ctx.provenance));
+            let observation = game.alloc_child_event_provenance(batch, EventKind::KeywordAction);
+            events.push(
+                TriggerEvent::new_with_provenance(event, observation)
+                    .with_simultaneous_batch(batch),
+            );
         }
 
         events
     }
 }
 
-impl EffectExecutor for FightEffect {
-    fn execute(
+impl FightEffect {
+    fn execute_bound(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // Direct executor callers need the same checked frame as execute_effect
+        // before any target/type/power query can use legacy infallible adapters.
+        game.establish_control_transition_boundary()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let (creature1_id, creature2_id) = match self.resolve_fighters(game, ctx) {
             Ok(fighters) => fighters,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
@@ -229,6 +303,7 @@ impl EffectExecutor for FightEffect {
         let both_valid_fighters = [creature1_id, creature2_id].into_iter().all(|id| {
             game.object(id)
                 .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                && !game.is_phased_out(id)
                 && game.current_is_creature(id)
         });
         if !both_valid_fighters {
@@ -244,7 +319,7 @@ impl EffectExecutor for FightEffect {
         let creature2_snapshot = game
             .object(creature2_id)
             .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-        let fight_events = Self::fight_events(
+        let mut fight_events = Self::fight_events(
             game,
             ctx,
             &[
@@ -253,53 +328,79 @@ impl EffectExecutor for FightEffect {
             ],
         );
 
-        // CR 701.14c: self-fight is one damage event for twice the power,
-        // so a replacement/prevention applies once to that combined amount.
-        if creature1_id == creature2_id {
-            let outcome = if power1 == 0 {
-                EffectOutcome::count(0)
-            } else {
-                Self::execute_fight_damage(
-                    game,
-                    ctx,
-                    creature1_id,
-                    creature1_snapshot,
-                    creature1_id,
-                    power1.saturating_mul(2),
-                )?
-            };
-            return Ok(outcome.with_events(fight_events));
-        }
-
-        // Each creature deals damage equal to its power to the other.
-        // Decompose into two DealDamage effects and aggregate outcomes.
-        let mut outcomes = Vec::new();
-
-        if power1 > 0 {
-            let outcome = Self::execute_fight_damage(
-                game,
-                ctx,
+        // CR 701.14c: self-fight is one combined damage assignment. Check
+        // representation before capturing observers or changing damage state.
+        let assignments = if creature1_id == creature2_id {
+            vec![(
                 creature1_id,
+                creature1_id,
+                crate::events::damage::checked_damage_amount(
+                    u128::from(power1) * 2,
+                    "self-fight damage",
+                )?,
                 creature1_snapshot,
-                creature2_id,
-                power1,
-            )?;
-            outcomes.push(outcome);
-        }
+            )]
+        } else {
+            vec![
+                (creature1_id, creature2_id, power1, creature1_snapshot),
+                (creature2_id, creature1_id, power2, creature2_snapshot),
+            ]
+        };
+        let events = assignments
+            .into_iter()
+            .filter(|(_, _, amount, _)| *amount > 0)
+            .map(
+                |(source, target, amount, snapshot)| SimultaneousDamageEvent {
+                    source,
+                    target: DamageTarget::Object(target),
+                    amount,
+                    is_combat: false,
+                    unpreventable: false,
+                    cause: ctx.cause.clone(),
+                    source_snapshot: snapshot,
+                },
+            )
+            .collect::<Vec<_>>();
+        let total = events.iter().map(|event| u128::from(event.amount)).sum();
+        crate::events::damage::checked_damage_count(total, "fight damage outcome")?;
+        crate::effects::capture_triggers_before_added_program(
+            game,
+            ctx,
+            None,
+            fight_events.iter_mut(),
+        )?;
+        let source = ctx.source;
+        let controller = ctx.controller;
+        let cause = ctx.cause.clone();
+        let provenance = ctx.provenance;
+        let scope = ctx.replacement.clone();
+        let batch = game.alloc_child_event_provenance(provenance, EventKind::Damage);
+        let outcome = with_deferred_prevention_follow_ups(game, ctx.decision_maker, |game, dm| {
+            let mut parent = ExecutionContext::new(source, controller, dm)
+                .with_cause(cause)
+                .with_provenance(provenance);
+            parent.replacement = scope;
+            crate::effects::damage::commit_damage_batch(game, &mut parent, events, Some(batch))
+        })?;
+        Ok(outcome.with_events(fight_events))
+    }
+}
 
-        if power2 > 0 {
-            let outcome = Self::execute_fight_damage(
-                game,
-                ctx,
-                creature2_id,
-                creature2_snapshot,
-                creature1_id,
-                power2,
-            )?;
-            outcomes.push(outcome);
+impl EffectExecutor for FightEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let result = crate::effects::tokens::execute_resource_transaction_atomically(
+            game,
+            ctx,
+            |game, ctx| self.execute_bound(game, ctx),
+        );
+        if ctx.decision_maker.awaiting_choice() && result.is_ok() {
+            return Ok(EffectOutcome::count(0));
         }
-
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes).with_events(fight_events))
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -315,6 +416,7 @@ impl EffectExecutor for FightEffect {
 mod tests {
     use super::*;
     use crate::ability::Ability;
+    use crate::effects::execute_effect;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::continuous::ContinuousEffect;
     use crate::effect::Until;
@@ -670,5 +772,314 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(6));
         assert_eq!(game.damage_on(fighter), 6);
+    }
+
+    #[test]
+    fn saved_empty_fight_assignments_never_borrow_a_surviving_slot() {
+        for same_specs in [false, true] {
+            for missing in [0, 1] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let first = create_creature(&mut game, "First", 3, 50, alice);
+                let second = create_creature(&mut game, "Second", 5, 50, alice);
+                let spec1 =
+                    ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+                let spec2 = if same_specs {
+                    spec1.clone()
+                } else {
+                    ChooseSpec::target(ChooseSpec::creature())
+                };
+                let survivor = if missing == 0 { second } else { first };
+                let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+                    .with_targets(vec![ResolvedTarget::Object(survivor)])
+                    .with_target_assignments(vec![
+                        crate::game_state::TargetAssignment {
+                            spec: spec1.clone(),
+                            range: if missing == 0 { 0..0 } else { 0..1 },
+                        },
+                        crate::game_state::TargetAssignment {
+                            spec: spec2.clone(),
+                            range: if missing == 0 { 0..1 } else { 1..1 },
+                        },
+                    ]);
+                let result = FightEffect::new(spec1, spec2)
+                    .execute(&mut game, &mut ctx)
+                    .unwrap();
+                assert_eq!(result.status, crate::effect::OutcomeStatus::TargetInvalid);
+                assert!(result.events.is_empty());
+                assert_eq!(game.damage_on(first), 0);
+                assert_eq!(game.damage_on(second), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn mutual_tagged_pair_with_one_remaining_member_does_not_fight_itself() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, "First", 3, 50, alice);
+        let second = create_creature(&mut game, "Second", 5, 50, alice);
+        let captured = [first, second]
+            .into_iter()
+            .map(|id| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(
+                    game.object(id).unwrap(),
+                    &game,
+                )
+            })
+            .collect();
+        game.move_object_by_effect(second, Zone::Exile).unwrap();
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.set_tagged_objects("pair", captured);
+        let result = FightEffect::new(
+            ChooseSpec::Tagged("pair".into()),
+            ChooseSpec::Tagged("pair".into()),
+        )
+        .with_mutual_surface()
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        assert_eq!(result.status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert!(result.events.is_empty());
+        assert_eq!(game.damage_on(first), 0);
+    }
+
+    #[test]
+    fn self_fight_overflow_is_an_incomplete_error_without_damage_or_keyword_receipts() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let fighter = create_creature(&mut game, "Large fighter", i32::MAX, i32::MAX, alice);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        let history_before = game.turn_store.turn_history.event_records.len();
+        let result = FightEffect::new(
+            ChooseSpec::SpecificObject(fighter),
+            ChooseSpec::SpecificObject(fighter),
+        )
+        .execute(&mut game, &mut ctx);
+        assert!(matches!(
+            result,
+            Err(ExecutionError::ResourceLimitExceeded { .. })
+        ));
+        assert_eq!(game.damage_on(fighter), 0);
+        assert_eq!(
+            game.turn_store.turn_history.event_records.len(),
+            history_before
+        );
+        assert!(!game.effect_store.has_pending_trigger_work());
+    }
+
+    #[test]
+    fn pending_damage_order_rolls_back_the_entire_fight_then_resumes_one_complete_batch() {
+        #[derive(Default)]
+        struct Pause {
+            pause: bool,
+            pending: bool,
+            calls: usize,
+        }
+        impl crate::decision::DecisionMaker for Pause {
+            fn decide_options(
+                &mut self,
+                _game: &GameState,
+                options: &crate::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                self.calls += 1;
+                self.pending = self.pause;
+                if self.pause {
+                    vec![]
+                } else {
+                    options
+                        .options
+                        .iter()
+                        .filter(|option| option.legal)
+                        .take(1)
+                        .map(|option| option.index)
+                        .collect()
+                }
+            }
+            fn awaiting_choice(&self) -> bool {
+                self.pending
+            }
+        }
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = create_creature(&mut game, "First", 3, 50, alice);
+        let second = create_creature(&mut game, "Second", 4, 50, bob);
+        for (source, modification) in [
+            (first, EventModification::Multiply(2)),
+            (second, EventModification::Add(1)),
+        ] {
+            game.effect_store.replacement_effects.add_one_shot_effect(
+                ReplacementEffect::with_matcher(
+                    source,
+                    alice,
+                    crate::events::damage::matchers::DamageToObjectMatcher::new(
+                        ObjectFilter::specific(second),
+                    ),
+                    ReplacementAction::Modify(modification),
+                ),
+            );
+        }
+        let source = game.new_object_id();
+        let effect = FightEffect::new(
+            ChooseSpec::SpecificObject(first),
+            ChooseSpec::SpecificObject(second),
+        );
+        let before = game.turn_store.turn_history.event_records.len();
+        let mut dm = Pause {
+            pause: true,
+            ..Default::default()
+        };
+        let outcome = effect
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new(source, alice, &mut dm),
+            )
+            .unwrap();
+        assert!(dm.pending && dm.calls > 0);
+        assert!(outcome.events.is_empty());
+        assert_eq!(game.damage_on(first), 0);
+        assert_eq!(game.damage_on(second), 0);
+        assert_eq!(game.turn_store.turn_history.event_records.len(), before);
+        assert!(!game.effect_store.has_pending_trigger_work());
+        dm.pause = false;
+        dm.pending = false;
+        let outcome = effect
+            .execute(
+                &mut game,
+                &mut ExecutionContext::new(source, alice, &mut dm),
+            )
+            .unwrap();
+        assert_eq!(game.damage_on(first), 4);
+        assert!(matches!(game.damage_on(second), 7 | 8));
+        let damage = outcome
+            .events
+            .iter()
+            .filter(|event| event.downcast::<crate::events::DamageEvent>().is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(damage.len(), 2);
+        assert_eq!(
+            damage[0].simultaneous_batch(),
+            damage[1].simultaneous_batch()
+        );
+        let fights = outcome
+            .events
+            .iter()
+            .filter(|event| {
+                event
+                    .downcast::<KeywordActionEvent>()
+                    .is_some_and(|event| event.action == KeywordActionKind::Fight)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fights.len(), 2);
+        assert!(fights[0].simultaneous_batch().is_some());
+        assert_eq!(
+            fights[0].simultaneous_batch(),
+            fights[1].simultaneous_batch()
+        );
+        assert_ne!(fights[0].provenance(), fights[1].provenance());
+    }
+
+    #[test]
+    fn an_unchosen_optional_second_fighter_does_not_reuse_the_required_first() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first = create_creature(&mut game, "Required fighter", 3, 50, alice);
+        let spec1 = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
+        let spec2 = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().other()))
+            .with_count(crate::effect::ChoiceCount::up_to(1));
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![ResolvedTarget::Object(first)])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: spec1.clone(),
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: spec2.clone(),
+                    range: 1..1,
+                },
+            ]);
+        let outcome = FightEffect::new(spec1, spec2)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+        assert!(outcome.events.is_empty());
+        assert_eq!(game.damage_on(first), 0);
+    }
+
+    #[test]
+    fn direct_and_generic_fight_discovery_failure_is_typed_and_rolls_back_before_characteristic_reads()
+     {
+        #[derive(Debug, Clone)]
+        struct UnboundedFighter(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+        impl crate::static_abilities::StaticAbilityKind for UnboundedFighter {
+            fn id(&self) -> crate::static_abilities::StaticAbilityId {
+                crate::static_abilities::StaticAbilityId::GrantObjectAbilityForFilter
+            }
+            fn display(&self) -> String {
+                "Unbounded fight characteristic fixture".into()
+            }
+            fn generate_effects(
+                &self,
+                source: ObjectId,
+                controller: PlayerId,
+                game: &GameState,
+            ) -> Vec<ContinuousEffect> {
+                assert!(
+                    self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < 32_768,
+                    "fixture work ceiling"
+                );
+                let crate::ability::AbilityKind::Static(parent) =
+                    &game.object(source).unwrap().abilities[0].kind
+                else {
+                    panic!("fixture parent");
+                };
+                vec![
+                    ContinuousEffect::new(
+                        source,
+                        controller,
+                        crate::continuous::EffectTarget::Source,
+                        crate::continuous::Modification::AddAbility(parent.clone()),
+                    ),
+                    ContinuousEffect::new(
+                        source,
+                        controller,
+                        crate::continuous::EffectTarget::Source,
+                        crate::continuous::Modification::ModifyPower(1),
+                    ),
+                ]
+            }
+        }
+        std::thread::Builder::new().stack_size(128 * 1024 * 1024).spawn(|| {
+            for generic in [false, true] {
+                let mut game = setup_game();
+                let alice = PlayerId::from_index(0);
+                let first = create_creature(&mut game, "Checked first", 3, 50, alice);
+                let second = create_creature(&mut game, "Checked second", 4, 50, alice);
+                add_static_ability(&mut game, first, StaticAbility::new(UnboundedFighter(Default::default())));
+                let source = game.new_object_id();
+                let fight = FightEffect::new(ChooseSpec::SpecificObject(first), ChooseSpec::SpecificObject(second));
+                let before = game.provenance_graph().node_count();
+                let history = game.turn_store.turn_history.event_records.len();
+                let mut ctx = ExecutionContext::new_default(source, alice);
+                for _ in 0..2 {
+                    let result = if generic { execute_effect(&mut game, &Effect::new(fight.clone()), &mut ctx) }
+                        else { fight.execute(&mut game, &mut ctx) };
+                    assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
+                        crate::static_ability_processor::StaticEffectDiscoveryError::RoundLimit { .. }))), "{result:?}");
+                    assert_eq!(ctx.source, source);
+                    assert!(ctx.targets.is_empty() && ctx.target_assignments.is_empty());
+                    assert_eq!(game.damage_on(first), 0);
+                    assert_eq!(game.damage_on(second), 0);
+                    assert_eq!(game.provenance_graph().node_count(), before);
+                    assert_eq!(game.turn_store.turn_history.event_records.len(), history);
+                    assert!(!game.effect_store.has_pending_trigger_work());
+                }
+                game.object_mut(first).unwrap().abilities_mut().clear();
+                fight.execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(game.damage_on(first), 4);
+                assert_eq!(game.damage_on(second), 3);
+            }
+        }).unwrap().join().unwrap();
     }
 }

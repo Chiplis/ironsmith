@@ -22,6 +22,7 @@ export function paymentPreferences(payment = {}) {
     preserved_source_ids: sortedIds(payment.preserved_source_ids),
     prefer_life: Boolean(payment.prefer_life),
     required_life_pips: [...new Set(payment.required_life_pips || [])].map(Number).sort((a, b) => a - b),
+    ...(payment.x_allocation == null ? {} : { x_allocation: [...payment.x_allocation] }),
   };
 }
 export function preferenceKey(preferences) { return JSON.stringify(paymentPreferences(preferences)); }

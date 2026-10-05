@@ -387,6 +387,10 @@ pub enum StaticAbilityId {
     SpellManaSpendingRestriction,
     /// Typed mana output rewrite; appended to preserve existing ordinals.
     ManaProductionRewrite,
+    /// Extra numerical dice with ignored low rolls, appended for wire stability.
+    ExtraDieIgnoreLowest,
+    /// Conversion of mana that would be lost, preserving the existing units.
+    ConvertUnspentMana,
 }
 
 impl StaticAbilityId {
@@ -691,6 +695,7 @@ impl StaticAbilityId {
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
             | SpellManaSpendingRestriction
+            | ExtraDieIgnoreLowest
             | RedirectMatchingDamage
             | AddLifeGainReplacement
             | TokenCreationTemplates
@@ -727,6 +732,7 @@ impl StaticAbilityId {
             | RevealCardOrEnterTappedReplacement
             | RedirectWouldEnterReplacement
             | ManaProductionReplacement
+            | ConvertUnspentMana
             | ManaProductionRewrite
             | ManaProductionMultiplierReplacement
             | DoubleLifeChangeReplacement

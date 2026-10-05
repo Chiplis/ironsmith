@@ -654,13 +654,11 @@ pub(super) fn compile_subject_verb_late(
             for choice in recipient_choices {
                 push_choice(&mut choices, choice);
             }
-            let damage = Effect::new(crate::effects::DealDamageBySourcesEffect {
-                sources: specs,
-                source_binding: *source_binding,
-                source_declarations: declarations,
-                amount,
-                target: recipient.clone(),
-            });
+            let damage = Effect::new(
+                crate::effects::DealDamageBySourcesEffect::new(specs, amount, recipient.clone())
+                    .with_source_binding(*source_binding)
+                    .with_source_declarations(declarations),
+            );
             effects.push(tag_object_target_effect(damage, &recipient, ctx, "damaged"));
             Ok((effects, choices))
         }
@@ -887,11 +885,6 @@ pub(super) fn compile_subject_verb_late(
                 damage_target_spec =
                     ChooseSpec::Tagged(original_source.into()).with_surface_hints(hints);
             }
-            let per_target_source_spec = if source == target {
-                ChooseSpec::Iterated
-            } else {
-                source_spec.clone()
-            };
             // An explicit target becomes the local source of
             // `ExecuteWithSourceEffect`, so its characteristic values remain
             // source-relative. An anaphoric `it`, however, has already been
@@ -960,39 +953,24 @@ pub(super) fn compile_subject_verb_late(
                     damage,
                 )));
             } else if let Some(filter) = mass_damage_filter {
-                // In "it deals damage to each creature blocking it", the
-                // filter's source-relative relation names the grammatical
-                // damage source, not necessarily the source of the resolving
-                // ability (an Equipment is the latter, its equipped creature
-                // is the former).
-                let recipient_filter_uses_damage_source = filter.in_combat_with_source;
-                let damage = if *unpreventable {
-                    Effect::deal_unpreventable_damage(amount.clone(), ChooseSpec::Iterated)
-                } else {
-                    Effect::deal_damage(amount.clone(), ChooseSpec::Iterated)
-                };
-                let mut per_target_damage = if recipient_filter_uses_damage_source {
-                    damage
-                } else {
-                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
-                        per_target_source_spec.clone(),
-                        damage,
-                    ))
-                };
-                if ctx.auto_tag_object_targets {
-                    let tag = ctx.next_tag("damaged");
-                    ctx.last_object_tag = Some(tag.clone());
-                    per_target_damage = per_target_damage.tag(tag);
-                }
-                let fanout = Effect::for_each(filter.clone(), vec![per_target_damage]);
-                effects.push(if recipient_filter_uses_damage_source {
-                    Effect::new(crate::effects::ExecuteWithSourceEffect::new(
-                        per_target_source_spec.clone(),
-                        fanout,
-                    ))
-                } else {
-                    fanout
-                });
+                // The quantified subject and reflexive recipient are the same
+                // set, but each object damages only itself. Capture every
+                // source and value once before the shared occurrence begins.
+                let damage = Effect::new(
+                    crate::effects::DealDamageBySourcesEffect::new(
+                        vec![ChooseSpec::All(filter.clone())],
+                        damage_amount.clone(),
+                        ChooseSpec::Source,
+                    )
+                    .with_recipient_binding(ironsmith_core::DamageRecipientSetBinding::EachSource)
+                    .with_unpreventable(*unpreventable),
+                );
+                effects.push(tag_object_target_effect(
+                    damage,
+                    &ChooseSpec::All(filter.clone()),
+                    ctx,
+                    "damaged",
+                ));
             } else {
                 let damage = if *unpreventable {
                     Effect::deal_unpreventable_damage(

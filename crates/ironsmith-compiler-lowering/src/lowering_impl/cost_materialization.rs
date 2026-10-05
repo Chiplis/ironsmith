@@ -518,8 +518,7 @@ fn lower_materialization_costs(
     for (segment_index, segment) in segments.iter().enumerate() {
         match segment {
             MaterializationCost::Mana(cost) => {
-                for pip in cost.pips() { pending_mana_pips.push_alternatives(pip.clone()); }
-                pending_mana_pips = pending_mana_pips.inherit_spending_restrictions(cost);
+                pending_mana_pips = pending_mana_pips.combined_with(cost);
             }
             MaterializationCost::DynamicMana(cost) => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

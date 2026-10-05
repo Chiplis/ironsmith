@@ -26,6 +26,36 @@ pub(crate) fn object_reference(words: &[&str]) -> Option<(ChooseSpec, usize)> {
 }
 
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
+    const OCCURRENCE: &[&str] = &[
+        "the",
+        "greatest",
+        "amount",
+        "of",
+        "damage",
+        "dealt",
+        "by",
+        "a",
+        "source",
+        "to",
+        "a",
+        "permanent",
+        "or",
+        "player",
+        "this",
+        "turn",
+    ];
+    if words.starts_with(OCCURRENCE) {
+        return Some((
+            Value::DamageHistory(Box::new(DamageHistoryQuery {
+                sources: DamageHistorySources::Any,
+                recipients: DamageHistoryRecipients::Any,
+                combat: None,
+                reduction: DamageHistoryReduction::LargestSourceRecipientOccurrence,
+            })),
+            OCCURRENCE.len(),
+        ));
+    }
+
     let mut offset = usize::from(words.first() == Some(&"the"));
     if words.get(offset) == Some(&"total") {
         offset += 1;
@@ -146,7 +176,7 @@ mod tests {
     #[test]
     fn unsupported_occurrence_and_unknown_actor_qualifiers_do_not_become_totals() {
         for text in [
-            "the greatest amount of damage dealt by a source to a permanent or player this turn",
+            "the greatest amount of damage dealt by sources to a permanent or player this turn",
             "the amount of damage dealt to this creature this turn by sources they own",
             "the amount of damage dealt to this creature last turn",
             "the amount of damage dealt to this creature this turn by other sources named",
@@ -156,5 +186,17 @@ mod tests {
                 "{text}"
             );
         }
+    }
+    #[test]
+    fn greatest_source_recipient_occurrence_is_not_a_source_turn_total() {
+        let words =
+            "the greatest amount of damage dealt by a source to a permanent or player this turn"
+                .split_whitespace()
+                .collect::<Vec<_>>();
+        let (value, used) = parse(&words).unwrap();
+        assert_eq!(used, words.len());
+        assert!(
+            matches!(value, Value::DamageHistory(query) if query.reduction == DamageHistoryReduction::LargestSourceRecipientOccurrence)
+        );
     }
 }

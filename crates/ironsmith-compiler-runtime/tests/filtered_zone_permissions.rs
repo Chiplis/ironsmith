@@ -1,6 +1,6 @@
 //! UNVALIDATED source-authored scenarios; no build or execution in this stage.
 use ironsmith::alternative_cast::CastingMethod;
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::{LinkedFaceLayout, PowerToughness};
 use ironsmith::decision::{compute_legal_actions, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm, apply_decision_context_with_dm, put_triggers_on_stack, resolve_stack_entry};

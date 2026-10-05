@@ -388,6 +388,8 @@ pub struct ObjectSnapshot {
     /// Actual mana spent by the caster, excluding Assist payments by others.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub caster_mana_spent_to_cast: Option<u32>,
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     /// Optional costs paid for this cast, retained for historical spell filters.
     pub optional_costs_paid: crate::cost::OptionalCostsPaid,
     pub snow_mana_spent_to_cast: ManaPool,
@@ -518,6 +520,7 @@ impl ObjectSnapshot {
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
@@ -653,6 +656,7 @@ impl ObjectSnapshot {
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
             caster_mana_spent_to_cast: obj.caster_mana_spent_to_cast,
+            mana_spent_on_x: obj.mana_spent_on_x,
             optional_costs_paid: obj.optional_costs_paid.clone(),
             snow_mana_spent_to_cast: obj.snow_mana_spent_to_cast.clone(),
             mana_sources_spent_to_cast: obj
@@ -1054,6 +1058,7 @@ impl ObjectSnapshot {
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
             caster_mana_spent_to_cast: None,
+            mana_spent_on_x: None,
             snow_mana_spent_to_cast: ManaPool::default(),
             mana_sources_spent_to_cast: Vec::new(),
             optional_costs_paid: crate::cost::OptionalCostsPaid::default(),
@@ -1383,6 +1388,8 @@ pub struct RetainedObjectSnapshot<A, I = CardId> {
     /// Missing in older retained snapshots means unknown payer evidence.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub caster_mana_spent_to_cast: Option<u32>,
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub mana_spent_on_x: Option<crate::mana::XManaAllocation>,
     pub optional_costs_paid: crate::cost::OptionalCostsPaid,
     pub snow_mana_spent_to_cast: ManaPool,
     pub mana_sources_spent_to_cast: Vec<RetainedObjectSnapshot<A, I>>,
@@ -1464,6 +1471,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             cast_order_this_turn,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             optional_costs_paid,
             snow_mana_spent_to_cast,
             mana_sources_spent_to_cast,
@@ -1522,6 +1530,7 @@ impl From<ObjectSnapshot> for RetainedObjectSnapshot<Ability> {
             cast_order_this_turn: cast_order_this_turn,
             mana_spent_to_cast: mana_spent_to_cast,
             caster_mana_spent_to_cast: caster_mana_spent_to_cast,
+            mana_spent_on_x: mana_spent_on_x,
             optional_costs_paid: optional_costs_paid,
             snow_mana_spent_to_cast: snow_mana_spent_to_cast,
             mana_sources_spent_to_cast: mana_sources_spent_to_cast
@@ -1587,6 +1596,7 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             cast_order_this_turn,
             mana_spent_to_cast,
             caster_mana_spent_to_cast,
+            mana_spent_on_x,
             optional_costs_paid,
             snow_mana_spent_to_cast,
             mana_sources_spent_to_cast,
@@ -1645,6 +1655,7 @@ impl From<RetainedObjectSnapshot<Ability>> for ObjectSnapshot {
             cast_order_this_turn: cast_order_this_turn,
             mana_spent_to_cast: mana_spent_to_cast,
             caster_mana_spent_to_cast: caster_mana_spent_to_cast,
+            mana_spent_on_x: mana_spent_on_x,
             optional_costs_paid: optional_costs_paid,
             snow_mana_spent_to_cast: snow_mana_spent_to_cast,
             mana_sources_spent_to_cast: mana_sources_spent_to_cast
@@ -1743,6 +1754,7 @@ impl<A, I> RetainedObjectSnapshot<A, I> {
             cast_order_this_turn: self.cast_order_this_turn,
             mana_spent_to_cast: self.mana_spent_to_cast,
             caster_mana_spent_to_cast: self.caster_mana_spent_to_cast,
+            mana_spent_on_x: self.mana_spent_on_x,
             optional_costs_paid: self.optional_costs_paid,
             snow_mana_spent_to_cast: self.snow_mana_spent_to_cast,
             mana_sources_spent_to_cast: self
@@ -1804,6 +1816,7 @@ mod retained_historical_snapshot_schema_tests {
         );
         snapshot.card = Some(CardId::new());
         snapshot.caster_mana_spent_to_cast = Some(2);
+        snapshot.mana_spent_on_x = Some(crate::mana::XManaAllocation([0, 0, 1, 0, 0]));
         snapshot.ring_bearer = Some(true);
         snapshot.noted_life_total = Some(-7);
         snapshot.other_face = Some(CardId::new());
@@ -1866,7 +1879,7 @@ mod retained_historical_snapshot_schema_tests {
         let json = serde_json::to_value(retained).unwrap();
         let _: Wire = serde_json::from_value(json.clone()).unwrap();
         for field in json.as_object().unwrap().keys() {
-            if matches!(field.as_str(), "caster_mana_spent_to_cast" | "noted_life_total") { continue; }
+            if matches!(field.as_str(), "caster_mana_spent_to_cast" | "noted_life_total" | "mana_spent_on_x") { continue; }
             let mut bad = json.clone();
             bad.as_object_mut().unwrap().remove(field);
             assert!(

@@ -16,15 +16,16 @@ pub use ironsmith_core::DealDamageBySourcesEffect;
 
 impl EffectExecutor for DealDamageBySourcesEffect {
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        (self.recipient_binding == ironsmith_core::DamageRecipientSetBinding::SharedSet)
+            .then_some(&self.target)
     }
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        Some(self.target.count())
+        self.get_target_spec().map(ChooseSpec::count)
     }
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         self.sources
             .iter()
-            .chain(std::iter::once(&self.target))
+            .chain(self.get_target_spec())
             .cloned()
             .collect()
     }
@@ -56,52 +57,65 @@ impl DealDamageBySourcesEffect {
         // Freeze one recipient set before any source's power, replacement or
         // result is executed. Each source uses this same set; no nested loop
         // executes a damage instruction independently.
-        let proposed = match self.target.base() {
-            ChooseSpec::Player(_)
-            | ChooseSpec::EachPlayer(_)
-            | ChooseSpec::SpecificPlayer(_)
-            | ChooseSpec::SourceController
-            | ChooseSpec::SourceOwner => {
-                match crate::effects::helpers::resolve_players_from_spec(game, &self.target, ctx) {
-                    Ok(players) => players
-                        .into_iter()
-                        .filter(|player| {
-                            game.player(*player)
-                                .is_some_and(|player| player.is_in_game())
-                        })
-                        .map(DamageTarget::Player)
-                        .collect::<Vec<_>>(),
-                    Err(ExecutionError::InvalidTarget) => Vec::new(),
-                    Err(error) => return Err(error),
-                }
-            }
-            ChooseSpec::Object(_)
-            | ChooseSpec::All(_)
-            | ChooseSpec::Tagged(_)
-            | ChooseSpec::SpecificObject(_)
-            | ChooseSpec::Source
-            | ChooseSpec::Iterated => {
-                match crate::effects::helpers::resolve_objects_from_spec(game, &self.target, ctx) {
-                    Ok(objects) => objects
-                        .into_iter()
-                        .filter(|object| {
-                            game.object(*object)
-                                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                                && !game.is_phased_out(*object)
-                                && super::deal_damage::object_can_be_dealt_damage(game, *object)
-                        })
-                        .map(DamageTarget::Object)
-                        .collect::<Vec<_>>(),
-                    Err(ExecutionError::InvalidTarget) | Err(ExecutionError::TagNotFound(_)) => {
-                        Vec::new()
+        let each_source =
+            self.recipient_binding == ironsmith_core::DamageRecipientSetBinding::EachSource;
+        let proposed = if each_source {
+            Vec::new()
+        } else {
+            match self.target.base() {
+                ChooseSpec::Player(_)
+                | ChooseSpec::EachPlayer(_)
+                | ChooseSpec::SpecificPlayer(_)
+                | ChooseSpec::SourceController
+                | ChooseSpec::SourceOwner => {
+                    match crate::effects::helpers::resolve_players_from_spec(
+                        game,
+                        &self.target,
+                        ctx,
+                    ) {
+                        Ok(players) => players
+                            .into_iter()
+                            .filter(|player| {
+                                game.player(*player)
+                                    .is_some_and(|player| player.is_in_game())
+                            })
+                            .map(DamageTarget::Player)
+                            .collect::<Vec<_>>(),
+                        Err(ExecutionError::InvalidTarget) => Vec::new(),
+                        Err(error) => return Err(error),
                     }
-                    Err(error) => return Err(error),
                 }
-            }
-            _ => {
-                return Err(ExecutionError::UnresolvableValue(
-                    "multi-source damage requires an object or player recipient set".into(),
-                ));
+                ChooseSpec::Object(_)
+                | ChooseSpec::All(_)
+                | ChooseSpec::Tagged(_)
+                | ChooseSpec::SpecificObject(_)
+                | ChooseSpec::Source
+                | ChooseSpec::Iterated => {
+                    match crate::effects::helpers::resolve_objects_from_spec(
+                        game,
+                        &self.target,
+                        ctx,
+                    ) {
+                        Ok(objects) => objects
+                            .into_iter()
+                            .filter(|object| {
+                                game.object(*object).is_some_and(|object| {
+                                    object.zone == crate::zone::Zone::Battlefield
+                                }) && !game.is_phased_out(*object)
+                                    && super::deal_damage::object_can_be_dealt_damage(game, *object)
+                            })
+                            .map(DamageTarget::Object)
+                            .collect::<Vec<_>>(),
+                        Err(ExecutionError::InvalidTarget)
+                        | Err(ExecutionError::TagNotFound(_)) => Vec::new(),
+                        Err(error) => return Err(error),
+                    }
+                }
+                _ => {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "multi-source damage requires an object or player recipient set".into(),
+                    ));
+                }
             }
         };
         let mut recipients = Vec::new();
@@ -110,7 +124,7 @@ impl DealDamageBySourcesEffect {
                 recipients.push(recipient);
             }
         }
-        if recipients.is_empty() {
+        if !each_source && recipients.is_empty() {
             return Ok(if self.target.is_target() {
                 EffectOutcome::target_invalid()
             } else {
@@ -184,6 +198,19 @@ impl DealDamageBySourcesEffect {
         let mut events = Vec::new();
         // Amounts are all read before a single damage/prevention consequence.
         for (source, snapshot) in bindings {
+            let source_recipients = if each_source {
+                if !game
+                    .object(source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    || game.is_phased_out(source)
+                    || !super::deal_damage::object_can_be_dealt_damage(game, source)
+                {
+                    continue;
+                }
+                vec![DamageTarget::Object(source)]
+            } else {
+                recipients.clone()
+            };
             let old_source = ctx.source;
             let old_snapshot = ctx.source_snapshot.clone();
             ctx.source = source;
@@ -193,13 +220,13 @@ impl DealDamageBySourcesEffect {
             ctx.source_snapshot = old_snapshot;
             let amount = amount?.max(0) as u32;
             if amount > 0 {
-                for recipient in &recipients {
+                for recipient in &source_recipients {
                     events.push(SimultaneousDamageEvent {
                         source,
                         target: *recipient,
                         amount,
                         is_combat: false,
-                        unpreventable: false,
+                        unpreventable: self.unpreventable,
                         cause: ctx.cause.clone(),
                         source_snapshot: snapshot.clone(),
                     });
@@ -236,12 +263,33 @@ struct SourceState {
 }
 /// Every original damage assignment, consequence and observer belongs to this
 /// one occurrence. Replacement-added instructions run only after all originals.
-pub(super) fn commit_damage_batch(
+pub(crate) fn commit_damage_batch(
     game: &mut GameState,
     parent: &mut ExecutionContext,
     events: Vec<SimultaneousDamageEvent>,
     mut batch: Option<crate::provenance::ProvNodeId>,
 ) -> Result<EffectOutcome, ExecutionError> {
+    // Capture the authored recipient, not a replacement redirect's new
+    // destination. These scalars precede every original damage consequence.
+    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    let mut original_recipients = Vec::new();
+    for event in &events {
+        let receipt = match event.target {
+            DamageTarget::Player(player) => game.player(player).map(|state|
+                crate::effect::DamageRecipientBefore::Player { player, life: state.life }),
+            DamageTarget::Object(object) => game.try_current_characteristics(object)
+                .map_err(ExecutionError::ContinuousDiscovery)?
+                .map(|frame| crate::effect::DamageRecipientBefore::Object {
+                    object,
+                    was_creature: frame.card_types.contains(&crate::CardType::Creature),
+                    loyalty: frame.card_types.contains(&crate::CardType::Planeswalker)
+                        .then(|| game.object(object).and_then(|state| state.loyalty()).unwrap_or(0)),
+                }),
+        };
+        if let Some(receipt) = receipt && !original_recipients.contains(&receipt) {
+            original_recipients.push(receipt);
+        }
+    }
     let processed = process_simultaneous_damage_assignments_with_event_with_scope(
         game,
         &events,
@@ -451,6 +499,9 @@ pub(super) fn commit_damage_batch(
             }
         }
     }
+    // Retain occurrence totals on the original receipts even when an outer
+    // simultaneous scope holds matching/publication until a later boundary.
+    crate::events::damage::bind_received_damage_amounts(&mut reported);
     // Damage-trigger predicates observe the completed actual damage batch
     // before damage's life/counter results can remove qualified observers.
     crate::effects::runtime::capture_triggers_before_added_program(
@@ -605,6 +656,9 @@ pub(super) fn commit_damage_batch(
     } else {
         EffectOutcome::count(total)
     };
+    for recipient in original_recipients {
+        outcome = outcome.with_execution_fact(ExecutionFact::DamageRecipientBefore(recipient));
+    }
     if !affected.is_empty() {
         outcome = outcome.with_affected_objects_from_game(game, affected);
     }
@@ -1044,5 +1098,89 @@ mod captured_incarnation_tests {
                 assert_eq!(game.damage_on(recipient), 7);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod zipped_recipient_tests {
+    use super::*;
+    use crate::effect::Effect;
+    use crate::effects::execute_effect;
+    use crate::target::ObjectFilter;
+
+    #[test]
+    fn zipped_sources_make_one_self_assignment_each_and_skip_nonpositive_amounts() {
+        for second_power in [-2, 0, 5] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let a = PlayerId::from_index(0);
+            let b = PlayerId::from_index(1);
+            let mut sources = Vec::new();
+            for (name, power, controller) in [("First", 2, a), ("Second", second_power, b)] {
+                sources.push(
+                    game.create_object_from_definition(
+                        &crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), name)
+                            .card_types(vec![crate::types::CardType::Creature])
+                            .power_toughness(crate::card::PowerToughness::fixed(power, 50))
+                            .with_ability(crate::ability::Ability::static_ability(
+                                crate::static_abilities::StaticAbility::lifelink(),
+                            ))
+                            .build(),
+                        controller,
+                        crate::zone::Zone::Battlefield,
+                    ),
+                );
+            }
+            let damage = DealDamageBySourcesEffect::new(
+                vec![ChooseSpec::All(ObjectFilter::creature())],
+                crate::Value::SourcePower,
+                ChooseSpec::SpecificObject(ObjectId(9999)), // Unused in EachSource mode.
+            )
+            .with_recipient_binding(ironsmith_core::DamageRecipientSetBinding::EachSource);
+            assert!(damage.get_target_spec().is_none());
+            assert!(damage.get_target_count().is_none());
+            let outcome = execute_effect(
+                &mut game,
+                &Effect::new(damage),
+                &mut ExecutionContext::new_default(sources[0], a),
+            )
+            .unwrap();
+            assert_eq!(game.damage_on(sources[0]), 2);
+            assert_eq!(game.damage_on(sources[1]), second_power.max(0) as u32);
+            assert_eq!(game.player(a).unwrap().life, 22);
+            assert_eq!(game.player(b).unwrap().life, 20 + second_power.max(0));
+            let events = outcome
+                .events
+                .iter()
+                .filter(|event| event.downcast::<DamageEvent>().is_some())
+                .collect::<Vec<_>>();
+            assert_eq!(events.len(), if second_power > 0 { 2 } else { 1 });
+            assert!(events[0].simultaneous_batch().is_some());
+            for event in &events {
+                let damage = event.downcast::<DamageEvent>().unwrap();
+                assert_eq!(damage.target, DamageTarget::Object(damage.source));
+                assert_eq!(event.simultaneous_batch(), events[0].simultaneous_batch());
+            }
+            if events.len() == 2 {
+                assert_ne!(events[0].provenance(), events[1].provenance());
+            }
+        }
+    }
+
+    #[test]
+    fn empty_zipped_set_needs_no_source_or_recipient() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let damage = DealDamageBySourcesEffect::new(
+            vec![ChooseSpec::All(ObjectFilter::creature())],
+            crate::Value::SourcePower,
+            ChooseSpec::Source,
+        )
+        .with_recipient_binding(ironsmith_core::DamageRecipientSetBinding::EachSource);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(damage),
+            &mut ExecutionContext::new_default(ObjectId(9999), PlayerId::from_index(0)),
+        )
+        .unwrap();
+        assert!(outcome.events.is_empty());
     }
 }

@@ -2313,15 +2313,11 @@ fn resolve_filter_comparison_rhs_value(
                     .total_life_lost_for_players(&players) as i32,
             )
         }
-        Value::UnspentMana(player_filter) => Some(
-            game.players
-                .iter()
-                .filter(|player| {
-                    player.is_in_game() && player_filter.matches_player(player.id, ctx)
-                })
-                .map(|player| player.mana_pool.total() as i32)
-                .sum(),
-        ),
+        Value::UnspentMana(player_filter) => i32::try_from(
+            game.players.iter().filter(|player| player.is_in_game() && player_filter.matches_player(player.id, ctx))
+                .map(|player| u128::from(player.mana_pool.total_wide())).sum::<u128>()
+        ).ok(), // checked query admission rejects this domain before matching
+
         Value::Devotion { player, color } => Some(
             game.players
                 .iter()

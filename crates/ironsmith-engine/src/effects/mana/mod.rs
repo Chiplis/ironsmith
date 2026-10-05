@@ -17,6 +17,7 @@ mod choice_helpers;
 pub(crate) mod production_resolution;
 mod double_mana_pool;
 mod empty_mana_pool;
+pub(crate) mod mana_loss;
 mod grant_mana_ability_until_eot;
 mod noted_mana_type;
 mod pay_mana;

@@ -31,6 +31,7 @@ mod this_deals_combat_damage_to_player;
 mod this_deals_damage;
 mod this_deals_damage_to;
 
+pub(crate) use attacks::pluralize_one_or_more_attack_subject;
 pub use attacks::{AttacksTrigger, PlayerAttacksOneOrMoreTrigger, PlayersAttackedTrigger};
 pub use attacks_alone::AttacksAloneTrigger;
 pub use attacks_and_isnt_blocked::AttacksAndIsntBlockedTrigger;

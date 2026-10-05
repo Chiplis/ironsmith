@@ -23,6 +23,7 @@ mod qualified_player_events;
 mod control_transitions;
 #[path = "causal_events.rs"]
 mod causal_events;
+mod combat_declaration_shapes;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -301,6 +302,7 @@ pub(super) fn try_parse_source_with_filtered_attack_count_trigger_lexed(
 pub(super) fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    if let Some(trigger) = combat_declaration_shapes::parse(tokens)? { return Ok(trigger); }
     {
         let words = crate::lexer::token_word_refs(tokens);
         if crate::word_primitives::parse_any_sequence_complete(

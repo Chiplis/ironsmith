@@ -1,6 +1,6 @@
 //! Source-authored only; no scenarios have been compiled or executed.
 use ironsmith::ability::Ability;
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::effects::{CreateTokenEffect, EffectContext, EffectExecutor, PoisonCountersEffect, PutCountersEffect};
 use ironsmith::events::cause::EventCause;

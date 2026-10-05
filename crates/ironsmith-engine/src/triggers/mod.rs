@@ -835,6 +835,16 @@ impl Trigger {
     }
 
     /// Create a "when [filter] attacks alone" trigger.
+    pub fn attacks_player_alone(filter: ObjectFilter) -> Self {
+        Self::new(AttacksAloneTrigger::against_player(filter))
+    }
+    pub fn becomes_blocked_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(BecomesBlockedTrigger::one_or_more(filter))
+    }
+    pub fn keyword_action_matching_object_one_or_more(action: KeywordActionKind, player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(KeywordActionTrigger::matching_object(action, player, filter).one_or_more())
+    }
+
     pub fn attacks_alone(filter: ObjectFilter) -> Self {
         Self::new(AttacksAloneTrigger::new(filter))
     }

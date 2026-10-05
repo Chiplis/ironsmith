@@ -1,5 +1,5 @@
 //! Source-authored only. No build, compilation or execution in this campaign stage.
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::card::PowerToughness;
 use ironsmith::decision::DecisionMaker;
 use ironsmith::effects::{CreateTokenEffect, EffectContext, EffectExecutor, IncubateEffect};

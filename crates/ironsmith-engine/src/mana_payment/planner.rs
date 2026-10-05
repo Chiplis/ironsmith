@@ -180,6 +180,7 @@ pub fn mana_payment_source_inventory(
         }
     }
     if request.reason == crate::costs::PaymentReason::CastSpell
+        && request.assist_completion.is_none()
         && let Some(spell) = game.object(request.source)
         && game.controller_of(spell) == request.payer
     {
@@ -958,6 +959,9 @@ impl ManaPaymentPlanner {
         let player = game
             .player(request.payer)
             .ok_or(ManaPaymentFailure::MissingPlayer)?;
+        if request.preferences.x_allocation.is_some() && !request.cost.has_x_spending_restriction() {
+            return Err(ManaPaymentFailure::ConflictingPreferences);
+        }
         if request
             .preferences
             .required_sources
@@ -1044,7 +1048,9 @@ impl ManaPaymentPlanner {
                         _ => {}
                     }
                 }
-                payment_request.cost = request.cost.with_pips(
+                payment_request.cost = request.cost.clone()
+                    .bind_x_payment_if_unbound(request.x_value)
+                    .with_required_x_allocation(request.preferences.x_allocation).with_pips(
                     selection
                         .remaining
                         .iter()
@@ -1083,7 +1089,7 @@ impl ManaPaymentPlanner {
                         .ok_or(ManaPaymentFailure::MissingPlayer)?
                         .mana_pool
                         .clone();
-                    cursor.plans.push(build_plan(
+                    cursor.plans.extend(build_plan(
                         &staged,
                         request,
                         &payment_request,
@@ -1126,7 +1132,7 @@ impl ManaPaymentPlanner {
                             .ok_or(ManaPaymentFailure::MissingPlayer)?
                             .mana_pool
                             .clone();
-                        cursor.plans.push(build_plan(
+                        cursor.plans.extend(build_plan(
                             &final_game,
                             request,
                             &payment_request,
@@ -1202,7 +1208,7 @@ impl ManaPaymentPlanner {
                     .ok_or(ManaPaymentFailure::MissingPlayer)?
                     .mana_pool
                     .clone();
-                cursor.plans.push(build_plan(
+                cursor.plans.extend(build_plan(
                     &final_game,
                     request,
                     &active.request,
@@ -2175,7 +2181,7 @@ fn alternative_payment_selections(
         }
     }
 
-    if request.reason != crate::costs::PaymentReason::CastSpell {
+    if request.reason != crate::costs::PaymentReason::CastSpell || request.assist_completion.is_some() {
         return AlternativeSelectionStream::only(vec![AlternativeSelection {
             remaining: pips,
             allocations: Vec::new(),
@@ -2975,6 +2981,9 @@ fn positive_pool_delta(before: &ManaPool, after: &ManaPool) -> ManaPool {
 }
 
 pub(super) fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) -> bool {
+    if request.preferences.x_allocation.is_some() && !request.cost.has_x_spending_restriction() { return false; }
+    let constrained_cost = request.cost.clone().bind_x_payment_if_unbound(request.x_value)
+        .with_required_x_allocation(request.preferences.x_allocation);
     if request.reserved_permanent_sources.iter().any(|id| {
         !game.object(*id).is_some_and(|object| {
             object.zone == crate::zone::Zone::Battlefield
@@ -2997,17 +3006,36 @@ pub(super) fn can_pay_request(game: &GameState, request: &ManaPaymentRequest) ->
         return false;
     }
 
+    payable_assignment_cost(game, request, &constrained_cost).is_some()
+}
+
+/// A helper's first affordable color assignment need not permit completion.
+/// Search the actual unit assignments under the linked caster obligation.
+fn payable_assignment_cost(game: &GameState, request: &ManaPaymentRequest, cost: &crate::mana::ManaCost)
+    -> Option<crate::mana::ManaCost> {
+    if let Some(completion) = request.assist_completion.as_deref() {
+        if completion.assist_completion.is_some() || completion.payer == request.payer
+            || completion.source != request.source
+            || completion.reason != crate::costs::PaymentReason::CastSpell
+            || request.reason != crate::costs::PaymentReason::CastSpell
+            || request.cost.pips().iter().any(|pip| !matches!(pip.as_slice(), [ManaSymbol::Generic(_)]))
+        { return None; }
+        return game.mana_cost_with_payable_continuation(
+            request.payer, Some(request.source), cost, request.x_value, request.reason,
+            &request.spend_policy, request.allow_life_payment, request.allow_black_life,
+            request.preferences.prefer_life,
+            |after, paid| {
+                let mut completion = completion.clone();
+                completion.cost = completion.cost.with_prepaid_generic(paid.symbols());
+                check_mana_payment(after, &completion).is_ok()
+            },
+        );
+    }
     game.can_pay_mana_cost_with_payment_options(
-        request.payer,
-        Some(request.source),
-        &request.cost,
-        request.x_value,
-        request.reason,
-        &request.spend_policy,
-        request.allow_life_payment,
-        request.allow_black_life,
+        request.payer, Some(request.source), cost, request.x_value, request.reason,
+        &request.spend_policy, request.allow_life_payment, request.allow_black_life,
         request.preferences.prefer_life,
-    )
+    ).then(|| cost.clone())
 }
 
 fn preview_life_to_pay(game: &GameState, request: &ManaPaymentRequest) -> u32 {
@@ -3083,7 +3111,10 @@ fn build_plan(
     pool_before: ManaPool,
     pool_after_activations: ManaPool,
     steps: Vec<PlannedManaActivation>,
-) -> ManaPaymentPlan {
+) -> Option<ManaPaymentPlan> {
+    let mut qualified_request = payment_request.clone();
+    qualified_request.cost = payable_assignment_cost(game, payment_request, &payment_request.cost)?;
+    let payment_request = &qualified_request;
     let (preview, life_to_pay) = game
         .preview_mana_cost_payment_with_options(
             payment_request.payer,
@@ -3096,7 +3127,7 @@ fn build_plan(
             payment_request.allow_black_life,
             payment_request.preferences.prefer_life,
         )
-        .unwrap_or_default();
+        ?;
     let mut allocations = selection.allocations.clone();
     allocations.extend(preview.into_iter().zip(selection.remaining.iter()).map(
         |((alternatives, payment), slot)| PlannedPipAllocation {
@@ -3119,6 +3150,7 @@ fn build_plan(
         payment_request.allow_black_life,
         payment_request.preferences.prefer_life,
     );
+    if !paid { return None; }
     let pool_after_payment = if paid {
         staged
             .player(request.payer)
@@ -3177,28 +3209,35 @@ fn build_plan(
         warnings.push(ManaPaymentWarning::ProducesExcessMana(excess));
     }
 
+    let x_allocation = game.preview_x_mana_allocation(
+        payment_request.payer, Some(payment_request.source), &payment_request.cost,
+        payment_request.x_value, payment_request.reason, &payment_request.spend_policy,
+        payment_request.allow_life_payment, payment_request.allow_black_life,
+        payment_request.preferences.prefer_life,
+    )?;
+    let payment_cost = payment_request.cost.clone().with_required_x_allocation(x_allocation);
     let request_hash = request_hash(request);
     let id = plan_hash(
         request_hash,
         &steps,
         &allocations,
-        &payment_request.cost,
+        &payment_cost,
         &pool_after_payment,
     );
-    ManaPaymentPlan {
+    Some(ManaPaymentPlan {
         payable: true,
         id,
         request_hash,
         mana_ability_steps: steps,
         allocations,
-        mana_cost_after_alternatives: payment_request.cost.clone(),
+        mana_cost_after_alternatives: payment_cost,
         pool_before,
         expected_pool_after_activations: pool_after_activations,
         expected_pool_after_payment: pool_after_payment,
         life_to_pay,
         score,
         warnings,
-    }
+    })
 }
 
 /// Keep a payment window open after manual activations leave the cost unfunded.
@@ -3244,6 +3283,18 @@ fn request_hash(request: &ManaPaymentRequest) -> u64 {
         "consumer mana spending constraints".hash(&mut hasher);
         request.cost.spending_restrictions().hash(&mut hasher);
     }
+    if let Some(scope) = request.cost.x_payment_scope() {
+        "generic X payment scope".hash(&mut hasher); scope.hash(&mut hasher);
+    }
+    if let Some(allocation) = request.preferences.x_allocation {
+        "selected actual X allocation".hash(&mut hasher); allocation.hash(&mut hasher);
+    }
+    if let Some(completion) = request.assist_completion.as_deref() {
+        "Assist caster continuation".hash(&mut hasher); request_hash(completion).hash(&mut hasher);
+    }
+    if let Some(payment) = request.cost.required_actual_payment() {
+        "exact actual mana payment".hash(&mut hasher); payment.hash(&mut hasher);
+    }
     request.x_value.hash(&mut hasher);
     request.allow_mana_abilities.hash(&mut hasher);
     request.reserved_tap_sources.hash(&mut hasher);
@@ -3286,6 +3337,12 @@ fn plan_hash(
     if !payment_cost.spending_restrictions().is_empty() {
         "consumer mana spending constraints".hash(&mut hasher);
         payment_cost.spending_restrictions().hash(&mut hasher);
+    }
+    if let Some(scope) = payment_cost.x_payment_scope() {
+        "generic X payment scope".hash(&mut hasher); scope.hash(&mut hasher);
+    }
+    if let Some(payment) = payment_cost.required_actual_payment() {
+        "exact actual mana payment".hash(&mut hasher); payment.hash(&mut hasher);
     }
     pool.white.hash(&mut hasher);
     pool.blue.hash(&mut hasher);

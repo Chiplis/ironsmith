@@ -71,9 +71,11 @@ pub struct KeywordActionTrigger {
     pub tagged_object_filter: Option<(TagKey, ObjectFilter)>,
     pub during_your_turn: bool,
     pub during_your_main_phase: bool,
+    pub one_or_more: bool,
 }
 
 impl KeywordActionTrigger {
+    pub fn one_or_more(mut self) -> Self { self.one_or_more = true; self }
     pub fn new(action: KeywordActionKind, player: PlayerFilter) -> Self {
         Self {
             action,
@@ -83,6 +85,7 @@ impl KeywordActionTrigger {
             tagged_object_filter: None,
             during_your_turn: false,
             during_your_main_phase: false,
+            one_or_more: false,
         }
     }
 
@@ -95,6 +98,7 @@ impl KeywordActionTrigger {
             tagged_object_filter: None,
             during_your_turn: false,
             during_your_main_phase: false,
+            one_or_more: false,
         }
     }
 
@@ -111,6 +115,7 @@ impl KeywordActionTrigger {
             tagged_object_filter: None,
             during_your_turn: false,
             during_your_main_phase: false,
+            one_or_more: false,
         }
     }
 
@@ -129,6 +134,7 @@ impl KeywordActionTrigger {
             tagged_object_filter: Some((object_tag, object_filter)),
             during_your_turn: false,
             during_your_main_phase: false,
+            one_or_more: false,
         }
     }
 
@@ -154,6 +160,8 @@ impl KeywordActionTrigger {
 }
 
 impl TriggerMatcher for KeywordActionTrigger {
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> { Some(vec![EventKind::KeywordAction]) }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::KeywordAction {
             return false;
@@ -245,6 +253,11 @@ impl TriggerMatcher for KeywordActionTrigger {
             PlayerFilter::Specific(id) => e.player == *id,
             _ => true,
         }
+    }
+
+    fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        self.one_or_more.then(||event.downcast::<KeywordActionEvent>()).flatten()
+            .map(|event|crate::triggers::matcher_trait::SimultaneousTriggerKey::KeywordActionBatch(event.action))
     }
 
     fn display(&self) -> String {
@@ -460,11 +473,8 @@ impl TriggerMatcher for KeywordActionTrigger {
             KeywordActionKind::Fight | KeywordActionKind::Connive
         ) && let Some(source_filter) = &self.source_filter
         {
-            return format!(
-                "Whenever {} {}",
-                source_filter.description(),
-                self.action.third_person()
-            );
+            return if self.one_or_more { format!("Whenever one or more {} {}", crate::triggers::combat::pluralize_one_or_more_attack_subject(&source_filter.description()), self.action.infinitive()) }
+                else { format!("Whenever {} {}", source_filter.description(), self.action.third_person()) };
         }
         if self.action == KeywordActionKind::Exploit
             && let Some(source_filter) = &self.source_filter

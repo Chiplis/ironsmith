@@ -380,6 +380,12 @@ struct ManaPaymentEditorView {
     required_activations: Vec<ManaPaymentActivationCommand>,
     required_alternatives: Vec<ManaPaymentAlternativeCommand>,
     required_life_pips: Vec<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    x_allocation: Option<[u32; 5]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    planned_x_allocation: Option<[u32; 5]>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    x_spending_rules: Vec<String>,
     activation_options: Vec<ManaActivationOptionView>,
     activation_options_complete: bool,
     life_options: Vec<ManaLifeOptionView>,
@@ -1083,6 +1089,11 @@ fn mana_payment_editor_view(
             .iter()
             .map(|pip| pip.0)
             .collect(),
+        x_allocation: preferences.x_allocation.map(|allocation| allocation.0),
+        planned_x_allocation: payment.plan.mana_cost_after_alternatives.required_x_allocation().map(|allocation| allocation.0),
+        x_spending_rules: request.cost.spending_restrictions().iter()
+            .filter(|rule| matches!(rule, ironsmith_core::mana::ManaSpendingRestriction::OnX { .. }))
+            .map(|rule| rule.cast_description(false)).collect(),
         activation_options: activation_options.to_vec(),
         activation_options_complete: true,
         life_options: ironsmith::mana_payment::mana_payment_life_options(game, &life_request)
@@ -3820,6 +3831,8 @@ enum ManaPaymentCommand {
         prefer_life: bool,
         #[serde(default)]
         required_life_pips: Vec<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        x_allocation: Option<[u32; 5]>,
     },
     Activate {
         source_id: String,
@@ -3864,6 +3877,7 @@ impl ManaPaymentCommand {
                 preserved_source_ids,
                 prefer_life,
                 required_life_pips,
+                x_allocation,
             } => Ok(ironsmith::mana_payment::ManaPaymentResponse::Replan {
                 preferences: ironsmith::mana_payment::ManaPaymentPreferences {
                     required_sources: parse_mana_payment_source_ids(
@@ -3887,6 +3901,7 @@ impl ManaPaymentCommand {
                         "preserved",
                     )?,
                     prefer_life,
+                    x_allocation: x_allocation.map(ironsmith_core::mana::XManaAllocation),
                     required_life_pips: required_life_pips
                         .into_iter()
                         .map(ironsmith::mana_payment::ManaPipId)

@@ -30,6 +30,9 @@ pub enum DamageHistoryReduction {
     Total,
     LargestSourceTotal,
     DistinctSources,
+    /// Largest completed amount from one source to one recipient in one
+    /// damage occurrence, preserving replacement-fragment coalescing.
+    LargestSourceRecipientOccurrence,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -134,6 +137,19 @@ impl DamageHistoryQuery {
             DamageHistoryReduction::LargestSourceTotal => format!(
                 "the greatest total amount of {damage} dealt{source}{recipient} this turn by any one source"
             ),
+            DamageHistoryReduction::LargestSourceRecipientOccurrence => {
+                let source = if source.is_empty() {
+                    " by a source"
+                } else {
+                    &source
+                };
+                let recipient = if recipient.is_empty() {
+                    " to a permanent or player"
+                } else {
+                    &recipient
+                };
+                format!("the greatest amount of {damage} dealt{source}{recipient} this turn")
+            }
             DamageHistoryReduction::DistinctSources => {
                 let qualifying = source
                     .strip_prefix(" by ")

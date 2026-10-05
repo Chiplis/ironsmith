@@ -3035,6 +3035,14 @@ pub fn parse_static_condition_clause(
             "missing condition clause after 'as long as'".to_string(),
         ));
     }
+    if let Some(minimum) = crate::grammar::effects::parse_unspent_mana_threshold(&tokens) {
+        let minimum = i32::try_from(minimum).map_err(|_| CardTextError::ParseError("unspent-mana threshold exceeds the value domain".into()))?;
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::UnspentMana(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(minimum),
+        });
+    }
     let display = clause_words.join(" ");
     if let Some(condition) = toughness_assignment::attached_axis_condition(&tokens) {
         return Ok(condition);

@@ -198,6 +198,11 @@ fn normalize_restriction_for_resolution(
         Restriction::BeCountered(filter) => Restriction::be_countered(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
+        Restriction::MustAttack(filter) => Restriction::must_attack(
+            // Plain creature/controller filters stay live. Exact anaphoric
+            // object references remain the identities the instruction named.
+            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+        ),
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),

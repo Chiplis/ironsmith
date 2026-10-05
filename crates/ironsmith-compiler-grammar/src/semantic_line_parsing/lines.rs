@@ -1883,6 +1883,14 @@ fn parse_villainous_choice_statement_chunk(
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
+    if crate::grammar::statement_shapes::is_extra_die_ignore_lowest(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::extra_die_ignore_lowest(PlayerFilter::You, 1, rendered),
+            ),
+        ]));
+    }
+
     let words = crate::lexer::TokenWordView::new(tokens);
     if words.parses_prefix(&["once", "each", "turn", "you", "may", "pay"])
         && crate::word_primitives::parse_sequence_suffix(

@@ -1,7 +1,7 @@
 //! UNVALIDATED: exact prices preserve independently authorized origins.
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::card::LinkedFaceLayout;
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::decision::{
     DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
 };

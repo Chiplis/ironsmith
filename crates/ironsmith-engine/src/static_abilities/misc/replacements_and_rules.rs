@@ -4788,3 +4788,17 @@ impl StaticAbilityKind for ManaProductionRewrite {
                 quantity: self.rule.quantity}))
     }
 }
+
+/// CR 106.4 / 106.6: conversion changes the existing mana's type. It does not produce
+/// new mana and does not discard source restrictions or producer snapshots.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConvertUnspentMana { pub player: crate::target::PlayerFilter, pub symbol: crate::mana::ManaSymbol }
+impl StaticAbilityKind for ConvertUnspentMana {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::ConvertUnspentMana }
+    fn display(&self) -> String { format!("If {} would lose unspent mana, that mana becomes {} instead", self.player.description(), format!("{:?}", self.symbol).to_ascii_lowercase()) }
+    fn generate_replacement_effect(&self, source: ObjectId, controller: PlayerId) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(source, controller,
+            crate::events::mana::matchers::ManaLossMatcher { player: self.player.clone() },
+            ReplacementAction::ConvertUnspentMana(self.symbol)))
+    }
+}

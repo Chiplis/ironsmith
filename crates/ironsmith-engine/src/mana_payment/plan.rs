@@ -52,6 +52,10 @@ pub struct ManaPaymentPreferences {
     pub prefer_life: bool,
     /// Expanded pips the player explicitly chose to pay with life.
     pub required_life_pips: Vec<ManaPipId>,
+    /// Actual W/U/B/R/G mana to allocate to X. This is a constraint on a
+    /// server-proved assignment, not a client-authored payment receipt.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub x_allocation: Option<ironsmith_core::mana::XManaAllocation>,
 }
 
 impl ManaPaymentPreferences {
@@ -128,6 +132,10 @@ pub struct ManaPaymentRequest {
     pub allow_black_life: bool,
     pub obligation: PaymentObligation,
     pub preferences: ManaPaymentPreferences,
+    /// Assist's actual payment must leave this independently priced caster
+    /// obligation payable. A continuation cannot itself contain Assist.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub assist_completion: Option<Box<ManaPaymentRequest>>,
 }
 
 impl ManaPaymentRequest {
@@ -147,6 +155,7 @@ impl ManaPaymentRequest {
             allow_black_life: false,
             obligation: PaymentObligation::Required,
             preferences: ManaPaymentPreferences::default(),
+            assist_completion: None,
         }
     }
 

@@ -378,6 +378,7 @@ pub(crate) fn compute_legal_attackers_with_view(
         let must_attack = abilities
             .iter()
             .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::MustAttack)
+            || game.effect_store.cant_effects.must_attack.contains_key(&perm_id)
             || !goaded_by.is_empty()
             || has_required_attack_target
             || valid_targets.iter().any(|target| matches!(target, AttackTarget::Player(player) if assigned_players.contains(player)));

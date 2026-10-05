@@ -66,8 +66,13 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
 fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction) -> bool {
     match restriction {
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
-        | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources) => object_filter_mentions_iterated_player(sources),
-        crate::effect::Restriction::PlayLandsMatching(player, filter) => player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter),
+        | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
+        | crate::effect::Restriction::MustAttack(sources) => {
+            object_filter_mentions_iterated_player(sources)
+        }
+        crate::effect::Restriction::PlayLandsMatching(player, filter) => {
+            player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
+        }
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
             player,

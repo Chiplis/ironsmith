@@ -594,6 +594,7 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
         match restriction {
             Restriction::PreventDamageFrom { sources: filter, .. }
             | Restriction::ActivateLoyaltyAbilitiesOf(filter)
+            | Restriction::MustAttack(filter)
             | Restriction::Attack(filter)
             | Restriction::Block(filter)
             | Restriction::Untap(filter)

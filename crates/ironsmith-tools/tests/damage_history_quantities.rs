@@ -3,7 +3,7 @@ use ironsmith_tools::{
 };
 
 #[test]
-fn thirteen_damage_history_payloads_compile_strictly_without_metadata_fallback() {
+fn fourteen_damage_history_payloads_compile_strictly_without_metadata_fallback() {
     let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../fixtures/damage_history_quantities.json.fixture"
     ))
@@ -44,6 +44,6 @@ fn thirteen_damage_history_payloads_compile_strictly_without_metadata_fallback()
         }
         checked += 1;
     }
-    assert_eq!(checked, 13);
+    assert_eq!(checked, 14);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

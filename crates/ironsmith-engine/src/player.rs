@@ -143,6 +143,13 @@ impl ManaPool {
         }
     }
 
+    /// Exact aggregate for checked scalar/payment boundaries. Six u32 fields
+    /// can exceed u32 even though every individual field is representable.
+    pub fn total_wide(&self) -> u64 {
+        u64::from(self.white) + u64::from(self.blue) + u64::from(self.black)
+            + u64::from(self.red) + u64::from(self.green) + u64::from(self.colorless)
+    }
+
     /// Returns the total amount of mana in the pool.
     pub fn total(&self) -> u32 {
         self.white + self.blue + self.black + self.red + self.green + self.colorless

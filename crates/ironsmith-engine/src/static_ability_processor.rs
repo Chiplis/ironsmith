@@ -770,6 +770,8 @@ pub enum StaticEffectDiscoveryError {
     MissingGeneratingOrigin { host: ObjectId },
     MissingControllerSource { source: ObjectId },
     UnavailableCharacteristics { object: ObjectId },
+    /// An existing signed scalar cannot represent this exact quantity.
+    ScalarRange { resource: &'static str, value: i128 },
 }
 
 impl std::fmt::Display for StaticEffectDiscoveryError {
@@ -783,12 +785,36 @@ impl std::fmt::Display for StaticEffectDiscoveryError {
                 "static-effect discovery lost generating occurrence on {host:?}"),
             Self::MissingControllerSource { source } => write!(f,
                 "continuous source-controller context unavailable for {source:?}"),
+            Self::ScalarRange { resource, value } => write!(f,
+                "{resource} value {value} exceeds the engine's signed scalar representation"),
             Self::UnavailableCharacteristics { object } => write!(f,
                 "continuous characteristics unavailable for existing object {object:?}"),
         }
     }
 }
 impl std::error::Error for StaticEffectDiscoveryError {}
+
+/// All unspent-mana selectors share the existing signed scalar domain. Check
+/// the wide aggregate before any infallible legacy adapter or cached query can
+/// reinterpret a large pool as a negative/small value.
+pub(crate) fn validate_mana_scalar_domain(game: &GameState) -> Result<(), StaticEffectDiscoveryError> {
+    let total: u128 = game.players.iter().map(|player| u128::from(player.mana_pool.total_wide())).sum();
+    if total > i32::MAX as u128 {
+        return Err(StaticEffectDiscoveryError::ScalarRange { resource: "unspent mana", value: total as i128 });
+    }
+    Ok(())
+}
+
+fn validate_final_pt_characteristics(game: &GameState, effects: &[ContinuousEffect])
+    -> Result<(), StaticEffectDiscoveryError>
+{
+    let ids: Vec<_> = game.object_ids_in_deterministic_order().into_iter().filter(|id|
+        game.object(*id).is_some_and(|object| object.zone != Zone::Battlefield || !game.is_phased_out(*id))).collect();
+    let chars = crate::continuous::calculate_characteristics_batch_with_effects(&ids,
+        game.objects_map(), effects, &game.battlefield, game.commander_objects(), game);
+    for value in chars.values() { value.validate_numeric_range()?; }
+    Ok(())
+}
 
 /// Discover a complete snapshot without publishing static effects or a static snapshot.
 ///
@@ -800,6 +826,8 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     game: &GameState,
     limits: StaticEffectDiscoveryLimits,
 ) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
+    validate_mana_scalar_domain(game)?;
+    let mut mana_pt = false;
     let registered = game.effect_store.continuous_effects.effects().to_vec();
     validate_static_controller_sources(game, &registered)?;
     let scope = text_box_query_scope(&registered);
@@ -809,11 +837,16 @@ pub fn try_generate_continuous_effects_from_static_abilities(
         let Some(object) = game.object(object_id) else { continue; };
         if object.zone == Zone::Battlefield && game.is_phased_out(object_id) { continue; }
         let abilities = source_abilities(game, object_id, &registered, &scope, &mut text_cache);
+        for ability in abilities.iter().filter(|ability| ability.functions_in(&object.zone)) {
+            if let AbilityKind::Static(ability) = &ability.kind {
+                mana_pt |= ability.validate_mana_scalar_ranges(game, object_id, game.controller_of(object))?;
+            }
+        }
         sources.push(SourceStaticEffectEntry { object_id,
             group_roots: static_group_roots(&abilities),
             effects: generate_direct_static_effects(game, object_id, &abilities), abilities });
     }
-    let mut available = registered;
+    let mut available = registered.clone();
     available.extend(sources.iter().flat_map(|source| source.effects.iter().cloned()));
     validate_static_controller_sources(game, &available)?;
     let mut emitted = std::collections::HashSet::new();
@@ -845,6 +878,11 @@ pub fn try_generate_continuous_effects_from_static_abilities(
         for source in &mut sources {
             let Some(chars) = chars.get(&source.object_id) else { continue; };
             source.group_roots.extend(static_group_roots(&chars.abilities));
+            for ability in chars.abilities.iter().filter(|ability| ability.functions_in(&Zone::Battlefield)) {
+                if let AbilityKind::Static(ability) = &ability.kind {
+                    mana_pt |= ability.validate_mana_scalar_ranges(game, source.object_id, chars.controller)?;
+                }
+            }
             let late = generate_granted_late_static_effects(game, source.object_id,
                 &available, chars, &source.abilities);
             for effect in late {
@@ -867,6 +905,14 @@ pub fn try_generate_continuous_effects_from_static_abilities(
                 assign_inferred_static_effect_groups(&mut source.effects, source.object_id,
                     &source.group_roots, &mut ordinal);
                 effects.append(&mut source.effects);
+            }
+            let has_pt = mana_pt || registered.iter().chain(effects.iter())
+                .any(|effect| effect.modification.layer() == Layer::PowerToughness)
+                || game.objects_map().values().any(|object|
+                    object.counters.iter().any(|(counter, count)| *count != 0 && counter.pt_delta().is_some()));
+            if has_pt {
+                let mut complete = registered.clone(); complete.extend(effects.iter().cloned());
+                validate_final_pt_characteristics(game, &complete)?;
             }
             return Ok(effects);
         }

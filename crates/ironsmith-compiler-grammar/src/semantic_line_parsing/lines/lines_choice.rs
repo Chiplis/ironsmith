@@ -104,6 +104,19 @@ pub fn rewrite_modal_to_parsed_item(
         )));
     };
 
+    let spending_rules = modal.modes.iter().map(|mode|
+        crate::consumer_mana::split_x_spending_sentences(&mode.info.source_tokens).1)
+        .collect::<Vec<_>>();
+    if spending_rules.iter().any(|rules| !rules.is_empty()) {
+        let common = &spending_rules[0];
+        if spending_rules.iter().any(|rules| rules != common) {
+            return Err(CardTextError::ParseError("different modal X spending requirements need mode-bound cost scopes".into()));
+        }
+        let activated = header.activated.as_mut().ok_or_else(||
+            CardTextError::ParseError("modal X spending requirement has no activated cost owner".into()))?;
+        activated.mana_cost = crate::consumer_mana::constrain_activation_cost(activated.mana_cost.clone(), common);
+    }
+
     let positive_x_modes = modal.modes.iter().filter(|mode| {
         crate::grammar::structure::split_lexed_sentences(&mode.info.source_tokens)
             .into_iter()

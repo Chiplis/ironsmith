@@ -172,8 +172,41 @@ impl ManaEventPredicate<'_> {
     }
 }
 
+pub const POOL_SYMBOLS: [ManaSymbol; 6] = [ManaSymbol::White, ManaSymbol::Blue,
+    ManaSymbol::Black, ManaSymbol::Red, ManaSymbol::Green, ManaSymbol::Colorless];
+
+/// The exact aggregate of existing units proposed for loss. A conversion ends
+/// the loss proposal; a second "would lose" effect no longer matches it.
+/// Unit metadata is held by the original transaction, never reconstructed from
+/// these type counts. This event is not a ManaAdded event.
+#[derive(Debug, Clone)]
+pub struct ManaLostEvent {
+    pub player: PlayerId,
+    pub mana: crate::player::ManaPool,
+    pub converted_to: Option<ManaSymbol>,
+}
+impl GameEventType for ManaLostEvent {
+    fn event_kind(&self) -> EventKind { EventKind::ManaLost }
+    fn affected_player(&self, _game: &GameState) -> PlayerId { self.player }
+    fn player(&self) -> Option<PlayerId> { Some(self.player) }
+    fn display(&self) -> String { "Unspent mana lost".into() }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
 pub mod matchers {
     use super::*;
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct ManaLossMatcher { pub player: crate::target::PlayerFilter }
+    impl ReplacementMatcher for ManaLossMatcher {
+        fn may_match_event_kind(&self, kind: EventKind) -> bool { kind == EventKind::ManaLost }
+        fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+            event.as_any().downcast_ref::<ManaLostEvent>().is_some_and(|loss|
+                loss.converted_to.is_none() && POOL_SYMBOLS.iter().any(|symbol| loss.mana.amount(*symbol) > 0)
+                && self.player.matches_player(loss.player, &ctx.filter_ctx))
+        }
+        fn display(&self) -> String { "If a player would lose unspent mana".into() }
+    }
+
     use crate::events::context::EventContext;
 
     #[derive(Debug, Clone, PartialEq)]

@@ -3703,6 +3703,26 @@ pub(super) fn max_assist_generic_contribution(game: &GameState, pending: &Pendin
         .unwrap_or(0)
 }
 
+fn assist_payment_request(
+    game: &GameState, pending: &PendingCast, assistant: PlayerId, amount: u32,
+) -> Result<crate::mana_payment::ManaPaymentRequest, GameLoopError> {
+    let total = pending.mana_cost_to_pay.as_ref().ok_or_else(||
+        GameLoopError::InvalidState("Assist payment has no total mana cost".into()))?;
+    let cost = crate::mana::ManaCost::new().add_generic(amount)
+        .inherit_transaction_spending_restrictions(total);
+    let mut request = crate::mana_payment::ManaPaymentRequest::new(
+        assistant, pending.spell_id, crate::costs::PaymentReason::CastSpell, cost,
+    ).with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
+    if total.has_x_spending_restriction() {
+        let mut caster_pending = pending.clone();
+        caster_pending.assist_generic_contribution = amount;
+        caster_pending.pending_mana_payment = None;
+        let completion = spell_mana_payment_request(game, &caster_pending)?;
+        request.assist_completion = Some(Box::new(completion));
+    }
+    Ok(request)
+}
+
 pub(super) fn assist_generic_contribution_is_legal(
     game: &GameState,
     pending: &PendingCast,
@@ -3718,17 +3738,9 @@ pub(super) fn assist_generic_contribution_is_legal(
         return false;
     }
     if amount > 0 {
-        let assistant_request = crate::mana_payment::ManaPaymentRequest::new(
-            assistant,
-            pending.spell_id,
-            crate::costs::PaymentReason::CastSpell,
-            crate::mana::ManaCost::new().add_generic(amount)
-                .inherit_spending_restrictions(pending.mana_cost_to_pay.as_ref().expect("positive assist requires a total cost")),
-        )
-        .with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
-        if crate::mana_payment::check_mana_payment(game, &assistant_request).is_err() {
-            return false;
-        }
+        let Ok(assistant_request) = assist_payment_request(game, pending, assistant, amount) else { return false; };
+        let legal = crate::mana_payment::check_mana_payment(game, &assistant_request).is_ok();
+        if assistant_request.assist_completion.is_some() || !legal { return legal; }
     }
     let mut caster_pending = pending.clone();
     caster_pending.assist_generic_contribution = amount;
@@ -3745,17 +3757,7 @@ pub(super) fn prompt_spell_assist_payment_plan(
     let assistant = pending.assist_player.ok_or_else(|| {
         GameLoopError::InvalidState("Assist payment has no chosen player".to_string())
     })?;
-    let total = pending.mana_cost_to_pay.as_ref().ok_or_else(||
-        GameLoopError::InvalidState("Assist payment has no total mana cost".into()))?;
-    let cost = crate::mana::ManaCost::new().add_generic(pending.assist_generic_contribution)
-        .inherit_spending_restrictions(total);
-    let mut request = crate::mana_payment::ManaPaymentRequest::new(
-        assistant,
-        pending.spell_id,
-        crate::costs::PaymentReason::CastSpell,
-        cost,
-    )
-    .with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
+    let mut request = assist_payment_request(game, &pending, assistant, pending.assist_generic_contribution)?;
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
@@ -3886,7 +3888,13 @@ pub(super) fn spell_mana_payment_request(
             payment_pips.remove(index);
         }
     }
-    let locked_cost = cost.with_pips(payment_pips);
+    let actual_assist = &pending.assist_mana_spent_to_cast;
+    let assist_units = ironsmith_core::mana::ActualManaAllocation([
+        actual_assist.white, actual_assist.blue, actual_assist.black, actual_assist.red,
+        actual_assist.green, actual_assist.colorless,
+    ]).symbols();
+    let locked_cost = cost.clone().bind_x_payment_if_unbound(pending.x_value.unwrap_or(0))
+        .with_pips(payment_pips).with_prepaid_generic(assist_units);
     let mut spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
     spend_policy.allow_mode(pending.effect_mana_spend_mode);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
@@ -4080,7 +4088,7 @@ pub(super) fn activation_mana_payment_request(
     let cost = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("activation payment prompt has no mana cost".to_string())
     })?;
-    let locked_cost = cost.with_pips(expand_mana_cost_to_pips(
+    let locked_cost = cost.clone().bind_x_payment_if_unbound(pending.x_value.unwrap_or(0) as u32).with_pips(expand_mana_cost_to_pips(
         cost,
         pending.x_value.unwrap_or(0),
         &pending.hybrid_choices,

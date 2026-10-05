@@ -1210,7 +1210,7 @@ fn resolve_stack_entry_full_inner(
     // Per MTG Rule 608.2b, if ALL targets are now illegal, the spell/ability fizzles
     let target_validation_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
     let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view);
+        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view,Some(&ctx))?;
 
     let mutating_creature_spell = !entry.is_ability
         && obj.as_ref().is_some_and(|obj| {

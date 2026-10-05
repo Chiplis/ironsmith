@@ -2968,16 +2968,51 @@
             .map(describe_choose_spec)
             .collect::<Vec<_>>()
             .join(" and ");
-        let amount = if matches!(damage.amount.unhinted(), Value::SourcePower) {
-            "their power".to_string()
+        let source_power = matches!(damage.amount.unhinted(), Value::SourcePower)
+            || matches!(damage.amount.unhinted(), Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source));
+        let text = if damage.recipient_binding
+            == ironsmith_core::DamageRecipientSetBinding::EachSource
+        {
+            let amount = if source_power {
+                "its power".to_string()
+            } else {
+                describe_value(&damage.amount)
+            };
+            if let [source] = declarations.as_slice()
+                && let ChooseSpec::All(filter) = source.base()
+            {
+                format!(
+                    "Each {} deals damage to itself equal to {amount}",
+                    strip_leading_article(&describe_object_filter_with_fixed_pt_shorthand(filter))
+                )
+            } else {
+                format!(
+                    "{} each deal damage to themselves equal to {}",
+                    capitalize_first(&subjects),
+                    if source_power {
+                        "their power".to_string()
+                    } else {
+                        amount
+                    }
+                )
+            }
         } else {
-            describe_value(&damage.amount)
+            let amount = if source_power {
+                "their power".to_string()
+            } else {
+                describe_value(&damage.amount)
+            };
+            format!(
+                "{} each deal damage equal to {amount} to {}",
+                capitalize_first(&subjects),
+                describe_choose_spec(&damage.target)
+            )
         };
-        return format!(
-            "{} each deal damage equal to {amount} to {}",
-            capitalize_first(&subjects),
-            describe_choose_spec(&damage.target)
-        );
+        return if damage.unpreventable {
+            format!("{text}. The damage can't be prevented")
+        } else {
+            text
+        };
     }
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageToRecipientsEffect>() {
         let recipients=damage.recipients.iter().map(describe_choose_spec).collect::<Vec<_>>().join(" and ");

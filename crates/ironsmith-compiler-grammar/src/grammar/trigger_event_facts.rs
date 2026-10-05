@@ -213,11 +213,14 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::AttacksWhileSaddled(filter)
         | TriggerSpec::AttacksOneOrMore(filter)
         | TriggerSpec::AttacksAlone(filter)
+        | TriggerSpec::AttacksPlayerAlone(filter)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(filter)
         | TriggerSpec::Blocks(filter)
         | TriggerSpec::BlocksOneOrMore(filter)
         | TriggerSpec::BecomesBlocked(filter)
+        | TriggerSpec::BecomesBlockedOneOrMore(filter)
+        | TriggerSpec::KeywordActionOneOrMore { source_filter: filter, .. }
         | TriggerSpec::ThisBecomesBlockedByObject(filter)
         | TriggerSpec::PermanentBecomesTapped(filter)
         | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
@@ -374,6 +377,11 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
 
 fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
     match core_semantics(trigger) {
+        TriggerSpec::Either(left, right) => {
+            let left = triggering_object_cardinality(left);
+            let right = triggering_object_cardinality(right);
+            (left == right).then_some(left).flatten()
+        }
         TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. } => None,
         TriggerSpec::PlayerRollsResult { .. } | TriggerSpec::PlayerRollsResultMatching { .. }
         | TriggerSpec::PlayerRollsNthDie { .. } | TriggerSpec::PlayerRollsDie { .. }
@@ -409,6 +417,8 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
         | TriggerSpec::AttacksOneOrMoreWithAggregate { .. }
         | TriggerSpec::BlocksOneOrMore(_)
+        | TriggerSpec::BecomesBlockedOneOrMore(_)
+        | TriggerSpec::KeywordActionOneOrMore { .. }
         | TriggerSpec::DiesOneOrMore(_)
         | TriggerSpec::PutIntoGraveyardOneOrMore(_)
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
