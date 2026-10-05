@@ -984,6 +984,28 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // A complete keyword-action verb list inherits one player subject. Keep
+    // this typed union ahead of the general OR splitter, which otherwise
+    // sees a subjectless right arm ("surveil"). Explicit right-hand subjects
+    // and trailing qualifiers remain owned by their complete clause rules.
+    if let Some(alternatives) =
+        crate::grammar::trigger_clauses::parse_shared_keyword_action_alternatives(tokens)
+        && let Some(player) = parse_trigger_subject_player_filter(
+            &crate::lexer::token_word_refs(&tokens[alternatives.subject]),
+        )
+    {
+        let action_trigger = |action| TriggerSpec::KeywordAction {
+            action,
+            player: player.clone(),
+            source_filter: None,
+            during_your_turn: false,
+        };
+        return Ok(TriggerSpec::Either(
+            Box::new(action_trigger(alternatives.left)),
+            Box::new(action_trigger(alternatives.right)),
+        ));
+    }
+
     if let Some(or_idx) = split_trigger_or_index(tokens) {
         let left_tokens = &tokens[..or_idx];
         let right_tokens = &tokens[or_idx + 1..];
@@ -2939,16 +2961,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if trigger_pattern_accepts(&words, YOU_CYCLE_OR_DISCARD_TRIGGER_PATTERN) {
+        let card_filter = trigger_pattern_accepts(&words[4..], CYCLE_ANOTHER_CARD_TAIL_PATTERN)
+            .then(|| ObjectFilter::default().other());
         return Ok(TriggerSpec::Either(
             Box::new(TriggerSpec::KeywordAction {
                 action: crate::events::KeywordActionKind::Cycle,
                 player: PlayerFilter::You,
-                source_filter: None,
+                source_filter: card_filter.clone(),
                 during_your_turn: false,
             }),
             Box::new(TriggerSpec::PlayerDiscardsCard {
                 player: PlayerFilter::You,
-                filter: None,
+                filter: card_filter,
                 cause_controller: None,
                 effect_like_only: false,
                 one_or_more: false,
@@ -3342,7 +3366,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(TriggerSpec::ThisBecomesTapped);
     }
 
-    if trigger_pattern_accepts(&words, THIS_BECOMES_UNTAPPED_TRIGGER_PATTERN) {
+    if trigger_pattern_accepts(&words, THIS_BECOMES_UNTAPPED_TRIGGER_PATTERN)
+        || (words.len() > 2
+            && trigger_pattern_accepts(&words, BECOMES_UNTAPPED_TRIGGER_SUFFIX)
+            && is_source_reference_words(&words[..words.len() - 2]))
+    {
         return Ok(TriggerSpec::ThisBecomesUntapped);
     }
 
@@ -3566,6 +3594,24 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source,
             target,
             source_surface: crate::triggers::DamageSourceSurface::PassiveBy,
+        });
+    }
+
+    if let Some(recipient) =
+        trigger_grammar::parse_passive_noncombat_damage_recipient(tokens)
+        && let Some(player) = trigger_subject_player_selector_lexed(&tokens[recipient.clone()])
+    {
+        // No source is singled out by passive recipient wording. Simultaneous
+        // damage from several sources is one event for each recipient (or
+        // one event for the whole recipient group when "one or more").
+        let mut source = ObjectFilter::default();
+        source.set_union_one_or_more(true);
+        return Ok(TriggerSpec::DealsNoncombatDamageToPlayer {
+            source,
+            player,
+            source_surface: crate::triggers::DamageSourceSurface::Filter,
+            damaged_player_one_or_more: has_leading_one_or_more(&tokens[recipient]),
+            during_turn: None,
         });
     }
 

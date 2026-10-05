@@ -1,0 +1,102 @@
+[
+  {
+    "name": "Denzilore Fatehold",
+    "compile_name": "Denzilore Fatehold",
+    "oracle_id": "0f8de7f0-c61d-415d-b4db-4959374343da",
+    "source": "https://scryfall.com/card/fra/349/denzilore-fatehold?utm_source=api",
+    "text": "Mana cost: {1}{W}{U}{U}\nType: Legendary Creature — Elder Sphinx\nPower/Toughness: 3/4\nFlash\nFlying\nWhenever you scry or surveil, put a +1/+1 counter on each creature you control.",
+    "linked_faces": []
+  },
+  {
+    "name": "Diviner of Victory // Unwind History",
+    "compile_name": "Diviner of Victory",
+    "oracle_id": "e7b78acd-5288-4528-97a8-a5b43de90bf5",
+    "source": "https://scryfall.com/card/fra/425/diviner-of-victory-unwind-history?utm_source=api",
+    "text": "Mana cost: {U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 1/1\nThis creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\nWhenever you scry or surveil, this creature gets +1/+1 until end of turn.",
+    "linked_faces": [
+      {
+        "object": "card_face",
+        "name": "Diviner of Victory",
+        "mana_cost": "{U}",
+        "type_line": "Creature — Dwarf Wizard",
+        "oracle_text": "This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\nWhenever you scry or surveil, this creature gets +1/+1 until end of turn.",
+        "power": "1",
+        "toughness": "1",
+        "artist": "Justyna Dura",
+        "artist_id": "d2340aef-8ca9-4e0d-864c-6a4e8d5e350a",
+        "illustration_id": "22885fd8-c40e-4953-9d67-a483adb05925"
+      },
+      {
+        "object": "card_face",
+        "name": "Unwind History",
+        "mana_cost": "{1}{U}",
+        "type_line": "Sorcery",
+        "oracle_text": "Return target creature an opponent controls with mana value 3 or less to its owner's hand. Surveil 1.",
+        "artist": "Justyna Dura",
+        "artist_id": "d2340aef-8ca9-4e0d-864c-6a4e8d5e350a"
+      }
+    ]
+  },
+  {
+    "name": "Matoya, Archon Elder",
+    "compile_name": "Matoya, Archon Elder",
+    "oracle_id": "ef6c0054-3a89-4fac-b822-37c7d2514489",
+    "source": "https://scryfall.com/card/pfin/62s/matoya-archon-elder?utm_source=api",
+    "text": "Mana cost: {2}{U}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 1/4\nWhenever you scry or surveil, draw a card. (Draw after you scry or surveil.)",
+    "linked_faces": []
+  },
+  {
+    "name": "Planetarium of Wan Shi Tong",
+    "compile_name": "Planetarium of Wan Shi Tong",
+    "oracle_id": "f89d093d-c815-4df7-a348-2005aa227586",
+    "source": "https://scryfall.com/card/tla/385/planetarium-of-wan-shi-tong?utm_source=api",
+    "text": "Mana cost: {6}\nType: Legendary Artifact\n{1}, {T}: Scry 2.\nWhenever you scry or surveil, look at the top card of your library. You may cast that card without paying its mana cost. Do this only once each turn. (Look at the card after you scry or surveil.)",
+    "linked_faces": []
+  },
+  {
+    "name": "Proft, Consulting Detective",
+    "compile_name": "Proft, Consulting Detective",
+    "oracle_id": "45473bdb-b96f-4213-a46d-b2dbdf6b5e56",
+    "source": "https://scryfall.com/card/fra/218/proft-consulting-detective?utm_source=api",
+    "text": "Mana cost: {1}{U}\nType: Legendary Creature — Human Detective\nPower/Toughness: 2/2\nWhenever you scry or surveil, you may pay {2}. If you do, put a +1/+1 counter on Proft and draw a card. (Draw after you scry or surveil.)",
+    "linked_faces": []
+  },
+  {
+    "name": "Prudent Fateseer // Peer Review",
+    "compile_name": "Prudent Fateseer",
+    "oracle_id": "63f67baa-3f37-41b8-9ee6-3c37f828917d",
+    "source": "https://scryfall.com/card/fra/146/prudent-fateseer-peer-review?utm_source=api",
+    "text": "Mana cost: {1}{W/U}{W/U}\nType: Creature — Dwarf Wizard\nPower/Toughness: 1/4\nThis creature enters prepared.\nWhenever you scry or surveil, creatures you control get +1/+0 until end of turn. This ability triggers only once each turn.",
+    "linked_faces": [
+      {
+        "object": "card_face",
+        "name": "Prudent Fateseer",
+        "mana_cost": "{1}{W/U}{W/U}",
+        "type_line": "Creature — Dwarf Wizard",
+        "oracle_text": "This creature enters prepared.\nWhenever you scry or surveil, creatures you control get +1/+0 until end of turn. This ability triggers only once each turn.",
+        "power": "1",
+        "toughness": "4",
+        "artist": "Gustavo Pelissari",
+        "artist_id": "ad234dc7-82df-48bf-9b64-1901493641bb",
+        "illustration_id": "f210bd70-28d5-4d1d-a4e3-9a3a0313e368"
+      },
+      {
+        "object": "card_face",
+        "name": "Peer Review",
+        "mana_cost": "{2}{W/U}",
+        "type_line": "Sorcery",
+        "oracle_text": "Create a 2/2 colorless Wizard Soldier creature token named Cadet. Surveil 1.",
+        "artist": "Gustavo Pelissari",
+        "artist_id": "ad234dc7-82df-48bf-9b64-1901493641bb"
+      }
+    ]
+  },
+  {
+    "name": "Saheeli, Consul of Oversight",
+    "compile_name": "Saheeli, Consul of Oversight",
+    "oracle_id": "dfa95c0e-393d-4b22-9de3-45a7efc0ba14",
+    "source": "https://scryfall.com/card/fra/203/saheeli-consul-of-oversight?utm_source=api",
+    "text": "Mana cost: {3}{W}{W}\nType: Legendary Creature — Human Advisor\nPower/Toughness: 4/4\nFlying\nWhenever you scry or surveil, create a 1/1 colorless Thopter artifact creature token with flying. This ability triggers only once each turn.",
+    "linked_faces": []
+  }
+]

@@ -237,6 +237,19 @@ impl TriggerMatcher for DealsDamageTrigger {
             format!("Whenever {source_description} {verb} combat damage{during_turn}")
         } else if self.noncombat_only {
             if let Some(player) = &self.damaged_player {
+                if self.source_surface == ironsmith_core::trigger_model::DamageSourceSurface::Filter
+                    && surface_filter == ObjectFilter::default()
+                {
+                    let verb = if self.damaged_player_one_or_more || *player == PlayerFilter::You {
+                        "are"
+                    } else {
+                        "is"
+                    };
+                    return format!(
+                        "Whenever {} {verb} dealt noncombat damage{during_turn}",
+                        player_description(player)
+                    );
+                }
                 format!(
                     "Whenever {} {} noncombat damage to {}{}",
                     source_description,

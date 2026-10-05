@@ -301,6 +301,15 @@ fn effect_only_deals_damage(effect: &Effect) -> bool {
     {
         return true;
     }
+    if let Some(players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        // A nested "to each opponent" keeps all source/recipient assignments
+        // in the outer simultaneous damage action. Explicitly sequential or
+        // early-stop player programs do not have that same event boundary.
+        return !players.sequential
+            && !players.stop_after_first_happened
+            && !players.effects.is_empty()
+            && players.effects.iter().all(effect_only_deals_damage);
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return effect_only_deals_damage(&tagged.effect);
     }
@@ -614,6 +623,24 @@ mod tests {
         let c2_obj = game.object(c2).expect("c2 should exist");
         assert_eq!(c1_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
         assert_eq!(c2_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+
+    #[test]
+    fn only_simultaneous_damage_player_fanout_shares_the_outer_object_batch() {
+        let damage = Effect::deal_damage(1, ChooseSpec::Player(PlayerFilter::IteratedPlayer));
+        let mut players = crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![damage],
+        );
+        assert!(effect_only_deals_damage(&Effect::new(players.clone())));
+        players.sequential = true;
+        assert!(!effect_only_deals_damage(&Effect::new(players.clone())));
+        players.sequential = false;
+        players.stop_after_first_happened = true;
+        assert!(!effect_only_deals_damage(&Effect::new(players.clone())));
+        players.stop_after_first_happened = false;
+        players.effects.push(Effect::new(crate::effects::DrawCardsEffect::you(1)));
+        assert!(!effect_only_deals_damage(&Effect::new(players)));
     }
 
     #[test]

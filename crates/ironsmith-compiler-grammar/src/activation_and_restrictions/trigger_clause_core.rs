@@ -54,6 +54,7 @@ const YOU_CYCLE_OR_DISCARD_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!
     exact_any
         & [
             &["you", "cycle", "or", "discard", "a", "card"],
+            &["you", "cycle", "or", "discard", "another", "card"],
             &["you", "cycle", "or", "discard", "card"],
         ]
 );
@@ -641,6 +642,8 @@ const EXPLORE_NONLAND_CARD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "nonland", "card"], &["nonland", "card"]]);
 const BECOMES_TAPPED_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["becomes", "tapped"]);
+const BECOMES_UNTAPPED_TRIGGER_SUFFIX: ClauseShape<'static> =
+    clause_shape!(suffix & ["becomes", "untapped"]);
 const BECOMES_MONSTROUS_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["becomes", "monstrous"]);
 const MUTATES_TRIGGER_SUFFIX: ClauseShape<'static> = clause_shape!(suffix & ["mutates"]);

@@ -46,11 +46,11 @@ pub fn parse_discard_trigger_card_filter(
             clause_words.join(" ")
         )));
     };
-    let mut qualifier_tokens = strip_leading_articles(envelope.qualifier);
-    let qualifier_words = crate::lexer::token_word_refs(&qualifier_tokens);
-    if trigger_subject_grammar::trigger_words_are_one_or_more(&qualifier_words) {
-        qualifier_tokens.clear();
-    }
+    // Quantification belongs to the discard event, not its card filter.
+    // Strip the complete prefix even when a qualifier follows it: removing
+    // only the numeric "one or" leaves the invalid filter "more artifact".
+    let mut qualifier_tokens =
+        strip_leading_articles(strip_leading_one_or_more_lexed(envelope.qualifier));
     if qualifier_tokens.len() >= 2
         && qualifier_tokens
             .first()
