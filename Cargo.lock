@@ -1381,6 +1381,7 @@ name = "ironsmith-compiler-resolve"
 version = "0.1.0"
 dependencies = [
  "ironsmith-compiler-semantic",
+ "ironsmith-compiler-source",
  "ironsmith-core",
 ]
 

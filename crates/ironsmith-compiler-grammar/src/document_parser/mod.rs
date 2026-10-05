@@ -2329,9 +2329,7 @@ fn render_original_text_for_token_slice(
 fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> PreprocessedLine {
     let normalized = render_token_slice(tokens);
     let mut rewritten = line.clone();
-    rewritten.info.normalized.original = normalized.clone();
-    rewritten.info.normalized.normalized = normalized.clone();
-    rewritten.info.normalized.char_map = (0..normalized.len()).collect();
+    rewritten.info.normalized = ironsmith_compiler_source::NormalizedLine::identity(normalized);
     rewritten.tokens = tokens.to_vec();
     rewritten
 }
