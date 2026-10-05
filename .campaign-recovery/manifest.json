@@ -113,6 +113,26 @@
       "status": "UNVALIDATED committed-source checkpoint; coverage only from independently reviewed committed matrix",
       "builds_tests": "not_run",
       "bundle_integrity": "git bundle verify succeeded; prerequisite base exists locally"
+    },
+    {
+      "file": "recovery-sources-20261005-1146.bundle",
+      "requires_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+      "refs": {
+        "refs/heads/campaign/recovery-integration-d51": "cc915c3fb4ef9162bfda86fbf69c2549c1e37c85",
+        "refs/heads/recovery/defending-player-references": "f93069051510a169e3e4bf57f6d0852d73e1442f",
+        "refs/heads/recovery/dynamic-keyword-amounts": "71d9da365dc91c629b2b651fe2a244e611409a81",
+        "refs/heads/recovery/foretell-state-and-grants": "c0c0db42745a64753baef2af3a8b386536045bce",
+        "refs/heads/recovery/next-play-and-flashback": "f3762e6d7699d191ab8f6f41ae42e96745880771",
+        "refs/heads/recovery/shared-type-references": "79debf90a76b832d64f866e462155d7bea651041",
+        "refs/heads/recovery/suspected-designations": "615dfa40a83f8660ac7ebc77e5f7dee063017d8a",
+        "refs/heads/recovery/suspected-on-shared": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+      },
+      "bytes": 485142,
+      "sha256": "1a08bac4e2ace9945f155d3963ddac83a4685ecb93385a7c626765459804d657",
+      "blob_sha": "0117135a3fede33b1d7669087a74fb6f4df4682b",
+      "status": "UNVALIDATED committed-source checkpoint; coverage only from independently reviewed committed matrix",
+      "builds_tests": "not_run",
+      "bundle_integrity": "git bundle verify succeeded; prerequisite base exists locally"
     }
   ]
 }
