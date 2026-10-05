@@ -838,20 +838,21 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             card_type,
             color_filter,
         } => {
-            let crate::effect::Value::Fixed(count) = count else {
+            // Revealing does not consume the chosen card. Splitting a counted
+            // reveal into single-card steps would let one card pay repeatedly;
+            // keep the complete typed selection under the cost executor.
+            if count != crate::effect::Value::Fixed(1) {
                 out.push(ActivationCostStep::Cost(cost.clone()));
                 return;
-            };
-            for _ in 0..count.max(0) as u32 {
-                out.push(ActivationCostStep::CardChoice(
-                    ActivationCardCostChoice::RevealFromHand {
-                        cost: single_choice_cost(cost),
-                        card_type,
-                        color_filter,
-                        description: description.clone(),
-                    },
-                ));
             }
+            out.push(ActivationCostStep::CardChoice(
+                ActivationCardCostChoice::RevealFromHand {
+                    cost: single_choice_cost(cost),
+                    card_type,
+                    color_filter,
+                    description,
+                },
+            ));
         }
         CostProcessingMode::ReturnToHandTarget { filter } => {
             out.push(ActivationCostStep::CardChoice(

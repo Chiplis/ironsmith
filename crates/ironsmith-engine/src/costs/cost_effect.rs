@@ -819,6 +819,7 @@ impl CostPayer for CostEffect {
             .with_provenance(ctx.provenance);
         exec_ctx.source_snapshot = ctx.source_snapshot.clone();
         exec_ctx.replacement = ctx.replacement.clone();
+        exec_ctx.prospective_cost_payment = ctx.prospective_cost_payment;
         exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
         exec_ctx.announced_targets = Some(
             ctx.announced_targets

@@ -54,6 +54,7 @@ pub use put_tagged_remainder_on_library_bottom::PutTaggedRemainderOnLibraryBotto
 pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reorder_top_planar_deck::ReorderTopPlanarDeckEffect;
 pub use reveal_from_hand::{RevealFromHandEffect, RevealSourceFromHandEffect};
+pub(crate) use reveal_from_hand::{is_exact_reveal_selection, legal_reveal_from_hand_cards};
 pub use reveal_tagged::RevealTaggedEffect;
 pub use reveal_top::RevealTopEffect;
 pub use scry::{EachPlayerScryEffect, FatesealEffect, ScryEffect};

@@ -5308,41 +5308,7 @@ pub(super) fn get_legal_reveal_from_hand_cards(
     card_type: Option<crate::types::CardType>,
     color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
-    game.player(player)
-        .map(|p| {
-            p.hand
-                .iter()
-                .copied()
-                .filter(|&card_id| {
-                    if card_id == source {
-                        return false;
-                    }
-                    // A hidden placeholder's characteristics are unknown on
-                    // this peer; it stays revealable and is checked once the
-                    // reveal opens it.
-                    if (card_type.is_some() || color_filter.is_some())
-                        && game.is_hidden_card_placeholder(card_id)
-                    {
-                        return true;
-                    }
-                    let Some(obj) = game.object(card_id) else {
-                        return false;
-                    };
-                    if let Some(ct) = card_type
-                        && !obj.has_card_type(ct)
-                    {
-                        return false;
-                    }
-                    if let Some(required_colors) = color_filter {
-                        return game.current_colors(card_id).is_some_and(|colors| {
-                            !colors.intersection(required_colors).is_empty()
-                        });
-                    }
-                    true
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    crate::effects::cards::legal_reveal_from_hand_cards(game, player, source, card_type, color_filter)
 }
 
 /// Get legal permanents that can be returned to hand for a cost.

@@ -304,7 +304,7 @@ fn payment_disclosure_transaction_native_savepoint_keeps_live_commitment() {
     let (mut wasm, _) = manual_payment_fixture();
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source: ObjectId::from_raw(1), payer: PlayerId(0),
-        hand_objects: Default::default(), required_retry: None,
+        disclosed_objects: Default::default(), required_retry: None,
     });
     let saved = RuntimeSavepoint::capture(&wasm);
     wasm.payment_disclosure = None;
@@ -320,7 +320,7 @@ fn payment_disclosure_transaction_finished_replay_cannot_undo_but_later_safe_act
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source: ObjectId::from_raw(1),
         payer: PlayerId(0),
-        hand_objects: Default::default(),
+        disclosed_objects: Default::default(),
         required_retry: None,
     });
     wasm.finish_payment_disclosure();

@@ -3367,6 +3367,7 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                         .with_reason(reason)
                         .with_provenance(execution_ctx.provenance);
                 cost_ctx.source_snapshot = execution_ctx.source_snapshot.clone();
+                cost_ctx.prospective_cost_payment = execution_ctx.prospective_cost_payment;
                 cost_ctx.replacement = execution_ctx.replacement.clone();
                 cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
                 cost_ctx.x_value = execution_ctx.x_value;
@@ -3774,8 +3775,8 @@ fn pay_total_cost_branch_without_execution_context(
                     (if cost_ctx.interactive_mana_exclusions.is_some()
                         && cost_ctx.reason != crate::costs::PaymentReason::ActivateManaAbility
                     {
-                        payment::pay_special_action_payment_with_snapshot(
-                            &mut game.clone(),
+                        payment::check_special_action_payment_with_snapshot(
+                            game,
                             cost_ctx.payer,
                             &SpecialActionPayment {
                                 source: cost_ctx.source,
@@ -3783,7 +3784,6 @@ fn pay_total_cost_branch_without_execution_context(
                                 reason: cost_ctx.reason,
                             },
                             cost_ctx.source_snapshot.clone(),
-                            &mut crate::decision::SelectFirstDecisionMaker,
                         )
                         .is_ok()
                     } else {
@@ -3956,29 +3956,8 @@ fn pay_activation_card_choice_without_execution_context(
                 cost_ctx,
             )
         }
-        crate::game_loop::ActivationCardCostChoice::RevealFromHand {
-            cost,
-            card_type,
-            color_filter,
-            description,
-        } => {
-            let candidates = legal_reveal_cards(
-                game,
-                cost_ctx.payer,
-                cost_ctx.source,
-                *card_type,
-                *color_filter,
-            );
-            let Some(target_id) = choose_single_cost_object(
-                game,
-                cost_ctx,
-                format!("Choose a card to reveal: {description}"),
-                candidates,
-                crate::game_loop::card_cost_choice_reveal_policy(choice),
-            ) else {
-                return Err(CostPaymentError::InsufficientCardsToReveal);
-            };
-            pay_selected_cost_without_execution_context(game, cost, target_id, None, cost_ctx)
+        crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. } => {
+            resolve_cost_choice(game, cost, cost_ctx)
         }
         crate::game_loop::ActivationCardCostChoice::ReturnToHand {
             cost,
@@ -4152,6 +4131,7 @@ fn pay_selected_cost_without_execution_context(
             .with_pre_chosen_cards(vec![chosen_id])
             .with_provenance(provenance);
         selected_ctx.source_snapshot = cost_ctx.source_snapshot.clone();
+        selected_ctx.prospective_cost_payment = cost_ctx.prospective_cost_payment;
         selected_ctx.replacement = cost_ctx.replacement.clone();
         selected_ctx.requesting_effect_cause = requesting_effect_cause;
         selected_ctx.x_value = x_value;
@@ -4378,6 +4358,7 @@ fn pay_component_in_context(
         .with_provenance(provenance);
     cost_ctx.reserved_tap_sources = reserved_tap_sources;
     cost_ctx.source_snapshot = execution_ctx.source_snapshot.clone();
+    cost_ctx.prospective_cost_payment = execution_ctx.prospective_cost_payment;
     cost_ctx.replacement = execution_ctx.replacement.clone();
     cost_ctx.requesting_effect_cause = Some(execution_ctx.cause.clone());
     cost_ctx.x_value = execution_ctx.x_value;
@@ -5031,12 +5012,14 @@ fn resolve_cost_choice(
             );
             let chosen: Vec<ObjectId> =
                 make_decision(game, ctx.decision_maker, ctx.payer, Some(ctx.source), spec);
-            let to_reveal = normalize_selection(chosen, &candidates, required);
-            if to_reveal.len() != required {
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            if !crate::effects::cards::is_exact_reveal_selection(&chosen, &candidates, required) {
                 return Err(CostPaymentError::InsufficientCardsToReveal);
             }
 
-            ctx.pre_chosen_cards.extend(to_reveal);
+            ctx.pre_chosen_cards.extend(chosen);
             match cost.pay(game, ctx)? {
                 CostPaymentResult::Paid => Ok(()),
                 CostPaymentResult::NeedsChoice(_) => Err(CostPaymentError::Other(
@@ -5232,47 +5215,7 @@ fn legal_reveal_cards(
     card_type: Option<crate::types::CardType>,
     color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
-    let mut reveal_filter = ObjectFilter::default().in_zone(Zone::Hand);
-    if let Some(card_type) = card_type {
-        reveal_filter = reveal_filter.with_type(card_type);
-    }
-    if let Some(colors) = color_filter {
-        reveal_filter = reveal_filter.with_colors(colors);
-    }
-    let hand = game
-        .player(payer)
-        .map_or_else(Vec::new, |p| p.hand.to_vec());
-    let placeholders = hand_cost_placeholders(game, payer, source, &reveal_filter, &hand);
-    game.player(payer)
-        .map(|p| {
-            p.hand
-                .iter()
-                .copied()
-                .filter(|&card_id| {
-                    if card_id == source {
-                        return false;
-                    }
-                    if placeholders.contains(&card_id) {
-                        return true;
-                    }
-                    let Some(obj) = game.object(card_id) else {
-                        return false;
-                    };
-                    if let Some(ct) = card_type
-                        && !obj.has_card_type(ct)
-                    {
-                        return false;
-                    }
-                    if let Some(required_colors) = color_filter {
-                        return game.current_colors(card_id).is_some_and(|colors| {
-                            !colors.intersection(required_colors).is_empty()
-                        });
-                    }
-                    true
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+    crate::effects::cards::legal_reveal_from_hand_cards(game, payer, source, card_type, color_filter)
 }
 
 fn resolve_cost_count(count: &crate::effect::Value, x_value: Option<u32>) -> u32 {

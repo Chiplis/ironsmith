@@ -92,6 +92,8 @@ pub struct CostContext<'dm> {
     /// Pre-chosen cards for costs that require card selection (e.g., ExileFromHand).
     /// When present, costs should use these instead of prompting for choice.
     pub pre_chosen_cards: Vec<ObjectId>,
+    /// True only inside a cloned admission owner, never in actual payment.
+    pub(crate) prospective_cost_payment: bool,
     pub announced_targets: Vec<crate::game_state::Target>,
     /// Tagged objects that persist across cost effects.
     ///
@@ -151,6 +153,7 @@ impl<'dm> CostContext<'dm> {
             requesting_effect_cause: None,
             decision_maker,
             pre_chosen_cards: Vec::new(),
+            prospective_cost_payment: false,
             announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
@@ -261,6 +264,7 @@ impl CostCheckContext {
             requesting_effect_cause: None,
             decision_maker: dm,
             pre_chosen_cards: self.pre_chosen_cards.clone(),
+            prospective_cost_payment: false,
             announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),

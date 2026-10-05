@@ -371,6 +371,8 @@ pub struct ExecutionContext<'a> {
     /// True when `targets` carries preselected cost-payment choices rather than
     /// spell or ability targets.
     pub targets_are_cost_choices: bool,
+    /// Internal cloned cost-admission simulation; never a completed payment.
+    pub(crate) prospective_cost_payment: bool,
     /// Active target requirement assignments for the current execution scope.
     pub target_assignments: Vec<TargetAssignment>,
     /// Announced divisions not yet consumed by their resolving effects.
@@ -534,6 +536,7 @@ execution_context_checkpoint! {
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
     targets_are_cost_choices: bool,
+    prospective_cost_payment: bool,
     target_assignments: Vec<TargetAssignment>,
     target_distributions: Vec<TargetDistribution>,
     announced_target_assignments: Vec<TargetAssignment>,
@@ -641,6 +644,7 @@ impl<'a> ExecutionContext<'a> {
             targets: Vec::new(),
             announced_targets: None,
             targets_are_cost_choices: false,
+            prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
@@ -704,6 +708,7 @@ impl<'a> ExecutionContext<'a> {
             targets: Vec::new(),
             announced_targets: None,
             targets_are_cost_choices: false,
+            prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
@@ -757,6 +762,7 @@ impl<'a> ExecutionContext<'a> {
             targets: self.targets,
             announced_targets: self.announced_targets,
             targets_are_cost_choices: self.targets_are_cost_choices,
+            prospective_cost_payment: self.prospective_cost_payment,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,
             announced_target_assignments: self.announced_target_assignments,

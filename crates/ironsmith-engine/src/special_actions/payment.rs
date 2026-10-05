@@ -120,12 +120,37 @@ pub(super) fn check_special_action_payment(
     }
     // Reuse the choice-aware total-cost interpreter on a clone for non-mana
     // components; earlier costs change what is available for later components.
-    pay_special_action_payment(
-        &mut game.clone(),
-        player,
-        payment,
-        &mut crate::decision::SelectFirstDecisionMaker,
+    check_special_action_payment_with_snapshot(game, player, payment, None)
+}
+
+/// Preserve the existing sequential resource simulation while keeping a
+/// prospective reveal distinct from completed public disclosure. This owner
+/// creates the isolated game and never returns its hypothetical state.
+pub(super) fn check_special_action_payment_with_snapshot(
+    game: &GameState,
+    player: PlayerId,
+    payment: &SpecialActionPayment,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> Result<(), ActionError> {
+    let mut preview = game.clone();
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let provenance = preview.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: payment.source,
+            controller: player,
+        },
+    );
+    let mut ctx = CostContext::new(payment.source, player, &mut dm)
+        .with_reason(payment.reason)
+        .with_provenance(provenance);
+    ctx.source_snapshot = snapshot;
+    ctx.interactive_mana_exclusions = Some(Vec::new());
+    ctx.prospective_cost_payment = true;
+    pay_total_cost_without_preflight_with_choice(
+        &mut preview, &normalized_payment_cost(&payment.cost), &mut ctx,
     )
+    .map(|_| ())
+    .map_err(|error| cost_error_to_action_error(error, payment.source))
 }
 
 /// Pay a cost a resolving spell or ability demands (ward, for one). The payer
@@ -145,12 +170,11 @@ pub(crate) fn pay_resolution_cost_with_snapshot(
         cost: cost.clone(),
         reason,
     };
-    pay_special_action_payment_with_snapshot(
-        &mut game.clone(),
+    check_special_action_payment_with_snapshot(
+        game,
         player,
         &payment,
         snapshot.clone(),
-        &mut crate::decision::SelectFirstDecisionMaker,
     )
     .is_ok()
         && pay_special_action_payment_with_snapshot(game, player, &payment, snapshot, dm).is_ok()
@@ -512,5 +536,60 @@ mod tests {
         assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
         assert!(game.battlefield.iter().all(|id| game.is_tapped(*id)));
         assert!(check_special_action_payment(&game, player, &payment).is_err());
+    }
+}
+
+#[cfg(test)]
+mod reveal_admission_tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct RevealAnswer { chosen: Option<ObjectId>, views: usize }
+    impl DecisionMaker for RevealAnswer {
+        fn decide_objects(&mut self, _: &GameState, _: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+            self.chosen.into_iter().collect()
+        }
+        fn view_cards(&mut self, _: &GameState, _: PlayerId, _: &[ObjectId], _: &crate::decisions::context::ViewCardsContext) {
+            self.views += 1;
+        }
+    }
+
+    #[test]
+    fn compound_and_alternative_reveal_admission_does_not_open_or_complete_actual_payment() {
+        for alternatives in [false, true] {
+            let player = PlayerId(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let definition = crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Admission source")
+                .card_types(vec![crate::CardType::Artifact]).build();
+            let source = game.create_object_from_definition(&definition, player, Zone::Battlefield);
+            let selected = game.create_hidden_card_placeholder(player, Zone::Hand, 0, "cost-admission".into());
+            let reveal = crate::costs::Cost::reveal_from_hand_with_color_filter(1, None, Some(crate::color::ColorSet::RED));
+            let branch = crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::life(2), reveal]);
+            let cost = if alternatives { crate::cost::TotalCost::one_of(vec![branch,
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(30))]) } else { branch };
+            let payment = SpecialActionPayment { source, cost: cost.clone(), reason: crate::costs::PaymentReason::TurnFaceUp };
+            assert!(check_special_action_payment(&game, player, &payment).is_ok());
+            assert_eq!(game.player(player).unwrap().life, 20);
+            assert!(!game.is_publicly_revealed_hidden_card(selected));
+            let mut dm = RevealAnswer { chosen: Some(selected), ..Default::default() };
+            assert!(matches!(pay_special_action_payment(&mut game, player, &payment, &mut dm),
+                Err(ActionError::ExecutionFailure { error: crate::effects::ExecutionError::IncompleteEvidence(_), .. })));
+            assert_eq!(game.player(player).unwrap().life, 20);
+            assert_eq!(dm.views, 0);
+            assert!(!game.is_publicly_revealed_hidden_card(selected));
+            // Ward uses the same cloned admission owner, then performs a real
+            // cost. Prospective success must not masquerade as actual payment.
+            assert!(!pay_resolution_cost_with_snapshot(&mut game, player, source, &cost,
+                crate::costs::PaymentReason::Effect, None, &mut dm));
+            assert_eq!(game.player(player).unwrap().life, 20);
+            let opened = crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Opened red card")
+                .card_types(vec![crate::CardType::Instant]).color_indicator(crate::color::ColorSet::RED).build();
+            game.reveal_hidden_card_with_definition(selected, &opened).unwrap();
+            assert!(pay_resolution_cost_with_snapshot(&mut game, player, source, &cost,
+                crate::costs::PaymentReason::Effect, None, &mut dm));
+            assert_eq!(game.player(player).unwrap().life, 18);
+            assert_eq!(dm.views, 2, "only the actual payment discloses to both players");
+            assert_eq!(game.object(selected).unwrap().zone, Zone::Hand);
+        }
     }
 }

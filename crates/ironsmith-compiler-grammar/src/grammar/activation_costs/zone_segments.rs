@@ -172,7 +172,7 @@ fn parse_reveal_source_from_hand<'a>(
             "this card or this card type",
         ));
     }
-    parse_from_your_hand.parse_next(input)?;
+    parse_in_or_from_your_hand.parse_next(input)?;
     eof.parse_next(input)?;
     Ok(ActivationCostSegmentCst::RevealSourceFromHand)
 }
@@ -184,7 +184,7 @@ fn parse_reveal_cards_from_hand<'a>(
     let color_filter = parse_optional_color(input);
     let card_type = parse_optional_card_type(input);
     alt((primitives::kw("card"), primitives::kw("cards"))).parse_next(input)?;
-    parse_from_your_hand.parse_next(input)?;
+    parse_in_or_from_your_hand.parse_next(input)?;
     eof.parse_next(input)?;
     Ok(ActivationCostSegmentCst::RevealFromHand {
         count,
@@ -224,10 +224,13 @@ fn parse_optional_card_type<'a>(input: &mut LexStream<'a>) -> Option<crate::type
     Some(card_type)
 }
 
-fn parse_from_your_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["from", "your", "hand"])
-        .void()
-        .parse_next(input)
+fn parse_in_or_from_your_hand<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    alt((
+        primitives::phrase(&["from", "your", "hand"]),
+        primitives::phrase(&["in", "your", "hand"]),
+    ))
+    .void()
+    .parse_next(input)
 }
 
 fn parse_return_cost_shape_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ReturnCostShape> {
@@ -363,6 +366,59 @@ mod tests {
                 filter: crate::target::ObjectFilter::artifact(),
             }
         );
+    }
+
+    #[test]
+    fn reveal_hand_location_wording_preserves_count_color_and_type() {
+        for location in ["in", "from"] {
+            for (color, expected) in [
+                ("white", crate::color::ColorSet::WHITE),
+                ("blue", crate::color::ColorSet::BLUE),
+                ("black", crate::color::ColorSet::BLACK),
+                ("red", crate::color::ColorSet::RED),
+                ("green", crate::color::ColorSet::GREEN),
+            ] {
+                let tokens = lex_line(&format!("reveal a {color} card {location} your hand"), 0)
+                    .unwrap();
+                assert_eq!(
+                    parse_reveal_segment_tokens(&tokens).unwrap(),
+                    ActivationCostSegmentCst::RevealFromHand {
+                        count: Value::Fixed(1),
+                        color_filter: Some(expected),
+                        card_type: None,
+                    }
+                );
+            }
+            let tokens = lex_line(
+                &format!("reveal two blue creature cards {location} your hand"),
+                0,
+            )
+            .unwrap();
+            assert_eq!(
+                parse_reveal_segment_tokens(&tokens).unwrap(),
+                ActivationCostSegmentCst::RevealFromHand {
+                    count: Value::Fixed(2),
+                    color_filter: Some(crate::color::ColorSet::BLUE),
+                    card_type: Some(crate::types::CardType::Creature),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn reveal_hand_location_rejects_other_actors_zones_and_trailing_input() {
+        for text in [
+            "reveal a blue card in their hand",
+            "reveal a blue card in target opponent's hand",
+            "reveal a blue card in your graveyard",
+            "reveal a blue token in your hand",
+            "reveal a blue card in your hand then draw a card",
+            "reveal a blue card in your hand {U}",
+            "reveal a blue card in your hand,",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(parse_reveal_segment_tokens(&tokens).is_err(), "{text}");
+        }
     }
 
     #[test]

@@ -238,6 +238,7 @@ impl WasmGame {
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
         let disclosure_view = self.payment_disclosure_view();
+        let disclosure_source_view = self.payment_disclosure_source_view();
         let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
@@ -255,6 +256,9 @@ impl WasmGame {
             self.static_library_top_visibility_window(),
         );
         if let Some(view) = disclosure_view.as_ref() {
+            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
+        }
+        if let Some(view) = disclosure_source_view.as_ref() {
             snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
         }
         snap.crypto_requirements = self.last_crypto_requirements.clone();

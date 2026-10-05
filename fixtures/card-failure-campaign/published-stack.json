@@ -983,6 +983,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/836"
+    },
+    {
+      "stage": 71,
+      "branch": "fix/card-failures-71-miracle-and-original-results",
+      "base": "fix/card-failures-70-combat-rules-and-paired-coins",
+      "source_integration_commit": "f4a0fd7a946f79168fe69cd6e5ca14120a1a94f5",
+      "remote_commit": "be51a7596887f8045d1586686c9469a099b29bf8",
+      "tree": "c5a25ce83029283af1a8572ed2bb6b8ce8ba8a7b",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 837,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/837"
     }
   ]
 }
