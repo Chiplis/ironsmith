@@ -478,6 +478,10 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerRollsToVisitAttractions { player } => {
             crate::triggers::Trigger::player_rolls_to_visit_attractions(player)
         }
+        TriggerKind::PlayerRollsResultMatching { player, result, natural } => crate::triggers::Trigger::new(
+            crate::triggers::other::QualifiedDieRollTrigger { player, result: Some(result), natural, ordinal: None }),
+        TriggerKind::PlayerRollsNthDie { player, ordinal } => crate::triggers::Trigger::new(
+            crate::triggers::other::QualifiedDieRollTrigger { player, result: None, natural: false, ordinal: Some(ordinal) }),
         TriggerKind::PlayerRollsResult { player, result } => {
             crate::triggers::Trigger::player_rolls_result(player, result)
         }

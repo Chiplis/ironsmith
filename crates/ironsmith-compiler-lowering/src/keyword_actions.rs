@@ -179,6 +179,7 @@ pub fn apply_keyword_action(
         KeywordAction::Modular(amount) => builder.modular(amount),
         KeywordAction::ModularSunburst => builder.modular_sunburst(),
         KeywordAction::Graft(amount) => builder.graft(amount),
+        KeywordAction::Ripple(amount) => builder.ripple(amount),
         KeywordAction::Rampage(amount) => builder.rampage(amount),
         KeywordAction::Bushido(amount) => builder.bushido(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),

@@ -7688,3 +7688,36 @@ mod scoped_hand_size_tests {
         assert!(matches!(parse_reduced_maximum_hand_size_line(&tokens).unwrap().unwrap().payload,ironsmith_core::StaticAbilityPayload::MaximumHandSizeFromSourceCounters{counter_type:crate::object::CounterType::Hour,..}));
     }
 }
+
+pub(crate) struct ParsedManaOutputRewrite {
+    pub rule: ironsmith_core::ManaOutputRewrite,
+    pub target: Option<crate::model::TargetAst>,
+    pub mode: Option<crate::effects::ReplacementApplyMode>,
+    pub display: String,
+}
+/// Semantic owner shared by static lines and resolving registration sentences.
+/// The named grammar must consume the whole clause before its filter is read.
+pub(crate) fn parse_mana_output_rewrite_definition(tokens: &[OwnedLexToken])
+    -> Result<Option<ParsedManaOutputRewrite>, CardTextError> {
+    let Some(shape) = crate::grammar::effects::parse_mana_output_rewrite_shape(tokens) else { return Ok(None); };
+    let target = shape.source_tokens.filter(|tokens| tokens.first().is_some_and(|token| token.is_word("target")))
+        .map(crate::util::parse_target_phrase).transpose()?;
+    let mut source_filter = if let Some(tokens) = shape.source_tokens {
+        let tokens = if target.is_some() { &tokens[1..] } else { tokens };
+        parse_object_filter(tokens, false)?
+    } else if shape.tapped_for_mana { ObjectFilter::land() } else { ObjectFilter::default() };
+    if shape.tapped_for_mana { source_filter.zone = Some(Zone::Battlefield); }
+    Ok(Some(ParsedManaOutputRewrite {
+        rule: ironsmith_core::ManaOutputRewrite { source_filter, controller: shape.controller,
+            tapped_for_mana: shape.tapped_for_mana, input: shape.input, output: shape.output, quantity: shape.quantity },
+        target, mode: shape.mode, display: render_token_slice(tokens),
+    }))
+}
+pub fn parse_mana_output_rewrite_static_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(parsed) = parse_mana_output_rewrite_definition(tokens)? else { return Ok(None); };
+    if parsed.mode.is_some() || parsed.target.is_some() { return Ok(None); }
+    if parsed.rule.output == ironsmith_core::ManaRewriteOutput::ChosenColor {
+        return Err(CardTextError::ParseError("static chosen-color mana rewriting requires a live choice owner; this reader only captures chosen colors in resolving registrations".into()));
+    }
+    Ok(Some(StaticAbility::mana_production_rewrite(parsed.rule, parsed.display)))
+}

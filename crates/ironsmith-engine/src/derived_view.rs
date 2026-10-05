@@ -1191,7 +1191,7 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
             })
             .chain(self.game.plotted_cast_permission(card_id, zone, player))
             .collect();
@@ -1232,7 +1232,7 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) => None,
+                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
             })
             .collect();
         self.granted_play_from
@@ -1299,7 +1299,7 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }
@@ -1329,7 +1329,7 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) => None,
+                | Grantable::DerivedAlternativeCast(_) | Grantable::AlternativePrice { .. } => None,
             })
             .collect()
     }

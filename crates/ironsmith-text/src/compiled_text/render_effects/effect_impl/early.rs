@@ -1544,6 +1544,9 @@
             .collect::<Vec<_>>();
         return format!("{chooser} {choose_verb} {}", join_with_or(&options));
     }
+    if let Some(ripple) = effect.downcast_ref::<crate::effects::RippleEffect>() {
+        return format!("you may reveal the top {} cards of your library; you may cast any revealed cards with the same name as this spell without paying their mana costs, then put all revealed cards not cast this way on the bottom in any order", ripple.amount);
+    }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberEffect>() {
         let chooser = describe_player_filter(&choose.chooser);
         return format!("{chooser} {} a number between {} and {}", player_verb(&chooser, "choose", "chooses"), choose.min, choose.max);
@@ -2948,6 +2951,15 @@
             return text;
         }
         return describe_effect(&with_source.effect);
+    }
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEachEffect>() {
+        let target = describe_damage_target(&ChooseSpec::All(damage.filter.clone()));
+        let (amount, where_x) = describe_damage_amount_clause(&damage.amount);
+        let mut text = format!("This deals {amount} to {target}");
+        if let Some(where_x) = where_x {
+            text.push_str(&format!(", where X is {where_x}"));
+        }
+        return text;
     }
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageBySourcesEffect>() {
         let declarations=if damage.source_declarations.is_empty(){&damage.sources}else{&damage.source_declarations};

@@ -5760,6 +5760,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     {
         return Ok(predicate);
     }
+    if let Some(predicate) = super::parse_completed_die_result_predicate(predicate_tokens) { return Ok(predicate); }
     let input = predicate_readings::Predicate {
         tokens,
         predicate_tokens,

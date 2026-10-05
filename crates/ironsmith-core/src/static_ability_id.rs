@@ -385,6 +385,8 @@ pub enum StaticAbilityId {
     CantBeCopied,
     RedirectMatchingDamage,
     SpellManaSpendingRestriction,
+    /// Typed mana output rewrite; appended to preserve existing ordinals.
+    ManaProductionRewrite,
 }
 
 impl StaticAbilityId {
@@ -725,6 +727,7 @@ impl StaticAbilityId {
             | RevealCardOrEnterTappedReplacement
             | RedirectWouldEnterReplacement
             | ManaProductionReplacement
+            | ManaProductionRewrite
             | ManaProductionMultiplierReplacement
             | DoubleLifeChangeReplacement
             | PregameAction

@@ -554,6 +554,11 @@ impl GrantUseCompletion {
         Some(Self {source, controller, effects, source_snapshot: game.object(source).map(|object|
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))})
     }
+    /// A completed checked discovery owner may supply its already frozen
+    /// snapshot rather than entering legacy characteristic discovery again.
+    pub(crate) fn capture_with_snapshot(source: ObjectId, controller: PlayerId, effects: Vec<crate::effect::Effect>, source_snapshot: Option<crate::snapshot::ObjectSnapshot>) -> Option<Self> {
+        (!effects.is_empty()).then_some(Self {source, controller, effects, source_snapshot})
+    }
     pub(crate) fn complete(self, game: &mut crate::GameState) {
         let snapshot = game.turn_store.turn_history.source_last_known_snapshot(self.source).cloned().or(self.source_snapshot);
         crate::effects::composition::queue_reflexive_trigger_with_source_snapshot(
@@ -1469,7 +1474,7 @@ impl GrantRegistry {
             }
 
             // Check zone matches
-            if grant.zone != card_zone || !grant_top_card_matches(game, grant, card_id) {
+            if !grant_origin_matches(grant, card_zone) || !grant_top_card_matches(game, grant, card_id) {
                 continue;
             }
 
@@ -1525,7 +1530,7 @@ impl GrantRegistry {
             {
                 continue;
             }
-            if grant.player != player || grant.zone != card_zone || !grant_top_card_matches(game, &grant, card_id) {
+            if grant.player != player || !grant_origin_matches(&grant, card_zone) || !grant_top_card_matches(game, &grant, card_id) {
                 continue;
             }
 
@@ -1970,6 +1975,9 @@ impl GrantRegistry {
                 let Some(spec) = s.grant_spec() else {
                     continue;
                 };
+                if matches!(spec.grantable, Grantable::AlternativePrice { .. }) && !ability.functions_in(&source.zone) {
+                    continue;
+                }
                 if half_name.is_some() && !(spec.filter.source && spec.zone == source.zone) {
                     continue;
                 }
@@ -2045,6 +2053,13 @@ impl GrantRegistry {
     }
 }
 
+fn grant_origin_matches(grant: &Grant, card_zone: Zone) -> bool {
+    match &grant.grantable {
+        Grantable::AlternativePrice { origin, .. } => origin.is_none_or(|zone| zone == card_zone),
+        _ => grant.zone == card_zone,
+    }
+}
+
 fn materialize_granted_alternative_cast(
     game: &crate::game_state::GameState,
     card_id: ObjectId,
@@ -2060,7 +2075,7 @@ fn materialize_granted_alternative_cast(
                 usage_limit,
             )
         }
-        Grantable::Ability(_) | Grantable::PlayFrom => return None,
+        Grantable::Ability(_) | Grantable::PlayFrom | Grantable::AlternativePrice { .. } => return None,
     };
 
     Some(GrantedAlternativeCast {

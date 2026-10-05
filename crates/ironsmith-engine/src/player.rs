@@ -965,6 +965,12 @@ impl Player {
         Some(self.mana_source_provenance.remove(index))
     }
 
+    /// Count-only wire pools do not preserve production snapshots, exact
+    /// restriction pairing or per-unit retention. Local clones retain these.
+    pub fn has_runtime_mana_provenance(&self) -> bool {
+        !self.mana_source_provenance.is_empty() || !self.restricted_mana.is_empty()
+    }
+
     pub(crate) fn clear_mana_source_provenance(&mut self) {
         self.mana_source_provenance.clear();
     }

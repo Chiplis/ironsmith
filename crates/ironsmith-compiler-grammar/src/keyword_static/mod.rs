@@ -8,6 +8,8 @@ mod dynamic_anthem_values;
 mod blocking_permissions;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;
+mod alternative_prices;
+pub use alternative_prices::parse_independent_alternative_price_line;
 mod damage_prevention;
 mod damage_redirection;
 pub use damage_redirection::parse_scoped_damage_redirection_line;
@@ -743,6 +745,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "your"),
         ],
+        "parse_independent_alternative_price_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("once"),
+            StaticAbilityLineHeadHint::Pair("once", "each"),
+        ],
         "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -1458,6 +1466,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_exile_to_countered_exile_instead_of_graveyard_line),
         single_static_ability_ast_rule!(parse_exile_would_die_instead_line),
         single_static_ability_ast_rule!(parse_redirect_would_enter_line),
+        single_static_ability_ast_rule!(parse_mana_output_rewrite_static_line),
         single_static_ability_ast_rule!(parse_if_source_tapped_for_mana_replacement_line),
         single_static_ability_ast_rule!(parse_if_you_tap_for_mana_multiplier_line),
         single_static_ability_ast_rule!(parse_if_you_would_gain_life_replacement_line),
@@ -1682,6 +1691,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_can_block_only_flying_line),
         single_static_ability_ast_rule!(parse_can_block_subtype_as_though_reach_line),
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
+        single_static_ability_ast_rule!(parse_independent_alternative_price_line),
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_life_mana_value_instead_of_mana_cost_grant_line),

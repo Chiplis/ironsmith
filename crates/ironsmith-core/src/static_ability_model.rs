@@ -1427,6 +1427,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     NoMaximumHandSizeFor(PlayerFilter),
     MaximumHandSizeFromSourceCounters { player: PlayerFilter, counter_type: CounterType },
     SpellManaSpendingRestriction(crate::mana::ManaSpendingRestriction),
+    ManaProductionRewrite { rule: crate::mana::ManaOutputRewrite, display: String },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1693,6 +1694,9 @@ where
                     Grantable::DerivedAlternativeCast(map_derived_alternative_cast(spec, map_cost)?)
                 }
                 Grantable::PlayFrom => Grantable::PlayFrom,
+                Grantable::AlternativePrice { costs, origin } => Grantable::AlternativePrice {
+                    costs: costs.into_iter().map(&mut *map_cost).collect::<Result<_, _>>()?, origin,
+                },
             })
         }
 
@@ -2953,6 +2957,8 @@ where
                 factor,
                 display,
             },
+            StaticAbilityPayload::ManaProductionRewrite { rule, display } =>
+                StaticAbilityPayload::ManaProductionRewrite { rule, display },
             StaticAbilityPayload::ManaProductionReplacement {
                 source_filter,
                 minimum_amount,
@@ -7217,6 +7223,12 @@ impl<
             },
         }
     }
+    pub fn mana_production_rewrite(rule: crate::mana::ManaOutputRewrite, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::ManaProductionRewrite), label: display.clone(),
+            payload: StaticAbilityPayload::ManaProductionRewrite { rule, display } }
+    }
+
     pub fn mana_production_replacement(
         source_filter: ObjectFilter,
         minimum_amount: u32,

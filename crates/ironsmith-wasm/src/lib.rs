@@ -929,6 +929,7 @@ fn cast_payment_cost_context(
     use ironsmith::alternative_cast::CastingMethod;
     let object = game.object(pending.spell_id);
     let method = match &pending.casting_method {
+        CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
         CastingMethod::Normal => "Normal cast".to_string(),
         CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
         CastingMethod::SplitOtherHalf => "Other half".to_string(),
@@ -2712,6 +2713,12 @@ enum SpecialActionRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct GrantSelectionRef {
+    source: u64,
+    index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CastingMethodRef {
     Normal,
@@ -2759,6 +2766,13 @@ enum CastingMethodRef {
         face_down_kind: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         face_down_permission_source: Option<u64>,
+    },
+    AlternativePrice {
+        origin: Box<CastingMethodRef>,
+        origin_permission: Option<GrantSelectionRef>,
+        price: GrantSelectionRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prototype: Option<usize>,
     },
 }
 
@@ -7069,5 +7083,36 @@ mod resource_payment_view_tests {
         assert!(!wasm.game.is_tapped(source)); assert_eq!(wasm.game.battlefield.len(), 1);
         wasm.game.set_token_creation_limits(Default::default());
         assert!(wasm.current_mana_payment_view_checked().unwrap().is_some());
+    }
+}
+
+#[cfg(test)]
+mod independent_price_action_reference_tests {
+    use super::*;
+    #[test]
+    fn public_price_reference_distinguishes_origins_and_price_choices_without_native_occurrence_ids() {
+        use ironsmith::alternative_cast::{CastingMethod, GrantSelection};
+        use ironsmith::grant_registry::GrantPermissionIdentity;
+        let method = CastingMethod::AlternativePrice {
+            origin: Box::new(CastingMethod::PlayFrom {source:ObjectId::from_raw(11),zone:Zone::Exile,use_alternative:None}),
+            origin_permission: Some(GrantSelection {identity:GrantPermissionIdentity::Stored(71),source:ObjectId::from_raw(11),index:0}),
+            price: GrantSelection {identity:GrantPermissionIdentity::Stored(73),source:ObjectId::from_raw(12),index:1},
+            prototype: None,
+        };
+        let reference=wasm_game_impl::casting_method_ref(&method);
+        let json=serde_json::to_value(&reference).unwrap();
+        assert_eq!(json["kind"],"alternative_price");
+        assert_eq!(json["price"],serde_json::json!({"source":12,"index":1}));
+        assert_eq!(serde_json::from_value::<CastingMethodRef>(json).unwrap(),reference);
+        let mut different=method.clone();
+        if let CastingMethod::AlternativePrice{price,..}=&mut different {price.index=2;price.identity=GrantPermissionIdentity::Stored(75);}
+        assert_ne!(wasm_game_impl::casting_method_ref(&different),reference);
+        let mut prototyped=method.clone();
+        if let CastingMethod::AlternativePrice{prototype,..}=&mut prototyped { *prototype=Some(0); }
+        let prototype_ref=wasm_game_impl::casting_method_ref(&prototyped);
+        assert_ne!(prototype_ref,reference);
+        assert_eq!(serde_json::to_value(prototype_ref).unwrap()["prototype"],0);
+        let old=CastingMethodRef::PlayFrom{source:11,zone:"exile".into(),use_alternative:None};
+        assert_eq!(serde_json::to_value(old).unwrap(),serde_json::json!({"kind":"play_from","source":11,"zone":"exile","use_alternative":null}));
     }
 }

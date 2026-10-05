@@ -11,6 +11,8 @@ pub(super) fn source_remains_on_battlefield(input: &mut WordSliceInput<'_>) -> W
             )),
             opt(alt((
                 primitives::word_slice_exact("artifact"),
+                primitives::word_slice_exact("aura"),
+                primitives::word_slice_exact("saga"),
                 primitives::word_slice_exact("creature"),
                 primitives::word_slice_exact("enchantment"),
                 primitives::word_slice_exact("permanent"),
@@ -29,7 +31,7 @@ pub(super) fn source_remains_on_battlefield(input: &mut WordSliceInput<'_>) -> W
     primitives::word_slice_exact("on").parse_next(input)?;
     opt(primitives::word_slice_exact("the")).parse_next(input)?;
     primitives::word_slice_exact("battlefield").parse_next(input)?;
-    Ok(Until::ThisLeavesTheBattlefield)
+    Ok(Until::while_source_remains_on_battlefield())
 }
 
 pub(super) fn source_tapped_duration<'a>(input: &mut LexStream<'a>) -> WResult<()> {

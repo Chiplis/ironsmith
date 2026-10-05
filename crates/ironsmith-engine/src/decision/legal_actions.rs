@@ -848,6 +848,14 @@ fn add_library_cast_actions(
     Ok(())
 }
 
+/// Native exile designations authorize this exact card/copy for one player.
+/// They allow its normal face, never arbitrary cards or its Adventure again.
+pub(crate) fn native_exile_normal_cast_origin(game: &GameState, player: PlayerId, card_id: ObjectId) -> bool {
+    game.object(card_id).is_some_and(|card| card.zone == Zone::Exile
+        && (game.adventure_exiled_player(card_id) == Some(player)
+            || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player)))
+}
+
 fn add_exile_cast_actions(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -875,8 +883,7 @@ fn add_exile_cast_actions(
         // A prepare spell copy waits in exile for exactly one caster: whoever
         // controls the prepared permanent right now.
         // CR 715.3d: the Adventure spell's controller may cast the card.
-        if (game.adventure_exiled_player(card_id) == Some(player)
-            || (game.is_prepared_spell_copy(card_id) && game.controller_of(card) == player))
+        if native_exile_normal_cast_origin(game, player, card_id)
             && can_cast_spell_with_view(game, player, card, &CastingMethod::Normal, view)
         {
             actions.push(LegalAction::CastSpell {
@@ -1336,7 +1343,7 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
         }
     }
     let planar_die_action = crate::special_actions::SpecialAction::RollPlanarDie;
-    if crate::special_actions::can_perform_check(&planar_die_action, game, player).is_ok() {
+    if special_action_is_legal(crate::special_actions::can_perform_check(&planar_die_action, game, player))? {
         actions.push(LegalAction::SpecialAction(planar_die_action));
     }
     if let Some(companion_id) = game.player(player).and_then(|state| state.companion) {
@@ -1431,6 +1438,23 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
         &cast_ctx,
     );
     perf.hand_alternatives_ms = hand_alternatives_started_at.elapsed_ms();
+
+    // Price grants supply no origins. Build the product of independently
+    // authorized origins and eligible prices before ordinary affordability or
+    // sorcery timing can filter out a newly payable/flash-enabled proposal.
+    if game.effect_store.grant_registry.active_grants(game).iter().any(|grant|
+        grant.player == player && matches!(grant.grantable, crate::grant::Grantable::AlternativePrice { .. }))
+    {
+        for id in priority_analysis_sources(game, player).into_iter().filter(|id| requested_action_source(*id)) {
+            let Some(card) = game.object(id) else { continue; };
+            if matches!(card.zone, Zone::Battlefield | Zone::Stack) { continue; }
+            for method in crate::alternative_cast::price_routes::candidates(game, player, card)? {
+                if can_cast_spell_with_view(game, player, card, &method, &view) {
+                    actions.push(LegalAction::CastSpell {spell_id: id, from_zone: card.zone, casting_method: method});
+                }
+            }
+        }
+    }
 
     let battlefield_abilities_started_at = PerfTimer::start();
     add_battlefield_actions(

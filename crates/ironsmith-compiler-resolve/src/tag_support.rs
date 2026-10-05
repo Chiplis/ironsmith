@@ -365,6 +365,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 target,
                 ..
             })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
+                target: Some(target), ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
                 target,
                 ..
@@ -1839,6 +1842,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
             ..
         })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
             ..
         })
@@ -1876,8 +1881,21 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     }
 }
 
+fn predicate_references_event_derived_amount(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::ValueComparison { left, right, .. } => value_references_event_derived_amount(left) || value_references_event_derived_amount(right),
+        PredicateAst::Not(inner) => predicate_references_event_derived_amount(inner),
+        PredicateAst::And(a,b) | PredicateAst::Or(a,b) => predicate_references_event_derived_amount(a) || predicate_references_event_derived_amount(b),
+        _ => false,
+    }
+}
+
 pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
     assert_effect_ast_variant_coverage(effect);
+    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }
+        | ConditionalEffectAst::TrailingIf { predicate, .. } | ConditionalEffectAst::TrailingUnless { predicate, .. })
+        | EffectAst::SelfReplacement { predicate, .. } = effect
+        && predicate_references_event_derived_amount(predicate) { return true; }
     let mut target_references = false;
     with_direct_effect_targets(effect, |target| {
         target_references |= target_references_event_derived_amount(target);
@@ -2183,7 +2201,7 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
 
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
-            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { sources, amount, target }) => {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { sources, amount, target, .. }) => {
                 let tag=crate::tag::CompilerReferenceTag::It.as_str();
                 value_references_tag(amount,tag) || target_references_tag(target,tag)
                     || sources.iter().any(|source|target_references_tag(source,tag))

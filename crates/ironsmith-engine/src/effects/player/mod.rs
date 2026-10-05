@@ -142,3 +142,6 @@ pub use win_the_game::WinTheGameEffect;
 
 mod reveal_chosen_subtype;
 pub use reveal_chosen_subtype::RevealChosenSubtypeEffect;
+
+mod ripple;
+pub use ripple::RippleEffect;

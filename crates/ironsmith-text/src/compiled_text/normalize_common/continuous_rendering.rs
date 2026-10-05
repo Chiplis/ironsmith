@@ -5708,6 +5708,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "choose",
         crate::effect::PriorEffectAction::ChosenNumber => "choose",
+        crate::effect::PriorEffectAction::Rolled => "roll",
         crate::effect::PriorEffectAction::Connived => "connive",
         crate::effect::PriorEffectAction::Countered => "counter",
         crate::effect::PriorEffectAction::CountersPut => "put counters on",

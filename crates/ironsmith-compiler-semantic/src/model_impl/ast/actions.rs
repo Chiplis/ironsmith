@@ -701,6 +701,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
+            Self::Replacements(ReplacementActionAst::RegisterManaSpendPermission { permission, until, display }) => f
+                .debug_struct("RegisterManaSpendPermission").field("permission", permission).field("until", until).field("display", display).finish(),
+            Self::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }) => f
+                .debug_struct("RegisterManaRewrite").field("rule", rule).field("target", target)
+                .field("mode", mode).field("display", display).finish(),
             Self::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 source_filter,
                 replacement_mana,
@@ -2044,8 +2049,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 sources,
                 amount,
                 target,
+                source_binding,
             }) => f
                 .debug_struct("DealDamageBySources")
+                .field("source_binding", source_binding)
                 .field("sources", sources)
                 .field("amount", amount)
                 .field("target", target)

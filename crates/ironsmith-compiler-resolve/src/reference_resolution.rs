@@ -1,3 +1,5 @@
+#[path = "dice_result_bindings.rs"]
+mod dice_result_bindings;
 #[path = "life_amount_bindings.rs"]
 mod life_amount_bindings;
 use crate::TagKey;
@@ -64,8 +66,10 @@ pub struct EffectReferenceResolutionConfig {
     pub allow_life_event_value: bool,
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
+    pub dice_event_grouped: Option<bool>,
     pub life_event_binding: Option<std::sync::Arc<ironsmith_compiler_semantic::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<ironsmith_compiler_semantic::trigger_references::LifeAmountProducer>>,
+    pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub initial_last_effect_id: Option<EffectId>,
     pub initial_iterated_player: bool,
@@ -103,8 +107,10 @@ struct EffectReferenceResolutionState<'a> {
     allow_life_event_value: bool,
     allow_excess_damage_event_value: bool,
     milling_event_filter: Option<&'a ObjectFilter>,
+    dice_event_grouped: Option<bool>,
     life_event_binding: Option<&'a ironsmith_compiler_semantic::trigger_references::LifeEventBinding>,
     life_amount_producers: &'a [ironsmith_compiler_semantic::trigger_references::LifeAmountProducer],
+    die_result_producers: &'a [Option<EffectId>],
     bind_unbound_x_to_last_effect: bool,
     /// Inside a delayed trigger's body: the result id of the registering
     /// instruction's last producer. The delayed ability resolves later with
@@ -211,8 +217,10 @@ pub fn annotate_effect_sequence_owned(
     );
     env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     env.milling_event_filter = config.milling_event_filter.clone();
+    env.dice_event_grouped = config.dice_event_grouped;
     env.life_event_binding = config.life_event_binding.clone();
     env.life_amount_producers = config.life_amount_producers.clone();
+    env.die_result_producers = config.die_result_producers.clone();
     let mut id_gen = id_gen;
     let mut effects = effects;
     // Persist result identities before transparent wrappers are traversed again
@@ -2396,6 +2404,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterZoneReplacement { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "replaced")?;
                 }
+                SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { target: Some(target), .. }) => {
+                    maybe_tag_target(target, frame, id_gen, "mana_rewritten")?;
+                }
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAllAttachedTo { filter, .. }) => {
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "destroyed"));
@@ -3564,8 +3575,10 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         allow_life_event_value: env.allow_life_event_value,
         allow_excess_damage_event_value: env.allow_excess_damage_event_value,
         milling_event_filter: env.milling_event_filter.as_deref(),
+        dice_event_grouped: env.dice_event_grouped,
         life_event_binding: env.life_event_binding.as_deref(),
         life_amount_producers: &env.life_amount_producers,
+        die_result_producers: &env.die_result_producers,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         delayed_registration_effect_id: None,
     }
@@ -3573,6 +3586,10 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
 
 /// Shared typed boundary for value helpers that resolve before the sequence
 /// result-ID pass. Life queries must never use their generic last-result fallback.
+pub(crate) fn resolve_dice_quantity_query(query: &ironsmith_core::PriorEffectMetricQuery, env: &ReferenceEnv) -> Option<Result<Value, CardTextError>> {
+    dice_result_bindings::is_die_query(query).then(||dice_result_bindings::bind_die_query(query,effect_reference_resolution_state(env)))
+}
+
 pub(crate) fn resolve_life_quantity_query(
     query: &ironsmith_core::PriorEffectMetricQuery,
     env: &ReferenceEnv,
@@ -4091,6 +4108,7 @@ fn annotate_effect_sequence_with_env_internal(
                 std::sync::Arc::make_mut(&mut out_env.life_amount_producers), id, &effect,
             );
         }
+        dice_result_bindings::remember_producer(std::sync::Arc::make_mut(&mut out_env.die_result_producers), assigned_effect_id, &effect);
         current_env = out_env.clone();
         annotated.push(AnnotatedEffect {
             effect,
@@ -4240,6 +4258,10 @@ fn maybe_assign_effect_result_id(
     id_gen: &mut IdGenContext,
     config: EffectReferenceResolutionConfig,
 ) -> Option<EffectId> {
+    if let Some(id) = dice_result_bindings::rebound_producer_id(effect, remaining) {
+        id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
+        return Some(id);
+    }
     if let Some(id) = life_amount_bindings::rebound_producer_id(effect, remaining) {
         id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
         return Some(id);
@@ -4454,7 +4476,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => matches!(
             subject_verb.action,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. } | RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
@@ -4616,6 +4638,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         );
     }
     for action in [
+        PriorEffectAction::Rolled,
         PriorEffectAction::Cast,
         PriorEffectAction::Chosen,
         PriorEffectAction::ChosenNumber,
@@ -4828,6 +4851,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         return false;
     };
     match action {
+        PriorEffectAction::Rolled => matches!(producer_action, SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. })),
         PriorEffectAction::Destroyed => matches!(
             producer_action,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
@@ -5113,6 +5137,15 @@ fn value_references_only_other_number_metric(value: &Value) -> bool {
     }
 }
 
+fn visit_dice_predicate_values(predicate: &PredicateAst, visit: &mut impl FnMut(&Value)) {
+    match predicate {
+        PredicateAst::ValueComparison { left, right, .. } => { visit(left); visit(right); }
+        PredicateAst::Not(inner) => visit_dice_predicate_values(inner, visit),
+        PredicateAst::And(a,b) | PredicateAst::Or(a,b) => { visit_dice_predicate_values(a,visit); visit_dice_predicate_values(b,visit); }
+        _ => {}
+    }
+}
+
 fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => {
@@ -5135,6 +5168,9 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
                 visit(count_value);
             }
         }
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }
+            | ConditionalEffectAst::TrailingIf { predicate, .. } | ConditionalEffectAst::TrailingUnless { predicate, .. })
+        | EffectAst::SelfReplacement { predicate, .. } => visit_dice_predicate_values(predicate, visit),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => visit(count),
         _ => {}
     }
@@ -5564,8 +5600,10 @@ fn resolve_effect_references_in_effect(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
+                dice_event_grouped: state.dice_event_grouped,
                 life_event_binding: state.life_event_binding,
                 life_amount_producers: state.life_amount_producers,
+                die_result_producers: state.die_result_producers,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5601,8 +5639,10 @@ fn resolve_effect_references_in_effect(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter,
+                dice_event_grouped: state.dice_event_grouped,
                 life_event_binding: state.life_event_binding,
                 life_amount_producers: state.life_amount_producers,
+                die_result_producers: state.die_result_producers,
                 bind_unbound_x_to_last_effect: true,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
             },
@@ -5664,8 +5704,10 @@ fn resolve_effect_references_in_effect(
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            dice_event_grouped: None,
             life_event_binding: None,
             life_amount_producers: &[],
+            die_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
         };
@@ -5698,8 +5740,10 @@ fn resolve_effect_references_in_effect(
                     trigger,
                 ),
             milling_event_filter: milling_event_filter.as_deref(),
+            dice_event_grouped: ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger),
             life_event_binding: life_event_binding.as_deref(),
             life_amount_producers: &[],
+            die_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
         };
@@ -5771,6 +5815,7 @@ fn resolve_effect_sequence_references_with_state_in_place(
 ) -> Result<(), CardTextError> {
     let effect_count = effects.len();
     let mut life_producers = state.life_amount_producers.to_vec();
+    let mut die_producers = state.die_result_producers.to_vec();
 
     for idx in 0..effect_count {
         let saved_last_effect_id = state.last_effect_id;
@@ -5786,18 +5831,22 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 allow_life_event_value: state.allow_life_event_value,
                 allow_excess_damage_event_value: state.allow_excess_damage_event_value,
                 milling_event_filter: state.milling_event_filter.cloned().map(std::sync::Arc::new),
+                dice_event_grouped: state.dice_event_grouped,
                 life_event_binding: state.life_event_binding.cloned().map(std::sync::Arc::new),
                 life_amount_producers: std::sync::Arc::new(state.life_amount_producers.to_vec()),
+                die_result_producers: std::sync::Arc::new(state.die_result_producers.to_vec()),
                 ..Default::default()
             },
         );
         resolve_effect_references_in_effect(effect, id_gen, EffectReferenceResolutionState {
             life_amount_producers: &life_producers,
+            die_result_producers: &die_producers,
             ..state
         })?;
         if let Some(id) = assigned_effect_id {
             life_amount_bindings::remember_life_producer(&mut life_producers, id, effect);
         }
+        dice_result_bindings::remember_producer(&mut die_producers, assigned_effect_id, effect);
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         state.last_effect_id = if result_gate_surface(effect).is_some() {
             if result_gate_exports_outcome_to_fallback(effect, remaining.first()) {
@@ -5992,8 +6041,10 @@ fn advance_reference_env_for_effect(
                     allow_life_event_value: env.allow_life_event_value,
                     allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                     milling_event_filter: env.milling_event_filter.clone(),
+                    dice_event_grouped: env.dice_event_grouped,
                     life_event_binding: env.life_event_binding.clone(),
                     life_amount_producers: env.life_amount_producers.clone(),
+                    die_result_producers: env.die_result_producers.clone(),
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                 });
             }
@@ -6030,8 +6081,10 @@ fn advance_reference_env_for_effect(
                 allow_life_event_value: env.allow_life_event_value,
                 allow_excess_damage_event_value: env.allow_excess_damage_event_value,
                 milling_event_filter: env.milling_event_filter.clone(),
+                dice_event_grouped: env.dice_event_grouped,
                 life_event_binding: env.life_event_binding.clone(),
                 life_amount_producers: env.life_amount_producers.clone(),
+                die_result_producers: env.die_result_producers.clone(),
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
             })
         }
@@ -6208,6 +6261,8 @@ fn resolve_effect_result_values_in_fields(
         state: EffectReferenceResolutionState,
     ) -> Result<(), CardTextError> {
         match value {
+            Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => resolve_effect_result_value(value, state),
+            Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal) => resolve_effect_result_value(value, state),
             Value::PendingComparisonLeft
             | Value::PendingComparisonRight
             | Value::PendingComparisonDifference => resolve_effect_result_value(value, state),
@@ -6243,7 +6298,7 @@ fn resolve_effect_result_values_in_fields(
         ConditionalEffectAst::Conditional { predicate, .. }
         | ConditionalEffectAst::TrailingIf { predicate, .. }
         | ConditionalEffectAst::TrailingUnless { predicate, .. },
-    ) = effect
+    ) | EffectAst::SelfReplacement { predicate, .. } = effect
     {
         comparison_predicate(predicate, state)?;
     }
@@ -6686,6 +6741,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })
@@ -7150,15 +7207,13 @@ fn resolve_effect_result_value(
             } else if hints.contains(&ValueSurfaceHint::PriorEffectResult)
                 && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
             {
-                let id = state
-                    .pinned_effect_metric_id
-                    .or(state.last_effect_id)
-                    .ok_or_else(|| {
-                        CardTextError::ParseError(
-                            "prior-effect result requires a compatible prior effect".to_string(),
-                        )
-                    })?;
-                **value = Value::EffectValue(id);
+                if let Some(id) = state.pinned_effect_metric_id.or(state.last_effect_id) {
+                    **value = Value::EffectValue(id);
+                } else if let Some(grouped) = state.dice_event_grouped {
+                    **value = Value::EventValue(if grouped { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
+                } else {
+                    return Err(CardTextError::ParseError("prior-effect result requires a compatible prior effect".into()));
+                }
             } else {
                 resolve_effect_result_value(value, state)?;
             }
@@ -7176,6 +7231,9 @@ fn resolve_effect_result_value(
                 // trigger even after an unrelated body instruction. Explicit
                 // "this way" values use PendingPriorEffectMetric instead.
                 *value = Value::EventValue(EventValueSpec::Amount);
+            } else if producer_id.is_none() && state.dice_event_grouped.is_some()
+                && matches!((*source, *metric), (EffectMetricSource::Outcome, EffectMetric::Count)) {
+                *value = Value::EventValue(if state.dice_event_grouped == Some(true) { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
             } else if producer_id.is_none()
                 && state.allow_life_event_value
                 && matches!(
@@ -7218,6 +7276,13 @@ fn resolve_effect_result_value(
                 metric: *metric,
                 offset: *offset,
             };
+        }
+        Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => {
+            *value = dice_result_bindings::bind_die_query(query, state)?;
+        }
+        Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal)
+            if !state.die_result_producers.is_empty() || state.dice_event_grouped != Some(true) => {
+            return Err(CardTextError::ParseError("grouped die results require a proven grouped trigger; a local result-set binding is not available".into()));
         }
         Value::PendingPriorEffectMetric(query) if life_amount_bindings::is_life_query(query) => {
             *value = life_amount_bindings::bind_life_query(query, state)?;
@@ -7297,6 +7362,9 @@ fn resolve_effect_result_value(
                         .to_string(),
                 ));
             }
+        }
+        Value::EventValue(EventValueSpec::Amount) if state.pinned_effect_metric_id.or(state.last_effect_id).is_none() && state.dice_event_grouped.is_some() => {
+            *value = Value::EventValue(if state.dice_event_grouped == Some(true) { EventValueSpec::DieBatchTotal } else { EventValueSpec::DieResult });
         }
         Value::EventValue(EventValueSpec::Amount)
             if state.pinned_effect_metric_id.is_some() || !state.allow_life_event_value =>
@@ -7703,6 +7771,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 sources,
                 amount,
                 target,
+                ..
             }) => {
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
@@ -7994,6 +8063,11 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterFutureZoneReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. }) => 0,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, .. }) => {
+                bind_unresolved_it_in_filter(&mut rule.source_filter, seed_tag)
+                    + target.as_mut().map(|target| bind_unresolved_it_in_target(target, seed_tag)).unwrap_or(0)
+            }
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 source_filter,
                 ..
@@ -9706,8 +9780,10 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                dice_event_grouped: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
+                die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9736,8 +9812,10 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                dice_event_grouped: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
+                die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -9767,8 +9845,10 @@ mod tests {
                 allow_life_event_value: true,
                 allow_excess_damage_event_value: false,
                 milling_event_filter: None,
+                dice_event_grouped: None,
                 life_event_binding: None,
                 life_amount_producers: &[],
+                die_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 delayed_registration_effect_id: None,
             },
@@ -11709,8 +11789,10 @@ mod excess_damage_binding_tests {
             allow_life_event_value: true,
             allow_excess_damage_event_value: false,
             milling_event_filter: None,
+            dice_event_grouped: None,
             life_event_binding: None,
             life_amount_producers: &[],
+            die_result_producers: &[],
             bind_unbound_x_to_last_effect: false,
             delayed_registration_effect_id: None,
         }
@@ -11813,3 +11895,7 @@ fn definite_consult_match_survives_a_damage_recipient_and_keeps_reveal_set_separ
     assert!(matches!(target,TargetAst::Tagged(tag,_) if tag.as_str()=="consult_hit"),"{target:?}");
     assert_ne!(format!("{target:?}"),"consult_all");
 }
+
+#[cfg(test)]
+#[path = "dice_event_count_tests.rs"]
+mod dice_event_count_tests;

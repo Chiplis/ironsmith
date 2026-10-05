@@ -4308,6 +4308,25 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
             use crate::grammar::trigger_clauses::RollResultShape;
             match trigger_grammar::parse_roll_result_words(result_words) {
+                Some(RollResultShape::Natural(result)) => {
+                    let result = i32::try_from(result).map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::Equal(result), natural: true });
+                }
+                Some(RollResultShape::AtLeast(result)) => {
+                    let result = i32::try_from(result).map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::GreaterThanOrEqual(result), natural: false });
+                }
+                Some(RollResultShape::Either(left,right)) => {
+                    let results = [left,right].into_iter().map(i32::try_from).collect::<Result<Vec<_>,_>>()
+                        .map_err(|_|CardTextError::ParseError("die result exceeds supported representation".into()))?;
+                    return Ok(TriggerSpec::PlayerRollsResultMatching { player, result: crate::filter::Comparison::OneOf(results.into()), natural: false });
+                }
+                Some(RollResultShape::Nth(ordinal)) => {
+                    if (result_words.first() == Some(&"your")) != matches!(player, PlayerFilter::You) {
+                        return Err(CardTextError::ParseError("die ordinal possessive does not match its rolling player".into()));
+                    }
+                    return Ok(TriggerSpec::PlayerRollsNthDie { player, ordinal });
+                }
                 Some(RollResultShape::ToVisitAttractions) => {
                     return Ok(TriggerSpec::PlayerRollsToVisitAttractions { player });
                 }

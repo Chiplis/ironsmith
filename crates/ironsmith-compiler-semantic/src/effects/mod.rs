@@ -10,7 +10,7 @@ pub use ironsmith_core::{
     CantEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClearGoadEffect, ClearSuspectedEffect,
     CombatDamagePreventionTarget, ConditionalEffect as CoreConditionalEffect, ConniveEffect,
     ConspireCostEffect, ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule,
@@ -68,7 +68,7 @@ pub use ironsmith_core::{
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
     BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
@@ -233,3 +233,5 @@ pub mod mana {
 pub use ironsmith_core::RegisterDamageMultiplierEffect;
 
 pub use ironsmith_core::DealDamageBySourcesEffect;
+
+pub use ironsmith_core::DealDamageEachEffect;

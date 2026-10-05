@@ -57,8 +57,8 @@ impl TriggerMatcher for PlayerRollsDieTrigger {
         event: &TriggerEvent,
     ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
         // Every die one instruction rolls is one "one or more dice" event.
-        (self.one_or_more && event.kind() == EventKind::DieRolled)
-            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::DieRollBatch)
+        self.one_or_more.then(||event.downcast::<DieRolledEvent>()).flatten()
+            .map(|roll|crate::triggers::matcher_trait::SimultaneousTriggerKey::PlayerDieRollBatch(roll.player))
     }
 
     fn display(&self) -> String {

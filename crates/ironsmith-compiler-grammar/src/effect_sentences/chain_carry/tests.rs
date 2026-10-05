@@ -4524,7 +4524,7 @@ fn opportunistic_dragon_keeps_source_lifetime_target_effects_in_its_trigger() {
     let clause_effects = parse_effect_chain_lexed(&clause)
         .expect("source-lifetime clause should parse as a resolution chain");
     assert!(
-        format!("{clause_effects:#?}").contains("ThisLeavesTheBattlefield"),
+        format!("{clause_effects:#?}").contains("ObjectOnBattlefield"),
         "{clause_effects:#?}"
     );
 
@@ -4539,7 +4539,7 @@ fn opportunistic_dragon_keeps_source_lifetime_target_effects_in_its_trigger() {
         debug.contains("ChangeControllerToEffectController"),
         "{debug}"
     );
-    assert!(debug.contains("ThisLeavesTheBattlefield"), "{debug}");
+    assert!(debug.contains("ObjectOnBattlefield"), "{debug}");
     assert!(debug.contains("RemoveAllAbilities"), "{debug}");
     assert!(
         debug.contains("BeBlocked") || debug.contains("Block"),
@@ -4562,7 +4562,7 @@ fn wondrous_wasp_keeps_source_lifetime_ability_loss_on_the_tapped_target() {
         .expect("The Wondrous Wasp source-lifetime trigger should parse");
     let debug = format!("{def:#?}");
     assert!(debug.contains("TapEffect"), "{debug}");
-    assert!(debug.contains("ThisLeavesTheBattlefield"), "{debug}");
+    assert!(debug.contains("ObjectOnBattlefield"), "{debug}");
     assert!(debug.contains("RemoveAllAbilities"), "{debug}");
     assert!(
         !debug.contains("RemoveAllAbilitiesForFilter"),

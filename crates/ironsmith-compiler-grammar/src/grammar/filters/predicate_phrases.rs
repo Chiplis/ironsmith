@@ -4833,3 +4833,26 @@ fn parse_meld_subject_filter_clause(
 fn is_you_both_own_and_clause(clause: LexedClause<'_>) -> bool {
     surface::exact(clause, &["you", "both", "own", "and"])
 }
+
+fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let (grouped, number) = if let Some(rest) = words.strip_prefix(&["any", "of", "those", "results", "was"])
+        .or_else(||words.strip_prefix(&["any", "of", "those", "results", "were"])) { (true,rest) }
+        else if let Some(rest) = words.strip_prefix(&["the", "roll", "was"]) { (false,rest) }
+        else { return None; };
+    let number = number.strip_suffix(&["or", "higher"])?;
+    let value = crate::grammar::trigger_clauses::parse_roll_result_words(number)?;
+    let crate::grammar::trigger_clauses::RollResultShape::Fixed(value) = value else { return None; };
+    let value = i32::try_from(value).ok()?;
+    Some(if grouped {
+        PredicateAst::ValueComparison {
+            left: Value::EventValue(crate::effect::EventValueSpec::DieResultsAtLeast(value)),
+            operator: crate::effect::ValueComparisonOperator::GreaterThan,
+            right: Value::Fixed(0),
+        }
+    } else {
+        PredicateAst::ValueComparison { left: Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count).with_action(ironsmith_core::PriorEffectAction::Rolled)),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual, right: Value::Fixed(value) }
+    })
+}

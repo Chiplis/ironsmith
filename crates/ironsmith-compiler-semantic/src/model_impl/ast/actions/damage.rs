@@ -47,6 +47,7 @@ pub enum DamageActionAst {
     /// recipient in one simultaneous damage occurrence.
     DealDamageBySources {
         sources: Vec<TargetAst>,
+        source_binding: ironsmith_core::DamageSourceSetBinding,
         amount: Value,
         target: TargetAst,
     },

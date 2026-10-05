@@ -6231,6 +6231,18 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A grammar-proven complete mana rewrite is one instruction. Claim its
+    // first sentence before generic if/and decomposition; independently parse
+    // every following sentence so additional riders cannot be discarded.
+    let mana_sentences = split_lexed_sentences(tokens);
+    if let Some(first) = mana_sentences.first()
+        && let Some(effect) = read_typed_mana_output_sentence(first)? {
+        let mut effects = vec![effect];
+        for sentence in mana_sentences.iter().skip(1) {
+            effects.extend(parse_effect_sentences_lexed(sentence)?);
+        }
+        return Ok(effects);
+    }
     if let Some(effect) = crate::permission_helpers::parse_forage_cast_permission(tokens)? {
         return Ok(vec![effect]);
     }
@@ -8234,14 +8246,29 @@ fn parse_turn_scoped_enter_tapped_replacement(
     ))
 }
 
-/// Parse a resolving effect that establishes a turn-long cost for each
-/// creature declared as a blocker. The affected creature filter remains live
-/// for the duration, while the activation's X value is captured at resolution.
-/// "Until end of turn, if you tap a land you control for mana, it produces
-/// {U} instead of any other type." (Deep Water) — a whole-sentence shape that
-/// registers a turn-scoped mana-production replacement. The clause carries
-/// its own scope and duration, so it must not be split into a generic
-/// conditional around a verb clause.
+/// Complete mana rewriting, color selection, and temporary spending sentences
+/// have typed owners before generic conditional/action-chain decomposition.
+fn read_typed_mana_output_sentence(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(symbol) = crate::grammar::effects::parse_temporary_symbol_spend_permission_shape(tokens) {
+        let mut permission = crate::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
+            crate::target::PlayerFilter::You, symbol);
+        permission.other_mana_only_as_colorless = false;
+        return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission {
+                permission, until: crate::effect::Until::EndOfTurn, display: crate::lexer::render_token_slice(tokens),
+            }))));
+    }
+    if let Some(parsed) = crate::keyword_static::parse_mana_output_rewrite_definition(tokens)? {
+        return Ok(Some(EffectAst::subject_verb_register_mana_rewrite(parsed.rule, parsed.target,
+            parsed.mode.unwrap_or(crate::effects::ReplacementApplyMode::Resolution), parsed.display)));
+    }
+    if crate::word_primitives::parse_sequence_complete(&crate::lexer::token_word_refs(tokens),
+        &["that", "player", "chooses", "a", "color"]) {
+        return Ok(Some(EffectAst::subject_verb_choose_color(PlayerAst::That)));
+    }
+    Ok(None)
+}
+
 fn parse_tapped_land_mana_replacement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let spec = effect_grammar::parse_mana_replacement_clause_spec_lexed(tokens)?;
     Some(EffectAst::SubjectVerb(
@@ -10063,7 +10090,7 @@ mod tests {
             .unwrap_or_else(|| panic!("expected typed animation, got {parsed:#?}"));
 
         assert_eq!(*duration_surface, None);
-        assert_eq!(*duration, crate::effect::Until::ThisLeavesTheBattlefield);
+        assert_eq!(*duration, crate::effect::Until::while_source_remains_on_battlefield());
     }
 
     #[test]
@@ -12588,6 +12615,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDrawReplacement {
                 ..
             })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { .. })
+            | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaSpendPermission { .. })
             | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaReplacement {
                 ..
             })

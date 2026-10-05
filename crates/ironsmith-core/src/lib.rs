@@ -90,7 +90,7 @@ pub use effect::{
     CastTaggedEffect, ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
     ChooseLandTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
-    ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
+    RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
     ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,
     ConditionalModeRange, ConditionalSurface, ConniveEffect, ConspireCostEffect,
@@ -152,7 +152,7 @@ pub use effect::{
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
     BecomeBlockedEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
@@ -209,7 +209,7 @@ pub use ids::{
     restore_id_counters, snapshot_id_counters,
 };
 pub use interned::{InternedI32Slice, InternedStr};
-pub use mana::{ManaCost, ManaSymbol};
+pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
 pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
@@ -272,3 +272,7 @@ pub use damage_history_model::{
 };
 
 pub use effect::DealDamageBySourcesEffect;
+
+pub use effect::DealDamageEachEffect;
+
+pub use effect::DamageSourceSetBinding;

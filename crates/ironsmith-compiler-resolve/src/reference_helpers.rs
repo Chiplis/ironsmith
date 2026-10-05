@@ -2094,6 +2094,13 @@ fn resolve_choose_spec_it_tag_preserving_selection(
 
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
+        Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal) => {
+            if !refs.die_result_producers.is_empty() || refs.dice_event_grouped != Some(true) {
+                return Err(CardTextError::ParseError("grouped die results require a proven grouped trigger; a local result-set binding is not available".into()));
+            }
+            Ok(value.clone())
+        }
+
         Value::DamageHistory(query) => {
             let mut query = (**query).clone();
             for spec in query.reference_specs_mut() {
@@ -2507,6 +2514,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
         Value::PendingPriorEffectMetric(query) => {
+            if let Some(result) = super::reference_resolution::resolve_dice_quantity_query(query, refs) {
+                return result;
+            }
             if let Some(result) = super::reference_resolution::resolve_life_quantity_query(query, refs) {
                 return result;
             }

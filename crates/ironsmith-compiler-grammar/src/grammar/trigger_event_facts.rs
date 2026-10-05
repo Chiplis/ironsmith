@@ -292,7 +292,13 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PlayerDrawsCard(player)
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player)
         | TriggerSpec::PlayerGivesGift(player)
-        | TriggerSpec::PlayerSearchesLibrary(player) => TriggerSubjectAst::Player(player.clone()),
+        | TriggerSpec::PlayerSearchesLibrary(player)
+        | TriggerSpec::PlayerRollsResult { player, .. }
+        | TriggerSpec::PlayerRollsResultMatching { player, .. }
+        | TriggerSpec::PlayerRollsNthDie { player, .. }
+        | TriggerSpec::PlayerRollsDie { player, .. }
+        | TriggerSpec::PlayerRollsToVisitAttractions { player }
+        | TriggerSpec::PlayerRollsHighestNaturalResult { player } => TriggerSubjectAst::Player(player.clone()),
         TriggerSpec::YouGainLife | TriggerSpec::YouDrawCard | TriggerSpec::YouCastThisSpell => {
             TriggerSubjectAst::Player(PlayerFilter::You)
         }
@@ -369,6 +375,9 @@ fn trigger_zone_transition(trigger: &TriggerSpec) -> Option<TriggerZoneTransitio
 fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
     match core_semantics(trigger) {
         TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. } => None,
+        TriggerSpec::PlayerRollsResult { .. } | TriggerSpec::PlayerRollsResultMatching { .. }
+        | TriggerSpec::PlayerRollsNthDie { .. } | TriggerSpec::PlayerRollsDie { .. }
+        | TriggerSpec::PlayerRollsToVisitAttractions { .. } | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => None,
         TriggerSpec::ZoneChange(event) => {
             Some(if event.count == ironsmith_core::CountMode::OneOrMore {
                 Cardinality::OneOrMore

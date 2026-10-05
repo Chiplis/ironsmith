@@ -3564,6 +3564,12 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_register_mana_rewrite(rule: ironsmith_core::ManaOutputRewrite, target: Option<TargetAst>,
+        mode: crate::effects::ReplacementApplyMode, display: String) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite { rule, target, mode, display }))
+    }
+
     pub fn subject_verb_register_mana_replacement(
         source_filter: ObjectFilter,
         replacement_mana: Vec<ManaSymbol>,

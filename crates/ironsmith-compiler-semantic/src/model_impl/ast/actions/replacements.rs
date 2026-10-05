@@ -77,4 +77,11 @@ pub enum ReplacementActionAst {
     RegisterDamageMultiplier {
         spec: ironsmith_core::RegisterDamageMultiplierEffect,
     },
+    RegisterManaRewrite {
+        rule: ironsmith_core::ManaOutputRewrite,
+        target: Option<TargetAst>,
+        mode: crate::effects::ReplacementApplyMode,
+        display: String,
+    },
+    RegisterManaSpendPermission { permission: ironsmith_core::ManaSpendPermission, until: Until, display: String },
 }

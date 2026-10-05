@@ -73,3 +73,6 @@ pub use player_searches_library::PlayerSearchesLibraryTrigger;
 pub use player_shuffles_library::PlayerShufflesLibraryTrigger;
 pub use transforms::TransformsTrigger;
 pub use wins_clash::WinsClashTrigger;
+
+mod qualified_die_roll;
+pub use qualified_die_roll::QualifiedDieRollTrigger;

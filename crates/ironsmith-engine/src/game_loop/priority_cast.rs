@@ -367,6 +367,10 @@ pub(crate) fn spell_prototype_characteristics(
 /// as its own cast action, so the announcement is added only for other casts.
 /// Choosing it is carried on the cast as the paid "Prototype" label.
 fn ensure_prototype_choice_optional_cost(game: &mut GameState, pending: &mut PendingCast) -> bool {
+    // This route already announced its exact characteristic set before
+    // choosing both permissions. A late optional change would invalidate the
+    // chosen filter/price and could bypass colored or mana-value constraints.
+    if matches!(pending.casting_method, CastingMethod::AlternativePrice { .. }) { return false; }
     let Some(spell) = game.object(pending.spell_id) else {
         return false;
     };
@@ -451,7 +455,13 @@ pub(super) fn collect_available_casting_methods(
     player: PlayerId,
     spell_id: ObjectId,
     from_zone: Zone,
-) -> Vec<crate::decision::CastingMethodOption> {
+) -> Result<Vec<crate::decision::CastingMethodOption>, crate::effects::ExecutionError> {
+    crate::decision::with_complete_legality_query(game, |game| collect_available_casting_methods_checked(game, player, spell_id, from_zone))
+}
+
+fn collect_available_casting_methods_checked(
+    game: &GameState, player: PlayerId, spell_id: ObjectId, from_zone: Zone,
+) -> Result<Vec<crate::decision::CastingMethodOption>, crate::effects::ExecutionError> {
     use crate::decision::{
         CastingMethodOption, can_cast_spell, can_cast_with_alternative_from_hand,
     };
@@ -459,7 +469,7 @@ pub(super) fn collect_available_casting_methods(
     let mut methods = Vec::new();
 
     let Some(spell) = game.object(spell_id) else {
-        return methods;
+        return Ok(methods);
     };
 
     // Check normal casting method
@@ -579,7 +589,17 @@ pub(super) fn collect_available_casting_methods(
         }
     }
 
-    methods
+    for method in crate::alternative_cast::price_routes::candidates(game, player, spell)? {
+        if can_cast_spell(game, player, spell, &method) {
+            let receipt = crate::alternative_cast::price_routes::price_receipt(game, player, spell, &method)?;
+            if let Some(receipt) = receipt {
+                let provider = game.object(receipt.source).map(|object| object.name.to_string()).unwrap_or_else(|| "Alternative price".into());
+                let name = if receipt.prototype.is_some() { format!("{provider} (prototyped)") } else { provider };
+                methods.push(CastingMethodOption {method, name, cost_description: receipt.total_cost.display()});
+            }
+        }
+    }
+    Ok(methods)
 }
 
 pub(super) fn may_have_multiple_casting_methods(
@@ -618,6 +638,7 @@ pub(super) fn may_have_multiple_casting_methods(
                     grant.grantable,
                     crate::grant::Grantable::AlternativeCast(_)
                         | crate::grant::Grantable::DerivedAlternativeCast(_)
+                        | crate::grant::Grantable::AlternativePrice { .. }
                 )
         })
 }
@@ -674,6 +695,14 @@ pub(super) fn non_mana_costs_for_casting_method(
     casting_method: &CastingMethod,
 ) -> Vec<crate::costs::Cost> {
     match casting_method {
+        CastingMethod::AlternativePrice { .. } => {
+            let mut costs = crate::alternative_cast::price_routes::receipt_or_latch(game, caster, spell, casting_method)
+                .map(|receipt| receipt.total_cost.non_mana_costs().cloned().collect::<Vec<_>>()).unwrap_or_default();
+            if let Some(origin) = crate::alternative_cast::price_routes::origin_alternative(game, caster, spell, casting_method) {
+                costs.extend(origin.non_mana_costs());
+            }
+            costs
+        },
         CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => Vec::new(),
         CastingMethod::Alternative(idx) => spell
             .alternative_casts
@@ -861,6 +890,11 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
     }
 
     let min_x = min_x_from_static_abilities(game, caster, stack_id).unwrap_or(0);
+    // CR 107.3b: a separately selected price that doesn't contain X fixes
+    // printed mana-cost X at zero, even if another additional cost mentions X.
+    if printed_has_x && spell.cast_price.as_ref().is_some_and(|price|
+        !price.total_cost.costs().iter().filter_map(crate::costs::Cost::mana_cost_ref).any(crate::mana::ManaCost::has_x))
+    { return (true, min_x, 0); }
     let mut max_x = None;
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
@@ -1576,6 +1610,30 @@ pub(crate) fn cast_spell_from_resolving_effect_with_context(
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<Option<ObjectId>, GameLoopError> {
+    // A resolving instruction grants the origin/timing, not necessarily a
+    // replacement price. Offer independent prices only when it leaves the
+    // ordinary mana cost payable; an already-waived/alternative cost cannot
+    // be combined with a second alternative (CR 118.9a).
+    let selected_price_method = if !base_mana_cost_waived {
+        let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("Effect-authorized spell disappeared".into()))?;
+        let prices = crate::alternative_cast::price_routes::effect_candidates(game, caster, spell, casting_method)?;
+        if prices.is_empty() { None } else {
+            let mut methods = vec![casting_method.clone()]; methods.extend(prices);
+            let options = methods.iter().enumerate().map(|(index, method)| {
+                let description = match method {
+                    CastingMethod::AlternativePrice { price, prototype, .. } => format!("Use {} alternative price{}", game.object(price.source).map(|object| object.name.to_string()).unwrap_or_else(|| "selected source".into()), if prototype.is_some() { " (prototyped)" } else { "" }),
+                    _ => "Pay the ordinary mana cost".into(),
+                };
+                crate::decisions::context::SelectableOption::new(index, description)
+            }).collect();
+            let context = crate::decisions::context::SelectOptionsContext::new(caster, Some(spell_id), "Choose a casting price", options, 1, 1);
+            let choice = decision_maker.decide_options(game, &context);
+            if decision_maker.awaiting_choice() { return Ok(None); }
+            let [index] = choice.as_slice() else { return Err(GameLoopError::InvalidState("Expected one casting price".into())); };
+            Some(methods.get(*index).cloned().ok_or_else(|| GameLoopError::InvalidState("Unknown casting price".into()))?)
+        }
+    } else { None };
+    let casting_method = selected_price_method.as_ref().unwrap_or(casting_method);
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut trigger_queue = TriggerQueue::new();
     state.save_checkpoint(game);
@@ -5382,6 +5440,9 @@ pub(super) fn collect_spell_cost_steps(
 
     if let Some(obj) = game.object(spell_id) {
         let alternative_additional_cost = match casting_method {
+            CastingMethod::AlternativePrice { .. } => {
+                crate::cost::TotalCost::from_costs(non_mana_costs_for_casting_method(game, caster, obj, casting_method))
+            },
             CastingMethod::Normal => obj
                 .cast_alternative_method
                 .as_ref()
@@ -5421,6 +5482,7 @@ pub(super) fn collect_spell_cost_steps(
         };
 
         let method_specific_additional_cost = match casting_method {
+            CastingMethod::AlternativePrice { .. } => crate::cost::TotalCost::free(),
             CastingMethod::Normal => obj
                 .cast_alternative_method
                 .as_ref()

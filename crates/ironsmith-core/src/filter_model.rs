@@ -7830,6 +7830,8 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "the amount of life {} {}", if *for_controller { "you" } else { "that player" },
                 if *gained { "gained" } else { "lost" },
             ),
+            Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
+            Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
             Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
             Value::EventValue(EventValueSpec::LifeAmount) => "that much life".to_string(),
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {

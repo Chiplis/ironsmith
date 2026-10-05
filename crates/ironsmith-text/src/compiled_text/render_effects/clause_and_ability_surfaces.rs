@@ -4167,6 +4167,9 @@ fn describe_referenced_unblockable_then_characteristics(effects: &[Effect]) -> O
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
+    if let Some(text) = describe_reciprocal_power_damage(sequence) {
+        return Some(text);
+    }
     if let Some(text) = describe_size_free_animation(sequence) {
         return Some(text);
     }

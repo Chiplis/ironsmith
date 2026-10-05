@@ -238,6 +238,10 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::DealDamageEachEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::DealDamageBySourcesEffect>(&effect)
     {
@@ -1688,6 +1692,12 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaSpendPermissionEffect>(&effect) {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegisterManaRewriteEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterManaReplacementEffect>(&effect)
     {
@@ -1791,6 +1801,9 @@ where
             payload.target.clone(),
             payload.count.clone(),
         )));
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::RippleEffect>(&effect) {
+        return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ChooseNumberEffect>(&effect) {
         return Ok(converted);

@@ -22,6 +22,22 @@ pub fn roll_to_visit_attractions_with_dm(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<Option<u32>, GameLoopError> {
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    let result = roll_to_visit_attractions_inner(game, trigger_queue, decision_maker);
+    let pending = decision_maker.awaiting_choice();
+    if result.is_err() || pending {
+        game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+        *trigger_queue = queue_checkpoint;
+    }
+    if pending && result.is_ok() { return Ok(None); }
+    result
+}
+
+fn roll_to_visit_attractions_inner(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> Result<Option<u32>, GameLoopError> {
     let player = game.turn.active_player;
     if !game.face_up_attractions().iter().any(|object| {
         game.object(*object).is_some_and(|candidate| {
@@ -33,6 +49,7 @@ pub fn roll_to_visit_attractions_with_dm(
         return Ok(None);
     }
 
+    game.turn_store.turn_history.check_completed_die_roll_capacity(player, 1)?;
     let rule_source = ObjectId::from_raw(0);
     let mut context = ExecutionContext::new(rule_source, player, decision_maker);
     let Some(mut rolls) = crate::effects::player::die_roll_transaction::roll_dice_with_modifiers(
@@ -42,15 +59,14 @@ pub fn roll_to_visit_attractions_with_dm(
         1,
         6,
     )
-    .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?
+    .map_err(GameLoopError::ExecutionFailed)?
     else {
         return Ok(None);
     };
     let roll = rolls.remove(0);
 
-    game.turn_store
-        .turn_history
-        .record_die_roll(player, roll.result);
+    let ordinal = game.turn_store.turn_history.record_completed_die_rolls(player, &[roll.result], false)
+        .map_err(GameLoopError::ExecutionFailed)?;
     game.mark_continuous_state_dirty();
     game.record_ui_effect_event(
         "attraction_visit_roll",
@@ -72,7 +88,7 @@ pub fn roll_to_visit_attractions_with_dm(
                 roll.result,
                 6,
             )
-            .for_attraction_visit(),
+            .for_attraction_visit().with_turn_ordinal(ordinal),
             provenance,
         ),
         true,

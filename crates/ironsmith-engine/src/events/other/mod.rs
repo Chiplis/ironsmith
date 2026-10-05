@@ -11,6 +11,7 @@ mod converted;
 mod counter_placed;
 mod day_night_changed;
 mod die_rolled;
+pub(crate) use die_rolled::bind_die_roll_batch_results;
 mod gift_given;
 mod keyword_action;
 mod land_played;

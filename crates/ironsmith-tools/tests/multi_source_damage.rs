@@ -3,14 +3,17 @@ use ironsmith_tools::{
 };
 
 #[test]
-fn eight_multi_source_damage_payloads_compile_strictly_without_metadata_fallback() {
+fn nine_multi_source_damage_payloads_compile_strictly_without_metadata_fallback() {
     let fixtures: Vec<serde_json::Value> = serde_json::from_str(include_str!(
         "../../../fixtures/multi_source_damage.json.fixture"
     ))
     .unwrap();
     let mut failures = Vec::new();
     let mut checked = 0;
-    for row in fixtures.iter().filter(|row| row["name"] != "Alpha Brawl") {
+    for row in fixtures
+        .iter()
+        .filter(|row| row["coverage_status"] == "proposed_complete")
+    {
         let mut metadata_lines = vec![
             format!("Mana cost: {}", row["mana_cost"].as_str().unwrap()),
             format!("Type: {}", row["type_line"].as_str().unwrap()),
@@ -41,6 +44,6 @@ fn eight_multi_source_damage_payloads_compile_strictly_without_metadata_fallback
         }
         checked += 1;
     }
-    assert_eq!(checked, 8);
+    assert_eq!(checked, 9);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

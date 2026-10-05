@@ -36,6 +36,7 @@ enum KeywordAmountKind {
     Firebending,
     Fading,
     Graft,
+    Ripple,
     Modular,
     Renown,
     Soulshift,
@@ -50,6 +51,7 @@ const NUMERIC_KEYWORD_ACTIONS: &[(&str, KeywordAmountKind)] = &[
     ("firebending", KeywordAmountKind::Firebending),
     ("fading", KeywordAmountKind::Fading),
     ("graft", KeywordAmountKind::Graft),
+    ("ripple", KeywordAmountKind::Ripple),
     ("modular", KeywordAmountKind::Modular),
     ("renown", KeywordAmountKind::Renown),
     ("soulshift", KeywordAmountKind::Soulshift),
@@ -290,6 +292,7 @@ fn numeric_keyword_action(head: &str, amount: &str) -> Option<KeywordAction> {
             KeywordAmountKind::Firebending => KeywordAction::Firebending(value),
             KeywordAmountKind::Fading => KeywordAction::Fading(value),
             KeywordAmountKind::Graft => KeywordAction::Graft(value),
+            KeywordAmountKind::Ripple => KeywordAction::Ripple(value),
             KeywordAmountKind::Modular => KeywordAction::Modular(value),
             KeywordAmountKind::Renown => KeywordAction::Renown(value),
             KeywordAmountKind::Soulshift => KeywordAction::Soulshift(value),
@@ -1838,5 +1841,18 @@ mod increment_tests {
         assert_eq!(simple_keyword_action_for_head("increment"), Some(KeywordAction::Increment));
         assert!(is_known_keyword_action_head("increment"));
         assert_eq!(parse_single_word_keyword_action("incremental"), None);
+    }
+}
+
+#[cfg(test)]
+mod ripple_numeric_keyword_tests {
+    use super::*;
+    #[test]
+    fn ripple_is_a_typed_exact_numeric_keyword_and_not_an_unsupported_marker() {
+        assert_eq!(numeric_keyword_action("ripple","4"),Some(KeywordAction::Ripple(4)));
+        assert_eq!(numeric_keyword_action("ripple","0"),Some(KeywordAction::Ripple(0)));
+        assert!(numeric_keyword_action("ripple","x").is_none());
+        assert!(numeric_keyword_action("ripple","4 extra").is_none());
+        assert!(is_known_keyword_action_head("ripple"));
     }
 }

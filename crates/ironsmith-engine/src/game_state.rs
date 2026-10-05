@@ -1195,7 +1195,7 @@ struct EnterAsCopySourceCache {
 #[derive(Debug)]
 struct RuntimeCacheState {
     library_top_announcements: HashMap<LibraryTopAnnouncement, LibraryTopVisibilityBoundary>,
-    pending_grant_use_completions: HashMap<ObjectId, crate::grant_registry::GrantUseCompletion>,
+    pending_grant_use_completions: HashMap<ObjectId, Vec<crate::grant_registry::GrantUseCompletion>>,
     token_creation_limits: crate::effects::tokens::TokenCreationLimits,
     token_creation_meter: Option<crate::effects::tokens::resources::SharedTokenCreationMeter>,
     observed_players: RefCell<Option<crate::incremental::ChangeCursor>>,
@@ -3130,6 +3130,10 @@ pub enum ManaSpendPermissionSource {
         source_id: ObjectId,
         expires_end_of_turn: u32,
     },
+    /// An explicit end-of-turn instruction ends during cleanup, before a
+    /// possible cleanup priority window. Legacy turn-bounded permissions may
+    /// intentionally continue until the next turn starts.
+    UntilEndOfTurnEffect { source_id: ObjectId, turn: u32 },
 }
 
 impl ManaSpendEffectTracker {
@@ -3149,7 +3153,8 @@ impl ManaSpendEffectTracker {
                     expires_end_of_turn,
                     ..
                 } if current_turn <= expires_end_of_turn
-            )
+            ) || matches!(permission.source,
+                ManaSpendPermissionSource::UntilEndOfTurnEffect { turn, .. } if current_turn <= turn)
         });
     }
 
@@ -3161,6 +3166,7 @@ impl ManaSpendEffectTracker {
                     expires_end_of_turn,
                     ..
                 } => current_turn <= expires_end_of_turn,
+                ManaSpendPermissionSource::UntilEndOfTurnEffect { turn, .. } => current_turn < turn,
             });
     }
 }
@@ -3211,7 +3217,8 @@ impl ActiveManaSpendPermission {
                 expires_end_of_turn,
                 ..
             } if game.turn.turn_number > expires_end_of_turn
-        ) {
+        ) || matches!(self.source,
+            ManaSpendPermissionSource::UntilEndOfTurnEffect { turn, .. } if game.turn.turn_number > turn) {
             return false;
         }
 

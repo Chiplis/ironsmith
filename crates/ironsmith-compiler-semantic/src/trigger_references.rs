@@ -82,6 +82,10 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
     if let Some(tag) = phase_step_trigger_object_reference_tag(trigger) {
         return Some(tag);
     }
+    if trigger_die_event_grouped(trigger).is_some() || matches!(trigger, TriggerSpec::PlayerRollsNthDie { .. }) {
+        // The die-producing object is not the implicit subject of a roll trigger.
+        return None;
+    }
     if matches!(trigger, TriggerSpec::PlayerBecomesTargeted { .. }) { return None; }
     if matches!(trigger, TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Player(_), .. }) { return None; }
     if phase_step_trigger_has_no_object_reference(trigger) {
@@ -332,4 +336,18 @@ pub fn trigger_life_event_binding(trigger: &TriggerSpec) -> Option<std::sync::Ar
         _ => return None,
     };
     Some(std::sync::Arc::new(LifeEventBinding { metric, player }))
+}
+
+/// Only a typed compatible roll event can supply a bare result. Either must
+/// retain the same singular/batch contract in both arms. Ordinals do not
+/// identify which physical die in a simultaneous group was "the third".
+pub fn trigger_die_event_grouped(trigger: &TriggerSpec) -> Option<bool> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_die_event_grouped(trigger),
+        TriggerSpec::PlayerRollsDie { one_or_more, .. } => Some(*one_or_more),
+        TriggerSpec::PlayerRollsToVisitAttractions { .. } | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsResultMatching { .. } | TriggerSpec::PlayerRollsHighestNaturalResult { .. } => Some(false),
+        TriggerSpec::Either(a,b) => { let a = trigger_die_event_grouped(a)?; (trigger_die_event_grouped(b) == Some(a)).then_some(a) }
+        _ => None,
+    }
 }

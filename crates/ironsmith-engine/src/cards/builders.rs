@@ -531,6 +531,7 @@ pub(crate) enum KeywordAction {
     Modular(u32),
     ModularSunburst,
     Graft(u32),
+    Ripple(u32),
     Soulbond,
     Soulshift(u32),
     SoulshiftValue(Value),
@@ -706,6 +707,7 @@ impl KeywordAction {
                 | Self::Renown(_)
                 | Self::Modular(_)
                 | Self::Graft(_)
+                | Self::Ripple(_)
                 | Self::Soulbond
                 | Self::Soulshift(_)
                 | Self::SoulshiftValue(_)
@@ -827,6 +829,7 @@ impl KeywordAction {
             Self::Modular(amount) => format!("Modular {amount}"),
             Self::ModularSunburst => "Modular-Sunburst".to_string(),
             Self::Graft(amount) => format!("Graft {amount}"),
+            Self::Ripple(amount) => format!("Ripple {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
             Self::SoulshiftValue(value) => format!(
@@ -1767,6 +1770,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Modular(amount) => self.modular(amount),
             KeywordAction::ModularSunburst => self.modular_sunburst(),
             KeywordAction::Graft(amount) => self.graft(amount),
+            KeywordAction::Ripple(amount) => self.ripple(amount),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
             KeywordAction::SoulshiftValue(value) => self.soulshift_value(value),
@@ -3565,6 +3569,15 @@ impl CardDefinitionBuilder {
         self.with_ability(
             Ability::static_ability(StaticAbility::cascade()).in_zones(vec![Zone::Stack]),
         )
+    }
+
+    /// Ripple is a cast trigger, not a copy trigger, and each occurrence is
+    /// independent. The actual reveal/cast/remainder transaction is typed.
+    pub fn ripple(self, amount: u32) -> Self {
+        self.with_ability(Ability::triggered(
+            Trigger::you_cast_this_spell(),
+            vec![Effect::new(crate::effects::RippleEffect { amount })],
+        ).in_zones(vec![Zone::Stack]))
     }
 
     /// Add rebound.

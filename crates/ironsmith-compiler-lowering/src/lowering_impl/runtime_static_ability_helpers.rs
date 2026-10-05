@@ -46,6 +46,7 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::Renown(_)
             | KeywordAction::Modular(_)
             | KeywordAction::Graft(_)
+        | KeywordAction::Ripple(_)
             | KeywordAction::Soulbond
             | KeywordAction::Soulshift(_)
             | KeywordAction::SoulshiftValue(_)
@@ -164,6 +165,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::Renown(_)
         | KeywordAction::Modular(_)
         | KeywordAction::Graft(_)
+        | KeywordAction::Ripple(_)
         | KeywordAction::Soulbond
         | KeywordAction::Soulshift(_)
         | KeywordAction::SoulshiftValue(_)

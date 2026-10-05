@@ -2593,8 +2593,10 @@ fn stage_effects_from_normalized(
     );
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     initial_env.milling_event_filter = config.milling_event_filter.clone();
+    initial_env.dice_event_grouped = config.dice_event_grouped;
     initial_env.life_event_binding = config.life_event_binding.clone();
     initial_env.life_amount_producers = config.life_amount_producers.clone();
+    initial_env.die_result_producers = config.die_result_producers.clone();
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()
@@ -3374,6 +3376,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
                 ironsmith_compiler_semantic::trigger_references::trigger_binds_excess_damage_amount,
             ),
             milling_event_filter: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter),
+            dice_event_grouped: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped),
             life_event_binding: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding),
             ..Default::default()
         },
@@ -4049,6 +4052,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                     &trigger,
                 ),
             milling_event_filter: ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(&trigger),
+            dice_event_grouped: ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(&trigger),
             life_event_binding: ironsmith_compiler_semantic::trigger_references::trigger_life_event_binding(&trigger),
             ..Default::default()
         },
@@ -4471,6 +4475,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::Renown(_)
         | KeywordAction::Modular(_)
         | KeywordAction::Graft(_)
+        | KeywordAction::Ripple(_)
         | KeywordAction::Soulbond
         | KeywordAction::Soulshift(_)
         | KeywordAction::SoulshiftValue(_)

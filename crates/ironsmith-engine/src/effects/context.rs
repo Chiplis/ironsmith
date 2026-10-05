@@ -70,6 +70,9 @@ pub enum ExecutionError {
     /// profile. This is not an impossible Magic action or a neutral outcome.
     ResourceLimitExceeded { resource: &'static str, requested: u128, maximum: u128 },
     ResourceAllocationFailed { resource: &'static str, requested: usize },
+    /// A query cannot preselect another player's required decision. Native
+    /// execution can request it; absence of an answer is not payment failure.
+    UnresolvedPlayerDecision { player: PlayerId, decision: &'static str },
 }
 
 impl ExecutionError {
@@ -79,7 +82,7 @@ impl ExecutionError {
     /// An incomplete engine calculation must survive boolean affordability
     /// adapters; it is not proof that the Magic payment is impossible.
     pub fn is_incomplete_execution(&self) -> bool {
-        self.is_resource_exhaustion() || matches!(self, Self::ContinuousDiscovery(_))
+        self.is_resource_exhaustion() || matches!(self, Self::ContinuousDiscovery(_) | Self::UnresolvedPlayerDecision { .. })
     }
 }
 
@@ -90,6 +93,8 @@ impl std::fmt::Display for ExecutionError {
                 "Incomplete execution: {resource} requires {requested}, host limit is {maximum}"),
             ExecutionError::ResourceAllocationFailed { resource, requested } => write!(f,
                 "Incomplete execution: allocator could not reserve {requested} items for {resource}"),
+            ExecutionError::UnresolvedPlayerDecision { player, decision } => write!(f,
+                "Incomplete calculation: {decision} requires a decision from player {:?}", player),
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
             ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),

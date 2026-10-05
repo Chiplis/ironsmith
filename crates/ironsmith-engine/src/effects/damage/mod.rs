@@ -32,3 +32,6 @@ pub use replace_next_damage_to_target::ReplaceNextDamageToTargetEffect;
 
 mod multi_source_damage;
 pub use multi_source_damage::DealDamageBySourcesEffect;
+
+mod deal_damage_each;
+pub use deal_damage_each::DealDamageEachEffect;

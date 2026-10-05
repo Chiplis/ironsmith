@@ -186,7 +186,7 @@ pub use permanents::{
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AscendEffect,
-    BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
+    RippleEffect, BecomeMonarchEffect, CascadeEffect, CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect,
     ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseNamedOptionEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChoosePlayerEffect,
     ControlCombatChoicesThisTurnEffect, ControlPlayerEffect, CreateEmblemEffect, DiscoverEffect,
@@ -210,7 +210,7 @@ pub use replacement::{
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
-    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
     RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
@@ -247,3 +247,5 @@ pub(crate) use composition::{PreparedIfBranch, prepare_if_branches, execute_if_b
 pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
 
 pub use damage::DealDamageBySourcesEffect;
+
+pub use damage::DealDamageEachEffect;

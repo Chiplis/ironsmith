@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Atomwheel Acrobats",
+    "oracle_id": "0e9551ef-8aee-46ed-b21f-162c64213437",
+    "oracle_text": "Whenever you roll a 1 or 2, put that many +1/+1 counters on this creature.\n{2}{G}: Roll a six-sided die.",
+    "text": "Mana cost: {3}{G}\nType: Creature — Elf Performer\nPower/Toughness: 3/2\nWhenever you roll a 1 or 2, put that many +1/+1 counters on this creature.\n{2}{G}: Roll a six-sided die.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever you roll a 1 or 2, put that many +1/+1 counters on this creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you roll a 1 or 2, put that many +1/+1 counters on this creature.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "9f2d081eb4709f1d1e93bc1a69479b5bfaac4d102b4d0db3ca85ffeb086095f8",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  },
+  {
+    "name": "Critical Hit",
+    "oracle_id": "992e6845-1c6c-4b74-839c-317823bde15b",
+    "oracle_text": "Target creature gains double strike until end of turn.\nWhen you roll a natural 20, return this card from your graveyard to your hand. (A natural 20 is a roll that displays 20 on the die.)",
+    "text": "Mana cost: {1}{R}\nType: Instant\nTarget creature gains double strike until end of turn.\nWhen you roll a natural 20, return this card from your graveyard to your hand. (A natural 20 is a roll that displays 20 on the die.)",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'When you roll a natural 20, return this card from your graveyard to your hand. (A natural 20 is a roll that displays 20 on the die.)' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'When you roll a natural 20, return this card from your graveyard to your hand.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "278477e92b0a8bbe21dc4401d730230ca29ed23dcac581549ffcde7a1fb6f6c5",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  },
+  {
+    "name": "Resolute Veggiesaur",
+    "oracle_id": "9b0607d6-1f24-441f-b310-aa2c148726a7",
+    "oracle_text": "Trample\nWhenever you roll your third die each turn, put a +1/+1 counter on this creature.",
+    "text": "Mana cost: {2}{G}\nType: Creature — Dinosaur Employee\nPower/Toughness: 3/3\nTrample\nWhenever you roll your third die each turn, put a +1/+1 counter on this creature.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported triggered line: 'Whenever you roll your third die each turn, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you roll your third die each turn, put a +1/+1 counter on this creature.' [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "c43adaa6b6ea1d50e306c425773445806586fad22309e4c036e5afa6021efd81",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  },
+  {
+    "name": "Monoxa, Midway Manager",
+    "oracle_id": "d8e6cdab-234a-46b9-8b6c-164034cf2bc7",
+    "oracle_text": "Whenever you roll a 3 or higher, Monoxa gains first strike until end of turn. If the roll was 4 or higher, it gains menace until end of turn. If the roll was 5 or higher, it gains lifelink until end of turn.\n{6}: Roll a six-sided die.",
+    "text": "Mana cost: {2}{B}{R}\nType: Legendary Creature — Vampire Employee\nPower/Toughness: 3/3\nWhenever you roll a 3 or higher, Monoxa gains first strike until end of turn. If the roll was 4 or higher, it gains menace until end of turn. If the roll was 5 or higher, it gains lifelink until end of turn.\n{6}: Roll a six-sided die.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported subject in gain-ability clause (clause: 'monoxa gains first strike until end of turn') [rule-path=simple-gain-ability > statement-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported subject in gain-ability clause (clause: 'higher it gains menace until end of turn') [rule-path=or-action-clause > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "87307259cd28ce385a041fbbebf3ca0733ea48eb8c17f910d19a7bb86f0fce6a",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  },
+  {
+    "name": "Farideh, Devil's Chosen",
+    "oracle_id": "faf5c18c-2642-4df3-a21f-3b237527e6a6",
+    "oracle_text": "Dark One's Own Luck — Whenever you roll one or more dice, Farideh gains flying and menace until end of turn. If any of those results was 10 or higher, draw a card.",
+    "text": "Mana cost: {2}{U}{R}\nType: Legendary Creature — Tiefling Warlock\nPower/Toughness: 3/3\nDark One's Own Luck — Whenever you roll one or more dice, Farideh gains flying and menace until end of turn. If any of those results was 10 or higher, draw a card.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "parser does not yet support line family: 'Dark One's Own Luck — Whenever you roll one or more dice, Farideh gains flying and menace until end of turn. If any of those results was 10 or higher, draw a card.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Dark One's Own Luck — Whenever you roll one or more dice, Farideh gains flying and menace until end of turn. If any of those results was 10 or higher, draw a card.' [rule-path=unsupported-line-family]",
+    "baseline_content_hash": "baa88d58c4fafb576846a76c3265e91423895ffb5722bf1f69969e0527dc3d57",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  },
+  {
+    "name": "Vexing Puzzlebox",
+    "oracle_id": "7267ab16-2157-4b86-93ea-ca2c0fee064a",
+    "oracle_text": "Whenever you roll one or more dice, put a number of charge counters on this artifact equal to the result.\n{T}: Add one mana of any color. Roll a d20.\n{T}, Remove 100 charge counters from this artifact: Search your library for an artifact card, put that card onto the battlefield, then shuffle.",
+    "text": "Mana cost: {3}\nType: Artifact\nWhenever you roll one or more dice, put a number of charge counters on this artifact equal to the result.\n{T}: Add one mana of any color. Roll a d20.\n{T}, Remove 100 charge counters from this artifact: Search your library for an artifact card, put that card onto the battlefield, then shuffle.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "prior-effect result requires a compatible prior effect; oracle-only fallback also failed: prior-effect result requires a compatible prior effect",
+    "baseline_content_hash": "87426c386b7fc9b4546898ae4dbe3cba3555869db238ce960cb8b036b0d19a27",
+    "proposed_complete": true,
+    "status": "UNVALIDATED proposed complete; bounded independent source review clear through c7f209cc7; scenarios authored and unrun"
+  }
+]

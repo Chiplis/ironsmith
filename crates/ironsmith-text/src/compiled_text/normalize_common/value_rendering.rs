@@ -4591,6 +4591,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "chosen",
         crate::effect::PriorEffectAction::ChosenNumber => "chosen",
+        crate::effect::PriorEffectAction::Rolled => "rolled",
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
@@ -4818,6 +4819,7 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
+    if query.action == Some(crate::effect::PriorEffectAction::Rolled) && query.metric == crate::effect::EffectMetric::Count { return "the result of that roll".into(); }
     if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber) && query.metric == crate::effect::EffectMetric::Count { return "the chosen number".into(); }
     let plural_basis = describe_prior_effect_metric_basis(query, true);
     let singular_basis = describe_prior_effect_metric_basis(query, false);
@@ -6626,6 +6628,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the amount of life {} {} {:+}", if *for_controller { "you" } else { "that player" },
             if *gained { "gained" } else { "lost" }, offset,
         ),
+        Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
+        Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
+        Value::EventValueOffset(EventValueSpec::DieBatchTotal, offset) => format!("the total result of those dice plus {offset}"),
+        Value::EventValueOffset(EventValueSpec::DieResultsAtLeast(minimum), offset) => format!("the number of those die results of {minimum} or higher plus {offset}"),
         Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
         Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
             if *offset == 0 {

@@ -1113,6 +1113,19 @@ pub(crate) fn describe_ability(
         let surface = restore_modeled_value_surface(static_ability, surface);
         return vec![format!("Static ability {index}: {surface}")];
     }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && ability.functional_zones == vec![crate::zone::Zone::Stack]
+        && triggered.intervening_if.is_none()
+        && triggered.choices.is_empty()
+        && triggered.presentation_label.is_none()
+        && triggered.trigger.downcast_ref::<crate::triggers::YouCastThisSpellTrigger>().is_some()
+        && let [segment] = triggered.effects.segments.as_slice()
+        && segment.self_replacements.is_empty()
+        && let [effect] = segment.default_effects.as_slice()
+        && let Some(ripple) = effect.downcast_ref::<crate::effects::RippleEffect>()
+    {
+        return vec![format!("Keyword ability {index}: Ripple {}", ripple.amount)];
+    }
     if let Some(keyword) = describe_keyword_ability(ability) {
         return vec![format!("Keyword ability {index}: {keyword}")];
     }

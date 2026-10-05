@@ -33,7 +33,11 @@ fn parses_turn_conditional_and_quoted_durations() {
     ])
     .unwrap();
     assert_eq!(source_lifetime.start, 2);
-    assert_eq!(source_lifetime.duration, Until::ThisLeavesTheBattlefield);
+    assert_eq!(source_lifetime.duration, Until::ForAsLongAs(
+        ironsmith_core::ContinuousDurationPredicate::ObjectOnBattlefield(
+            ironsmith_core::ContinuousDurationObject::Source,
+        ),
+    ));
 
     let tapped_tokens = lex_line("flying for as long as this creature remains tapped.", 0).unwrap();
     let tapped = parse_source_tapped_gain_duration_shape(&tapped_tokens).unwrap();

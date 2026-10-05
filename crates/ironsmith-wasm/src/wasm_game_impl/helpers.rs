@@ -555,6 +555,15 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             let mut qualifiers = Vec::new();
 
             match casting_method {
+                ironsmith::alternative_cast::CastingMethod::AlternativePrice { price, origin, prototype, .. } => {
+                    if matches!(origin.as_ref(), ironsmith::alternative_cast::CastingMethod::SplitOtherHalf | ironsmith::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { .. })
+                        && let Some(object) = game.object(*spell_id)
+                        && let Some(face) = game.linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), object.other_face)
+                    { name = face.card.name.clone(); }
+                    qualifiers.push(format!("using {}", object_name(game, price.source)));
+                    if prototype.is_some() { qualifiers.push("prototyped".into()); }
+                    if *from_zone != Zone::Hand { qualifiers.push(format!("from {}", zone_display_name(*from_zone))); }
+                }
                 ironsmith::alternative_cast::CastingMethod::Normal => {
                     if *from_zone != Zone::Hand {
                         qualifiers.push(format!("from {}", zone_display_name(*from_zone)));
@@ -1169,6 +1178,12 @@ pub(super) fn casting_method_ref(
     method: &ironsmith::alternative_cast::CastingMethod,
 ) -> CastingMethodRef {
     match method {
+        ironsmith::alternative_cast::CastingMethod::AlternativePrice { origin, origin_permission, price, prototype } => CastingMethodRef::AlternativePrice {
+            origin: Box::new(casting_method_ref(origin)),
+            origin_permission: origin_permission.as_ref().map(|key| GrantSelectionRef {source: key.source.0, index: key.index}),
+            price: GrantSelectionRef {source: price.source.0, index: price.index},
+            prototype: *prototype,
+        },
         ironsmith::alternative_cast::CastingMethod::Normal => CastingMethodRef::Normal,
         ironsmith::alternative_cast::CastingMethod::FaceDown => CastingMethodRef::FaceDown {
             face_down_kind: None,

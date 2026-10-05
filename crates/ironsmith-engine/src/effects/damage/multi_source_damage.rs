@@ -117,8 +117,44 @@ impl DealDamageBySourcesEffect {
                 EffectOutcome::count(0)
             });
         }
-        let mut source_ids = Vec::new();
+        let mut bindings = Vec::<(ObjectId, Option<ObjectSnapshot>)>::new();
         for group in &self.sources {
+            if self.source_binding == ironsmith_core::DamageSourceSetBinding::CapturedIncarnations {
+                let ChooseSpec::Tagged(tag) = group.base() else {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "captured damage sources require an exact object-set receipt".into(),
+                    ));
+                };
+                for captured in ctx.get_tagged_all(tag).into_iter().flatten() {
+                    if captured.zone != crate::zone::Zone::Battlefield {
+                        return Err(ExecutionError::UnresolvableValue(
+                            "captured damage source was not a battlefield object".into(),
+                        ));
+                    }
+                    if bindings.iter().any(|(id, _)| *id == captured.object_id) {
+                        continue;
+                    }
+                    let snapshot = if let Some(object) =
+                        game.object(captured.object_id).filter(|object| {
+                            object.zone == crate::zone::Zone::Battlefield
+                                && !game.is_phased_out(object.id)
+                        }) {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                    } else {
+                        game.turn_store
+                            .turn_history
+                            .source_last_known_snapshot(captured.object_id)
+                            .cloned()
+                            .ok_or_else(|| {
+                                ExecutionError::UnresolvableValue(
+                                    "captured damage source has no exact last-known receipt".into(),
+                                )
+                            })?
+                    };
+                    bindings.push((captured.object_id, Some(snapshot)));
+                }
+                continue;
+            }
             let objects = match crate::effects::helpers::resolve_objects_from_spec(game, group, ctx)
             {
                 Ok(objects) => objects,
@@ -128,22 +164,26 @@ impl DealDamageBySourcesEffect {
                 Err(error) => return Err(error),
             };
             for source in objects {
-                if !source_ids.contains(&source)
+                if !bindings.iter().any(|(id, _)| *id == source)
                     && game
                         .object(source)
                         .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
                     && !game.is_phased_out(source)
                 {
-                    source_ids.push(source);
+                    bindings.push((
+                        source,
+                        game.object(source).map(|object| {
+                            ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            )
+                        }),
+                    ));
                 }
             }
         }
         let mut events = Vec::new();
         // Amounts are all read before a single damage/prevention consequence.
-        for source in source_ids {
-            let snapshot = game.object(source).map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-            });
+        for (source, snapshot) in bindings {
             let old_source = ctx.source;
             let old_snapshot = ctx.source_snapshot.clone();
             ctx.source = source;
@@ -691,12 +731,11 @@ mod tests {
             ChooseSpec::SpecificObject(first),
             ChooseSpec::SpecificObject(second),
         ];
-        let effect = Effect::new(DealDamageBySourcesEffect {
-            sources: sources.clone(),
-            source_declarations: sources,
-            amount: crate::Value::Fixed(i32::MAX),
-            target: ChooseSpec::SpecificObject(recipient),
-        });
+        let effect = Effect::new(DealDamageBySourcesEffect::new(
+            sources,
+            crate::Value::Fixed(i32::MAX),
+            ChooseSpec::SpecificObject(recipient),
+        ));
         let before = game.turn_store.turn_history.event_records.len();
         let result = execute_effect(
             &mut game,
@@ -852,5 +891,158 @@ mod amplified_result_limit_tests {
         assert_eq!(game.player(c).unwrap().life, i32::MAX);
         assert_eq!(game.turn_store.turn_history.event_records.len(), before);
         assert_eq!(game.effect_store.trigger_matching_holds, 0);
+    }
+}
+
+#[cfg(test)]
+mod captured_incarnation_tests {
+    use super::*;
+    use crate::effect::{Effect, Until};
+    use crate::effects::execute_effect;
+    fn perform(
+        game: &mut GameState,
+        parent: ObjectId,
+        controller: PlayerId,
+        effect: Effect,
+    ) -> EffectOutcome {
+        execute_effect(
+            game,
+            &effect,
+            &mut ExecutionContext::new_default(parent, controller),
+        )
+        .unwrap()
+    }
+    #[test]
+    fn captured_damage_sources_use_current_or_actual_last_known_power_and_controller_without_following_a_blink()
+     {
+        for mode in 0..3 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let a = PlayerId::from_index(0);
+            let b = PlayerId::from_index(1);
+            let parent = game.create_object_from_definition(
+                &crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Parent")
+                    .card_types(vec![crate::types::CardType::Artifact])
+                    .build(),
+                a,
+                crate::zone::Zone::Battlefield,
+            );
+            let source = game.create_object_from_definition(
+                &crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Old source")
+                    .card_types(vec![crate::types::CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(2, 4))
+                    .with_ability(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::lifelink(),
+                    ))
+                    .build(),
+                b,
+                crate::zone::Zone::Battlefield,
+            );
+            let recipient = game.create_object_from_definition(
+                &crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Recipient")
+                    .card_types(vec![crate::types::CardType::Creature])
+                    .power_toughness(crate::card::PowerToughness::fixed(1, 50))
+                    .build(),
+                a,
+                crate::zone::Zone::Battlefield,
+            );
+            let captured = ObjectSnapshot::from_object_with_calculated_characteristics(
+                game.object(source).unwrap(),
+                &game,
+            );
+            perform(
+                &mut game,
+                parent,
+                a,
+                Effect::pump(5, 0, ChooseSpec::SpecificObject(source), Until::EndOfTurn),
+            );
+            perform(
+                &mut game,
+                parent,
+                a,
+                Effect::new(crate::effects::GainControlEffect::new(
+                    ChooseSpec::SpecificObject(source),
+                    Until::EndOfTurn,
+                )),
+            );
+            let mut returned = None;
+            if mode == 1 {
+                perform(
+                    &mut game,
+                    parent,
+                    a,
+                    Effect::exile(ChooseSpec::SpecificObject(source)),
+                );
+                let exile = *game.exile.last().unwrap();
+                perform(
+                    &mut game,
+                    parent,
+                    a,
+                    Effect::new(
+                        crate::effects::MoveToZoneEffect::new(
+                            ChooseSpec::SpecificObject(exile),
+                            crate::zone::Zone::Battlefield,
+                            false,
+                        )
+                        .under_owner_control(),
+                    ),
+                );
+                returned = game.battlefield.iter().copied().find(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name == "Old source")
+                });
+                assert_ne!(returned, Some(source));
+                assert_eq!(game.calculated_power(returned.unwrap()), Some(2));
+            } else if mode == 2 {
+                game.phase_out(source);
+            }
+            let floor = game.new_object_id();
+            let mut ctx = ExecutionContext::new_default(parent, a);
+            ctx.resolution_object_id_floor = Some(floor);
+            ctx.set_tagged_objects("captured", vec![captured]);
+            let effect = DealDamageBySourcesEffect::new(
+                vec![ChooseSpec::Tagged("captured".into())],
+                crate::Value::SourcePower,
+                ChooseSpec::SpecificObject(recipient),
+            )
+            .with_source_binding(ironsmith_core::DamageSourceSetBinding::CapturedIncarnations);
+            let outcome =
+                execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx).unwrap();
+            assert_eq!(
+                game.damage_on(recipient),
+                7,
+                "mode {mode}: capture-time power 2 cannot replace current/departure power 7"
+            );
+            assert_eq!(game.player(a).unwrap().life, 27);
+            assert_eq!(game.player(b).unwrap().life, 20);
+            let damage = outcome
+                .events
+                .iter()
+                .filter_map(|event| event.downcast::<DamageEvent>())
+                .collect::<Vec<_>>();
+            assert_eq!(damage.len(), 1);
+            assert_eq!(damage[0].source, source);
+            if let Some(returned) = returned {
+                assert_ne!(damage[0].source, returned);
+                assert_eq!(game.current_controller(returned), Some(b));
+            }
+            if mode != 0 {
+                let strict = effect
+                    .clone()
+                    .with_source_binding(ironsmith_core::DamageSourceSetBinding::LiveMembers);
+                execute_effect(&mut game, &Effect::new(strict), &mut ctx).unwrap();
+                assert_eq!(
+                    game.damage_on(recipient),
+                    7,
+                    "live-member mode cannot use a missing or phased target"
+                );
+                game.turn_store.turn_history.clear_for_new_turn();
+                let missing = execute_effect(&mut game, &Effect::new(effect), &mut ctx);
+                assert!(
+                    matches!(missing, Err(ExecutionError::UnresolvableValue(_))),
+                    "missing LKI must not fall back to the earlier capture"
+                );
+                assert_eq!(game.damage_on(recipient), 7);
+            }
+        }
     }
 }

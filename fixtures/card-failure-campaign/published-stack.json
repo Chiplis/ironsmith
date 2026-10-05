@@ -689,6 +689,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/814"
+    },
+    {
+      "stage": 49,
+      "branch": "fix/card-failures-49-copy-and-damage-roots",
+      "base": "fix/card-failures-48-causal-extrema-and-permission-families",
+      "source_integration_commit": "955943feffa07c10016b28736cb3f1e53befdd37",
+      "remote_commit": "687b016ae29c69a0452da61a3818c98788073ab9",
+      "tree": "56edd5827ebdff618fcbfd60c4d41a220ec72b09",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 815,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/815"
     }
   ]
 }

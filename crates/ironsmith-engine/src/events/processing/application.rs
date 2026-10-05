@@ -698,6 +698,15 @@ pub(super) fn apply_trait_replacement(
             TraitApplyResult::Modified(event.rewrap(draw.with_player(effect.controller)))
         }
 
+        ReplacementAction::RewriteMana { .. } => {
+            let Some(mana) = crate::events::downcast_event::<crate::events::ManaAddedEvent>(event.inner()) else {
+                return Ok(TraitApplyResult::Unchanged(event));
+            };
+            let transform = effect.replacement.mana_transformation().ok_or_else(||
+                crate::effects::ExecutionError::InternalError("mana rewrite choice was not resolved".into()))?;
+            TraitApplyResult::Modified(event.rewrap(mana.clone().with_mana(transform.apply(&mana.mana))))
+        }
+
         ReplacementAction::ReplaceMana(mana) => {
             use crate::events::{ManaAddedEvent, downcast_event};
 

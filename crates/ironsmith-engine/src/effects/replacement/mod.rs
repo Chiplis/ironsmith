@@ -6,6 +6,8 @@ mod register_draw_replacement;
 mod register_enter_tapped;
 mod register_future_zone_replacement;
 mod register_mana_replacement;
+mod register_mana_rewrite;
+mod register_mana_spend_permission;
 mod register_next_batch_enter_with_counters;
 mod register_counter_placement_replacement;
 mod register_zone_replacement;
@@ -18,6 +20,8 @@ pub use register_enter_tapped::RegisterEnterTappedReplacementEffect;
 pub use register_enter_under_control::RegisterEnterUnderControlReplacementEffect;
 pub use register_future_zone_replacement::RegisterFutureZoneReplacementEffect;
 pub use register_mana_replacement::RegisterManaReplacementEffect;
+pub use register_mana_rewrite::RegisterManaRewriteEffect;
+pub use register_mana_spend_permission::RegisterManaSpendPermissionEffect;
 pub use register_next_batch_enter_with_counters::RegisterNextBatchEnterWithCountersEffect;
 pub use register_zone_replacement::RegisterZoneReplacementEffect;
 

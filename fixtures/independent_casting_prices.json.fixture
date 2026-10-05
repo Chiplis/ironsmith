@@ -1,0 +1,60 @@
+[
+  {
+    "oracle_id": "e4b3e0af-5caa-47c1-b5be-c56a875cbb15",
+    "frozen_name": "As Foretold",
+    "name": "As Foretold",
+    "text": "Mana cost: {2}{U}\nType: Enchantment\nAt the beginning of your upkeep, put a time counter on this enchantment.\nOnce each turn, you may pay {0} rather than pay the mana cost for a spell you cast with mana value X or less, where X is the number of time counters on this enchantment.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  },
+  {
+    "oracle_id": "fdd3482d-7bce-411b-80c4-956a12fc143d",
+    "frozen_name": "Darksteel Monolith",
+    "name": "Darksteel Monolith",
+    "text": "Mana cost: {8}\nType: Artifact\nIndestructible\nOnce each turn, you may pay {0} rather than pay the mana cost for a colorless spell you cast from your hand.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  },
+  {
+    "oracle_id": "79b69b38-c01d-499a-a865-8c1cecf9fae0",
+    "frozen_name": "Tlincalli Hunter // Retrieve Prey",
+    "name": "Tlincalli Hunter",
+    "text": "Mana cost: {5}{G}{G}\nType: Creature \u2014 Scorpion Scout\nPower/Toughness: 7/7\nTrample\nOnce each turn, you may pay {0} rather than pay the mana cost for a creature spell you cast from exile.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "other_face": {
+      "name": "Retrieve Prey",
+      "text": "Mana cost: {1}{G}\nType: Sorcery \u2014 Adventure\nExile target creature card from your graveyard. Until the end of your next turn, you may cast that card. (Then exile this card. You may cast the creature later from exile.)"
+    },
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  },
+  {
+    "oracle_id": "e4541d02-2860-46ef-b630-1d6307b60766",
+    "frozen_name": "Conspiracy Unraveler",
+    "name": "Conspiracy Unraveler",
+    "text": "Mana cost: {5}{U}{U}\nType: Creature \u2014 Sphinx Detective\nPower/Toughness: 6/6\nFlying\nYou may collect evidence 10 rather than pay the mana cost for spells you cast. (To collect evidence 10, exile cards with total mana value 10 or greater from your graveyard.)",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  },
+  {
+    "oracle_id": "00037840-6089-42ec-8c5c-281f9f474504",
+    "frozen_name": "Nissa, Worldsoul Speaker",
+    "name": "Nissa, Worldsoul Speaker",
+    "text": "Mana cost: {3}{G}\nType: Legendary Creature \u2014 Elf Druid\nPower/Toughness: 3/3\nLandfall \u2014 Whenever a land you control enters, you get {E}{E} (two energy counters).\nYou may pay eight {E} rather than pay the mana cost for permanent spells you cast.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  },
+  {
+    "oracle_id": "8d087fe0-d554-4d7c-ba22-32db2cf71887",
+    "frozen_name": "Primal Prayers",
+    "name": "Primal Prayers",
+    "text": "Mana cost: {2}{G}{G}\nType: Enchantment\nWhen this enchantment enters, you get {E}{E} (two energy counters).\nYou may cast creature spells with mana value 3 or less by paying {E} rather than paying their mana costs. If you cast a spell this way, you may cast it as though it had flash.",
+    "proposed_coverage": "source_complete_unvalidated",
+    "validation": "UNVALIDATED; no build or test executed",
+    "source_review": "Bounded source-clear through 1e756c0e0; all execution deferred."
+  }
+]

@@ -114,6 +114,9 @@ pub struct TurnHistory {
     /// than retroactively counting counters received earlier in the turn.
     pub player_counter_locks_this_turn: HashSet<(PlayerId, crate::object::CounterType)>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
+    /// Completed physical rolls, including nonnumeric planar rolls. Ignored
+    /// and superseded rerolls never enter this ordinal history.
+    pub completed_die_rolls_this_turn: HashMap<PlayerId, u32>,
     pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
     /// Source/player pairs for attached-object rule restrictions that player
     /// has paid to ignore until the turn ends.
@@ -174,6 +177,7 @@ impl TurnHistory {
         self.untapped_lands_at_turn_start.clear();
         self.player_counter_locks_this_turn.clear();
         self.die_rolls_this_turn.clear();
+        self.completed_die_rolls_this_turn.clear();
         self.die_roll_result_adjustments_this_turn.clear();
         self.players_ignoring_attached_static_restrictions_this_turn
             .clear();
@@ -418,7 +422,7 @@ impl TurnHistory {
     pub fn max_die_rolls_for_players(&self, players: &[PlayerId]) -> u32 {
         players
             .iter()
-            .map(|player| self.die_rolls_this_turn.get(player).map_or(0, Vec::len) as u32)
+            .map(|player| self.completed_die_roll_count(*player))
             .max()
             .unwrap_or(0)
     }
@@ -1262,6 +1266,42 @@ impl TurnHistory {
                     event.player == player && event.action == KeywordActionKind::CommitCrime
                 })
         })
+    }
+
+    pub fn completed_die_roll_count(&self, player: PlayerId) -> u32 {
+        self.completed_die_rolls_this_turn.get(&player).copied().unwrap_or(0)
+            .max(self.die_rolls_this_turn.get(&player).map_or(0, Vec::len) as u32)
+    }
+
+    /// Commit the whole completed roll batch together, after all reroll/result
+    /// choices. Returns its first ordinal; callers preserve each exact result.
+    pub(crate) fn check_completed_die_roll_capacity(&self, player: PlayerId, count: usize)
+        -> Result<(u32,u32), crate::effects::ExecutionError> {
+        let before = self.completed_die_roll_count(player);
+        let total = u128::from(before) + count as u128;
+        let after = i32::try_from(total).map_err(|_|crate::effects::ExecutionError::ResourceLimitExceeded {
+            resource: "completed die-roll ordinal", requested: total, maximum: i32::MAX as u128,
+        })? as u32;
+        Ok((before,after))
+    }
+
+    pub(crate) fn record_completed_die_rolls(&mut self, player: PlayerId, results: &[u32], planar: bool)
+        -> Result<u32, crate::effects::ExecutionError> {
+        let (before,after) = self.check_completed_die_roll_capacity(player, results.len())?;
+        if !planar {
+            for &result in results {
+                i32::try_from(result).map_err(|_|crate::effects::ExecutionError::ResourceLimitExceeded {
+                    resource: "numeric die-roll result", requested: u128::from(result), maximum: i32::MAX as u128,
+                })?;
+            }
+            let history = self.die_rolls_this_turn.entry(player).or_default();
+            history.try_reserve(results.len()).map_err(|_|crate::effects::ExecutionError::ResourceAllocationFailed {
+                resource: "completed die-roll history", requested: results.len(),
+            })?;
+            history.extend_from_slice(results);
+        }
+        self.completed_die_rolls_this_turn.insert(player, after);
+        Ok(before + 1)
     }
 
     pub fn record_die_roll(&mut self, player: PlayerId, result: u32) {
