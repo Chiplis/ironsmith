@@ -7,6 +7,9 @@ mod blocking_permissions;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod costs_replacements_and_permissions;
 mod damage_prevention;
+mod damage_redirection;
+pub use damage_redirection::parse_scoped_damage_redirection_line;
+pub(crate) use damage_redirection::redirection_recipient_filters;
 mod prevention_follow_ups;
 mod life_change_replacements;
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
@@ -463,6 +466,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         | "parse_attached_prevent_all_damage_dealt_to_attached_line" => {
             vec![StaticAbilityLineHeadHint::Single("prevent")]
         }
+        "parse_scoped_damage_redirection_line" => vec![StaticAbilityLineHeadHint::Single("all"), StaticAbilityLineHeadHint::Single("as")],
         "parse_damage_redirect_to_source_line" => {
             vec![StaticAbilityLineHeadHint::Single("all")]
         }
@@ -1418,6 +1422,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_line),
+        single_static_ability_ast_rule!(parse_scoped_damage_redirection_line),
         single_static_ability_ast_rule!(
             parse_no_more_than_creatures_can_attack_or_block_each_combat_line
         ),

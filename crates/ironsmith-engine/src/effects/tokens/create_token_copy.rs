@@ -19,7 +19,7 @@ use crate::zone::Zone;
 
 use super::lifecycle::{
     TokenCleanupOptions, TokenEntryOptions, apply_token_battlefield_entry,
-    create_replacement_additional_tokens, remaining_token_slots, schedule_token_cleanup,
+    create_replacement_additional_tokens, schedule_token_cleanup,
 };
 
 /// Effect that creates a token copy of a permanent.
@@ -423,10 +423,11 @@ fn execute_token_instruction(
             ctx.provenance = provenance;
     let controller_id = replacement.controller;
     let token_preview = replacement.token.clone().unwrap_or(token_preview);
-    let count = (replacement.count as usize).min(remaining_token_slots(game, controller_id));
+    game.reserve_token_creation(replacement.total_count())?;
+    let count = replacement.count as usize;
 
-    let mut created_ids = Vec::with_capacity(count);
-    let mut events = Vec::with_capacity(count);
+    let mut created_ids = super::resources::buffer(count)?;
+    let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
 
     for _ in 0..count {
@@ -446,6 +447,7 @@ fn execute_token_instruction(
         token.zone = Zone::Command;
         let token_is_creature = token.is_creature();
 
+        game.commit_token_resource_slot()?;
         game.add_object(token);
         let entry_result = game.move_object_with_etb_processing_with_cause_and_entry_options(
             id,

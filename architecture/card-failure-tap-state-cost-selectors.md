@@ -18,22 +18,16 @@ Seven complete-card proposals:
 - Tourach's Gate
 - Krovikan Plague
 
-Two explicitly partial, excluded from complete-card coverage:
+Two additional source closures now have authored, unrun gameplay regressions
+in `prospective_cost_references`:
 
-- Fishing Pole: the cost now preserves the granting Equipment's identity. The
-  activation legality / standalone object-choice preflight still needs the
-  specific granted ability's grantor tag context. Its payment and resolution
-  paths already retain the grantor snapshot; accepting an arbitrary attached
-  Equipment is not a substitute.
-- Veteran's Voice: the chosen cost object is preserved, but target announcement
-  happens before payment. The deterministic enchanted-creature identity must be
-  bound for target exclusion before costs, then revalidated during payment.
-  Unknown cost tags must not become permissive and non-deterministic choices
-  must not be guessed.
+- Fishing Pole retains the specific granted ability's grantor context through
+  both availability and actual chosen-object cost payment.
+- Veteran's Voice binds its deterministic enchanted-creature cost identity
+  before target announcement, then revalidates it when paying.
 
-The full-card parser/transport assertions include all nine to isolate the cost
-syntax path. Only the seven without the identified runtime blockers are proposed
-as complete. All proposals still require the deferred corpus replay.
+See `card-failure-prospective-cost-references.md`. All nine are source proposals;
+none of these changes has received the deferred build/test/replay validation.
 
 ## Typed paths
 

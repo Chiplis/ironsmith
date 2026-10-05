@@ -1868,6 +1868,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         extract_target_requirements_from_effect_internal(
@@ -1879,6 +1880,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             consumed_modal_selection,
             declared_targets,
             requirements,
+            references,
         );
         return;
     }
@@ -1899,6 +1901,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 consumed_modal_selection,
                 declared_targets,
                 requirements,
+            references,
             );
         }
         return;
@@ -1918,6 +1921,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 consumed_modal_selection,
                 &mut child_declared_targets,
                 requirements,
+            references,
             );
             coordinated.merge_child_state(child_declared_targets);
         }
@@ -1934,6 +1938,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             consumed_modal_selection,
             declared_targets,
             requirements,
+            references,
         );
         return;
     }
@@ -1970,6 +1975,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             consumed_modal_selection,
                             &mut mode_declared_targets,
                             requirements,
+            references,
                         );
                     }
                     for requirement in &mut requirements[mode_requirement_start..] {
@@ -2016,7 +2022,7 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                 reuse_policy: crate::effects::TargetReusePolicy::AlwaysDeclareNew,
             };
             declare_target(&profile, declared_targets);
-            let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+            let legal_targets = compute_legal_targets_with_tagged_objects(game, &spec, caster, source_id, references);
             if !legal_targets.is_empty() {
                 let legal_target_sets =
                     crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -2060,11 +2066,12 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         } else {
             None
         };
-        let mut legal_targets = compute_legal_targets(
+        let mut legal_targets = compute_legal_targets_with_tagged_objects(
             game,
             relaxed_spec.as_ref().unwrap_or(extracted.spec),
             caster,
             source_id,
+            references,
         );
         retain_targets_satisfying_announcement_condition(
             game,
@@ -2317,6 +2324,7 @@ fn extract_for_players_target_requirements(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     let mut filter_ctx = crate::filter::FilterContext::new(caster)
         .with_active_player(game.turn.active_player)
@@ -2350,6 +2358,7 @@ fn extract_for_players_target_requirements(
                 consumed_modal_selection,
                 declared_targets,
                 requirements,
+            references,
             );
         }
     }
@@ -2364,6 +2373,7 @@ fn extract_target_requirements_from_iterated_effect(
     consumed_modal_selection: &mut bool,
     declared_targets: &mut Vec<DeclaredTarget>,
     requirements: &mut Vec<TargetRequirement>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
 ) {
     if let Some(extracted) = extract_target_spec(effect)
         && requires_target_selection(extracted.spec)
@@ -2384,7 +2394,7 @@ fn extract_target_requirements_from_iterated_effect(
             return;
         }
         declare_target(&profile, declared_targets);
-        let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
+        let legal_targets = compute_legal_targets_with_tagged_objects(game, &spec, caster, source_id, references);
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
         let legal_target_sets =
             crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
@@ -2431,6 +2441,7 @@ fn extract_target_requirements_from_iterated_effect(
         consumed_modal_selection,
         declared_targets,
         requirements,
+        references,
     );
 }
 
@@ -2845,6 +2856,7 @@ pub(crate) fn extract_target_requirements_for_effect_with_state(
         consumed_modal_selection,
         &mut declared_targets,
         &mut requirements,
+        None,
     );
     requirements
 }
@@ -3083,6 +3095,17 @@ pub(crate) fn extract_target_requirements_with_modes(
     source_id: Option<ObjectId>,
     chosen_modes: Option<&[usize]>,
 ) -> Vec<TargetRequirement> {
+    extract_target_requirements_with_modes_and_references(game, effects, caster, source_id, chosen_modes, None)
+}
+
+pub(crate) fn extract_target_requirements_with_modes_and_references(
+    game: &GameState,
+    effects: &[Effect],
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    chosen_modes: Option<&[usize]>,
+    references: Option<&crate::cost::prospective_references::CostReferenceBindings>,
+) -> Vec<TargetRequirement> {
     let mut requirements = Vec::new();
     let mut consumed_modal_selection = false;
     let mut declared_targets = Vec::new();
@@ -3097,6 +3120,7 @@ pub(crate) fn extract_target_requirements_with_modes(
             &mut consumed_modal_selection,
             &mut declared_targets,
             &mut requirements,
+            references,
         );
     }
 

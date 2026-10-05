@@ -1,4 +1,4 @@
-/** The command worker captures state; all speculative engine calls run elsewhere. */
+/** Speculation owns an isolated worker or an exact, sliced native runtime branch. */
 export function createIsolatedPriorityAnalysis({ capture, identity, pending, createWorker,
   publish, fail, deliver = operation => operation(), eligible = () => true, schedule = (fn, delay = 0) => setTimeout(fn, delay), cancel = clearTimeout }) {
   let revision = 0, generation = 0, worker = null, timer = null, requestedKey = null;
@@ -49,14 +49,15 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
         const input = await capture();
         if (token !== generation || identity() !== key) return;
         if (!idle) cancelWork();
-        worker ||= createWorker();
+        if (worker && Boolean(worker.runtimeFallback) !== Boolean(input.runtimeFallback)) retire();
+        if (!worker) { worker = createWorker(input); worker.runtimeFallback = Boolean(input.runtimeFallback); }
         idle = false;
         active = { token, key, viewRevision };
         const current = () => token === generation && identity() === key;
         const failed = error => {
           if (!current()) return;
           fail({ revision: viewRevision, error });
-          for (const entry of inspectors.values()) entry.resolve([]);
+          for (const entry of inspectors.values()) entry.reject(error);
           inspectors.clear();
           retire(); active = null; requestedKey = null;
         };
@@ -92,8 +93,9 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
       } catch (error) {
         if (token !== generation || identity() !== key) return;
         fail({ revision: viewRevision, error });
-        for (const entry of inspectors.values()) entry.resolve([]);
+        for (const entry of inspectors.values()) entry.reject(error);
         inspectors.clear();
+        retire();
         active = null; requestedKey = null;
       }
     });
@@ -102,9 +104,9 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
     if (!eligible()) return Promise.resolve([]);
     const key = args.map(String).join(':');
     if (inspectors.has(key)) return inspectors.get(key).promise;
-    let resolve;
-    const promise = new Promise(done => { resolve = done; });
-    const entry = { id: ++inspectorId, args, promise, resolve };
+    let resolve, reject;
+    const promise = new Promise((done, failed) => { resolve = done; reject = failed; });
+    const entry = { id: ++inspectorId, args, promise, resolve, reject };
     inspectors.set(key, entry);
     if (worker && active?.key === identity()) {
       idle = false;

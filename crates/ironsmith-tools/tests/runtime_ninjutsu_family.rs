@@ -106,6 +106,7 @@ fn execute(definition: &CardDefinition) -> Value {
     game.remove_summoning_sickness(attacker);
     game.tap(attacker);
     game.combat = Some(CombatState {
+        block_declaration_complete: true,
         attackers: vec![AttackerInfo {
             creature: attacker,
             target: AttackTarget::Player(bob),

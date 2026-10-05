@@ -89,3 +89,30 @@ fn parses_source_object_and_chosen_destination_redirect_shapes() {
         })
     ));
 }
+
+#[test]
+fn scoped_all_damage_retains_recipient_source_combat_and_exact_duration() {
+    for (text, combat, next_turn, source) in [
+        ("All combat damage that would be dealt to you this turn by target unblocked creature is dealt to its controller instead.", true, false, true),
+        ("All damage that would be dealt to target creature you control this turn is dealt to you instead.", false, false, false),
+        ("Until your next turn, all damage that would be dealt to creatures you control is dealt to that creature instead.", false, true, false),
+        ("All damage that would be dealt to you this turn by target attacking creature is dealt to this creature instead.", false, false, true),
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let Some(RedirectNextDamageShape::ScopedAll(shape)) = parse_redirect_next_damage_tokens(&tokens) else { panic!("{text}"); };
+        assert_eq!(shape.combat_only, combat); assert_eq!(shape.source.is_some(), source);
+        assert_eq!(shape.mode == ironsmith_core::ReplacementApplyMode::UntilYourNextTurn, next_turn);
+    }
+}
+
+#[test]
+fn all_damage_reader_does_not_eat_a_shared_next_amount_or_trailing_instruction() {
+    for text in [
+        "All damage that would be dealt to you this turn is dealt to target creature instead. Draw a card.",
+        "Until your next turn, all damage that would be dealt to you this turn is dealt to target creature instead.",
+        "All damage that would be dealt to you is dealt to target creature instead.",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(parse_redirect_next_damage_tokens(&tokens).is_none(), "{text}");
+    }
+}

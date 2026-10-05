@@ -716,6 +716,7 @@ pub(super) fn apply_layer_7_effects(
     let mut all_effects: Option<Vec<ContinuousEffect>> = None;
 
     // Track P/T through sublayers
+    chars.record_base_pt();
     let mut power = chars.power;
     let mut toughness = chars.toughness;
 
@@ -805,6 +806,8 @@ pub(super) fn apply_layer_7_effects(
         {
             power = Some(level_power);
             toughness = Some(level_toughness);
+            chars.base_power = power;
+            chars.base_toughness = toughness;
             pending_level_pt = None;
             chars.power = power;
             chars.toughness = toughness;
@@ -998,12 +1001,17 @@ pub(super) fn apply_layer_7_effects(
 
         chars.power = power;
         chars.toughness = toughness;
+        if effect_sublayer.is_some_and(|layer| layer <= PtSublayer::Setting) {
+            chars.record_base_pt();
+        }
         calc_guard.update(chars);
     }
 
     if let Some((level_power, level_toughness)) = pending_level_pt {
         power = Some(level_power);
         toughness = Some(level_toughness);
+        chars.base_power = power;
+        chars.base_toughness = toughness;
     }
 
     // If counters still haven't been applied (no 7c or 7d effects, or all 7c effects

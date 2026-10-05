@@ -29,7 +29,7 @@
     "baseline_content_hash": "82f78ebf040eecdebc11c04bd85ba1a7d1fc1c197910b066519b2f3316fd17b7",
     "baseline_diagnostic": "unsupported triggered line: 'Whenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.' [rule-path=statement-line > triggered-line]",
     "proposed_complete": false,
-    "remaining_blocker": "CR 121.7: resumable May/condition/If/result/tag/source scopes are implemented. A nested quantified-player program with a non-draw prefix still needs its native per-player action-iterator state retained before a draw; active unignored regression preserved.",
+    "remaining_blocker": "Literal draw continuations and earlier direct-draw receipt boundaries are implemented. A draw introduced indirectly by replacing a non-draw leaf still lacks a propagated outer continuation boundary; the active unignored nested-life regression records it.",
     "validation_status": "UNVALIDATED: source only, no builds, tests, or compiler probes."
   },
   {

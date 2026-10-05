@@ -188,6 +188,16 @@ pub enum WireRuntimeModification {
     RemoveAllAbilities,
     RemoveThisAbility,
     SetAuraAttachmentFilter(ironsmith_core::AuraAttachmentFilter),
+    /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
+    CopyOfWithAbilities {
+        source: ironsmith_core::ChooseSpec,
+        preserve_source_abilities: bool,
+        name_override: Option<String>,
+        name_override_surface: Option<ironsmith_core::SourceReferenceSurface>,
+        add_supertypes: Vec<ironsmith_core::Supertype>,
+        copy_exception_surface: Option<String>,
+        abilities: Vec<WireAbility>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

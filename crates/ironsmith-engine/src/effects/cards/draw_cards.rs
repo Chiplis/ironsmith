@@ -528,12 +528,18 @@ fn execute_draw_instruction(
             return Ok(EffectOutcome::count(0));
         }
         let (processed, programs) = processed.into_expansion();
-        if !programs.is_empty() {
+        if !programs.is_empty() || matches!(&processed, TraitEventResult::Replaced { .. }) {
+            // Earlier cards were already drawn. Their event-time subjects
+            // cannot observe changes made by this later draw's replacement.
+            // Keep the physical receipts while recording their matched proof.
             events.extend(finish_direct_draw_segment(
                 game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
                 direct_draw_step_context, direct_draws_before, HiddenDrawRevealMode::Inline,
             ));
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            crate::effects::capture_triggers_before_added_program(game, ctx, None, events.iter_mut());
+        }
+        if !programs.is_empty() {
             let original = commit_expanded_draw_original(game, ctx, player_id, processed)?;
             let completed = crate::effects::replacement::execute_deferred_replacement_programs(
                 game, ctx, original, programs,

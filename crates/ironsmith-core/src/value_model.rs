@@ -823,6 +823,9 @@ pub enum Value {
     /// that object's live cast metadata or departure LKI, never the resolving
     /// ability source's optional costs and never a new incarnation's costs.
     KicksPaidOf(Box<ChooseSpec>),
+    /// Current base power through layers 7a/7b of this exact referenced object,
+    /// excluding P/T modifiers, counters, and switching; departure LKI if gone.
+    BasePowerOf(Box<ChooseSpec>),
 }
 
 impl Value {

@@ -1,6 +1,6 @@
-import { acceptedZiffleEpochs, isPrivateZiffleEpoch, PRIVATE_SHUFFLE_PROTOCOL_VERSION, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
-import { VERIFIED_RESYNC_CHECKPOINT_REPLAY_MARGIN } from "./crypto-resync.js";
+import { ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
 import { RUNTIME_VERSION, assertRuntimeVersion } from "../../lib/runtime-version.js";
+import { assertResyncCheckpointCarrier } from "../../lib/resync-checkpoint-carrier.js";
 import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../../lib/accepted-actions.js';
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
 import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
@@ -289,104 +289,6 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     };
   }, [requestResync]);
 
-  // Where the last checkpoint-based Verified resync landed. A second resync
-  // within the replay margin of it replays from genesis instead, so an import
-  // that verifies but leaves the audit layer unable to follow the live match
-  // cannot loop.
-  const checkpointResyncLandingRef = useRef({ genesisHash: "", sequence: -1 });
-
-  function isMissingEngineMethodError(err) {
-    return /Unknown game method|is not a function/.test(toErrorMessage(err));
-  }
-
-  // Imports the host's redacted checkpoint for the signed sequence N into the
-  // engine (already restarted from the accepted genesis) and rebuilds, from
-  // the verified transcript only, the audit-layer state a replay of actions
-  // 1..N would have left. Returns N. Throws `err.suspiciousCheckpoint` when
-  // the imported public state does not match the signed transcript.
-  async function importVerifiedResyncCheckpoint({
-    currentGame, checkpoint, checkpointSequence, actionEntries, matchPayload, localIndex,
-  }) {
-    const prefix = actionEntries
-      .filter((entry) => Number(entry?.seq) <= checkpointSequence)
-      .map((entry) => cloneMultiplayerPayload(entry));
-    const anchor = prefix.at(-1);
-    if (prefix.length !== checkpointSequence || Number(anchor?.seq) !== checkpointSequence) {
-      throw new Error("Resync checkpoint sequence is not in the verified transcript");
-    }
-    const expectedPublicCheckpointHash = String(anchor.audit?.publicCheckpointHash || "");
-    const expectedStateHash = String(anchor.audit?.nextStateHash || "");
-    if (!expectedPublicCheckpointHash || !expectedStateHash) {
-      throw new Error("Resync checkpoint anchor action is missing its signed hashes");
-    }
-    // Validate every owner's private ciphertext-epoch chain up to N before
-    // touching the engine; the live ceremony is the last library epoch.
-    const liveCeremonies = new Map();
-    const lookupCeremonies = [];
-    for (const player of matchPayload.players || []) {
-      const owner = normalizePlayerIndex(player?.index);
-      if (owner == null) continue;
-      const epochs = acceptedZiffleEpochs(matchPayload, prefix, owner);
-      for (const epoch of epochs.slice(1)) {
-        if (!isPrivateZiffleEpoch(epoch)) continue;
-        lookupCeremonies.push(epoch);
-        if (String(epoch.zone || "library") === "library") liveCeremonies.set(owner, epoch);
-      }
-    }
-    try {
-      const { __perf: _perf, ...engineCheckpoint } = cloneMultiplayerPayload(checkpoint) || {};
-      await currentGame.importForeignSyncCheckpoint(engineCheckpoint, localIndex);
-    } catch (err) {
-      if (isMissingEngineMethodError(err)) err.engineMissingForeignImport = true;
-      throw err;
-    }
-    await currentGame.setPerspective?.(localIndex);
-    const importedPublicCheckpointHash = await servicesRef.current.currentPublicAuditCheckpointHash();
-    if (importedPublicCheckpointHash !== expectedPublicCheckpointHash) {
-      const error = new Error(
-        `Host resync checkpoint does not match the signed public checkpoint of action ${checkpointSequence}`
-      );
-      error.suspiciousCheckpoint = true;
-      throw error;
-    }
-    // Transcript-derived state at N (never taken from the host's word).
-    actionHistoryRef.current = prefix;
-    liveAuditTranscriptRef.current = liveAuditTranscriptRef.current
-      ? { ...liveAuditTranscriptRef.current, actions: actionHistoryRef.current }
-      : liveAuditTranscriptRef.current;
-    auditStateHashRef.current = expectedStateHash;
-    for (const epoch of lookupCeremonies) servicesRef.current.rememberLocalZiffleCeremonyForLookup(epoch);
-    for (const [owner, epoch] of liveCeremonies) {
-      base.liveZiffleCeremoniesRef.current.set(owner, cloneMultiplayerPayload(epoch));
-    }
-    base.ziffleHandRevealKeyRef.current = "";
-    base.ziffleHandRevealQuickKeyRef.current = "";
-    // Own private-view disclosure records (they are encrypted to this seat in
-    // the transcript); the engine-side knowledge they carried is not re-applied.
-    for (const entry of prefix) {
-      for (const proof of entry.audit?.privateViewProofs || []) {
-        if (String(proof?.type || "") !== "encrypted_private_opening"
-          || Number(proof.viewer) !== Number(localIndex)) continue;
-        try {
-          await servicesRef.current.privateOpeningFromEncryptedProof(proof, {
-            owner: proof.owner, viewer: proof.viewer, objectId: proof.objectId, seq: entry.seq,
-          }, { seq: entry.seq, persistDisclosure: true });
-        } catch {
-          // Best effort: the export stays without this disclosure record.
-        }
-      }
-    }
-    const importedState = await currentGame.uiState();
-    stateRef.current = importedState;
-    restoreMatchClockRuntimeFromActionTranscript(actionHistoryRef.current, importedState, matchPayload);
-    updateMultiplayer((prev) => ({ ...prev, lastAppliedSequence: checkpointSequence, submittingAction: false }));
-    recordDiagnosticEvent("resync:checkpoint_imported", {
-      seq: checkpointSequence,
-      tail: actionEntries.length - checkpointSequence,
-    });
-    return checkpointSequence;
-  }
-
   const reportSyncFailure = useCallback(
     (body, resyncReason = "", fallbackStatus = body) => {
       emitSyncFailureNotice("Sync failed", body);
@@ -446,10 +348,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         && relayMatchId(matchPayload) === relayMatchId(matchStartPayloadRef.current)
         ? servicesRef.current.captureMatchClockObservation?.() || null
         : null;
-      if ((!message?.checkpoint || typeof message.checkpoint !== "object")
-          && !(message?.replayOnly === true && isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)))) {
-        throw new Error("Resync payload is missing WASM checkpoint");
-      }
+      assertResyncCheckpointCarrier(message, {
+        trusted: isTrustedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)),
+        verified: isVerifiedMultiplayerSecurityMode(matchPayloadSecurityMode(matchPayload)),
+      });
 
       if (isRelayId(matchPayload.lobbyId)) assertFormatMatch(matchPayload);
       const currentGame = gameRef.current;
@@ -825,7 +727,10 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         (player) => Number(player.index) === resyncSigner
       );
       const signerKey = await importAuditPublicKey(String(signerPlayer?.auditPublicKey || ""));
-      const resyncEnvelopeReport = await verifySignedResyncEnvelope({
+      if (String(message.resyncEnvelope?.matchId || "") !== String(matchPayload.auditMatchId || currentAuditMatchId())) {
+        throw new Error("Resync envelope belongs to a different accepted match");
+      }
+      await verifySignedResyncEnvelope({
         envelope: message.resyncEnvelope,
         publicKey: signerKey,
         checkpoint: message.checkpoint,
@@ -853,27 +758,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           || ""
         );
 
-      // Checkpoint-based resync: the host-signed envelope names the accepted
-      // sequence its checkpoint was exported at. Private ciphertext epochs
-      // (protocol >= 15) are required so the live ziffle ceremonies can be
-      // rebuilt from the transcript alone.
-      const signedCheckpointSequence = Number.isSafeInteger(resyncEnvelopeReport?.checkpointSequence)
-        ? resyncEnvelopeReport.checkpointSequence
-        : null;
-      const genesisHash = String(matchPayload.genesis?.payloadHash || "");
-      const landing = checkpointResyncLandingRef.current;
-      const recentCheckpointLanding = landing.genesisHash === genesisHash
-        && localLastSequence < landing.sequence + VERIFIED_RESYNC_CHECKPOINT_REPLAY_MARGIN;
-      let checkpointImportPlan = signedCheckpointSequence != null
-        && signedCheckpointSequence > 0
-        && signedCheckpointSequence <= continuity.finalSequence
-        && Number(matchPayload.protocolVersion) >= PRIVATE_SHUFFLE_PROTOCOL_VERSION
-        && typeof currentGame.importForeignSyncCheckpoint === "function"
-        && String(message.resyncEnvelope?.matchId || "") === String(matchPayload.auditMatchId || currentAuditMatchId())
-        && !recentCheckpointLanding
-        ? { checkpointSequence: signedCheckpointSequence }
-        : null;
-
+      // Even a correctly signed checkpoint may omit runtime effects that are
+      // absent from its signed public-board hash. Never install host assertions
+      // as Verified gameplay state; replay every authenticated accepted action.
       const validationSnapshot = await createSequencedActionValidationSnapshot();
       const multiplayerSnapshot = cloneMultiplayerPayload(currentSession);
       const replayMatchPayload = cloneMultiplayerPayload(matchPayload);
@@ -897,46 +784,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         }
       };
       let nextState;
-      let importedCheckpointSequence = 0;
       try {
         await restartFromAcceptedGenesis(replayMatchPayload);
-        if (checkpointImportPlan) {
-          try {
-            importedCheckpointSequence = await importVerifiedResyncCheckpoint({
-              currentGame,
-              checkpoint: message.checkpoint,
-              checkpointSequence: checkpointImportPlan.checkpointSequence,
-              actionEntries,
-              matchPayload: replayMatchPayload,
-              localIndex: localEntry.index,
-            });
-            await replaySignedActions(importedCheckpointSequence);
-          } catch (checkpointError) {
-            // Never fatal by itself: rebuild from genesis and replay every
-            // signed action, exactly as without a checkpoint. A public-state
-            // mismatch is surfaced as suspicious (it may be an exporter bug),
-            // not as a cheat verdict.
-            if (checkpointError?.suspiciousCheckpoint) {
-              emitSyncFailureNotice(
-                "Resync checkpoint rejected",
-                `${toErrorMessage(checkpointError)}; replaying the signed transcript from the start instead`
-              );
-            }
-            recordDiagnosticEvent("resync:checkpoint_fallback", {
-              seq: checkpointImportPlan.checkpointSequence,
-              imported: importedCheckpointSequence,
-              suspicious: Boolean(checkpointError?.suspiciousCheckpoint),
-              engine_missing: Boolean(checkpointError?.engineMissingForeignImport),
-              error: toErrorMessage(checkpointError),
-            });
-            checkpointImportPlan = null;
-            importedCheckpointSequence = 0;
-            await restartFromAcceptedGenesis();
-            await replaySignedActions(0);
-          }
-        } else {
-          await replaySignedActions(0);
-        }
+        await replaySignedActions(0);
         nextState = typeof currentGame.uiState === "function"
           ? await currentGame.uiState()
           : stateRef.current;
@@ -958,6 +808,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         }
         awaitingStateResyncRef.current = false;
         throw err;
+      } finally {
+        try { await validationSnapshot?.release?.(); }
+        catch (error) { recordDiagnosticEvent("resync:savepoint_release_failed", { error: toErrorMessage(error) }); }
       }
       setState(nextState);
       const matchClock = alignMatchClockObservationFromHostSnapshot(
@@ -1055,21 +908,6 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       setState(nextState);
       awaitingStateResyncRef.current = false;
       await revealLocalZiffleHand(acceptedMatchPayload);
-      if (importedCheckpointSequence > 0) {
-        checkpointResyncLandingRef.current = { genesisHash, sequence: lastSequence };
-        // The foreign checkpoint carried no identities for this seat's own
-        // face-down / owner-viewable hidden cards outside the hand; reopen
-        // them with the peers' reveal tokens (owner visible-state authority).
-        // Local submissions wait on this reveal (localZiffleRevealInFlightRef).
-        try {
-          await revealLocalZiffleHand(acceptedMatchPayload, { includeOwnerViewableHidden: true });
-        } catch (err) {
-          emitSyncFailureNotice(
-            "Hidden card recovery incomplete",
-            `Some of your face-down cards could not be reopened after resync: ${toErrorMessage(err)}`
-          );
-        }
-      }
 
       safeSend(hostConnectionRef.current, {
         type: "resync_ack",

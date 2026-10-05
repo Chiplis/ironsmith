@@ -646,6 +646,16 @@ pub fn parse_shuffle(
             let target = parse_target_phrase(&target_tokens)?;
             Ok(shuffle_into_owner_library(target))
         }
+        ResourceShuffleShape::GraveyardIntoLibrary { player, explicit_all_cards_from } => {
+            Ok(EffectAst::subject_verb_shuffle_graveyard_into_library_with_surface(player, explicit_all_cards_from))
+        }
+        ResourceShuffleShape::ObjectsIntoSubjectLibrary { target_len, player, all } => {
+            let mut target = parse_target_phrase(&trim_commas(&tokens[..target_len]))?;
+            super::zone_counter_helpers::apply_shuffle_subject_graveyard_owner_context(
+                &mut target, SubjectAst::Player(player));
+            Ok(if all { EffectAst::subject_verb_shuffle_all_objects_into_library(player, target) }
+                else { EffectAst::subject_verb_shuffle_objects_into_library(player, target) })
+        }
         ResourceShuffleShape::HandIntoLibrary { player } => {
             let owner = crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
                 .ok_or_else(|| CardTextError::ParseError("unsupported hand owner in shuffle".to_string()))?;

@@ -21,6 +21,9 @@ use crate::zone::Zone;
 /// Combat state tracking.
 #[derive(Debug, Clone, Default)]
 pub struct CombatState {
+    /// CR 509.1h: attackers are neither blocked nor unblocked until the whole
+    /// declaration (including its costs) completes, even when no blockers exist.
+    pub block_declaration_complete: bool,
     /// All declared attackers with their targets.
     pub attackers: Vec<AttackerInfo>,
     /// Mapping from attacker to their blockers.
@@ -377,6 +380,7 @@ pub fn new_combat() -> CombatState {
 
 /// Clears all combat state at end of combat.
 pub fn end_combat(combat: &mut CombatState) {
+    combat.block_declaration_complete = false;
     combat.attackers.clear();
     combat.blockers.clear();
     combat.blocked_attackers.clear();
@@ -723,6 +727,7 @@ pub fn declare_attackers(
         .collect();
 
     // Second pass: apply declarations and tap attackers without vigilance
+    combat.block_declaration_complete = false;
     for (creature_id, target) in declarations {
         // Add to attackers list
         combat.attackers.push(AttackerInfo {
@@ -765,7 +770,9 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
-    declare_blockers_internal(game, combat, declarations, true, None)
+    declare_blockers_internal(game, combat, declarations, true, None)?;
+    combat.block_declaration_complete = true;
+    Ok(())
 }
 
 /// Validate one defending player's declaration while retaining declarations
@@ -1850,7 +1857,7 @@ pub fn is_blocked(combat: &CombatState, attacker: ObjectId) -> bool {
 
 /// Returns true if the attacker is unblocked (no blockers assigned and is attacking).
 pub fn is_unblocked(combat: &CombatState, attacker: ObjectId) -> bool {
-    is_attacking(combat, attacker) && !is_blocked(combat, attacker)
+    combat.block_declaration_complete && is_attacking(combat, attacker) && !is_blocked(combat, attacker)
 }
 
 /// Returns the attack target for a creature, if it is attacking.
@@ -2035,6 +2042,22 @@ mod tests {
         CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Enchantment])
             .build()
+    }
+
+    #[test]
+    fn zero_blocker_declaration_marks_unblocked_only_after_the_declaration() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(&creature_card("Boundary attacker", 2, 2), alice, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let mut combat = CombatState::default();
+        declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
+        assert!(!is_unblocked(&combat, attacker));
+        declare_blockers(&game, &mut combat, vec![]).unwrap();
+        assert!(is_unblocked(&combat, attacker));
+        end_combat(&mut combat); game.untap(attacker);
+        declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
+        assert!(!is_unblocked(&combat, attacker), "an extra combat does not inherit the preceding declaration boundary");
     }
 
     #[test]

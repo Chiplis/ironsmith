@@ -4395,6 +4395,11 @@ impl GameState {
                     linked_face_mana_value: object.linked_face_mana_value(),
                     compiled_card_text: object.compiled_card_text.clone(),
                     ability_labels: object.ability_labels.clone(),
+                    base_power: object.base_power.as_ref().map(|value| value.base_value()),
+                    base_toughness: object
+                        .base_toughness
+                        .as_ref()
+                        .map(|value| value.base_value()),
                     power: object.power(),
                     toughness: object.toughness(),
                     card_types: object.zone_card_types().to_vec().into(),

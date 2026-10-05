@@ -826,7 +826,9 @@ fn apply_mana_payment_plan_response_inner(
             .ok_or_else(|| GameLoopError::InvalidState("no mana payment is active".to_string()))?;
         let request = payment.request.clone();
         let undo_safe = mana_ability_is_undo_safe(game, *source, *ability_index);
-        if !crate::mana_payment::manual_mana_abilities(game, &request).contains(&(*source, *ability_index)) {
+        let manual = crate::mana_payment::manual_mana_abilities_checked(game, &request)
+            .map_err(GameLoopError::ExecutionFailed)?;
+        if !manual.contains(&(*source, *ability_index)) {
             return Err(GameLoopError::InvalidState("illegal mana activation during payment".to_string()));
         }
         if let Some(parent) = state.pending_mana_ability.take() {
@@ -1967,14 +1969,14 @@ pub(super) fn apply_alternative_activation_cost_response(
                 pending.alternative_cost_branches.len()
             ))
         })?;
-    let view = crate::derived_view::DerivedGameView::new(game);
-    if !crate::decision::activation_total_cost_branch_is_payable_with_view(
-        game,
-        pending.activator,
-        pending.source,
-        &branch,
-        &view,
+    let raw = captured_activation_reference_branch(&pending, choice)?;
+    let payable = match crate::cost::prospective_references::activation_branch_preflight_checked(
+        game, pending.source, pending.ability_index, pending.activator, raw.as_ref(), &branch,
     ) {
+        Ok(payable) => payable,
+        Err(error) => { state.pending_activation = Some(pending); return Err(GameLoopError::ExecutionFailed(error)); }
+    };
+    if !payable {
         state.pending_activation = Some(pending);
         return Err(GameLoopError::ActionCancelled(
             "the selected activation cost branch cannot be paid".to_string(),
@@ -1987,6 +1989,11 @@ pub(super) fn apply_alternative_activation_cost_response(
         return Ok(GameProgress::Continue);
     }
     pending.selected_alternative_cost = Some(choice);
+    if let Some(base) = pending.cost_reference_base.as_ref() {
+        let branch = base.as_one_of().and_then(|branches| branches.get(choice)).ok_or_else(|| GameLoopError::InvalidState("missing captured reference-cost branch".into()))?;
+        pending.cost_reference_choices = crate::cost::prospective_references::activation_reference_choices(branch, pending.effects.flattened_default_effects())
+            .map_err(|error| GameLoopError::InvalidState(format!("reference-cost branch: {error:?}")))?;
+    }
     pending.stage = activation_stage_after_modes(&pending);
     continue_activation(game, trigger_queue, state, pending, decision_maker)
 }
@@ -2004,6 +2011,20 @@ pub(super) fn apply_sacrifice_target_response(
     })?;
 
     match pending.stage {
+        ActivationStage::ChoosingCostReferences => {
+            let choice = pending.cost_reference_choices.first().ok_or_else(|| GameLoopError::InvalidState("missing public cost reference choice".into()))?;
+            let candidates = crate::cost::prospective_references::public_reference_candidates(
+                game, pending.source, pending.activator, choice, &pending.tagged_objects,
+                pending.x_value.map(|x| x as u32),
+            );
+            if !candidates.contains(&target_id) { return Err(GameLoopError::InvalidState("ineligible public cost reference".into())); }
+            let object = game.object(target_id).ok_or_else(|| GameLoopError::InvalidState("cost reference departed".into()))?;
+            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+            pending.announced_cost_objects.insert(choice.tag.clone(), vec![snapshot.clone()]);
+            pending.tagged_objects.insert(choice.tag.clone(), vec![snapshot]);
+            pending.cost_reference_choices.remove(0);
+        }
+
         ActivationStage::ChoosingSacrifice => {
             let (cost, filter, choice_tag) = match pending.remaining_cost_steps.first() {
                 Some(ActivationCostStep::Sacrifice {
@@ -3891,7 +3912,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
             if state.pending_activation.as_ref().is_some_and(|pending| {
                 matches!(
                     pending.stage,
-                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost
+                    ActivationStage::ChoosingSacrifice | ActivationStage::ChoosingCardCost | ActivationStage::ChoosingCostReferences
                 )
             }) {
                 apply_sacrifice_target_response(game, trigger_queue, state, chosen, decision_maker)

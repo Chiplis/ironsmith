@@ -211,6 +211,41 @@ pub(super) fn pre_rule_if_you_win_followup(
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
+/// A sacrifice-qualified self-replacement tests an action that already
+/// happened (possibly an activation cost), before either token-producing
+/// branch runs. Preserve the typed action/filter as a pending count rather
+/// than linking an `IfResult` to the default instruction it replaces.
+fn sacrifice_self_replacement_predicate(predicate: &IfResultPredicate) -> Option<PredicateAst> {
+    use ironsmith_core::{
+        EffectMetric, EffectMetricSource, PriorEffectAction, PriorEffectMetricQuery,
+        PriorEffectResultActor, PriorEffectResultQuantifier,
+    };
+    let IfResultPredicate::PriorEffectResult(surface) = predicate else {
+        return None;
+    };
+    if surface.action != PriorEffectAction::Sacrificed
+        || surface.quantifier != PriorEffectResultQuantifier::One
+        || surface.required_count.is_some()
+        || surface.shared_characteristic.is_some()
+    {
+        return None;
+    }
+    let mut query =
+        PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+            .with_filter(surface.filter.clone())
+            .with_action(PriorEffectAction::Sacrificed);
+    match surface.actor {
+        PriorEffectResultActor::You => query = query.with_player(PlayerFilter::You),
+        PriorEffectResultActor::Passive => {}
+        _ => return None,
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(query),
+        operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    })
+}
+
 pub(super) fn take_self_replacement_condition(
     effect: EffectAst,
 ) -> Option<(PredicateAst, Vec<EffectAst>, Vec<EffectAst>)> {
@@ -220,6 +255,11 @@ pub(super) fn take_self_replacement_condition(
             if_true,
             if_false,
         }) => Some((predicate, if_true, if_false)),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects }) => Some((
+            sacrifice_self_replacement_predicate(&predicate)?,
+            effects,
+            Vec::new(),
+        )),
         // Damage parsing preserves authored trailing condition order with a
         // typed `TrailingIf`. Once an `instead` follow-up has been classified
         // as a self-replacement, both surfaces carry the same semantic branch
@@ -237,10 +277,14 @@ pub(super) fn take_self_replacement_condition(
             else {
                 return None;
             };
-            let crate::model::control_flow::ControlPredicateAst::State(predicate) =
-                &condition.predicate
-            else {
-                return None;
+            let predicate = match &condition.predicate {
+                crate::model::control_flow::ControlPredicateAst::State(predicate) => {
+                    predicate.clone()
+                }
+                crate::model::control_flow::ControlPredicateAst::Result(predicate) => {
+                    sacrifice_self_replacement_predicate(predicate)?
+                }
+                _ => return None,
             };
             let if_true = control.program(*consequence_program)?.effects.clone();
             let if_false = alternative_program
@@ -500,6 +544,42 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         .get(sentence_idx)
         .map(SentenceInput::lexed)
         .unwrap_or(lowered_sentence_tokens);
+    if matches!(
+        classify_instead_followup_tokens(sentence_tokens),
+        InsteadSemantics::SelfReplacement
+    ) {
+        for effect in sentence_effects.iter() {
+            let result_predicate = match effect {
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, .. }) => {
+                    Some(predicate)
+                }
+                EffectAst::ControlFlow(control) => match &control.node {
+                    crate::model::control_flow::ControlFlowNodeAst::Condition {
+                        condition, ..
+                    } => match &condition.predicate {
+                        crate::model::control_flow::ControlPredicateAst::Result(predicate) => {
+                            Some(predicate)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                },
+                _ => None,
+            };
+            if result_predicate
+                .is_some_and(|predicate| sacrifice_self_replacement_predicate(predicate).is_none())
+            {
+                // The consequence parser removes the outer `instead` from
+                // its action tokens. An unsupported result gate must not
+                // survive as an ordinary additive IfResult, which would run
+                // the default action before its supposed replacement.
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported prior-result self-replacement predicate (clause: '{}')",
+                    LexedClause::new(sentence_tokens).text(),
+                )));
+            }
+        }
+    }
     // "If you do, put a +1/+1 counter on it. If it's a Unicorn, put two
     // +1/+1 counters on it instead." The replacement modifies the action
     // inside the result branch, so apply it there and keep the branch linked
@@ -549,6 +629,10 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
                     | EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { .. })
             ) || matches!(
                 effect,
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, .. })
+                    if sacrifice_self_replacement_predicate(predicate).is_some()
+            ) || matches!(
+                effect,
                 EffectAst::ControlFlow(control)
                     if matches!(
                         &control.node,
@@ -557,9 +641,11 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
             )
         })
         && let Some((predicate, mut if_true, mut if_false)) = sentence_effects
-            .pop()
+            .first()
+            .cloned()
             .and_then(take_self_replacement_condition)
     {
+        sentence_effects.clear();
         if let Some(replacement) = materialize_search_count_self_replacement(
             state.effects,
             predicate.clone(),

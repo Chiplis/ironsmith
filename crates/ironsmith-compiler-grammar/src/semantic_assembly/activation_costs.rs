@@ -211,6 +211,7 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
                 filter: filter.clone(),
             }
         }
+        ActivationCostSegmentCst::MoveChosenToZone { filter, destination } => CompilerCost::MoveChosenToZone { filter: filter.clone(), destination: *destination },
         ActivationCostSegmentCst::MoveChosenToLibraryTop { filter } => {
             CompilerCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),

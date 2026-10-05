@@ -383,6 +383,7 @@ pub enum StaticAbilityId {
     PlayersPlayWithHandsRevealed,
     /// A spell-only copy prohibition; appended for wire compatibility.
     CantBeCopied,
+    RedirectMatchingDamage,
 }
 
 impl StaticAbilityId {
@@ -686,6 +687,7 @@ impl StaticAbilityId {
             | ModifyDamageAmountReplacement
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
+            | RedirectMatchingDamage
             | AddLifeGainReplacement
             | TokenCreationTemplates
             | DoubleCountersReplacement

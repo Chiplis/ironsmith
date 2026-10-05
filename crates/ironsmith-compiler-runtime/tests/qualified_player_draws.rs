@@ -1085,8 +1085,8 @@ fn zero_draw_has_no_continuation_boundary_and_keeps_its_suffix_in_the_original()
 
 #[test]
 fn quantified_replacement_draw_prefix_keeps_remaining_original_life_changes_ahead_of_draws() {
-    // Remaining action-iterator frame boundary. A nested ForPlayers must retain
-    // its per-player program state, not run the entire iteration prematurely.
+    // A nested ForPlayers retains its native per-player program state rather
+    // than running the entire iteration before the other originals.
     for definition in definitions("Wedding Ring") {
         let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
         replace_first_gain(
@@ -1119,6 +1119,471 @@ fn quantified_replacement_draw_prefix_keeps_remaining_original_life_changes_ahea
             pending(&mut game, &mut dm),
             1,
             "the nested player program's draw does not precede B's original life gain"
+        );
+    }
+}
+
+#[test]
+fn continued_player_program_keeps_each_participants_prior_result_and_action_order() {
+    use ironsmith::effect::{EffectId, Value};
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+        library(&mut game, B, 6);
+        resource(&mut game, A, Zone::Hand, "Type: Land");
+        for _ in 0..2 {
+            resource(&mut game, B, Zone::Hand, "Type: Land");
+        }
+        let amount = EffectId(101);
+        replace_first_gain(
+            &mut game,
+            source,
+            vec![ironsmith::Effect::new(
+                ironsmith::effects::ForPlayersEffect::new(
+                    PlayerFilter::Opponent,
+                    vec![
+                        ironsmith::Effect::new(ironsmith::effects::WithIdEffect::new(
+                            amount,
+                            ironsmith::Effect::new(GainLifeEffect::with_filter(
+                                Value::CardsInHand(PlayerFilter::IteratedPlayer),
+                                PlayerFilter::IteratedPlayer,
+                            )),
+                        )),
+                        ironsmith::Effect::new(DrawCardsEffect::new(
+                            Value::EffectValue(amount),
+                            PlayerFilter::IteratedPlayer,
+                        )),
+                    ],
+                ),
+            )],
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                    partner,
+                )]),
+            ),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = shared_gain(&mut game, source, &mut dm);
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(
+            game.player(A).unwrap().hand.len(),
+            2,
+            "A draws its own one-card prefix result"
+        );
+        assert_eq!(
+            game.player(B).unwrap().hand.len(),
+            4,
+            "B draws its own two-card prefix result"
+        );
+        assert_eq!(
+            pending(&mut game, &mut dm),
+            2,
+            "B's nested original gain and outer original gain precede A's draw-added removal"
+        );
+        settle(&mut game, &mut dm);
+        assert_eq!(game.player(C).unwrap().life, 25);
+    }
+}
+
+#[test]
+fn optional_player_draw_cursor_retains_first_choice_and_asks_later_players_in_sequence() {
+    struct PerPlayerChoice {
+        first_accepts: bool,
+        observed: Vec<(PlayerId, i32)>,
+    }
+    impl DecisionMaker for PerPlayerChoice {
+        fn decide_boolean(&mut self, game: &GameState, ctx: &BooleanContext) -> bool {
+            self.observed
+                .push((ctx.player, game.player(C).unwrap().life));
+            (ctx.player != A || self.first_accepts) && ctx.can_accept
+        }
+    }
+    for definition in definitions("Wedding Ring") {
+        for first_accepts in [false, true] {
+            let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+            library(&mut game, B, 4);
+            library(&mut game, C, 4);
+            replace_first_gain(
+                &mut game,
+                source,
+                vec![ironsmith::Effect::new(
+                    ironsmith::effects::ForPlayersEffect::new(
+                        PlayerFilter::Opponent,
+                        vec![ironsmith::Effect::new(ironsmith::effects::MayEffect::new(
+                            vec![
+                                ironsmith::Effect::new(DrawCardsEffect::new(
+                                    1,
+                                    PlayerFilter::IteratedPlayer,
+                                )),
+                                remove_partner(partner),
+                            ],
+                        ))],
+                    ),
+                )],
+            );
+            game.effect_store.replacement_effects.add_resolution_effect(
+                ironsmith::replacement::ReplacementEffect::with_matcher(
+                    source,
+                    C,
+                    ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                    ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                        partner,
+                    )]),
+                ),
+            );
+            let mut dm = PerPlayerChoice {
+                first_accepts,
+                observed: vec![],
+            };
+            let outcome = shared_gain(&mut game, source, &mut dm);
+            for event in outcome.events {
+                game.queue_trigger_event(event.provenance(), event);
+            }
+            assert_eq!(
+                dm.observed,
+                vec![(A, 20), (B, if first_accepts { 22 } else { 20 })],
+                "pause cannot repeat the first choice or preask later sequential draw choices"
+            );
+            assert_eq!(
+                game.player(A).unwrap().hand.len(),
+                usize::from(first_accepts)
+            );
+            assert_eq!(game.player(B).unwrap().hand.len(), 1);
+            assert_eq!(
+                pending(&mut game, &mut dm),
+                if first_accepts { 1 } else { 2 }
+            );
+            settle(&mut game, &mut dm);
+            assert_eq!(
+                game.player(C).unwrap().hand.len(),
+                usize::from(!first_accepts),
+                "B's draw is captured before its following optional removal unit"
+            );
+        }
+    }
+}
+
+#[test]
+fn player_major_replacement_keeps_later_players_prefix_after_the_first_deferred_draw() {
+    use ironsmith::effect::{EffectId, Value};
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+        library(&mut game, B, 6);
+        resource(&mut game, A, Zone::Hand, "Type: Land");
+        for _ in 0..2 {
+            resource(&mut game, B, Zone::Hand, "Type: Land");
+        }
+        let amount = EffectId(102);
+        let mut iteration = ironsmith::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![
+                ironsmith::Effect::new(ironsmith::effects::WithIdEffect::new(
+                    amount,
+                    ironsmith::Effect::new(GainLifeEffect::with_filter(
+                        Value::CardsInHand(PlayerFilter::IteratedPlayer),
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                )),
+                ironsmith::Effect::new(DrawCardsEffect::new(
+                    Value::EffectValue(amount),
+                    PlayerFilter::IteratedPlayer,
+                )),
+            ],
+        );
+        iteration.sequential = true;
+        replace_first_gain(&mut game, source, vec![ironsmith::Effect::new(iteration)]);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                    partner,
+                )]),
+            ),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = shared_gain(&mut game, source, &mut dm);
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(game.player(A).unwrap().hand.len(), 2);
+        assert_eq!(game.player(B).unwrap().hand.len(), 4);
+        assert_eq!(
+            pending(&mut game, &mut dm),
+            1,
+            "B's outer original gain precedes the draw; its player-major nested prefix follows the removal"
+        );
+        settle(&mut game, &mut dm);
+        assert_eq!(game.player(C).unwrap().life, 23);
+    }
+}
+
+#[test]
+fn continued_offer_keeps_starting_player_and_stops_after_the_completed_accepted_body() {
+    struct Offer {
+        players: Vec<PlayerId>,
+    }
+    impl DecisionMaker for Offer {
+        fn decide_boolean(&mut self, _: &GameState, ctx: &BooleanContext) -> bool {
+            self.players.push(ctx.player);
+            ctx.player == D && ctx.can_accept
+        }
+    }
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, _, source) = simultaneous_replacement_fixture(&definition);
+        library(&mut game, C, 3);
+        library(&mut game, D, 3);
+        let iteration = ironsmith::effects::ForPlayersEffect::new_starting_with_controller(
+            PlayerFilter::Any,
+            vec![ironsmith::Effect::new(ironsmith::effects::MayEffect::new(
+                vec![ironsmith::Effect::new(DrawCardsEffect::new(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                ))],
+            ))],
+        )
+        .stop_after_first_happened();
+        replace_first_gain(&mut game, source, vec![ironsmith::Effect::new(iteration)]);
+        let mut dm = Offer { players: vec![] };
+        let outcome = shared_gain(&mut game, source, &mut dm);
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(dm.players, vec![C, D]);
+        assert_eq!(game.player(D).unwrap().hand.len(), 1);
+        for player in [A, B, C] {
+            assert!(game.player(player).unwrap().hand.is_empty());
+        }
+        assert_eq!(pending(&mut game, &mut dm), 1);
+    }
+}
+
+#[test]
+fn replacement_repetition_freezes_count_and_resumes_prefix_and_suffix_once() {
+    use ironsmith::effect::Value;
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+        for _ in 0..2 {
+            resource(&mut game, A, Zone::Hand, "Type: Land");
+        }
+        replace_first_gain(
+            &mut game,
+            source,
+            vec![ironsmith::Effect::new(
+                ironsmith::effects::RepeatEffectsEffect::new(
+                    Value::CardsInHand(PlayerFilter::Specific(A)),
+                    vec![
+                        ironsmith::Effect::new(GainLifeEffect::you(1)),
+                        ironsmith::Effect::new(DrawCardsEffect::new(1, PlayerFilter::Specific(A))),
+                    ],
+                ),
+            )],
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                    partner,
+                )]),
+            ),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = shared_gain(&mut game, source, &mut dm);
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(
+            game.player(A).unwrap().hand.len(),
+            4,
+            "the original count was two, before either draw"
+        );
+        assert_eq!(
+            game.player(C).unwrap().life,
+            24,
+            "one prefix gain per repetition plus two outer originals"
+        );
+        assert_eq!(pending(&mut game, &mut dm), 1);
+        settle(&mut game, &mut dm);
+        assert_eq!(game.player(C).unwrap().life, 25);
+    }
+}
+
+#[test]
+fn paused_iteration_suffix_restores_every_original_and_replays_without_duplicate_prefixes() {
+    struct Pause(bool);
+    impl DecisionMaker for Pause {
+        fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+            self.0 = true;
+            false
+        }
+        fn awaiting_choice(&self) -> bool {
+            self.0
+        }
+    }
+    for definition in definitions("Wedding Ring") {
+        for owner in 0..3 {
+            let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+            let body = vec![
+                ironsmith::Effect::new(GainLifeEffect::you(2)),
+                ironsmith::Effect::new(DrawCardsEffect::new(1, PlayerFilter::Specific(A))),
+                ironsmith::Effect::new(ironsmith::effects::MayEffect::new(vec![remove_partner(
+                    partner,
+                )])),
+            ];
+            let iteration = if owner == 2 {
+                ironsmith::Effect::new(ironsmith::effects::RepeatEffectsEffect::new(1, body))
+            } else {
+                let mut players =
+                    ironsmith::effects::ForPlayersEffect::new(PlayerFilter::Specific(A), body);
+                players.sequential = owner == 1;
+                ironsmith::Effect::new(players)
+            };
+            replace_first_gain(&mut game, source, vec![iteration]);
+            let mut pause = Pause(false);
+            let outcome = shared_gain(&mut game, source, &mut pause);
+            assert!(pause.0);
+            assert!(outcome.events.is_empty());
+            for player in [A, B, C, D] {
+                assert_eq!(game.player(player).unwrap().life, 20);
+            }
+            assert!(game.player(A).unwrap().hand.is_empty());
+            assert!(game.object(partner).is_some());
+            let mut dm = SelectFirstDecisionMaker;
+            assert_eq!(pending(&mut game, &mut dm), 0);
+            let outcome = shared_gain(&mut game, source, &mut dm);
+            for event in outcome.events {
+                game.queue_trigger_event(event.provenance(), event);
+            }
+            assert_eq!(game.player(A).unwrap().hand.len(), 1);
+            assert_eq!(game.player(C).unwrap().life, 24);
+            assert!(game.object(partner).is_none());
+            assert_eq!(pending(&mut game, &mut dm), 1);
+        }
+    }
+}
+
+#[test]
+fn each_players_draw_receipt_precedes_the_next_players_replacement_program() {
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+        game.turn.active_player = B;
+        library(&mut game, B, 3);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                    partner,
+                )]),
+            ),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = EffectContext::new(source, C, &mut dm);
+        let outcome = ironsmith::effects::ForPlayersEffect::new(
+            PlayerFilter::Opponent,
+            vec![ironsmith::Effect::new(DrawCardsEffect::new(
+                1,
+                PlayerFilter::IteratedPlayer,
+            ))],
+        )
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(game.player(A).unwrap().hand.len(), 1);
+        assert_eq!(game.player(B).unwrap().hand.len(), 1);
+        assert!(game.object(partner).is_none());
+        assert_eq!(
+            pending(&mut game, &mut dm),
+            1,
+            "B drew while qualified, before A's later draw replacement removed its Ring"
+        );
+    }
+}
+
+#[test]
+fn earlier_direct_draw_segment_is_captured_before_a_later_replacement_changes_qualification() {
+    // A later draw replacement cannot
+    // erase a trigger for a card already drawn in this instruction.
+    for definition in definitions("Wedding Ring") {
+        let mut game = game();
+        game.turn.active_player = B;
+        game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let partner = game.create_object_from_definition(&definition, B, Zone::Battlefield);
+        let source = resource(&mut game, B, Zone::Battlefield, "Type: Artifact");
+        library(&mut game, B, 1);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                B,
+                ironsmith::events::WouldDrawCardWhileLibraryEmptyMatcher::new(
+                    PlayerFilter::Specific(B),
+                ),
+                ironsmith::replacement::ReplacementAction::Instead(vec![remove_partner(partner)]),
+            ),
+        );
+        draw(&mut game, source, B, 2);
+        let mut dm = SelectFirstDecisionMaker;
+        assert_eq!(game.player(B).unwrap().hand.len(), 1);
+        assert!(game.object(partner).is_none());
+        assert_eq!(pending(&mut game, &mut dm), 1);
+    }
+}
+
+#[test]
+fn draw_introduced_by_nested_life_replacement_waits_for_the_enclosing_originals() {
+    // Active remaining capability boundary: the outer payload contains no
+    // literal DrawCards node, but its nested life event is replaced by a draw.
+    for definition in definitions("Wedding Ring") {
+        let (mut game, _, partner, source) = simultaneous_replacement_fixture(&definition);
+        replace_first_gain(
+            &mut game,
+            source,
+            vec![ironsmith::Effect::new(GainLifeEffect::with_filter(
+                1,
+                PlayerFilter::Specific(D),
+            ))],
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldGainLifeMatcher::new(PlayerFilter::Specific(D)),
+                ironsmith::replacement::ReplacementAction::Instead(vec![ironsmith::Effect::new(
+                    DrawCardsEffect::new(1, PlayerFilter::Specific(A)),
+                )]),
+            ),
+        );
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ironsmith::replacement::ReplacementEffect::with_matcher(
+                source,
+                C,
+                ironsmith::events::WouldDrawCardMatcher::new(PlayerFilter::Specific(A)),
+                ironsmith::replacement::ReplacementAction::Additionally(vec![remove_partner(
+                    partner,
+                )]),
+            ),
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let outcome = shared_gain(&mut game, source, &mut dm);
+        for event in outcome.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
+        assert_eq!(
+            pending(&mut game, &mut dm),
+            1,
+            "the dynamically introduced draw still waits for B's outer original gain"
         );
     }
 }

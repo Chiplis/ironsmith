@@ -241,7 +241,7 @@ pub fn normalize_activate_only_restriction(
     tokens: &[OwnedLexToken],
     timing: &ActivationTiming,
 ) -> Option<String> {
-    if timing == &ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep {
+    if matches!(timing, ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep | ActivationTiming::AnyTimeByEnchantedCreatureController) {
         return None;
     }
     if timing != &ActivationTiming::OncePerTurn {

@@ -31,6 +31,7 @@ use crate::zone::Zone;
 /// global invalidation concerns on `GameState`.
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
+    target_reference_bindings: crate::cost::prospective_references::CostReferenceBindings,
     memo_characteristic_context: Cell<Option<u64>>,
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
@@ -382,6 +383,18 @@ fn static_ability_has_minimum_total_spell_mana(
 }
 
 impl<'a> DerivedGameView<'a> {
+    /// A fresh activation-local target view. Its memo table must never reuse
+    /// answers computed for another announced cost identity.
+    pub(crate) fn with_target_reference_bindings(mut self, references: crate::cost::prospective_references::CostReferenceBindings) -> Self {
+        self.target_reference_bindings = references;
+        self.spell_target_legality.get_mut().clear();
+        self
+    }
+
+    pub(crate) fn target_reference_bindings(&self) -> Option<&crate::cost::prospective_references::CostReferenceBindings> {
+        (!self.target_reference_bindings.is_empty()).then_some(&self.target_reference_bindings)
+    }
+
     pub(crate) fn new(game: &'a GameState) -> Self {
         if game.continuous_state_is_clean() {
             Self::from_refreshed_state(game)
@@ -399,6 +412,7 @@ impl<'a> DerivedGameView<'a> {
         game.count_derived_view_rebuild();
         Self {
             game,
+            target_reference_bindings: Default::default(),
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,
@@ -439,6 +453,7 @@ impl<'a> DerivedGameView<'a> {
         let all_effects = Arc::new(all_effects);
         Self {
             game,
+            target_reference_bindings: Default::default(),
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(game)),
             battlefield_characteristic_scope: OnceCell::new(),
             all_effects,

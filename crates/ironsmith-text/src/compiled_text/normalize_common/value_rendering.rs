@@ -6122,6 +6122,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "the number of colors it is".to_string()
             }
         }
+        Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
@@ -6183,6 +6184,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| "this permanent".to_string());
             format!("the number of {character}'s in name stickers on {source}")
         }
+        Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
         }

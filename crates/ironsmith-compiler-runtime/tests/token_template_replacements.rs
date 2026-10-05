@@ -268,3 +268,61 @@ fn copy_owner_preserves_outer_instructions_without_copying_inline_exceptions_to_
         }
     }
 }
+
+#[test]
+fn affordable_501_originals_plus_added_template_are_exact_and_keep_cleanup() {
+    for definition in fixture("Quina, Qu Gourmet") {
+        let mut game = game(); let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+        game.take_pending_trigger_events();
+        let out = CreateTokenEffect::you(soldier(), 501).tapped().exile_at_next_end_step()
+            .execute(&mut game, &mut EffectContext::new_default(host, a())).unwrap();
+        let ids = out.result_objects().unwrap();
+        assert_eq!(ids.len(), 502); assert_eq!(subtype_count(&game, ids, Subtype::Soldier), 501);
+        assert_eq!(subtype_count(&game, ids, Subtype::Frog), 1);
+        assert!(ids.iter().all(|id| game.is_tapped(*id)));
+        assert_eq!(game.effect_store.delayed_triggers.len(), 502);
+        let events = game.take_pending_trigger_events();
+        let creations: Vec<_> = events.iter().filter_map(|event| event.downcast::<CreateTokensEvent>()).collect();
+        assert_eq!(creations.len(), 1); assert_eq!(creations[0].total_count(), 502);
+    }
+}
+
+#[test]
+fn affordable_501_substituted_templates_are_not_truncated() {
+    for definition in fixture("Divine Visitation") {
+        let mut game = game(); let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+        let ids = create(&mut game, host, a(), soldier(), 501);
+        assert_eq!(ids.len(), 501); assert_eq!(subtype_count(&game, &ids, Subtype::Angel), 501);
+        assert!(ids.iter().all(|id| game.current_has_static_ability_id(*id, StaticAbilityId::Flying)));
+    }
+}
+
+#[test]
+fn affordable_501_copies_keep_original_and_additional_instruction_scopes() {
+    use ironsmith::effects::{CreateTokenCopyEffect, TokenCopyReferenceSurface};
+    use ironsmith::target::ChooseSpec;
+    for definition in fixture("Quina, Qu Gourmet") {
+        let mut game = game(); let host = game.create_object_from_definition(&definition, a(), Zone::Battlefield);
+        let model = game.create_object_from_definition(&soldier(), a(), Zone::Battlefield);
+        let mut effect = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(model));
+        effect.count = ironsmith::effect::Value::Fixed(501); effect.has_haste = true;
+        effect.haste_followup_reference_surface = Some(TokenCopyReferenceSurface::ThoseTokens);
+        effect.enters_tapped = true; effect.exile_at_next_end_step = true;
+        let out = effect.execute(&mut game, &mut EffectContext::new_default(host, a())).unwrap();
+        let ids = out.result_objects().unwrap(); assert_eq!(ids.len(), 502);
+        assert_eq!(subtype_count(&game, ids, Subtype::Soldier), 501); assert_eq!(subtype_count(&game, ids, Subtype::Frog), 1);
+        assert!(ids.iter().all(|id| game.is_tapped(*id) && game.current_has_static_ability_id(*id, StaticAbilityId::Haste)));
+        assert_eq!(game.effect_store.delayed_triggers.len(), 502);
+    }
+}
+
+#[test]
+fn affordable_501_incubate_iterations_keep_counters_and_separate_creation_events() {
+    let mut game = game(); let source = game.new_object_id();
+    let out = IncubateEffect::you(3, 501).execute(&mut game, &mut EffectContext::new_default(source, a())).unwrap();
+    let ids = out.result_objects().unwrap(); assert_eq!(ids.len(), 501);
+    assert!(ids.iter().all(|id| game.counter_count(*id, ironsmith::object::CounterType::PlusOnePlusOne) == 3));
+    let events = game.take_pending_trigger_events();
+    let creations: Vec<_> = events.iter().filter_map(|event| event.downcast::<CreateTokensEvent>()).collect();
+    assert_eq!(creations.len(), 501); assert!(creations.iter().all(|event| event.total_count() == 1));
+}

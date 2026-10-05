@@ -1975,12 +1975,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     player_filter,
                     object_filter,
                     target,
+                    scope,
                 },
             ) => f
                 .debug_struct("RedirectAllDamageThisTurnToTarget")
                 .field("player_filter", player_filter)
                 .field("object_filter", object_filter)
                 .field("target", target)
+                .field("scope", scope)
                 .finish(),
             Self::KeywordActions(KeywordActionAst::Meld {
                 result_name,

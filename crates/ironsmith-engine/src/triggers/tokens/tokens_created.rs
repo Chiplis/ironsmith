@@ -26,10 +26,11 @@ impl TokensCreatedTrigger {
 impl TokensCreatedTrigger {
     fn matched_count(&self, created: &CreateTokensEvent, ctx: &TriggerContext) -> u32 {
         if !self.player.matches_player(created.controller, &ctx.filter_ctx) { return 0; }
-        created.matching_count(|key| created.group_object(key).map_or_else(
+        let count = created.matching_count(|key| created.group_object(key).map_or_else(
             || self.filter == ObjectFilter::default(),
             |token| self.filter.matches(&token, &ctx.filter_ctx, ctx.game),
-        ))
+        ));
+        u32::try_from(count).expect("published token groups passed checked creation preflight")
     }
 }
 
@@ -59,7 +60,7 @@ impl TriggerMatcher for TokensCreatedTrigger {
         }
         event
             .downcast::<CreateTokensEvent>()
-            .map_or(1, |created| created.total_count().max(1))
+            .map_or(1, |created| u32::try_from(created.total_count()).expect("published token groups passed checked creation preflight").max(1))
     }
 
     fn display(&self) -> String {

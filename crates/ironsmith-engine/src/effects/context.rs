@@ -66,11 +66,25 @@ pub enum ExecutionError {
     ContinuousDiscovery(crate::static_ability_processor::StaticEffectDiscoveryError),
     /// Internal error (should not happen).
     InternalError(String),
+    /// The host could not compute the complete operation within its resource
+    /// profile. This is not an impossible Magic action or a neutral outcome.
+    ResourceLimitExceeded { resource: &'static str, requested: u128, maximum: u128 },
+    ResourceAllocationFailed { resource: &'static str, requested: usize },
+}
+
+impl ExecutionError {
+    pub fn is_resource_exhaustion(&self) -> bool {
+        matches!(self, Self::ResourceLimitExceeded { .. } | Self::ResourceAllocationFailed { .. })
+    }
 }
 
 impl std::fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ExecutionError::ResourceLimitExceeded { resource, requested, maximum } => write!(f,
+                "Incomplete execution: {resource} requires {requested}, host limit is {maximum}"),
+            ExecutionError::ResourceAllocationFailed { resource, requested } => write!(f,
+                "Incomplete execution: allocator could not reserve {requested} items for {resource}"),
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
             ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),

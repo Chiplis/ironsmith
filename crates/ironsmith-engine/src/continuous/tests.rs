@@ -718,6 +718,8 @@ fn test_ability_granting_counters() {
         linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
+        base_power: creature.base_power.as_ref().map(|p| p.base_value()),
+        base_toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
         power: creature.base_power.as_ref().map(|p| p.base_value()),
         toughness: creature.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: creature.card_types.clone(),
@@ -778,6 +780,8 @@ fn test_multiple_ability_counters() {
         linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
+        base_power: None,
+        base_toughness: None,
         power: None,
         toughness: None,
         card_types: creature.card_types.clone(),
@@ -854,6 +858,8 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
         linked_face_mana_value: creature.linked_face_mana_value(),
         compiled_card_text: creature.compiled_card_text.clone(),
         ability_labels: creature.ability_labels.clone(),
+        base_power: None,
+        base_toughness: None,
         power: None,
         toughness: None,
         card_types: creature.card_types.clone(),
@@ -3080,5 +3086,126 @@ fn intrinsic_land_mana_fast_path_preserves_level_grant_dispatch_indices() {
     assert_eq!(sparse.as_slice(), chars.abilities.as_slice(), "sparse occurrence scan preserves the same ability sequence");
     for (index, ability) in advertised.iter().enumerate() {
         assert_eq!(game.current_ability(object, index).as_ref(), Some(ability), "dispatch index {index}");
+    }
+}
+
+#[test]
+fn base_pt_boundary_agrees_across_all_evaluators_and_departure_snapshots() {
+    use crate::effect::{Effect, Until};
+    use crate::effects::{EffectContext, execute_effect};
+    use crate::filter::{Comparison, FilterContext, ObjectFilterExt};
+    use crate::target::ChooseSpec;
+    let alice = PlayerId::from_index(0);
+    for setting in [false, true] {
+        let mut game = dynamic_value_test_game();
+        let card = CardBuilder::new(CardId::new(), "Layer boundary witness")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let other = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        add_dynamic_base_pt(
+            &mut game,
+            source,
+            alice,
+            Value::LifeTotal(PlayerFilter::You),
+            Value::Fixed(8),
+        );
+        fn apply(game: &mut GameState, source: ObjectId, effect: Effect) {
+            execute_effect(
+                game,
+                &effect,
+                &mut EffectContext::new_default(source, PlayerId::from_index(0)),
+            )
+            .unwrap();
+        }
+        if setting {
+            apply(
+                &mut game,
+                source,
+                Effect::set_base_power_toughness(
+                    3,
+                    7,
+                    ChooseSpec::SpecificObject(source),
+                    Until::EndOfTurn,
+                ),
+            );
+        }
+        apply(
+            &mut game,
+            source,
+            Effect::pump(2, 0, ChooseSpec::SpecificObject(source), Until::EndOfTurn),
+        );
+        apply(
+            &mut game,
+            source,
+            Effect::put_counters(
+                CounterType::PlusOnePlusOne,
+                1,
+                ChooseSpec::SpecificObject(source),
+            ),
+        );
+        // Warm the cache, then change a CDA dependency through a real action.
+        assert_eq!(
+            game.calculated_characteristics(source).unwrap().base_power,
+            Some(if setting { 3 } else { 20 })
+        );
+        apply(&mut game, source, Effect::gain_life(3));
+        let expected_base = if setting { (3, 7) } else { (23, 8) };
+        let switched = ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::Specific(source),
+            Modification::SwitchPowerToughness,
+        );
+        game.effect_store.continuous_effects.add_effect(switched);
+        let effects = game.all_continuous_effects();
+        let direct = game
+            .calculated_characteristics_with_effects(source, &effects)
+            .unwrap();
+        let batch = game.calculated_characteristics_batch_with_effects(&[source, other], &effects);
+        let mut manager = ContinuousEffectManager::new();
+        for effect in effects {
+            manager.add_effect(effect);
+        }
+        let legacy = manager
+            .calculate_characteristics(source, game.objects_map(), &game.battlefield, &game)
+            .unwrap();
+        for chars in [&direct, &batch[&source], &legacy] {
+            assert_eq!(
+                (chars.base_power, chars.base_toughness),
+                (Some(expected_base.0), Some(expected_base.1))
+            );
+            assert_eq!(
+                (chars.power, chars.toughness),
+                (Some(expected_base.1 + 1), Some(expected_base.0 + 3))
+            );
+        }
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(source).unwrap(),
+            &game,
+        );
+        assert_eq!(
+            (snapshot.base_power, snapshot.base_toughness),
+            (Some(expected_base.0), Some(expected_base.1))
+        );
+        let filter = ObjectFilter::creature().with_base_power(Comparison::Equal(expected_base.0));
+        let ctx = FilterContext::new(alice);
+        assert!(filter.matches(game.object(source).unwrap(), &ctx, &game));
+        assert!(filter.matches_snapshot(&snapshot, &ctx, &game));
+        let mut larger = ObjectFilter::creature();
+        larger.power_greater_than_base_power = true;
+        assert_eq!(
+            larger.matches_snapshot(&snapshot, &ctx, &game),
+            expected_base.1 + 1 > expected_base.0
+        );
+        game.move_object_by_game_rule(source, Zone::Graveyard)
+            .unwrap();
+        let departure =
+            crate::effects::helpers::latest_zone_change_snapshot_for_object(&game, source).unwrap();
+        assert_eq!(
+            (departure.base_power, departure.base_toughness),
+            (Some(expected_base.0), Some(expected_base.1))
+        );
     }
 }

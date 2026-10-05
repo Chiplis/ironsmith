@@ -847,6 +847,26 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
                 add_supertypes,
                 copy_exception_surface,
             },
+            wire::WireRuntimeModification::CopyOfWithAbilities {
+                source,
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+                copy_exception_surface,
+                abilities,
+            } => crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
+                source,
+                preserve_source_abilities,
+                name_override,
+                name_override_surface,
+                add_supertypes,
+                copy_exception_surface,
+                abilities: abilities
+                    .into_iter()
+                    .map(|ability| self.ability(ability))
+                    .collect::<Result<Vec<_>, _>>()?,
+            },
             wire::WireRuntimeModification::RemoveAllAbilities => {
                 crate::effects::continuous::RuntimeModification::RemoveAllAbilities
             }

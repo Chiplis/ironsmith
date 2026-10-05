@@ -47,7 +47,7 @@ pub(super) fn parses_resource_shuffle_shapes() {
     );
     assert_eq!(
         parse_resource_shuffle_shape(&lex("your library"), PlayerAst::Implicit),
-        Some(ResourceShuffleShape::SimpleLibrary)
+        Some(ResourceShuffleShape::ShuffleLibrary { player: PlayerAst::You })
     );
 }
 
@@ -75,4 +75,21 @@ pub(super) fn random_hand_look_preserves_owner_and_rejects_extra_qualifiers() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn whole_zone_shuffle_keeps_relative_participant_and_complete_destination() {
+    for (text, player, expected) in [
+        ("the cards from their hand into their library", PlayerAst::Implicit, PlayerAst::That),
+        ("the cards from their hand into their library", PlayerAst::Target, PlayerAst::Target),
+        ("all cards from your hand into your library", PlayerAst::Implicit, PlayerAst::You),
+    ] {
+        assert_eq!(parse_resource_shuffle_shape(&lex(text), player), Some(ResourceShuffleShape::HandIntoLibrary { player: expected }));
+    }
+    assert_eq!(parse_resource_shuffle_shape(&lex("their graveyard into their library"), PlayerAst::Implicit),
+        Some(ResourceShuffleShape::GraveyardIntoLibrary { player: PlayerAst::That, explicit_all_cards_from: false }));
+    assert_eq!(parse_resource_shuffle_shape(&lex("that library"), PlayerAst::That),
+        Some(ResourceShuffleShape::ShuffleLibrary { player: PlayerAst::That }));
+    assert!(parse_resource_shuffle_shape(&lex("your graveyard into your library banana"), PlayerAst::Implicit).is_none());
+    assert!(parse_resource_shuffle_shape(&lex("their hand into their library banana"), PlayerAst::That).is_none());
 }

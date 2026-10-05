@@ -22,6 +22,7 @@ pub(crate) enum NumericProperty {
     ManaSpent,
     ColorCount,
     KickerCount,
+    BasePower,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Reduction {
@@ -295,6 +296,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                     }) {
                         visit(match property {
                             NumericProperty::Power => snapshot.power,
+                            NumericProperty::BasePower => snapshot.base_power,
                             NumericProperty::Toughness => snapshot.toughness,
                             NumericProperty::ManaValue => {
                                 NumericProperty::ManaValue.snapshot(snapshot)
@@ -317,6 +319,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             continue;
                         }
                         visit(match property {
+                            NumericProperty::BasePower => {
+                                NumericProperty::BasePower.live(self.game, object)
+                            }
                             NumericProperty::Power => {
                                 self.game.calculated_power(id).or_else(|| object.power())
                             }
@@ -339,6 +344,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             Mode::Continuous(layer) => layer.visit_layered(filter, |object, chars| {
                 visit(match property {
                     NumericProperty::Power => chars.power,
+                    NumericProperty::BasePower => chars.base_power,
                     NumericProperty::Toughness => chars.toughness,
                     // Absent mana costs count as zero; melded permanents and
                     // transformed back faces use their front faces' mana value
@@ -496,6 +502,7 @@ impl NumericProperty {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Power => "power",
+            Self::BasePower => "base power",
             Self::Toughness => "toughness",
             Self::ManaValue => "mana value",
             Self::ManaSpent => "mana spent to cast",
@@ -506,6 +513,7 @@ impl NumericProperty {
     pub(crate) fn snapshot(self, snapshot: &ObjectSnapshot) -> Option<i32> {
         match self {
             Self::Power => snapshot.power,
+            Self::BasePower => snapshot.base_power,
             Self::Toughness => snapshot.toughness,
             Self::ManaValue => Some(crate::filter::snapshot_mana_value_for_filter(snapshot)),
             Self::ManaSpent => Some(snapshot.mana_spent_to_cast.total() as i32),
@@ -516,6 +524,7 @@ impl NumericProperty {
     pub(crate) fn raw(self, object: &Object) -> Option<i32> {
         match self {
             Self::Power => object.power(),
+            Self::BasePower => object.base_power.as_ref().map(|value| value.base_value()),
             Self::Toughness => object.toughness(),
             Self::ManaValue => Some(crate::filter::object_mana_value_for_filter(object)),
             Self::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
@@ -526,6 +535,10 @@ impl NumericProperty {
     pub(crate) fn live(self, game: &GameState, object: &Object) -> Option<i32> {
         match self {
             Self::Power => game.calculated_power(object.id).or_else(|| object.power()),
+            Self::BasePower => game
+                .calculated_characteristics(object.id)
+                .and_then(|chars| chars.base_power)
+                .or_else(|| self.raw(object)),
             Self::Toughness => game
                 .calculated_toughness(object.id)
                 .or_else(|| object.toughness()),
@@ -540,6 +553,7 @@ impl NumericProperty {
     ) -> Option<i32> {
         match self {
             Self::Power => chars.power,
+            Self::BasePower => chars.base_power,
             Self::Toughness => chars.toughness,
             Self::ManaValue | Self::ManaSpent | Self::ColorCount | Self::KickerCount => None,
         }

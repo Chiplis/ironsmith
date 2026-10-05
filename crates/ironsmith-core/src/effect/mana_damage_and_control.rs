@@ -814,11 +814,31 @@ impl RedirectNextTimeDamageToSourceEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum TimedDamageRedirectDestination { Target, Source, Controller, DamageSourceController }
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TimedDamageRedirectionScope {
+    pub source_filter: ObjectFilter,
+    pub source_target: Option<ChooseSpec>,
+    pub protected_target: Option<ChooseSpec>,
+    pub player_filter: Option<PlayerFilter>,
+    pub object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub destination: TimedDamageRedirectDestination,
+    pub mode: crate::ReplacementApplyMode,
+    pub display: String,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RedirectAllDamageThisTurnToTargetEffect {
     pub player_filter: PlayerFilter,
     pub object_filter: ObjectFilter,
     pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub scope: Option<TimedDamageRedirectionScope>,
 }
 
 impl RedirectAllDamageThisTurnToTargetEffect {
@@ -831,6 +851,7 @@ impl RedirectAllDamageThisTurnToTargetEffect {
             player_filter,
             object_filter,
             target,
+            scope: None,
         }
     }
 }

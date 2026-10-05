@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Curie, Emergent Intelligence",
+    "oracle_id": "48cf6b88-6bca-49d4-9951-36d98befa588",
+    "mana_cost": "{1}{U}",
+    "type_line": "Legendary Artifact Creature — Robot",
+    "power": "1",
+    "toughness": "3",
+    "oracle_text": "Whenever Curie deals combat damage to a player, draw cards equal to its base power.\n{1}{U}, Exile another nontoken artifact creature you control: Curie becomes a copy of the exiled creature, except it has \"Whenever this creature deals combat damage to a player, draw cards equal to its base power.\""
+  }
+]

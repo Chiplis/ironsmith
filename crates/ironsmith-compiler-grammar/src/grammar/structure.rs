@@ -1237,7 +1237,7 @@ pub fn split_if_clause_lexed(
         primitives::strip_lexed_suffix_phrases(predicate_tokens, PLAYER_MAY_SUFFIXES).is_some()
     }
 
-    let parse_effects_with_leading_instead =
+    let parse_conditional_consequence =
         |effect_tokens: &[OwnedLexToken],
          parse_effects: &mut dyn FnMut(
             &[OwnedLexToken],
@@ -1250,6 +1250,24 @@ pub fn split_if_clause_lexed(
                 trim_lexed_commas(&trimmed[1..])
             } else {
                 trimmed
+            };
+            // `instead` modifies this whole conditional consequence. The
+            // outer sentence retains it for the typed self-replacement
+            // composer; it is not part of a terminal numeric expression
+            // (for example, "equal to its toughness instead").
+            let without_instead = if without_instead
+                .last()
+                .is_some_and(|token| structure_token_is(token, "instead"))
+                && without_instead
+                    .iter()
+                    .filter(|token| token.is_quote())
+                    .count()
+                    % 2
+                    == 0
+            {
+                trim_lexed_commas(&without_instead[..without_instead.len() - 1])
+            } else {
+                without_instead
             };
             parse_effects(without_instead)
         };
@@ -1268,7 +1286,7 @@ pub fn split_if_clause_lexed(
             if let Ok(predicate) =
                 parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens_without_commas)
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1278,7 +1296,7 @@ pub fn split_if_clause_lexed(
             }
             if let Some(predicate) = parse_if_result_predicate(&predicate_tokens_without_commas)
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1325,8 +1343,7 @@ pub fn split_if_clause_lexed(
                 continue;
             }
             let effect_tokens = trim_lexed_commas(&tokens[split_idx..]);
-            if let Ok(effects) =
-                parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+            if let Ok(effects) = parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1356,7 +1373,7 @@ pub fn split_if_clause_lexed(
                     });
                 }
                 if let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                     && !effects.is_empty()
                 {
                     return Ok(IfClauseSplitSpec {
@@ -1367,7 +1384,7 @@ pub fn split_if_clause_lexed(
             }
             if let Some(predicate) = parse_if_result_predicate(predicate_tokens)
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1391,7 +1408,7 @@ pub fn split_if_clause_lexed(
         // survive into RepeatProcess/IfResult lowering.
         if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
             let effect_tokens = &tokens[first_comma_idx + 1..];
-            let effects = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)?;
+            let effects = parse_conditional_consequence(effect_tokens, &mut parse_effects)?;
             return Ok(IfClauseSplitSpec {
                 predicate: IfClausePredicateSpec::Result(predicate),
                 effects,
@@ -1422,7 +1439,7 @@ pub fn split_if_clause_lexed(
                 .first()
                 .is_some_and(|token| structure_token_is(token, "instead"))
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1434,7 +1451,7 @@ pub fn split_if_clause_lexed(
                 .first()
                 .is_some_and(|token| token.is_word("search") || token.is_word("searches"))
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1448,7 +1465,7 @@ pub fn split_if_clause_lexed(
                     fragment_tokens,
                 )
                 .is_some()
-                    || parse_effects_with_leading_instead(fragment_tokens, &mut parse_effects)
+                    || parse_conditional_consequence(fragment_tokens, &mut parse_effects)
                         .map(|effects| !effects.is_empty())
                         .unwrap_or(false)
             } else {
@@ -1459,7 +1476,7 @@ pub fn split_if_clause_lexed(
                 .is_some_and(|token| token.is_word("when") || token.is_word("whenever"));
             if (comma_fragment_looks_like_effect || comma_fragment_looks_like_delayed_trigger)
                 && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1476,7 +1493,7 @@ pub fn split_if_clause_lexed(
         if effect_tokens.is_empty() {
             continue;
         }
-        if let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+        if let Ok(effects) = parse_conditional_consequence(effect_tokens, &mut parse_effects)
             && !effects.is_empty()
         {
             split = Some((idx, effects));
@@ -1491,7 +1508,7 @@ pub fn split_if_clause_lexed(
         let effect_tokens = &tokens[first_idx + 1..];
         (
             first_idx,
-            parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)?,
+            parse_conditional_consequence(effect_tokens, &mut parse_effects)?,
         )
     };
     let predicate_tokens = &tokens[1..comma_idx];

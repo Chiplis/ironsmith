@@ -359,7 +359,7 @@
                 && apply.runtime_modifications.iter().any(|modification| {
                     matches!(
                         modification,
-                        crate::effects::continuous::RuntimeModification::CopyOf { .. }
+                        crate::effects::continuous::RuntimeModification::CopyOf { .. } | crate::effects::continuous::RuntimeModification::CopyOfWithAbilities { .. }
                     )
                 })
                 && matches!(

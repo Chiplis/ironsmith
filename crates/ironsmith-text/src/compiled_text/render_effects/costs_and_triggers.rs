@@ -1060,6 +1060,7 @@ fn describe_dynamic_mana_cost_with_target(
     dynamic: &ironsmith_core::DynamicManaCost,
     enclosing_target: Option<&ChooseSpec>,
 ) -> String {
+    if dynamic.mana_cost_of.is_some() { return dynamic.display(); }
     if dynamic.source_mana_cost
         && dynamic.x_value.is_none()
         && dynamic.additional_generic.is_none()

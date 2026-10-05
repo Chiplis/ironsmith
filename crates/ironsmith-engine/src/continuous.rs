@@ -2210,6 +2210,10 @@ pub struct CalculatedCharacteristics {
     pub ability_labels: SharedVec<String>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
+    /// P/T after characteristic-defining and setting effects (7a/7b),
+    /// before modifiers, counters, or switching. Not the printed numbers.
+    pub base_power: Option<i32>,
+    pub base_toughness: Option<i32>,
     pub card_types: SharedVec<CardType>,
     pub subtypes: SharedVec<Subtype>,
     pub supertypes: SharedVec<Supertype>,
@@ -2230,6 +2234,13 @@ pub struct CalculatedCharacteristics {
     pub(crate) ability_gain_prohibitions: Vec<Ability>,
     pub aura_attach_filter: Option<crate::object::AuraAttachmentFilter>,
     pub controller: PlayerId,
+}
+
+impl CalculatedCharacteristics {
+    pub(crate) fn record_base_pt(&mut self) {
+        self.base_power = self.power;
+        self.base_toughness = self.toughness;
+    }
 }
 
 fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
@@ -2470,6 +2481,8 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: object.compiled_card_text.clone(),
         ability_labels: object.ability_labels.clone(),
+        base_power: object.base_power.as_ref().map(|p| p.base_value()),
+        base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         power: object.base_power.as_ref().map(|p| p.base_value()),
         toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
         card_types: split_combined
@@ -2487,6 +2500,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
+    chars.record_base_pt();
     chars
 }
 
@@ -3282,6 +3296,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         let Some(chars) = chars_by_id.get_mut(&id) else {
             continue;
         };
+        chars.record_base_pt();
         // CR 711.2b: level P/T is a 7b effect with the leveler's timestamp;
         // it's applied in timestamp order with the other P/T effects below.
         if let Some((lp, lt)) = get_level_ability_pt(object, &chars.abilities) {
@@ -3378,6 +3393,7 @@ fn calculate_characteristics_layer_batch_with_effects(
                 {
                     chars.power = Some(lp);
                     chars.toughness = Some(lt);
+                    chars.record_base_pt();
                     pending_level_pt.remove(id);
                 }
                 // CR 613.4c/613.4d: counters are part of 7c, so they apply
@@ -3429,6 +3445,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         if let Some((lp, lt, _)) = pending_level_pt.remove(&id) {
             chars.power = Some(lp);
             chars.toughness = Some(lt);
+            chars.record_base_pt();
         }
         apply_reconfigure_attached_type_rule(object, chars);
         guards[idx].update(chars);
@@ -4074,6 +4091,7 @@ fn calculate_with_layers_direct_internal(
     // Layer 7: Power/Toughness with proper sublayer handling
     // Process in sublayer order: 7a, 7b, 7c, 7d
 
+    chars.record_base_pt();
     // Level abilities apply in 7b with the leveler's timestamp (CR 711.2b);
     // they're interleaved with the other P/T effects by timestamp below.
     let mut pending_level_pt = None;
@@ -4196,6 +4214,7 @@ fn calculate_with_layers_direct_internal(
             {
                 chars.power = Some(lp);
                 chars.toughness = Some(lt);
+                chars.record_base_pt();
                 pending_level_pt = None;
             }
             // CR 613.4c/613.4d: counters are part of 7c, so they apply before
@@ -4226,6 +4245,7 @@ fn calculate_with_layers_direct_internal(
     if let Some((lp, lt, _)) = pending_level_pt {
         chars.power = Some(lp);
         chars.toughness = Some(lt);
+        chars.record_base_pt();
     }
     apply_reconfigure_attached_type_rule(object, &mut chars);
     calc_guard.update(&chars);
@@ -6378,6 +6398,13 @@ fn apply_modification_to_chars(
         }
     }
     enforce_ability_gain_prohibitions(chars, &effect.modification);
+    if effect
+        .modification
+        .pt_sublayer()
+        .is_some_and(|layer| layer <= PtSublayer::Setting)
+    {
+        chars.record_base_pt();
+    }
 }
 
 /// Blank underscore lines are not words (CR 123.6); punctuation inside a word is.

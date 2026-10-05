@@ -1620,11 +1620,9 @@ impl WasmGame {
     fn manabrew_payment_actions(
         &self,
         context: &ironsmith::decisions::context::ManaPaymentContext,
-    ) -> (
-        Vec<PaymentAction>,
-        HashMap<String, ManaPaymentCommand>,
-        bool,
-    ) {
+    ) -> Result<(
+        Vec<PaymentAction>, HashMap<String, ManaPaymentCommand>, bool,
+    ), ironsmith::effects::ExecutionError> {
         let mut payment_actions = Vec::new();
         let mut commands = HashMap::new();
         let mut next_action_id = 0usize;
@@ -1637,10 +1635,10 @@ impl WasmGame {
                 payment_actions.push(PaymentAction { id, kind });
             };
 
-        let activation_inventory = ironsmith::mana_payment::mana_payment_activation_inventory(
+        let activation_inventory = ironsmith::mana_payment::mana_payment_activation_inventory_checked(
             &self.game,
             &context.request,
-        );
+        )?;
         for option in &activation_inventory {
             if !self.manabrew_can_defer_mana_activation(option.source, option.ability_index) {
                 continue;
@@ -1825,9 +1823,12 @@ impl WasmGame {
         {
             let mut life_request = context.request.clone();
             life_request.preferences.required_life_pips.push(pip);
-            if let Ok(life_plans) =
-                ironsmith::mana_payment::plan_mana_payment(&self.game, &life_request)
-                && let Some(life_plan) = life_plans.first()
+            let life_plans = match ironsmith::mana_payment::plan_mana_payment(&self.game, &life_request) {
+                Ok(plans) => plans,
+                Err(ironsmith::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(error),
+                Err(_) => continue,
+            };
+            if let Some(life_plan) = life_plans.first()
                 && life_plan.life_to_pay > 0
             {
                 add_action(
@@ -1841,7 +1842,7 @@ impl WasmGame {
         // choices are paid interactively, rather than chosen by a simulation.
         drop(add_action);
         for (source, ability_index) in
-            ironsmith::mana_payment::manual_mana_abilities(&self.game, &context.request)
+            ironsmith::mana_payment::manual_mana_abilities_checked(&self.game, &context.request)?
         {
             if self.manabrew_can_defer_mana_activation(source, ability_index) {
                 continue;
@@ -1869,11 +1870,7 @@ impl WasmGame {
             });
         }
 
-        (
-            payment_actions,
-            commands,
-            manabrew_plan_is_fully_selected(context),
-        )
+        Ok((payment_actions, commands, manabrew_plan_is_fully_selected(context)))
     }
 
     fn manabrew_can_defer_mana_activation(&self, source: ObjectId, index: usize) -> bool {
@@ -1909,7 +1906,8 @@ impl WasmGame {
                     .unwrap_or_else(|| ctx.subject.clone());
                 let source_id = object_id(&self.game, ctx.source);
                 let (actions, action_commands, can_confirm_manually) =
-                    self.manabrew_payment_actions(ctx);
+                    self.manabrew_payment_actions(ctx).map_err(|error| protocol_error(
+                        ProtocolErrorCode::InvalidShape, format!("Payment analysis incomplete: {error}"), None))?;
                 let mana_cost = manabrew_remaining_mana_cost(ctx);
                 Ok((
                     PromptInput::PayManaCost(PayManaCostInput {

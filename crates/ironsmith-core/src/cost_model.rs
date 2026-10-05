@@ -8,6 +8,7 @@ use crate::{ColorSet, CounterType, ManaCost, ObjectFilter, Value};
 pub enum DynamicManaDisplayHint {
     Default,
     ManaEqualTo,
+    EnchantedCreatureManaCost,
 }
 
 impl Default for DynamicManaDisplayHint {
@@ -32,6 +33,11 @@ pub struct DynamicManaCost {
     pub additional_generic: Option<Value>,
     pub multiplier: Option<Value>,
     pub display_hint: DynamicManaDisplayHint,
+    /// The exact object whose mana cost is paid. Unlike mana value, this
+    /// preserves colored, hybrid, snow and Phyrexian symbols. Announcement
+    /// binds cost-choice references before the total cost is locked.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_cost_of: Option<Box<crate::ChooseSpec>>,
 }
 
 impl DynamicManaCost {
@@ -50,6 +56,7 @@ impl DynamicManaCost {
             additional_generic,
             multiplier,
             display_hint,
+            mana_cost_of: None,
         }
     }
 
@@ -82,11 +89,19 @@ impl DynamicManaCost {
             additional_generic: None,
             multiplier: None,
             display_hint: DynamicManaDisplayHint::Default,
+            mana_cost_of: None,
         }
+    }
+
+    pub fn from_object_mana_cost(object: crate::ChooseSpec) -> Self {
+        let mut cost = Self::new(ManaCost::new(), None, None, None, DynamicManaDisplayHint::Default);
+        cost.mana_cost_of = Some(Box::new(object));
+        cost
     }
 
     pub fn resolved_static_base(&self) -> Option<ManaCost> {
         if !self.source_mana_cost
+            && self.mana_cost_of.is_none()
             && self.source_mana_cost_reduction_condition.is_none()
             && self.x_value.is_none()
             && self.additional_generic.is_none()
@@ -98,6 +113,13 @@ impl DynamicManaCost {
     }
 
     pub fn display(&self) -> String {
+        if self.mana_cost_of.is_some() {
+            if self.x_value.is_none() && self.additional_generic.is_none() && self.multiplier.is_none() {
+                return if self.display_hint == DynamicManaDisplayHint::EnchantedCreatureManaCost {
+                    "enchanted creature's mana cost".into()
+                } else { "its mana cost".into() };
+            }
+        }
         if self.source_mana_cost
             && self.x_value.is_none()
             && self.additional_generic.is_none()
@@ -111,7 +133,7 @@ impl DynamicManaCost {
                     return format!("mana equal to {value:?}");
                 }
             }
-            DynamicManaDisplayHint::Default => {}
+            DynamicManaDisplayHint::Default | DynamicManaDisplayHint::EnchantedCreatureManaCost => {}
         }
 
         let mut text = if self.base.is_empty() {

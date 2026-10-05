@@ -39,7 +39,7 @@ fn compute_scoped_actions(
     }
     let _restore = Restore(REQUESTED_ACTION_SOURCE.with(|slot| slot.replace(scope)));
     let mut actions = compute_legal_actions(game, player)?;
-    actions.extend(compute_commander_actions(game, player));
+    actions.extend(compute_commander_actions(game, player)?);
     Ok(actions)
 }
 
@@ -1197,8 +1197,23 @@ fn add_non_battlefield_ability_actions(
 }
 
 pub fn compute_legal_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
-    let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    super::mana::with_checked_query(game, &checked, || compute_legal_actions_checked(&checked, player))
+    with_complete_legality_query(game, |checked| compute_legal_actions_checked(checked, player))
+}
+
+pub(crate) fn with_complete_legality_query<T>(game: &GameState, compute: impl FnOnce(&GameState) -> Result<T, crate::effects::ExecutionError>) -> Result<T, crate::effects::ExecutionError> {
+    let mut checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    // Legality is a read-only query, including when entered during an actual
+    // payment. Its simulated token work must not consume the real operation's
+    // allowance. The owned latch retains failures discarded by boolean cost
+    // predicates until this Result-bearing boundary can surface them.
+    let scope = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
+    checked.bind_token_query_meter(scope.meter());
+    let result = super::mana::with_checked_query(game, &checked, || compute(&checked));
+    if let Some(error) = super::mana::analysis_failure().or_else(|| checked.token_resource_failure()) {
+        game.record_token_resource_failure(&error);
+        return Err(error);
+    }
+    result
 }
 
 fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
@@ -1483,6 +1498,12 @@ pub(crate) fn activation_timing_allows(
         }
         crate::ability::ActivationTiming::DuringYourTurn => game.is_active_player(controller),
         crate::ability::ActivationTiming::DuringOpponentsTurn => !game.is_active_player(controller),
+        crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => {
+            game.object(source).and_then(|object| object.attached_to).and_then(|target| target.object_id())
+                .is_some_and(|host| game.object(host).is_some_and(|object| object.zone == Zone::Battlefield)
+                    && game.current_has_card_type(host, crate::CardType::Creature)
+                    && game.current_controller(host) == Some(controller))
+        }
         crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
             game.is_active_player(controller) && game.turn.phase != Phase::Ending
         }
@@ -2238,14 +2259,10 @@ fn activation_precheck_with_view(
         }
         return None;
     }
-    if !total_cost_branch_is_payable_with_view(
-        game,
-        controller,
-        source,
-        &activated.mana_cost,
-        reason,
-        view,
-    ) {
+    if !crate::cost::prospective_references::activation_reference_preflight(game, source, ability_index, controller, activated)
+        .unwrap_or_else(|| total_cost_branch_is_payable_with_view(
+            game, controller, source, &activated.mana_cost, reason, view,
+        )) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2549,6 +2566,12 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         return false;
     }
 
+    // The reference-aware preflight evaluates each public cost choice with
+    // its own targets and fully modified price. Never redo it without tags.
+    if let Some(payable) = crate::cost::prospective_references::activation_reference_preflight(
+        game, source, ability_index, controller, activated,
+    ) { return payable; }
+
     let target_started_at = PerfTimer::start();
     let has_legal_targets =
         activated_ability_has_legal_targets_with_view(activated, controller, source, view);
@@ -2622,7 +2645,11 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
 ///
 /// These are kept separate from regular legal actions so they can be accessed
 /// via 'C' input rather than numeric indices.
-pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Vec<LegalAction> {
+pub fn compute_commander_actions(game: &GameState, player: PlayerId) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    with_complete_legality_query(game, |checked| Ok(compute_commander_actions_checked(checked, player)))
+}
+
+fn compute_commander_actions_checked(game: &GameState, player: PlayerId) -> Vec<LegalAction> {
     let mut actions = Vec::new();
     let view = DerivedGameView::new(game);
 

@@ -2,12 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 /// Effect that moves all cards from a player's graveyard to their library, then shuffles.
@@ -34,37 +31,30 @@ impl ShuffleGraveyardIntoLibraryEffect {
             explicit_all_cards_from: true,
         }
     }
+    fn instruction(&self) -> crate::effects::ShuffleObjectsIntoLibraryEffect {
+        crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            crate::target::ChooseSpec::All(crate::target::ObjectFilter::default()
+                .in_zone(Zone::Graveyard).owned_by(self.player.clone())),
+            self.player.clone(),
+        )
+    }
+
 }
 
 impl EffectExecutor for ShuffleGraveyardIntoLibraryEffect {
+    fn supports_simultaneous_player_action(&self) -> bool { true }
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        self.instruction().prepare_simultaneous_player_action(game, ctx)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-
-        let graveyard_cards = game
-            .player(player_id)
-            .map(|player| player.graveyard.clone())
-            .unwrap_or_default();
-
-        for card_id in graveyard_cards {
-            let _ = game.move_object_with_commander_options(
-                card_id,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            );
-        }
-
-        game.shuffle_player_library(player_id);
-
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-                ctx.provenance,
-            )),
-        )
+        // Keep zone replacement outcomes, exact receipts, actual move counts,
+        // commander destination choices and rollback in the common owner.
+        self.instruction().execute(game, ctx)
     }
 }

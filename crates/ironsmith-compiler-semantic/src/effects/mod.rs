@@ -202,6 +202,16 @@ pub mod continuous {
         RemoveAllAbilities,
         RemoveThisAbility,
         SetAuraAttachmentFilter(crate::AuraAttachmentFilter),
+        /// Abilities added as copiable exceptions, applied in layer 1 rather than ordinary grants.
+        CopyOfWithAbilities {
+            source: crate::target::ChooseSpec,
+            preserve_source_abilities: bool,
+            name_override: Option<String>,
+            name_override_surface: Option<crate::target::SourceReferenceSurface>,
+            add_supertypes: Vec<crate::types::Supertype>,
+            copy_exception_surface: Option<String>,
+            abilities: Vec<crate::ability::Ability>,
+        },
     }
 }
 

@@ -1925,6 +1925,9 @@ fn prepare_blocker_declarations(
         return Err(ResponseError::InvalidBlockers(err.to_string()).into());
     }
 
+    // Validation alone is not CR 509.1h completion. Mana abilities can run
+    // while paying blocking costs, before attackers become unblocked.
+    next_combat.block_declaration_complete = combat.block_declaration_complete;
     // CR 509.1d: determine and lock every cost only after the complete proposed
     // declaration is legal. A single ability charges a blocking creature once,
     // even if that creature is blocking more than one attacker.
@@ -1952,6 +1955,11 @@ fn apply_prepared_blocker_declarations(
     let pairs = prepared.pairs.clone();
     let defending_player = prepared.defending_player;
     apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker)?;
+    if defending_player.is_none() {
+        combat.block_declaration_complete = true;
+        game.combat = Some(combat.clone());
+        game.mark_continuous_state_dirty();
+    }
     queue_block_declaration_events(game, combat, trigger_queue, &pairs, defending_player);
     Ok(())
 }

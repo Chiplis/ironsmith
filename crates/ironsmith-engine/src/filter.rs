@@ -2191,6 +2191,44 @@ fn resolve_filter_comparison_rhs_value(
                 .as_ref()
                 .and_then(|snapshot| snapshot_pt(snapshot, false))
         }),
+        Value::BasePowerOf(spec) => {
+            let live = |id| {
+                game.calculated_characteristics(id)
+                    .and_then(|chars| chars.base_power)
+            };
+            let recorded = |snapshot: &ObjectSnapshot| {
+                if game.object(snapshot.object_id).is_some_and(|object| {
+                    object.zone == snapshot.zone && !game.is_phased_out(object.id)
+                }) {
+                    live(snapshot.object_id)
+                } else {
+                    crate::effects::helpers::latest_zone_change_snapshot_for_object(
+                        game,
+                        snapshot.object_id,
+                    )
+                    .filter(|departure| departure.zone == snapshot.zone)
+                    .as_ref()
+                    .unwrap_or(snapshot)
+                    .base_power
+                }
+            };
+            match spec.base() {
+                ChooseSpec::Source => ctx
+                    .source
+                    .and_then(live)
+                    .or_else(|| ctx.source_snapshot.as_ref().and_then(recorded)),
+                ChooseSpec::SpecificObject(id) => live(*id),
+                ChooseSpec::Tagged(tag) => ctx
+                    .tagged_objects
+                    .get(tag)
+                    .and_then(|objects| objects.first())
+                    .and_then(recorded),
+                ChooseSpec::Object(_) if spec.is_target() => {
+                    ctx.target_objects.first().and_then(recorded)
+                }
+                _ => None,
+            }
+        }
         Value::PowerOf(spec) => resolve_pt_choose_spec(spec, game, ctx, true),
         Value::ToughnessOf(spec) => resolve_pt_choose_spec(spec, game, ctx, false),
         Value::CountersOn(spec, counter_type) => match spec.base() {

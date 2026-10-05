@@ -372,9 +372,6 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                     source: target,
                 },
             )
-            | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { target, .. },
-            )
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
                 source: target,
                 ..
@@ -415,6 +412,13 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) => {
                 visit(target)
+            }
+            SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget { target, scope, .. }) => {
+                visit(target);
+                if let Some(scope) = scope {
+                    if let Some(target) = &scope.source_target { visit(target); }
+                    if let Some(target) = &scope.protected_target { visit(target); }
+                }
             }
             SubjectVerbActionAst::Counters(CounterActionAst::ForEachCounterKindPutOrRemove {
                 target,
@@ -1101,7 +1105,9 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::UnlockedDoorsAmong(filter)
         | Value::DistinctPowers(filter) => filter_references_tag(filter, tag),
         Value::StaticAbilitiesAmong { filter, .. } => filter_references_tag(filter, tag),
-        Value::PowerOf(spec) | Value::ToughnessOf(spec) => choose_spec_references_tag(spec, tag),
+        Value::PowerOf(spec) | Value::BasePowerOf(spec) | Value::ToughnessOf(spec) => {
+            choose_spec_references_tag(spec, tag)
+        }
         Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
         | Value::ManaValueOf(spec)

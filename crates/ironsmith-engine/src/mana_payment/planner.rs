@@ -150,6 +150,20 @@ pub fn check_mana_payment(
     .map(|_| ())
 }
 
+/// Scratch-only inventory evaluation. A failed probe is unknown, never an
+/// unavailable source; checked callers retain the original execution error.
+pub(super) fn with_inventory_query<T>(game: &GameState, read: impl FnOnce(&GameState) -> T) -> Result<T, crate::effects::ExecutionError> {
+    let scope = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
+    let meter = scope.meter();
+    let mut query_game = game.clone(); query_game.bind_token_query_meter(meter.clone());
+    let result = read(&query_game);
+    if let Some(error) = crate::effects::tokens::resources::failure(&meter) {
+        game.record_token_resource_failure(&error);
+        return Err(error);
+    }
+    Ok(result)
+}
+
 /// Legal source-level controls the client may use to constrain replanning.
 pub fn mana_payment_source_inventory(
     game: &GameState,
@@ -216,7 +230,11 @@ pub fn mana_payment_activation_inventory(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> Vec<ManaPaymentActivationOption> {
-    activation_inventory(game, request, false, || SelectFirstDecisionMaker)
+    mana_payment_activation_inventory_checked(game, request).unwrap_or_default()
+}
+
+pub fn mana_payment_activation_inventory_checked(game: &GameState, request: &ManaPaymentRequest) -> Result<Vec<ManaPaymentActivationOption>, crate::effects::ExecutionError> {
+    with_inventory_query(game, |query| activation_inventory(query, request, false, || SelectFirstDecisionMaker))
 }
 
 /// Deferred payment options must resolve without an unanswered player choice.
@@ -228,7 +246,11 @@ pub fn mana_payment_ready_activation_inventory<D: crate::decision::DecisionMaker
     request: &ManaPaymentRequest,
     chooser: impl FnMut() -> D,
 ) -> Vec<ManaPaymentActivationOption> {
-    activation_inventory(game, request, true, chooser)
+    mana_payment_ready_activation_inventory_checked(game, request, chooser).unwrap_or_default()
+}
+
+pub fn mana_payment_ready_activation_inventory_checked<D: crate::decision::DecisionMaker>(game: &GameState, request: &ManaPaymentRequest, chooser: impl FnMut() -> D) -> Result<Vec<ManaPaymentActivationOption>, crate::effects::ExecutionError> {
+    with_inventory_query(game, |query| activation_inventory(query, request, true, chooser))
 }
 
 /// Compute both UI inventories while sharing resolved tap-only activations.
@@ -239,6 +261,14 @@ pub fn mana_payment_ready_and_manual_inventory<D: crate::decision::DecisionMaker
     request: &ManaPaymentRequest,
     chooser: impl FnMut() -> D,
 ) -> (Vec<ManaPaymentActivationOption>, Vec<(ObjectId, usize)>) {
+    mana_payment_ready_and_manual_inventory_checked(game, request, chooser).unwrap_or_default()
+}
+
+pub fn mana_payment_ready_and_manual_inventory_checked<D: crate::decision::DecisionMaker>(game: &GameState, request: &ManaPaymentRequest, chooser: impl FnMut() -> D) -> Result<(Vec<ManaPaymentActivationOption>, Vec<(ObjectId, usize)>), crate::effects::ExecutionError> {
+    with_inventory_query(game, |query| ready_and_manual_inventory_inner(query, request, chooser))
+}
+
+fn ready_and_manual_inventory_inner<D: crate::decision::DecisionMaker>(game: &GameState, request: &ManaPaymentRequest, chooser: impl FnMut() -> D) -> (Vec<ManaPaymentActivationOption>, Vec<(ObjectId, usize)>) {
     let mut ready_request = request.clone();
     ready_request.preferences = Default::default();
     let before = game.covered_mana_payment_pips(request);
@@ -467,12 +497,12 @@ pub fn execute_mana_payment_plan(
     for step in &current.mana_ability_steps {
         let mut replay = super::witness::WitnessDecisionMaker::for_activation(
             step.replacement_witnesses.as_deref(), step.production_witnesses.as_deref(), decision_maker);
-        if activate_with_mana_triggers_retaining_state(
+        if let Err(error) = activate_with_mana_triggers_retaining_state(
             game, request.payer, step.source, step.ability_index,
             step.color_restriction.clone(), &mut replay, false,
-        ).is_err() {
+        ) {
             *game = checkpoint;
-            return Err(ManaPaymentFailure::ExecutionFailed);
+            return Err(ManaPaymentFailure::from_execution(error));
         }
         if replay.awaiting_choice() {
             *game = checkpoint;
@@ -511,10 +541,14 @@ pub fn execute_mana_payment_plan(
                     )
                     .with_reason(request.reason)
                     .with_pre_chosen_cards(vec![source]);
-                    matches!(
-                        crate::costs::Cost::exile_from_graveyard(1, None).pay(game, &mut context),
-                        Ok(crate::costs::CostPaymentResult::Paid)
-                    )
+                    match crate::costs::Cost::exile_from_graveyard(1, None).pay(game, &mut context) {
+                        Ok(crate::costs::CostPaymentResult::Paid) => true,
+                        Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => {
+                            *game = checkpoint;
+                            return Err(ManaPaymentFailure::EffectExecutionFailed(error));
+                        }
+                        _ => false,
+                    }
                 }
             }
             _ => true,
@@ -802,6 +836,7 @@ pub struct ManaPaymentPlanner {
     remaining: usize,
     pending: bool,
     outer: Option<PlanningCursor>,
+    resource_scope: Option<crate::effects::tokens::resources::TokenQueryScope>,
 }
 
 #[derive(Debug)]
@@ -898,6 +933,27 @@ impl ManaPaymentPlanner {
         game: &GameState,
         request: &ManaPaymentRequest,
         stop_after_first: bool,
+    ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
+        let scope = self.resource_scope.get_or_insert_with(||
+            crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits()));
+        let meter = scope.meter();
+        let mut staged = game.clone();
+        staged.bind_token_query_meter(meter.clone());
+        let mut result = self.plan_internal_with_resources(&staged, request, stop_after_first);
+        if let Some(error) = crate::effects::tokens::resources::failure(&meter) {
+            // A nested query owns its own work budget, but its enclosing
+            // execution must still learn that a branch could not be computed.
+            game.record_token_resource_failure(&error);
+            self.pending = false;
+            self.outer = None;
+            result = Err(ManaPaymentFailure::EffectExecutionFailed(error));
+        }
+        if !self.pending { self.resource_scope = None; }
+        result
+    }
+
+    fn plan_internal_with_resources(
+        &mut self, game: &GameState, request: &ManaPaymentRequest, stop_after_first: bool,
     ) -> Result<Vec<ManaPaymentPlan>, ManaPaymentFailure> {
         let player = game
             .player(request.payer)
@@ -5404,5 +5460,96 @@ mod tests {
             plan_mana_payment(&game, &request),
             Err(ManaPaymentFailure::ConflictingPreferences)
         );
+    }
+}
+
+#[cfg(test)]
+mod token_resource_failure_tests {
+    use super::*;
+    use crate::effects::{EffectContext, EffectExecutor, ExecutionError};
+    use crate::ids::{CardId, PlayerId};
+    use crate::zone::Zone;
+
+    fn fixture() -> (GameState, PlayerId, ObjectId, ManaPaymentRequest) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId::from_index(0);
+        game.turn.active_player = player; game.turn.priority_player = Some(player);
+        game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+        let card = crate::card::CardBuilder::new(CardId::new(), "Mana resource fixture")
+            .card_types(vec![crate::types::CardType::Land]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Green]));
+        game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
+            source, player, crate::events::mana::matchers::ManaProducedBySourceMatcher::new(crate::target::ObjectFilter::specific(source)),
+            crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
+        ));
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        let request = ManaPaymentRequest::new(player, source, crate::costs::PaymentReason::Effect, crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]));
+        game.take_pending_trigger_events(); (game, player, source, request)
+    }
+
+    #[test]
+    fn synchronous_and_sliced_queries_preserve_resource_unknown_not_unpayable() {
+        for mode in 0..4 {
+            let (game, _, source, request) = fixture();
+            let result = match mode {
+                0 => plan_first_mana_payment(&game, &request).map(|_| ()),
+                1 => plan_mana_payment(&game, &request).map(|_| ()),
+                2 => check_mana_payment(&game, &request),
+                _ => {
+                    let mut analysis = ManaPaymentAnalysis::new(&game, request);
+                    let mut result = None;
+                    for _ in 0..256 { if let Some(done) = analysis.step(1) { result = Some(done.map(|_| ())); break; } }
+                    result.expect("one-source bounded query must reach its explicit result")
+                }
+            };
+            assert!(matches!(result, Err(ManaPaymentFailure::EffectExecutionFailed(ExecutionError::ResourceLimitExceeded { .. }))));
+            assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+        }
+    }
+
+    #[test]
+    fn actual_manual_mana_activation_keeps_error_and_restores_tap_and_tokens() {
+        let (mut game, _, source, request) = fixture();
+        let next = game.next_object_id_counter();
+        let error = crate::mana_payment::activate_mana_during_payment(&mut game, &request, source, 0, &mut SelectFirstDecisionMaker).unwrap_err();
+        assert!(matches!(error, crate::special_actions::ActionError::ExecutionFailure { error: ExecutionError::ResourceLimitExceeded { .. }, .. }));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+        assert_eq!(game.next_object_id_counter(), next); assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn usefulness_preview_does_not_double_charge_exact_affordable_token_creation() {
+        let (mut game, _, source, request) = fixture();
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 2, ..Default::default() });
+        assert!(crate::mana_payment::manual_mana_abilities_checked(&game, &request).unwrap().contains(&(source, 0)));
+        assert_eq!(game.battlefield.len(), 1); assert!(!game.is_tapped(source));
+        assert!(crate::mana_payment::activate_mana_during_payment(&mut game, &request, source, 0, &mut SelectFirstDecisionMaker).unwrap());
+        assert!(game.is_tapped(source)); assert_eq!(game.battlefield.len(), 3);
+    }
+
+    #[test]
+    fn bounded_x_resource_unknown_is_not_a_smaller_affordable_maximum() {
+        let (mut game, player, source, _) = fixture();
+        let effect = crate::effects::PayManaEffect::new(
+            crate::mana::ManaCost::from_symbols(vec![ManaSymbol::X]),
+            crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You),
+        ).with_x_maximum(crate::effect::Value::Fixed(1));
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = EffectContext::new(source, player, &mut dm);
+        assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
+    fn pay_mana_effect_does_not_report_declined_after_resource_unknown() {
+        let (mut game, player, source, request) = fixture();
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = EffectContext::new(source, player, &mut dm);
+        let effect = crate::effects::PayManaEffect::new(request.cost, crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You));
+        assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::ResourceLimitExceeded { .. })));
+        assert!(!game.is_tapped(source)); assert_eq!(game.battlefield.len(), 1);
     }
 }

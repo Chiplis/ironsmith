@@ -145,6 +145,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
             Self::MoveSelfToLibraryBottom { .. } => {
                 "put this permanent on the bottom of its owner's library".to_string()
             }
+            Self::MoveChosenToZone { destination, .. } => format!("put a chosen card into its owner's {destination:?}"),
             Self::MoveOpponentOwnedExiledCardToGraveyard => {
                 "put an opponent-owned exiled card into its owner's graveyard".to_string()
             }
@@ -403,6 +404,10 @@ pub enum CompilerCost {
     Behold {
         subtype: Subtype,
         count: u32,
+    },
+    MoveChosenToZone {
+        filter: ObjectFilter,
+        destination: crate::zone::Zone,
     },
 }
 

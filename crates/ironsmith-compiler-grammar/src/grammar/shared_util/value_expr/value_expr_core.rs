@@ -14,6 +14,31 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
+    // A named option is a vote-result scalar, not an object filter. Keeping
+    // it as a Value lets ordinary arithmetic compose ("twice ... profit votes").
+    if let Some(["number", "of", option, "vote" | "votes", ..]) = words.get(offset..)
+        && !option.is_empty()
+        && option
+            .chars()
+            .all(|character| character.is_alphabetic() || character == '-')
+    {
+        return Some((Value::VoteCount((*option).to_string()), offset + 4));
+    }
+    if matches!(
+        words.get(offset..offset + 6),
+        Some([
+            "highest" | "greatest",
+            "life",
+            "total",
+            "among",
+            "all",
+            "players"
+        ])
+    ) {
+        // Every player selected by this filter has the same maximum life;
+        // reading the first does not turn a tie into a choice or a sum.
+        return Some((Value::LifeTotal(PlayerFilter::MostLifeTied), offset + 6));
+    }
     if words.get(offset) == Some(&"difference") {
         return Some((Value::PendingComparisonDifference, offset + 1));
     }
@@ -484,6 +509,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     for source_len in (1..words.len()).rev() {
         if let Some(surface) = source_reference_surface_for_possessive_words(&words[..source_len]) {
             match words.get(source_len).copied() {
+                Some("base") if words.get(source_len + 1) == Some(&"power") => {
+                    return Some((
+                        Value::BasePowerOf(Box::new(source_choose_spec_for_surface(surface))),
+                        source_len + 2,
+                    ));
+                }
                 Some("power") => {
                     return Some((
                         Value::PowerOf(Box::new(source_choose_spec_for_surface(surface))),

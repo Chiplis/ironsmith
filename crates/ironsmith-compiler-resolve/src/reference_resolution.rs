@@ -1433,6 +1433,7 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
             value_object_target_spec(left).or_else(|| value_object_target_spec(right))
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
@@ -7249,7 +7250,11 @@ fn resolve_sacrifice_cost_tagged_metric(
     tag_index: u32,
 ) -> Option<Value> {
     if query.action != Some(PriorEffectAction::Sacrificed)
-        || query.player.is_some()
+        // Sacrifice costs are paid by the activating/casting player. The
+        // cost executor explicitly rejects another payer scope, so active
+        // “you sacrificed ...” reads the same exported cost snapshots as
+        // the passive wording. Never erase an opponent/iterated-player gate.
+        || !matches!(query.player.as_ref(), None | Some(PlayerFilter::You))
         || !matches!(
             query.source,
             EffectMetricSource::AffectedObjects | EffectMetricSource::ChosenObjects
@@ -8102,11 +8107,19 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 DamagePreventionActionAst::RedirectAllDamageThisTurnToTarget {
                     object_filter,
                     target,
+                    scope,
                     ..
                 },
             ) => {
-                bind_unresolved_it_in_filter(object_filter, seed_tag)
-                    + bind_unresolved_it_in_target(target, seed_tag)
+                let mut count = bind_unresolved_it_in_filter(object_filter, seed_tag)
+                    + bind_unresolved_it_in_target(target, seed_tag);
+                if let Some(scope) = scope {
+                    count += bind_unresolved_it_in_filter(&mut scope.source_filter, seed_tag);
+                    if let Some(filter) = &mut scope.object_filter { count += bind_unresolved_it_in_filter(filter, seed_tag); }
+                    if let Some(target) = &mut scope.source_target { count += bind_unresolved_it_in_target(target, seed_tag); }
+                    if let Some(target) = &mut scope.protected_target { count += bind_unresolved_it_in_target(target, seed_tag); }
+                }
+                count
             }
             SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
@@ -8765,6 +8778,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
@@ -10609,6 +10623,91 @@ mod tests {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && constraint.tag.as_str() == "sacrifice_cost_3"
         }));
+    }
+
+    #[test]
+    fn sacrifice_cost_metrics_accept_only_the_actual_payer_scope() {
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            EffectMetricSource::AffectedObjects,
+            EffectMetric::Count,
+        )
+        .with_filter(ObjectFilter::creature().with_subtype(crate::types::Subtype::Angel))
+        .with_action(PriorEffectAction::Sacrificed);
+        for player in [
+            None,
+            Some(PlayerFilter::You),
+            Some(PlayerFilter::Opponent),
+            Some(PlayerFilter::IteratedPlayer),
+        ] {
+            let mut scoped = query.clone();
+            scoped.player = player.clone();
+            let resolved = resolve_sacrifice_cost_tagged_metric(&scoped, 7);
+            assert_eq!(
+                resolved.is_some(),
+                matches!(player, None | Some(PlayerFilter::You))
+            );
+            if let Some(Value::Count(filter)) = resolved {
+                assert_eq!(filter.subtypes, query.filter.as_ref().unwrap().subtypes);
+                assert!(
+                    filter
+                        .tagged_constraints
+                        .iter()
+                        .any(|constraint| constraint.tag.as_str() == "sacrifice_cost_7")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sacrifice_self_replacement_gate_binds_a_local_action_before_an_imported_cost() {
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            EffectMetricSource::AffectedObjects,
+            EffectMetric::Count,
+        )
+        .with_filter(ObjectFilter::creature())
+        .with_action(PriorEffectAction::Sacrificed)
+        .with_player(PlayerFilter::You);
+        let draw = |count| {
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                    count: Value::Fixed(count),
+                }),
+            )
+        };
+        let replacement = EffectAst::SelfReplacement {
+            predicate: PredicateAst::ValueComparison {
+                left: Value::PendingPriorEffectMetric(query.clone()),
+                operator: ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            },
+            if_true: vec![draw(2)],
+            if_false: vec![draw(1)],
+            attach_to_previous_ability: false,
+        };
+        let sacrifice =
+            EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::creature(), 1, None);
+        let annotated = annotate_effect_sequence(
+            &[sacrifice, replacement],
+            &ModelReferenceImports::with_last_object_tag("sacrifice_cost_7"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("the local sacrifice takes precedence over cost snapshots");
+        let id = annotated.effects[0]
+            .assigned_effect_id
+            .expect("local sacrifice exports its exact result");
+        let EffectAst::SelfReplacement {
+            predicate: PredicateAst::ValueComparison { left, .. },
+            ..
+        } = &annotated.effects[1].effect
+        else {
+            panic!("{:?}", annotated.effects[1].effect);
+        };
+        assert!(
+            matches!(left, Value::PriorEffectMetric { effect_id, query: found } if *effect_id == id && found == &query)
+        );
     }
 
     #[test]

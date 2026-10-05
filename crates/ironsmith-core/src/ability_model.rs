@@ -57,6 +57,8 @@ pub enum ActivationTiming {
     BeforeCombatDamageStep,
     /// "Activate only before the end of combat step" (CR 506.8).
     BeforeEndOfCombatStep,
+    /// The live controller of the creature enchanted by this ability source.
+    AnyTimeByEnchantedCreatureController,
 }
 
 impl ActivationTiming {
@@ -1067,7 +1069,7 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
     /// its source. The string fallback preserves older compiled definitions;
     /// new parses use the typed activator-relative timing variant.
     pub fn allows_any_player_to_activate(&self) -> bool {
-        self.timing == ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+        matches!(self.timing, ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep | ActivationTiming::AnyTimeByEnchantedCreatureController)
             || self.additional_restrictions.iter().any(|restriction| {
                 restriction
                     .trim()

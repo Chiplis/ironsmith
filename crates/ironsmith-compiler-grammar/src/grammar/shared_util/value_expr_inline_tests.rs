@@ -826,3 +826,31 @@ fn coordinated_characteristic_reference_keeps_distinct_axes_of_one_object() {
             .is_none()
     );
 }
+
+#[test]
+fn named_vote_counts_and_the_highest_life_scalar_remain_composable_values() {
+    for (text, expected) in [
+        (
+            "twice the number of profit votes",
+            Value::Scaled(Box::new(Value::VoteCount("profit".into())), 2),
+        ),
+        (
+            "the number of security votes",
+            Value::VoteCount("security".into()),
+        ),
+        (
+            "the highest life total among all players",
+            Value::LifeTotal(PlayerFilter::MostLifeTied),
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
+        assert_eq!(used, tokens.len());
+        assert_eq!(value, expected);
+    }
+    // A different maximum scope is not silently widened to every player.
+    assert!(
+        parse_value_expr_words(&["the", "highest", "life", "total", "among", "opponents"])
+            .is_none()
+    );
+}

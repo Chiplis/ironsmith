@@ -1758,10 +1758,11 @@ export function usePeerLobby({
           openings: Array.isArray(localRequirementOpenings) ? localRequirementOpenings.length : 0,
           bytes: payloadSizeBytes(localRequirementOpenings),
         });
-        const selectedPostOpenings = filterOpeningsForCommandHiddenRefs(postOpenings, command);
+        const selectedPostOpenings = filterOpeningsForCommandHiddenRefs(postOpenings, command, openingRequirements);
         const selectedLocalRequirementOpenings = filterOpeningsForCommandHiddenRefs(
           localRequirementOpenings,
           command,
+          openingRequirements,
         );
         const localPostOpeningState = await runSubmissionPhase(
           "submit_action:reveal_local_openings_post",

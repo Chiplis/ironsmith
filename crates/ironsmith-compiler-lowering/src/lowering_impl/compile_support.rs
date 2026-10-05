@@ -1117,6 +1117,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
             bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)

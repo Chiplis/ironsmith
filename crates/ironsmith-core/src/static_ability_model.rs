@@ -49,6 +49,27 @@ pub struct PreventAllDamageToSelfFromSourcesMatchingSpec {
     pub display: String,
 }
 
+/// The destination of a persistent redirection is resolved at the damage event.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum StaticDamageRedirectDestination {
+    Source,
+    AttachedPermanent,
+    DamagedPermanentController,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct StaticDamageRedirectionSpec {
+    pub source_filter: ObjectFilter,
+    pub target_player_filter: Option<PlayerFilter>,
+    pub target_object_filter: Option<ObjectFilter>,
+    pub combat_only: bool,
+    pub source_must_be_untapped: bool,
+    pub destination: StaticDamageRedirectDestination,
+    pub display: String,
+}
+
 /// A prevention amount retains prevention semantics, including unpreventable damage.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
@@ -1389,6 +1410,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         additional: i64,
         display: String,
     },
+    RedirectMatchingDamage(StaticDamageRedirectionSpec),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2650,6 +2672,8 @@ where
                 noncombat_only,
                 display,
             },
+            StaticAbilityPayload::RedirectMatchingDamage(spec) =>
+                StaticAbilityPayload::RedirectMatchingDamage(spec),
             StaticAbilityPayload::PreventMatchingDamage(spec) =>
                 StaticAbilityPayload::PreventMatchingDamage(spec),
             StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) =>
@@ -6751,6 +6775,14 @@ impl<
             id: Some(StaticAbilityId::PreventMatchingDamage),
             label: spec.display.clone(),
             payload: StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec),
+        }
+    }
+
+    pub fn redirect_matching_damage(spec: StaticDamageRedirectionSpec) -> Self {
+        Self {
+            id: Some(StaticAbilityId::RedirectMatchingDamage),
+            label: spec.display.clone(),
+            payload: StaticAbilityPayload::RedirectMatchingDamage(spec),
         }
     }
 

@@ -26,6 +26,21 @@ pub fn parse_bare_symbol_segment_tokens(
 pub fn parse_pay_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let reference = match words.as_slice() {
+        ["pay", "its", "mana", "cost"] => Some(crate::target::ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.key())),
+        ["pay", "enchanted", "creatures" | "creature's", "mana", "cost"] => {
+            let mut filter = crate::target::ObjectFilter::creature();
+            filter.with_attached_object = Some(Box::new(crate::target::ObjectFilter::source()));
+            Some(crate::target::ChooseSpec::Object(filter))
+        }
+        _ => None,
+    };
+    if let Some(reference) = reference {
+        let mut cost = ironsmith_core::DynamicManaCost::from_object_mana_cost(reference);
+        if words.get(1) == Some(&"enchanted") { cost.display_hint = ironsmith_core::DynamicManaDisplayHint::EnchantedCreatureManaCost; }
+        return Ok(ActivationCostSegmentCst::DynamicMana(cost));
+    }
     parse_simple_segment(tokens, parse_pay_segment_lexed, "pay-cost")
 }
 
@@ -506,6 +521,24 @@ mod tests {
                 parse_pay_segment_tokens(&lex_line(malformed, 0).unwrap()).is_err(),
                 "{malformed}"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod referenced_mana_cost_tests {
+    use super::*;
+    #[test]
+    fn referenced_mana_costs_are_typed_and_do_not_accept_partial_suffixes() {
+        for text in ["Pay its mana cost", "Pay enchanted creature's mana cost"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let ActivationCostSegmentCst::DynamicMana(cost) = parse_pay_segment_tokens(&tokens).unwrap() else { panic!("typed object mana cost expected"); };
+            assert!(cost.mana_cost_of.is_some());
+            assert!(!cost.source_mana_cost);
+            assert!(cost.resolved_static_base().is_none());
+        }
+        for text in ["Pay its mana", "Pay its mana cost banana", "Pay enchanted creature's mana cost banana"] {
+            assert!(parse_pay_segment_tokens(&crate::lexer::lex_line(text, 0).unwrap()).is_err(), "{text}");
         }
     }
 }

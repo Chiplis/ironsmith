@@ -513,6 +513,7 @@ mod tests {
             &game,
         );
         game.combat = Some(CombatState {
+            block_declaration_complete: true,
             attacked_permanent_types: Default::default(),
             attackers: vec![
                 AttackerInfo {

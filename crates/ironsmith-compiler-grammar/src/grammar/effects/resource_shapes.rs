@@ -5,6 +5,7 @@ use winnow::token::any;
 
 use crate::cards::builders::PlayerAst;
 use crate::effect::Value;
+use crate::zone::Zone;
 use crate::grammar::{primitives, values};
 use crate::lexer::{LexStream, LexedClause, OwnedLexToken, TokenWordView};
 
@@ -51,6 +52,15 @@ pub enum ResourceLookShape<'a> {
 pub enum ResourceShuffleShape {
     HandIntoLibrary {
         player: PlayerAst,
+    },
+    GraveyardIntoLibrary {
+        player: PlayerAst,
+        explicit_all_cards_from: bool,
+    },
+    ObjectsIntoSubjectLibrary {
+        target_len: usize,
+        player: PlayerAst,
+        all: bool,
     },
     /// "Shuffle this creature and target creature with a stun counter on it
     /// into their owners' libraries." (Floodpits Drowner): the first

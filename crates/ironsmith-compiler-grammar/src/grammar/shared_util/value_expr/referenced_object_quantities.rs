@@ -119,6 +119,9 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
             return Some((value, offset + length + 6));
         }
     }
+    if words.starts_with(&["its", "base", "power"]) {
+        return Some((Value::BasePowerOf(tagged(Tag::It, "it")), 3));
+    }
     if words.starts_with(&["its", "loyalty"]) {
         return Some((
             Value::CountersOn(

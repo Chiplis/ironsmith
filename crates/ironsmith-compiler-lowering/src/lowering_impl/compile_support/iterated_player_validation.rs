@@ -215,6 +215,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                     .is_some_and(PlayerFilter::mentions_iterated_player)
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
@@ -373,6 +374,7 @@ pub fn value_contains_pending_effect_metric(value: &Value) -> bool {
             object_filter_contains_pending_effect_metric(filter)
         }
         Value::PowerOf(spec)
+        | Value::BasePowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)

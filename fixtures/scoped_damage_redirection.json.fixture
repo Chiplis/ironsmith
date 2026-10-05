@@ -1,0 +1,153 @@
+[
+  {
+    "name": "Empyrial Archangel",
+    "oracle_id": "3a105959-dfce-4202-b37f-ae635dfcb30b",
+    "mana_cost": "{4}{G}{W}{W}{U}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying\nShroud (This creature can't be the target of spells or abilities.)\nAll damage that would be dealt to you is dealt to this creature instead.",
+    "power": "5",
+    "toughness": "8",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Harsh Judgment",
+    "oracle_id": "1fa272bf-8759-4750-b40b-8e2f6972d570",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "As this enchantment enters, choose a color.\nIf an instant or sorcery spell of the chosen color would deal damage to you, it deals that damage to its controller instead.",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Martyrs of Korlis",
+    "oracle_id": "7ca54a23-f8eb-4982-b4ee-7392e2f2a1b3",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Human",
+    "oracle_text": "As long as this creature is untapped, all damage that would be dealt to you by artifacts is dealt to this creature instead.",
+    "power": "1",
+    "toughness": "6",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Pariah",
+    "oracle_id": "2c5c8250-1860-42a1-a335-071f54830d37",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nAll damage that would be dealt to you is dealt to enchanted creature instead.",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Pariah's Shield",
+    "oracle_id": "f2103ab8-a183-4db8-98dd-4146217b5125",
+    "mana_cost": "{5}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "All damage that would be dealt to you is dealt to equipped creature instead.\nEquip {3}",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Protector of the Crown",
+    "oracle_id": "f1052b21-ba96-499f-b9e6-9dba4ed82e1e",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Giant Soldier",
+    "oracle_text": "When this creature enters, you become the monarch.\nAll damage that would be dealt to you is dealt to this creature instead.",
+    "power": "2",
+    "toughness": "5",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Treacherous Link",
+    "oracle_id": "b7902113-9ddf-4d81-a76a-b54b8a36c154",
+    "mana_cost": "{1}{B}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nAll damage that would be dealt to enchanted creature is dealt to its controller instead.",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Veteran Bodyguard",
+    "oracle_id": "d29078c0-1fb8-437a-81d1-bb319f646941",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Human",
+    "oracle_text": "As long as this creature is untapped, all damage that would be dealt to you by unblocked creatures is dealt to this creature instead.",
+    "power": "2",
+    "toughness": "5",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Weathered Bodyguards",
+    "oracle_id": "86d0ba9d-6972-4cbc-871d-3fb413565c45",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "As long as this creature is untapped, all combat damage that would be dealt to you by unblocked creatures is dealt to this creature instead.\nMorph {3}{W} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+    "power": "2",
+    "toughness": "5",
+    "source_proposed_complete": true
+  },
+  {
+    "name": "Ascent of the Worthy",
+    "oracle_id": "d748bad4-dd4c-4553-9fcc-e462260f6ff3",
+    "mana_cost": "{1}{W}{B}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI, II — Choose a creature you control. Until your next turn, all damage that would be dealt to creatures you control is dealt to that creature instead.\nIII — Return target creature card from your graveyard to the battlefield with a flying counter on it. That creature is an Angel Warrior in addition to its other types.",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Karona's Zealot",
+    "oracle_id": "dff66bcf-e126-49d2-b67e-ea3b0a38d390",
+    "mana_cost": "{4}{W}",
+    "type_line": "Creature — Human Cleric",
+    "oracle_text": "Morph {3}{W}{W} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, all damage that would be dealt to it this turn is dealt to target creature instead.",
+    "power": "2",
+    "toughness": "5",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Kjeldoran Royal Guard",
+    "oracle_id": "8137e765-4df9-469f-a527-dee91d58fb7e",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "{T}: All combat damage that would be dealt to you by unblocked creatures this turn is dealt to this creature instead.",
+    "power": "2",
+    "toughness": "5",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Mirror Strike",
+    "oracle_id": "184fdd23-8235-4500-b2f5-d3b0b93a8f35",
+    "mana_cost": "{3}{W}",
+    "type_line": "Instant",
+    "oracle_text": "All combat damage that would be dealt to you this turn by target unblocked creature is dealt to its controller instead.",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Shimian Night Stalker",
+    "oracle_id": "09b9e6fd-7a61-4ed4-a121-61b64fbf03f4",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Nightstalker",
+    "oracle_text": "{B}, {T}: All damage that would be dealt to you this turn by target attacking creature is dealt to this creature instead.",
+    "power": "4",
+    "toughness": "4",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Sivvi's Valor",
+    "oracle_id": "e02164ba-34f8-4a5f-a05b-dd3ef3f8ceae",
+    "mana_cost": "{2}{W}",
+    "type_line": "Instant",
+    "oracle_text": "If you control a Plains, you may tap an untapped creature you control rather than pay this spell's mana cost.\nAll damage that would be dealt to target creature this turn is dealt to you instead.",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  },
+  {
+    "name": "Turn the Tables",
+    "oracle_id": "bd5ad7c3-4477-4278-9875-d2ffbb0e8089",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Instant",
+    "oracle_text": "All combat damage that would be dealt to you this turn is dealt to target attacking creature instead.",
+    "source_proposed_complete": false,
+    "remaining_runtime_gap": "runtime-replacement-checkpoint-recovery"
+  }
+]

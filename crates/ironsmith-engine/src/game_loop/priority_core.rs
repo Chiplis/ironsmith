@@ -280,7 +280,7 @@ pub fn analyze_priority_context(
     }
     let mut commander_actions = Vec::new();
     for player in priority_players {
-        for action in compute_commander_actions(game, player) {
+        for action in compute_commander_actions(game, player)? {
             if !commander_actions.contains(&action) && !actions.contains(&action) {
                 commander_actions.push(action);
             }

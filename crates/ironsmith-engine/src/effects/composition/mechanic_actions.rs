@@ -1272,11 +1272,13 @@ impl EffectExecutor for PopulateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_token_instruction_atomically(game, ctx, |game, ctx| {
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         if count == 0 {
             return Ok(EffectOutcome::resolved());
         }
 
+        game.reserve_token_repetition_work(count)?;
         let mut created_ids = Vec::new();
         let mut events = Vec::new();
 
@@ -1343,6 +1345,7 @@ impl EffectExecutor for PopulateEffect {
                     .next_end_step_player(self.next_end_step_player.clone())
                     .exile_at_eoc(self.exile_at_end_of_combat)
                     .execute(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
             if let OutcomeValue::Objects(ids) = outcome.value {
                 created_ids.extend(ids);
             }
@@ -1354,6 +1357,7 @@ impl EffectExecutor for PopulateEffect {
         }
 
         Ok(EffectOutcome::with_objects(created_ids).with_events(events))
+        })
     }
 }
 

@@ -818,6 +818,8 @@ impl ObjectSnapshot {
             snapshot.ability_labels = calculated.ability_labels.to_vec();
             snapshot.power = calculated.power;
             snapshot.toughness = calculated.toughness;
+            snapshot.base_power = calculated.base_power;
+            snapshot.base_toughness = calculated.base_toughness;
             snapshot.card_types = calculated.card_types.to_vec();
             snapshot.subtypes = calculated.subtypes.to_vec();
             snapshot.supertypes = calculated.supertypes.to_vec();

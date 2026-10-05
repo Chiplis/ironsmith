@@ -3137,6 +3137,7 @@
     if let Some(redirect_all) =
         effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
     {
+        if let Some(scope) = &redirect_all.scope { return scope.display.clone(); }
         let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
             && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
         {

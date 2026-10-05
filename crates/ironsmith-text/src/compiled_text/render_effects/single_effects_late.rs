@@ -1076,6 +1076,7 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
+        ActivationTiming::AnyTimeByEnchantedCreatureController => Some("Only the controller of the enchanted creature may activate this ability"),
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => Some(
             "Any player may activate this ability but only during their turn before the end step",
         ),

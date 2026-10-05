@@ -7628,6 +7628,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     filter.description()
                 )
             }
+            Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),
             Value::LifeTotal(player) => {
                 format!("{} life total", describe_possessive_player_filter(player))
             }
@@ -7694,6 +7695,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::ToughnessOf(spec) => {
                 format!("{} toughness", describe_value_choose_spec_possessive(spec))
+            }
+            Value::BasePowerOf(spec) => {
+                format!("{} base power", describe_value_choose_spec_possessive(spec))
             }
             Value::KicksPaidOf(_) => "the number of times it was kicked".to_string(),
             Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),

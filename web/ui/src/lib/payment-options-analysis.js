@@ -19,7 +19,11 @@ export function createPaymentOptionsAnalysis({ capture, createWorker }) {
       const input = await capture(...args);
       if (active !== job) return promise;
       if (!input || input.request === 'null') { cancel(); return promise; }
-      const worker = job.worker = idleWorker || createWorker();
+      if (idleWorker && Boolean(idleWorker.runtimeFallback) !== Boolean(input.runtimeFallback)) {
+        idleWorker.terminate(); idleWorker = null;
+      }
+      const worker = job.worker = idleWorker || createWorker(input);
+      worker.runtimeFallback = Boolean(input.runtimeFallback);
       idleWorker = null;
       const finish = (error, result) => {
         if (active !== job) return;

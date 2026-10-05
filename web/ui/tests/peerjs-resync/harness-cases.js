@@ -1294,7 +1294,7 @@ test("PeerJS local pass reuses checkpoint hash and skips unchanged ziffle hand s
   }
 });
 
-test("PeerJS peers resync after guest reconnect and after host takeover reconnect", { timeout: 90000 }, async () => {
+test("PeerJS peers replay unexportable shield state after guest reconnect and host takeover", { timeout: 90000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
   const { vite, baseUrl } = await startHarnessServer(peerPort);
@@ -1379,6 +1379,11 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
       "normal apply_action should not import a host checkpoint",
     );
 
+    await hostPage.evaluate(() => {
+      window.__peerHarness.enableOptimisticRuntime();
+      window.__peerHarness.setFailCheckpointExport(true);
+      window.__peerHarness.resetInstrumentation();
+    });
     await guestPage.close();
     guestPage = null;
     await waitForSnapshot(
@@ -1388,6 +1393,10 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
     );
 
     guestPage = await openHarness(guestContext, baseUrl, "guest-reconnect");
+    await guestPage.evaluate(() => {
+      window.__peerHarness.enableOptimisticRuntime();
+      window.__peerHarness.setFailCheckpointExport(true);
+    });
     await guestPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
       window.__peerHarness.joinLobby({
         name: "Guest",
@@ -1428,6 +1437,10 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
 
     await sleep(2500);
     hostPage = await openHarness(hostContext, baseUrl, "host-reconnect");
+    await hostPage.evaluate(() => {
+      window.__peerHarness.enableOptimisticRuntime();
+      window.__peerHarness.setFailCheckpointExport(true);
+    });
     await hostPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
       window.__peerHarness.joinLobby({
         name: "Host",
