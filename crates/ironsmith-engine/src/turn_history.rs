@@ -718,6 +718,28 @@ impl TurnHistory {
         })
     }
 
+    /// Whether this exact graveyard incarnation arrived this turn, optionally
+    /// from a specific zone. Live-card filters must use destination object IDs:
+    /// under CR 400.7, leaving and reentering a graveyard creates a new object
+    /// that cannot inherit an earlier incarnation's battlefield/library origin.
+    /// Stable-ID history queries above intentionally retain historical facts.
+    pub fn graveyard_incarnation_entered_this_turn(
+        &self,
+        object_id: ObjectId,
+        from: Option<Zone>,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<ZoneChangeEvent>()
+                .is_some_and(|event| {
+                    event.to == Zone::Graveyard
+                        && from.is_none_or(|from| event.from == from)
+                        && event.destination_objects().contains(&object_id)
+                })
+        })
+    }
+
     /// Counts the number of times a player descended this turn.
     ///
     /// Descend looks at the card's last known characteristics and owner when it
@@ -2113,6 +2135,38 @@ mod tests {
                 .turn_history
                 .object_was_put_into_graveyard_from_zone_this_turn(hand_stable, Zone::Library)
         );
+    }
+
+    #[test]
+    fn graveyard_incarnation_history_does_not_reuse_an_earlier_origin() {
+        for origin in [Zone::Battlefield, Zone::Library] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let card = CardDefinitionBuilder::new(CardId::new(), "History Creature")
+                .card_types(vec![CardType::Creature])
+                .build();
+            let original = game.create_object_from_definition(&card, alice, origin);
+            let stable = game.object(original).unwrap().stable_id;
+            let first = game.move_object_by_effect(original, Zone::Graveyard).unwrap();
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(first, Some(origin)));
+            let hand = game.move_object_by_effect(first, Zone::Hand).unwrap();
+            let second = game.move_object_by_effect(hand, Zone::Graveyard).unwrap();
+            assert_ne!(first, second);
+            assert!(!game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, Some(origin)));
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, Some(Zone::Hand)));
+            assert!(game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, None));
+            assert!(game.turn_store.turn_history
+                .object_was_put_into_graveyard_from_zone_this_turn(stable, origin),
+                "historical stable-ID facts remain true after the card leaves");
+            game.take_pending_trigger_events();
+            game.turn_store.turn_history.clear_for_new_turn();
+            assert!(!game.turn_store.turn_history
+                .graveyard_incarnation_entered_this_turn(second, None));
+        }
     }
 
     #[test]

@@ -1,5 +1,29 @@
 # Full-corpus card-failure campaign
 
+## Current workflow: implementation first (2026-10-03)
+
+At the user's request, defer **all builds, compilation probes, corpus replays,
+and test execution** until reviewed source changes plausibly cover all or at
+least a majority of the remaining frozen failures. Author regression tests and
+review source now; do not run them. The following audit commands document the
+later validation phase, not instructions to execute at each draft.
+
+`fixtures/card-failure-campaign/workflow.json` records the requested policy.
+`source-coverage.json` is the per-entry identity matrix. It separates the 40
+measured unique compile recoveries from additional proposed source coverage.
+A placeholder, rejection, no-op, ignored clause, or dropped semantic requirement
+never counts as coverage. Shared failure cards are deduplicated by Oracle ID.
+
+The current measured remainder is 3,193 unique cards; a majority is at least
+1,597 of those identities. This is a source-review checkpoint, not permission
+to declare cards correct. The eventual frozen full-corpus replay, face coverage,
+regression comparisons and runtime scenarios remain required. Publish the
+cumulative draft stack as **UNVALIDATED** where these gates are deferred.
+
+The optimized build at `657aa12d` was interrupted with exit 130 when this change
+arrived. Its cache and all earlier completed test evidence are preserved; no
+second-batch full-corpus result exists.
+
 ## Frozen scope and present status
 
 The original engine baseline is commit
