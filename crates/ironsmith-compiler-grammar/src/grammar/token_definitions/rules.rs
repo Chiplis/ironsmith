@@ -111,7 +111,7 @@ pub fn parse_token_power_as_though_greater_shape_tokens(
 
 #[path = "rules/embedded_rules.rs"]
 mod embedded_rules;
-pub use embedded_rules::parse_embedded_token_rule_tokens;
+pub use embedded_rules::{parse_embedded_token_rule_tokens, parse_canonical_named_token_shape};
 pub use embedded_rules::parse_inline_noncreature_spell_damage_tokens;
 
 fn trimmed_render(tokens: &[OwnedLexToken]) -> String {

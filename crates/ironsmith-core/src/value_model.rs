@@ -112,6 +112,8 @@ pub enum PriorEffectAction {
     ChosenNumber,
     /// A completed local die instruction, distinct from an ambient roll event.
     Rolled,
+    /// An original zone move that actually arrived in a hand, not a draw or reveal.
+    PutIntoHand,
 }
 
 /// A metric over the last-known-information memory emitted by one exact

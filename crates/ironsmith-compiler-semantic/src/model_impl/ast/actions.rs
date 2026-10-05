@@ -1020,6 +1020,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source_of_your_choice,
                 source_choice_shares_activation_mana_color,
                 source_target,
+                protect_source_target,
+                follow_up_effects,
             }) => f
                 .debug_struct("PreventAllDamageToTarget")
                 .field("combat_only", combat_only)
@@ -1031,6 +1033,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     source_choice_shares_activation_mana_color,
                 )
                 .field("source_target", source_target)
+                .field("protect_source_target", protect_source_target)
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::DamagePrevention(
                 DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter {

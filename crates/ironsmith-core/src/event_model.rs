@@ -84,6 +84,10 @@ pub enum KeywordActionKind {
     EmpowerJace,
     /// A player collects evidence; amount is the announced threshold, not overpayment.
     CollectEvidence,
+    /// One successfully completed cumulative-upkeep payment, not each installment.
+    CumulativeUpkeepPaid,
+    /// An accepted and completed echo payment, including a zero cost.
+    EchoCostPaid,
 }
 
 impl KeywordActionKind {
@@ -190,6 +194,8 @@ impl KeywordActionKind {
             Self::Crew => "crew",
             Self::Cycle => "cycle",
             Self::CumulativeUpkeepNotPaid => "not pay cumulative upkeep",
+            Self::CumulativeUpkeepPaid => "pay cumulative upkeep",
+            Self::EchoCostPaid => "pay echo",
             Self::Convoke => "convoke",
             Self::Discover => "discover",
             Self::CompleteDungeon => "complete a dungeon",
@@ -264,6 +270,8 @@ impl KeywordActionKind {
             Self::Crew => "crews",
             Self::Cycle => "cycles",
             Self::CumulativeUpkeepNotPaid => "doesn't pay cumulative upkeep",
+            Self::CumulativeUpkeepPaid => "pays cumulative upkeep",
+            Self::EchoCostPaid => "pays echo",
             Self::Convoke => "convokes",
             Self::Discover => "discovers",
             Self::CompleteDungeon => "completes a dungeon",

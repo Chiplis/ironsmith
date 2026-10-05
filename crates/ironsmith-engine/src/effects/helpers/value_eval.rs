@@ -1364,7 +1364,10 @@ fn resolve_event_value(
             if *for_controller && player != ctx.controller {
                 return Err(ExecutionError::UnresolvableValue("life quantity names another participant".into()));
             }
-            i32::try_from(amount).map_err(|_| ExecutionError::UnresolvableValue("life quantity exceeds supported range".into()))
+            crate::events::damage::checked_damage_count(
+                u128::from(amount),
+                "life-change event scalar",
+            )
         }
         EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
             let roll = ctx.triggering_event.as_ref()
@@ -1408,18 +1411,30 @@ fn resolve_event_value(
                 ));
             };
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
-                return Ok(life_loss_event.amount as i32);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(life_loss_event.amount),
+                    "life-loss event scalar",
+                );
             }
             if let Some(life_gain_event) = triggering_event.downcast::<LifeGainEvent>() {
-                return Ok(life_gain_event.amount as i32);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(life_gain_event.amount),
+                    "life-gain event scalar",
+                );
             }
             if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
-                return Ok(damage_event.amount as i32);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(damage_event.amount),
+                    "damage event scalar",
+                );
             }
             if let Some(prevented_event) =
                 triggering_event.downcast::<crate::events::DamagePreventedEvent>()
             {
-                return Ok(prevented_event.amount as i32);
+                return crate::events::damage::checked_damage_count(
+                    u128::from(prevented_event.amount),
+                    "prevented-damage event scalar",
+                );
             }
             if let Some(placement) = triggering_event.downcast::<crate::events::PutCountersEvent>() {
                 return i32::try_from(placement.count).map_err(|_| ExecutionError::UnresolvableValue(

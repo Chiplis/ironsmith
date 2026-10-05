@@ -20,6 +20,7 @@ pub struct PersistentAnthemTailHead {
 pub enum ContinuingSegmentShape<'a> {
     CantBlock,
     CantAttack,
+    CantAttackYou { covers_planeswalkers: bool },
     MustBeBlocked,
     AllMustBlock,
     AssignUsingToughness,
@@ -94,6 +95,15 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
     // One declared alternation: the alternatives are exclusive shapes, and the
     // first that reads the input names it.
     let alternation = None::<ContinuingSegmentShape<'_>>
+        .or_else(|| {
+            let (_, tail) = primitives::parse_prefix(tokens, primitives::any_phrase(&[
+                &["cant", "attack", "you"], &["can't", "attack", "you"],
+                &["cannot", "attack", "you"], &["can", "t", "attack", "you"],
+            ]))?;
+            if tail.is_empty() { return Some(ContinuingSegmentShape::CantAttackYou { covers_planeswalkers: false }); }
+            parse_complete_any_phrase(tail, &[&["or", "planeswalkers", "you", "control"]])
+                .then_some(ContinuingSegmentShape::CantAttackYou { covers_planeswalkers: true })
+        })
         .or_else(|| {
             for (phrases, shape) in [
                 (&[&["cant", "attack"][..], &["can't", "attack"], &["cannot", "attack"], &["can", "t", "attack"]][..], ContinuingSegmentShape::CantAttack),

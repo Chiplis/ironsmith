@@ -4655,6 +4655,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         PriorEffectAction::PhasedOut,
         PriorEffectAction::Prevented,
         PriorEffectAction::PutOntoBattlefield,
+        PriorEffectAction::PutIntoHand,
         PriorEffectAction::Removed,
         PriorEffectAction::Returned,
         PriorEffectAction::Revealed,
@@ -4815,7 +4816,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 PriorEffectAction::PutOntoBattlefield,
                 crate::zone::Zone::Battlefield
             ) | (PriorEffectAction::Exiled, crate::zone::Zone::Exile)
-                | (PriorEffectAction::Returned, crate::zone::Zone::Hand)
+                | (PriorEffectAction::Returned | PriorEffectAction::PutIntoHand, crate::zone::Zone::Hand)
         );
     }
     if action == PriorEffectAction::Chosen {
@@ -4953,6 +4954,12 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 )
             )
         }
+        PriorEffectAction::PutIntoHand => matches!(
+            producer_action,
+            SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                zone: crate::zone::Zone::Hand, ..
+            })
+        ),
         PriorEffectAction::PutIntoGraveyard => matches!(
             producer_action,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
@@ -11900,3 +11907,27 @@ fn definite_consult_match_survives_a_damage_recipient_and_keeps_reveal_set_separ
 #[cfg(test)]
 #[path = "dice_event_count_tests.rs"]
 mod dice_event_count_tests;
+
+#[cfg(test)]
+mod hand_arrival_result_binding_tests {
+    use super::*;
+    use ironsmith_core::{PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface};
+    #[test]
+    fn hand_result_uses_exact_move_before_unrelated_remainder() {
+        let selected = ironsmith_compiler_semantic::tag::declared_key("selected_hand_card");
+        let viewed = ironsmith_compiler_semantic::tag::declared_key("all_viewed_cards");
+        let hand = EffectAst::MoveTaggedGroupToZone { tag: selected.clone(), zone: crate::zone::Zone::Hand };
+        let cleanup = EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            viewed, Some(selected), crate::cards::builders::LibraryBottomOrderAst::Random, PlayerAst::You);
+        let mut surface = PriorEffectResultSurface::new(PriorEffectAction::PutIntoHand,
+            ObjectFilter::default(), PriorEffectResultActor::You, PriorEffectResultQuantifier::One);
+        surface.negated = true;
+        let gate = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::PriorEffectResult(surface), effects: Vec::new(),
+        });
+        let annotated = annotate_effect_sequence(&[hand, cleanup, gate], &ReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(), IdGenContext::default()).unwrap();
+        let id = annotated.effects[0].assigned_effect_id.expect("hand move must own the result");
+        assert!(matches!(&annotated.effects[2].effect, EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {condition, ..}) if *condition == id));
+    }
+}

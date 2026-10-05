@@ -12,7 +12,7 @@ use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::{
-    can_attack_defending_player, can_block, has_vigilance_with_game, maximum_blockers,
+    can_attack_target, can_block, has_vigilance_with_game, maximum_blockers,
     minimum_blockers_with_game,
 };
 use crate::static_abilities::StaticAbility;
@@ -601,7 +601,7 @@ pub fn declare_attackers(
 
         // Must be able to attack (no defender, no summoning sickness unless haste, etc.)
         // Check both rules-based restrictions and effect-based restrictions.
-        if !can_attack_defending_player(creature, defending_player, game)
+        if !can_attack_target(creature, defending_player, target, game)
             || !game.can_attack(*creature_id)
             || (matches!(target, AttackTarget::Player(_))
                 && !game.can_attack_player_directly(*creature_id, defending_player))

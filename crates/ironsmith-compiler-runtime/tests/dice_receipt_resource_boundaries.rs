@@ -1,7 +1,7 @@
 //! Typed incomplete execution and atomic real turn/special-action die owners.
 //! Authored only; execution is deferred by the campaign workflow.
 use ironsmith::decision::SelectFirstDecisionMaker;
-use ironsmith::effects::{EffectExecutor, ExecutionContext, ExecutionError, OpenAttractionEffect};
+use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext, ExecutionError, OpenAttractionEffect};
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
     CardDefinitionBuilder, CardId, CardType, Effect, GameState, PlanarCardKind, PlayerId,

@@ -183,6 +183,8 @@ impl TriggerMatcher for KeywordActionTrigger {
         }
 
         if self.source_must_match {
+            if matches!(self.action, KeywordActionKind::CumulativeUpkeepPaid | KeywordActionKind::EchoCostPaid)
+                && e.source != ctx.source_id { return false; }
             // Zone changes create a new ObjectId (rule 400.7), so match on the
             // source's stable identity when possible.
             let ctx_stable_source = ctx
@@ -261,6 +263,12 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn display(&self) -> String {
+        if self.source_must_match && self.action == KeywordActionKind::CumulativeUpkeepPaid {
+            return "Whenever you pay this permanent's cumulative upkeep".into();
+        }
+        if self.source_must_match && self.action == KeywordActionKind::EchoCostPaid {
+            return "When this permanent's echo cost is paid".into();
+        }
         if self.source_must_match && self.action == KeywordActionKind::CumulativeUpkeepNotPaid {
             return match &self.player {
                 PlayerFilter::You => {

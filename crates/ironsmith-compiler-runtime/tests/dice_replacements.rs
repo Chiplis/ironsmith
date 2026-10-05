@@ -6,7 +6,7 @@ use ironsmith::decisions::context::{
     BooleanContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
 use ironsmith::effects::{
-    EffectExecutor, ExecutionContext, RollDiceChooseResultEffect, RollDieEffect,
+    EffectExecutor, EffectContext as ExecutionContext, RollDiceChooseResultEffect, RollDieEffect,
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,

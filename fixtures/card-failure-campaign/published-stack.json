@@ -717,6 +717,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/816"
+    },
+    {
+      "stage": 51,
+      "branch": "fix/card-failures-51-combat-rules-and-retention",
+      "base": "fix/card-failures-50-prices-mana-and-dice",
+      "source_integration_commit": "3e37d0566a40c507297a60cf272aac75b623c1fd",
+      "remote_commit": "74c6da43892280c886cc85368b1a2d53031a640f",
+      "tree": "c2d739f4b413597569c5949617825c49bedd72b4",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 817,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/817"
     }
   ]
 }

@@ -55,7 +55,8 @@ pub use ironsmith_core::{
     NoteActivationManaTypeEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
-    PrepareEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
+    PrepareEffect, PreventAllCombatDamageEffect,
+    PreventAllDamageEffect as CorePreventAllDamageEffect,
     PreventAllDamageToTargetEffect as CorePreventAllDamageToTargetEffect,
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect,
@@ -116,6 +117,7 @@ pub type IfEffect = CoreIfEffect<Effect>;
 pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
 pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
 pub type ManaRetainedEffect = CoreManaRetainedEffect<Effect>;
+pub type PreventAllDamageEffect = CorePreventAllDamageEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
 pub type ReplaceNextDamageToTargetEffect = CoreReplaceNextDamageToTargetEffect<Effect>;

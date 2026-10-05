@@ -3041,11 +3041,9 @@ impl CardDefinitionBuilder {
             kind: AbilityKind::Triggered(TriggeredAbility {
                 trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    Effect::unless_action(
-                        vec![Effect::sacrifice_source()],
-                        payment_effects,
-                        PlayerFilter::You,
-                    ),
+                    Effect::new(crate::effects::CumulativeUpkeepEffect::echo(
+                        PlayerFilter::You, payment_effects, vec![Effect::sacrifice_source()],
+                    )),
                 ]),
                 choices: vec![],
                 intervening_if: Some(Condition::SourceCameUnderYourControlSinceYourLastUpkeep),

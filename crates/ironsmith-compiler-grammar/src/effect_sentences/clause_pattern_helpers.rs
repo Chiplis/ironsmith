@@ -1305,6 +1305,9 @@ fn parse_damage_sources_filter(
 pub fn parse_prevent_all_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     let Some(shape) = clause_shapes::parse_prevent_all_damage_shape_tokens(tokens) else {
         return Ok(None);
     };

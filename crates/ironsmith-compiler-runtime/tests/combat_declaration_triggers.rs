@@ -7,7 +7,7 @@ use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::{
     BooleanContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
-use ironsmith::effects::{EffectExecutor, ExecutionContext};
+use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,

@@ -152,6 +152,12 @@ impl GameState {
             }
         }
         self.mark_continuous_state_dirty();
+        self.effect_store
+            .continuous_effects
+            .expire_presence_durations_for_phased_objects(
+                &outgoing.keys().copied().collect::<Vec<_>>(),
+            );
+        self.expire_condition_ended_prevention_shields();
         let kind = if outgoing.is_empty() {
             EventKind::PermanentPhasedIn
         } else {

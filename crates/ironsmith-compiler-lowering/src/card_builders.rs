@@ -1496,11 +1496,9 @@ impl CardDefinitionBuilder {
                 trigger: crate::triggers::Trigger::beginning_of_upkeep(
                     crate::target::PlayerFilter::You,
                 ),
-                effects: vec![crate::effect::Effect::unless_action(
-                    vec![crate::effect::Effect::sacrifice_source()],
-                    payment_effects,
-                    crate::target::PlayerFilter::You,
-                )]
+                effects: vec![crate::effect::Effect::new(crate::effects::CumulativeUpkeepEffect::echo(
+                    crate::target::PlayerFilter::You, payment_effects, vec![crate::effect::Effect::sacrifice_source()],
+                ))]
                 .into(),
                 choices: vec![],
                 intervening_if: Some(

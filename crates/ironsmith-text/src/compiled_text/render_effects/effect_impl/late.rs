@@ -3261,26 +3261,62 @@
         };
     }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
-        if let Some(source_target) = &prevent_all.source_target
-            && matches!(prevent_all.until, Until::EndOfTurn)
-        {
+        let finish = |mut rendered: String| {
+            if prevention_gain_life_follow_up(&prevent_all.follow_up_effects).is_some() {
+                rendered.push_str(". You gain life equal to the damage prevented this way");
+            } else if !prevent_all.follow_up_effects.is_empty() {
+                rendered.push_str(&format!(
+                    ". When damage is prevented this way, {}",
+                    lowercase_first(&describe_effect_list(&prevent_all.follow_up_effects))
+                ));
+            }
+            rendered
+        };
+        if prevent_all.source_target.is_none() && !prevent_all.follow_up_effects.is_empty() {
+            let mut base = prevent_all.clone();
+            base.follow_up_effects.clear();
+            return finish(describe_effect(&Effect::new(base)));
+        }
+        if let Some(source_target) = &prevent_all.source_target {
+            let timing = if matches!(prevent_all.until, Until::EndOfTurn) {
+                "this turn".to_owned()
+            } else {
+                describe_until(&prevent_all.until)
+            };
+            let damage = if prevent_all.damage_filter.combat_only {
+                "combat damage"
+            } else {
+                "damage"
+            };
+            if prevent_all.protect_source_target {
+                return finish(format!(
+                    "Prevent all {damage} that would be dealt to and dealt by {} {timing}",
+                    describe_choose_spec(source_target)
+                ));
+            }
             if !prevent_all.protect_source
                 && matches!(prevent_all.target, crate::prevention::PreventionTarget::All)
             {
-                return format!(
-                    "Prevent all damage that would be dealt this turn by {}",
+                if matches!(prevent_all.until, Until::EndOfTurn) {
+                    return finish(format!(
+                        "Prevent all {damage} that would be dealt this turn by {}",
+                        describe_choose_spec(source_target)
+                    ));
+                }
+                return finish(format!(
+                    "Prevent all {damage} {} would deal {timing}",
                     describe_choose_spec(source_target)
-                );
+                ));
             }
             let protected = if prevent_all.protect_source {
                 "this creature".to_string()
             } else {
                 describe_prevention_target(&prevent_all.target)
             };
-            return format!(
-                "Prevent all damage that would be dealt to {protected} by {} this turn",
+            return finish(format!(
+                "Prevent all {damage} that would be dealt to {protected} by {} {timing}",
                 describe_choose_spec(source_target)
-            );
+            ));
         }
         if let Some(excluded_source_target) = &prevent_all.excluded_source_target
             && prevent_all.damage_filter.combat_only

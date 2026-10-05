@@ -209,6 +209,27 @@ pub(super) fn predicate_matches_with_context(
             ctx,
         );
     }
+    if surface.action == crate::effect::PriorEffectAction::PutIntoHand {
+        let player = match surface.actor {
+            crate::effect::PriorEffectResultActor::You => Some(ctx.controller),
+            crate::effect::PriorEffectResultActor::ThatPlayer => match ctx.iteration.iterated_player {
+                Some(player) => Some(player),
+                None => return false,
+            },
+            crate::effect::PriorEffectResultActor::Passive => None,
+            crate::effect::PriorEffectResultActor::It => return false,
+        };
+        let filter_ctx = ctx.filter_context(game);
+        let cards = outcome.instruction_result().execution_facts.iter().filter_map(|fact| {
+            let ExecutionFact::CardsPutIntoHand { player: recipient, cards } = fact else { return None; };
+            player.is_none_or(|player| player == *recipient).then_some(cards)
+        }).flatten().filter(|card| surface.filter.matches_snapshot(
+            &card.to_snapshot(game), &filter_ctx, game)).collect::<Vec<_>>();
+        if cards.len() < surface.required_count.unwrap_or(1) as usize { return false; }
+        return surface.shared_characteristic.is_none_or(|characteristic| {
+            result_memories_share_characteristic(&cards, surface.required_count.unwrap_or(2) as usize, characteristic)
+        });
+    }
     if surface.action == crate::effect::PriorEffectAction::Drawn
         && surface.filter == crate::target::ObjectFilter::default()
         && surface.shared_characteristic.is_none()

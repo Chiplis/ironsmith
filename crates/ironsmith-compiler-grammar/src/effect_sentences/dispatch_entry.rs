@@ -3920,6 +3920,9 @@ pub(crate) fn parse_complete_investigate_statement(
 pub(crate) fn parse_complete_simple_subject_verb_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = super::duration_source_prevention::parse(tokens)? {
+        return Ok(Some(effect));
+    }
     if let Some(effect) = super::temporary_attack_requirement::parse(tokens)? {
         return Ok(Some(effect));
     }

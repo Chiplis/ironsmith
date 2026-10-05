@@ -774,10 +774,13 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::FlipEffect>(&effect) {
         return Ok(converted);
     }
-    if let Some(converted) =
-        clone_direct_effect::<M, crate::effects::PreventAllDamageEffect>(&effect)
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::PreventAllDamageEffect<M::Effect>>(&effect)
     {
-        return Ok(converted);
+        let converted = payload
+            .clone()
+            .try_map_effects(|effect| interpret_effect_model::<M, H>(effect, hooks))?;
+        return Ok(Effect::new(converted));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::PreventAllDamageToTargetEffect<M::Effect>>(&effect)
@@ -1618,7 +1621,7 @@ where
             payload.player.clone(),
             convert_effects(payload.payment.iter().cloned(), hooks)?,
             convert_effects(payload.failure.iter().cloned(), hooks)?,
-        )));
+        ).with_kind(payload.kind)));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ChooseNewTargetsEffect>(&effect)

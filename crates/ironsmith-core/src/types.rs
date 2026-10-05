@@ -658,6 +658,8 @@ pub enum Subtype {
     Zariel,
     // Battle subtypes
     Siege,
+    // Appended for CR 111.10x / 205.3g ordinal compatibility.
+    Heartwood,
 }
 
 impl Subtype {
@@ -1037,6 +1039,7 @@ impl Subtype {
             Subtype::Spacecraft,
             Subtype::Stone,
             Subtype::Vibranium,
+            Subtype::Heartwood,
         ]
     }
 
@@ -1215,26 +1218,7 @@ impl Subtype {
     }
 
     pub fn is_artifact_subtype(&self) -> bool {
-        matches!(
-            self,
-            Subtype::Attraction
-                | Subtype::Clue
-                | Subtype::Bobblehead
-                | Subtype::Book
-                | Subtype::Contraption
-                | Subtype::Equipment
-                | Subtype::Food
-                | Subtype::Fortification
-                | Subtype::Gold
-                | Subtype::Incubator
-                | Subtype::Junk
-                | Subtype::Lander
-                | Subtype::Map
-                | Subtype::Mutagen
-                | Subtype::Spacecraft
-                | Subtype::Treasure
-                | Subtype::Vehicle
-        )
+        Self::all_artifact_types().contains(self)
     }
 
     pub fn is_enchantment_subtype(&self) -> bool {
@@ -1354,5 +1338,21 @@ mod tests {
         assert!(Subtype::Arcane.belongs_to_family(SubtypeFamily::Spell));
         assert!(Subtype::Jace.belongs_to_family(SubtypeFamily::Planeswalker));
         assert!(!Subtype::Elf.belongs_to_family(SubtypeFamily::Artifact));
+    }
+}
+
+#[cfg(test)]
+mod artifact_family_consistency_tests {
+    use super::*;
+    #[test]
+    fn every_canonical_artifact_subtype_survives_family_classification() {
+        for subtype in Subtype::all_artifact_types() {
+            assert!(subtype.is_artifact_subtype(), "{subtype}");
+            assert!(subtype.belongs_to_family(SubtypeFamily::Artifact));
+        }
+        assert!(Subtype::Heartwood.is_artifact_subtype());
+        assert!(Subtype::Vibranium.is_artifact_subtype());
+        assert!(!Subtype::Heartwood.is_creature_type());
+        assert!(!Subtype::Vibranium.is_creature_type());
     }
 }

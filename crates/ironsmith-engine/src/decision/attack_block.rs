@@ -135,9 +135,10 @@ fn can_declare_attack_target_preview(
     {
         return false;
     }
-    if !crate::rules::combat::can_attack_defending_player_with_view(
+    if !crate::rules::combat::can_attack_target_with_view(
         attacker,
         defending_player,
+        target,
         game,
         view,
     ) {

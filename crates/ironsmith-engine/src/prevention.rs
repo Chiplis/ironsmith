@@ -224,6 +224,31 @@ pub(crate) fn shield_duration_is_active(
     }
 }
 
+impl crate::game_state::GameState {
+    /// A conditional duration ends at its first false state, including phasing.
+    /// Removing the existing shield keeps its ordinary prevention owner and
+    /// prevents the same incarnation from reviving it when it phases back in.
+    pub(crate) fn expire_condition_ended_prevention_shields(&mut self) {
+        let expired: Vec<_> = self
+            .effect_store
+            .prevention_effects
+            .shields()
+            .iter()
+            .filter(|shield| {
+                matches!(
+                    shield.duration,
+                    Until::ForAsLongAs(_) | Until::YouStopControllingThis
+                )
+            })
+            .filter(|shield| !shield_duration_is_active(shield, self))
+            .map(|shield| shield.id)
+            .collect();
+        for id in expired {
+            self.effect_store.prevention_effects.remove_shield(id);
+        }
+    }
+}
+
 /// Manages all prevention shields in the game.
 #[derive(Debug, Clone, Default)]
 pub struct PreventionEffectManager {
@@ -553,6 +578,18 @@ impl PreventionEffectManager {
         self.shields.push(shield);
         self.prevented_totals.insert(id, 0);
         id
+    }
+
+    /// Retain the explicit CR 400.7c exception without allowing another zone
+    /// change (including a later blink) to refresh the chosen source identity.
+    pub(crate) fn link_resolved_permanent_spell(&mut self, spell: ObjectId, permanent: ObjectId) {
+        for shield in &mut self.shields {
+            if shield.damage_filter.from_specific_source == Some(spell)
+                && shield.damage_filter.resolved_permanent_source.is_none()
+            {
+                shield.damage_filter.resolved_permanent_source = Some(permanent);
+            }
+        }
     }
 
     /// Remove a shield by ID.

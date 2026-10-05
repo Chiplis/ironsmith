@@ -45,7 +45,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::PreventAllCombatDamageEffect>(payload).map(Some)
         }
         "PreventAllDamageEffect" => {
-            decode_as::<ironsmith_core::PreventAllDamageEffect>(payload).map(Some)
+            decode_as::<ironsmith_core::PreventAllDamageEffect<wire::WireEffect>>(payload).map(Some)
         }
         "PreventAllDamageToTargetEffect" => {
             decode_as::<ironsmith_core::PreventAllDamageToTargetEffect<wire::WireEffect>>(payload)
@@ -149,7 +149,7 @@ pub(super) fn map_card_ids(
         >(payload, context)
         .map(Some),
         "PreventAllDamageEffect" => super::card_graph::map_payload_as::<
-            ironsmith_core::PreventAllDamageEffect,
+            ironsmith_core::PreventAllDamageEffect<wire::WireEffect>,
         >(payload, context)
         .map(Some),
         "PreventAllDamageToTargetEffect" => super::card_graph::map_payload_as::<

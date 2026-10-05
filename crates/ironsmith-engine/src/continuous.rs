@@ -1444,6 +1444,35 @@ impl ContinuousEffectManager {
         }
     }
 
+    /// CR 702.26e: a battlefield-presence duration ends when its exact object
+    /// phases out, even if no characteristic query occurs before it phases in.
+    /// This transition proof requires no recursive characteristic discovery.
+    pub(crate) fn expire_presence_durations_for_phased_objects(&self, objects: &[ObjectId]) {
+        fn loses_presence(
+            predicate: &ironsmith_core::ContinuousDurationPredicate,
+            objects: &[ObjectId],
+        ) -> bool {
+            use ironsmith_core::{
+                ContinuousDurationObject as Object, ContinuousDurationPredicate as Predicate,
+            };
+            match predicate {
+                Predicate::All(parts) => parts.iter().any(|part| loses_presence(part, objects)),
+                Predicate::ObjectOnBattlefield(Object::Specific(id)) => objects.contains(id),
+                _ => false,
+            }
+        }
+        for effect in self.effects.iter() {
+            let ends = match &effect.duration {
+                Until::ForAsLongAs(predicate) => loses_presence(predicate, objects),
+                Until::YouStopControllingThis => objects.contains(&effect.source),
+                _ => false,
+            };
+            if ends {
+                self.expire_latched_duration(effect.id);
+            }
+        }
+    }
+
     /// Transfer the selected continuous effects to a new permanent identity.
     /// Callers select only entry-program effects or a rules-defined exception
     /// to the ordinary loss of effects across zone changes.

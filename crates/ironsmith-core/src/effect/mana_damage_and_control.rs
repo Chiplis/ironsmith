@@ -3135,6 +3135,10 @@ pub struct DamageFilter {
     pub from_specific_source: Option<crate::ids::ObjectId>,
     /// Do not prevent damage from this independently chosen source.
     pub excluded_specific_source: Option<crate::ids::ObjectId>,
+    /// CR 400.7c: the one permanent this exact spell became. This is populated
+    /// only by its Stack -> Battlefield transition, never by stable-card lookup.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub resolved_permanent_source: Option<crate::ids::ObjectId>,
 }
 
 impl DamageFilter {
@@ -3191,6 +3195,7 @@ impl DamageFilter {
         }
         if let Some(specific) = self.from_specific_source
             && source != specific
+            && self.resolved_permanent_source != Some(source)
         {
             return false;
         }
@@ -3215,8 +3220,12 @@ impl DamageFilter {
 
 /// Effect that prevents all damage until a duration expires.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(deserialize = "E: serde::Deserialize<'de>"))
+)]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
-pub struct PreventAllDamageEffect {
+pub struct PreventAllDamageEffect<E = ()> {
     /// What this shield protects.
     pub target: PreventionTarget,
     /// What kinds of damage this shield prevents.
@@ -3233,9 +3242,15 @@ pub struct PreventAllDamageEffect {
     /// Protect the resolving ability's source object.
     pub protect_source: bool,
     pub until: Until,
+    /// Bind an incoming shield to the same selected source(s).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub protect_source_target: bool,
+    /// Programs executed for the actual amount prevented by this shield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub follow_up_effects: Vec<E>,
 }
 
-impl PreventAllDamageEffect {
+impl<E> PreventAllDamageEffect<E> {
     /// Create a new prevent-all-damage effect.
     pub fn new(target: PreventionTarget, damage_filter: DamageFilter, until: Until) -> Self {
         Self {
@@ -3247,7 +3262,37 @@ impl PreventAllDamageEffect {
             excluded_source_target: None,
             protect_source: false,
             until,
+            protect_source_target: false,
+            follow_up_effects: Vec::new(),
         }
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
+        self.follow_up_effects = effects;
+        self
+    }
+
+    pub fn try_map_effects<F, Error>(
+        self,
+        mut map: impl FnMut(E) -> Result<F, Error>,
+    ) -> Result<PreventAllDamageEffect<F>, Error> {
+        Ok(PreventAllDamageEffect {
+            target: self.target,
+            damage_filter: self.damage_filter,
+            source_of_your_choice: self.source_of_your_choice,
+            source_choice_shares_activation_mana_color: self
+                .source_choice_shares_activation_mana_color,
+            source_target: self.source_target,
+            excluded_source_target: self.excluded_source_target,
+            protect_source: self.protect_source,
+            until: self.until,
+            protect_source_target: self.protect_source_target,
+            follow_up_effects: self
+                .follow_up_effects
+                .into_iter()
+                .map(&mut map)
+                .collect::<Result<Vec<_>, Error>>()?,
+        })
     }
 
     /// Restrict this prevention shield to a source chosen as the effect resolves.
@@ -3266,6 +3311,11 @@ impl PreventAllDamageEffect {
 
     pub fn with_target_source(mut self, source: ChooseSpec) -> Self {
         self.source_target = Some(source);
+        self
+    }
+
+    pub fn protecting_target_source(mut self) -> Self {
+        self.protect_source_target = true;
         self
     }
 
@@ -4901,17 +4951,33 @@ pub struct UnlessPaysEffect<E> {
     pub before_delayed_step: bool,
 }
 
+/// The keyword whose whole optional upkeep cost is being paid.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub enum UpkeepPaymentKind {
+    #[default]
+    Cumulative,
+    Echo,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct CumulativeUpkeepEffect<E> {
     pub player: PlayerFilter,
     pub payment: Vec<E>,
     pub failure: Vec<E>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub kind: UpkeepPaymentKind,
 }
 
 impl<E> CumulativeUpkeepEffect<E> {
+    pub fn with_kind(mut self, kind: UpkeepPaymentKind) -> Self { self.kind = kind; self }
+    pub fn echo(player: PlayerFilter, payment: Vec<E>, failure: Vec<E>) -> Self {
+        Self::new(player, payment, failure).with_kind(UpkeepPaymentKind::Echo)
+    }
     pub fn new(player: PlayerFilter, payment: Vec<E>, failure: Vec<E>) -> Self {
         Self {
+            kind: UpkeepPaymentKind::Cumulative,
             player,
             payment,
             failure,

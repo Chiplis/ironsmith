@@ -3655,7 +3655,7 @@ pub(super) fn describe_structural_cumulative_upkeep_keyword(
         return None;
     }
     let cumulative = cumulative.downcast_ref::<crate::effects::CumulativeUpkeepEffect>()?;
-    if cumulative.player != PlayerFilter::You {
+    if cumulative.player != PlayerFilter::You || cumulative.kind != ironsmith_core::effect::UpkeepPaymentKind::Cumulative {
         return None;
     }
     let payment = cumulative_upkeep_payment_text(&cumulative.payment)?;
