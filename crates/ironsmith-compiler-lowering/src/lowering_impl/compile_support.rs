@@ -1063,6 +1063,8 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)

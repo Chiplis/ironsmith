@@ -1690,7 +1690,9 @@ pub(super) fn parse_value_reference_comparison_predicate(
         let Some((left, left_used)) = parse_value(&tokens[..comparison_start]) else {
             continue;
         };
-        if left_used != comparison_start || !is_predicate_reference_value(&left) {
+        if left_used != comparison_start
+            || !(is_predicate_reference_value(&left) || is_life_total_comparison_value(&left))
+        {
             continue;
         }
         // Mana spent is recorded by the cast event. A past-tense comparison
@@ -1720,10 +1722,47 @@ pub(super) fn parse_value_reference_comparison_predicate(
         let Some((right, right_used)) = parse_value(right_tokens) else {
             continue;
         };
-        if right_used != right_tokens.len() {
-            continue;
-        }
         let mut right = right;
+        if right_used != right_tokens.len() {
+            // "is at least 10 greater than your starting life total":
+            // preserve the authored inclusive operator and add the offset
+            // to its actual reference, rather than shifting a threshold by 1.
+            let Some(offset) = (match right {
+                Value::Fixed(n) => Some(n),
+                _ => None,
+            }) else {
+                continue;
+            };
+            if !is_life_total_comparison_value(&left)
+                || !right_tokens
+                    .get(right_used)
+                    .is_some_and(|t| t.is_word("greater"))
+                || !right_tokens
+                    .get(right_used + 1)
+                    .is_some_and(|t| t.is_word("than"))
+            {
+                continue;
+            }
+            let basis_tokens = &right_tokens[right_used + 2..];
+            let Some((basis, used)) = parse_value(basis_tokens) else {
+                continue;
+            };
+            if used != basis_tokens.len() || !is_life_total_comparison_value(&basis) {
+                continue;
+            }
+            right = Value::Add(Box::new(basis), Box::new(Value::Fixed(offset)));
+        }
+        if matches!(left.unhinted(), Value::LifeTotal(_)) {
+            // Existing literal-life predicates own their established typed
+            // forms. Only the previously missing dynamic references enter
+            // this reader, keeping registry candidates disjoint.
+            if matches!(right.unhinted(), Value::Fixed(_))
+                || parse_life_total_at_least_starting_predicate(tokens).is_some()
+                || parse_life_total_at_least_last_noted_predicate(tokens).is_some()
+            {
+                continue;
+            }
+        }
         bind_other_aggregate_to_compared_object(&left, &mut right);
         let mut left = left;
         mark_demonstrative_characteristic_subject(&mut left, &tokens[..comparison_start]);
@@ -1800,6 +1839,23 @@ fn bind_other_aggregate_to_compared_object(left: &Value, right: &mut Value) {
             tag: tag.clone(),
             relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
         });
+}
+
+fn is_life_total_comparison_value(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::LifeTotal(_)
+        | Value::StartingLifeTotal(_)
+        | Value::LastNotedLifeTotal
+        | Value::MaximumLifeTotal(_)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(_) => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            is_life_total_comparison_value(left) || is_life_total_comparison_value(right)
+        }
+        Value::Scaled(inner, _)
+        | Value::HalfRoundedDown(inner)
+        | Value::DividedRoundedDown(inner, _) => is_life_total_comparison_value(inner),
+        _ => false,
+    }
 }
 
 pub(super) fn is_predicate_reference_value(value: &Value) -> bool {

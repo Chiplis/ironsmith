@@ -31,4 +31,5 @@ pub enum TriggeringPredicateAst {
     },
     TriggeringSpellColoredManaSpentToCastAtLeast(u32),
     TriggeringSpellWasKicked,
+    YouChoseAnotherRingBearer,
 }

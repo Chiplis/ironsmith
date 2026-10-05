@@ -400,3 +400,21 @@ fn goaded_is_a_typed_object_filter_flag() {
     assert_eq!(filter.controller, Some(PlayerFilter::You));
     assert_eq!(filter.description(), "a goaded creature you control");
 }
+
+#[test]
+fn ring_bearer_nouns_keep_designation_separate_from_creature_type() {
+    for text in ["Ring-bearer", "a Ring-bearer", "Ring-bearers"] {
+        let filter = parse(text);
+        assert!(filter.ring_bearer, "{text}");
+        assert!(filter.card_types.is_empty(), "a bearer can stop being a creature");
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+    assert_eq!(parse("your Ring-bearer"), ObjectFilter::your_ring_bearer());
+    let opponents = parse("Ring-bearers your opponents control");
+    assert!(opponents.ring_bearer);
+    assert_eq!(opponents.controller, Some(PlayerFilter::Opponent));
+    for text in ["your Ring", "bearer", "your Ring-bearer unknown", "not Ring-bearers"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_simple_object_filter_lexed(&tokens, false).is_none(), "{text}");
+    }
+}

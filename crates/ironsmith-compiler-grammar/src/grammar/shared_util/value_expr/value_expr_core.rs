@@ -24,20 +24,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     {
         return Some((Value::VoteCount((*option).to_string()), offset + 4));
     }
-    if matches!(
-        words.get(offset..offset + 6),
-        Some([
-            "highest" | "greatest",
-            "life",
-            "total",
-            "among",
-            "all",
-            "players"
-        ])
-    ) {
-        // Every player selected by this filter has the same maximum life;
-        // reading the first does not turn a tie into a choice or a sum.
-        return Some((Value::LifeTotal(PlayerFilter::MostLifeTied), offset + 6));
+    if let Some(quantity) = parse_life_total_quantity_words(words) {
+        return Some(quantity);
     }
     if words.get(offset) == Some(&"difference") {
         return Some((Value::PendingComparisonDifference, offset + 1));

@@ -3035,6 +3035,8 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::Speed(player)

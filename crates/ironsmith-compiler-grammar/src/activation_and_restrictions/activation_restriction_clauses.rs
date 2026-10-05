@@ -320,6 +320,18 @@ pub fn parse_cant_restrictions(
         return Ok(None);
     }
 
+    if let Some((neg_start, neg_end)) = find_negation_span(tokens)
+        && let Some((player, target)) = parse_player_restriction_subject(&trim_commas(&tokens[..neg_start]))?
+    {
+        let tail_storage = normalize_cant_words(&trim_commas(&tokens[neg_end..]));
+        let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
+        if let Some(facts) = restriction_grammar::parse_compound_player_action_restriction_words(&tail) {
+            return Ok(Some(facts.into_iter().map(|fact| ParsedCantRestriction {
+                restriction: restriction_from_player_action_fact(player.clone(), fact), target: target.clone(),
+            }).collect()));
+        }
+    }
+
     let segments = grammar::split_lexed_slices_on_and(tokens);
     if segments.len() > 1 {
         // A conjunction before the clause's only negation belongs to the
@@ -581,7 +593,6 @@ pub fn strip_static_restriction_condition(
 pub fn parse_player_negated_restriction_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedCantRestriction>, CardTextError> {
-    use crate::effect::Restriction;
 
     let Some((neg_start, neg_end)) = find_negation_span(tokens) else {
         return Ok(None);
@@ -600,13 +611,28 @@ pub fn parse_player_negated_restriction_clause(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    use restriction_grammar::PlayerActivationRestrictionTailFact;
     let Some(fact) =
         restriction_grammar::parse_player_activation_restriction_tail_words(&remainder_words)
     else {
         return Ok(None);
     };
-    let restriction = match fact {
+    let restriction = restriction_from_player_action_fact(player, fact);
+    Ok(Some(ParsedCantRestriction {
+        restriction,
+        target,
+    }))
+}
+
+fn restriction_from_player_action_fact(
+    player: PlayerFilter, fact: restriction_grammar::PlayerActivationRestrictionTailFact,
+) -> crate::effect::Restriction {
+    use crate::effect::Restriction;
+    use restriction_grammar::PlayerActivationRestrictionTailFact;
+    match fact {
+        PlayerActivationRestrictionTailFact::PlayLandsMatching(filter) => Restriction::PlayLandsMatching(player, filter),
+        PlayerActivationRestrictionTailFact::ActivateLoyaltyAbilitiesOf(mut filter) => {
+            filter.controller = Some(player); Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        }
         PlayerActivationRestrictionTailFact::CastSpellsMatching(filter) => {
             Restriction::cast_spells_matching(player, filter)
         }
@@ -625,11 +651,7 @@ pub fn parse_player_negated_restriction_clause(
                 Restriction::activate_abilities_of(filter)
             }
         }
-    };
-    Ok(Some(ParsedCantRestriction {
-        restriction,
-        target,
-    }))
+    }
 }
 
 pub fn parse_player_restriction_subject(
@@ -1826,5 +1848,29 @@ mod conditional_attachment_subject_tests {
             &crate::lexer::parser_token_word_refs(&remainder)[..2],
             &["enchanted", "creature"]
         );
+    }
+}
+
+#[cfg(test)]
+mod scoped_action_prohibition_tests {
+    use super::*;
+    #[test]
+    fn static_mixed_action_rule_keeps_both_hand_origins() {
+        let tokens = crate::lexer::lex_line("You can't play lands or cast spells from your hand.", 0).unwrap();
+        let abilities = super::super::activation_costs::parse_cant_clauses(&tokens).unwrap().unwrap();
+        assert_eq!(abilities.len(), 1);
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. } = &abilities[0].payload else { panic!("typed restrictions"); };
+        let crate::effect::Restriction::PlayLandsMatching(PlayerFilter::You, lands) = restriction else { panic!("land rule"); };
+        let [crate::effect::Restriction::CastSpellsMatching(PlayerFilter::You, spells)] = additional_restrictions.as_slice() else { panic!("cast rule"); };
+        assert_eq!(lands.zone, Some(Zone::Hand)); assert_eq!(spells.zone, Some(Zone::Hand));
+    }
+    #[test]
+    fn targeted_player_duration_is_an_effect_not_a_static_object_rule() {
+        let tokens = crate::lexer::lex_line("Target player can't play lands this turn.", 0).unwrap();
+        assert!(super::super::activation_costs::parse_cant_clauses(&tokens).unwrap().is_none());
+        let effects = crate::grammar::effects::parse_cant_effect_sentence(&tokens).unwrap().unwrap();
+        let debug = format!("{effects:?}");
+        assert!(debug.contains("PlayLandsMatching"), "{debug}");
+        assert!(debug.contains("EndOfTurn"), "{debug}");
     }
 }

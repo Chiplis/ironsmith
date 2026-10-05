@@ -105,6 +105,17 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.tapped,
         }
     }
+    pub(crate) fn ring_bearer(self, game: &GameState) -> bool {
+        let current = || {
+            game.players
+                .iter()
+                .any(|player| game.current_ring_bearer(player.id) == Some(self.object_id()))
+        };
+        match self {
+            Self::Live(_) => current(),
+            Self::Snapshot(snapshot) => snapshot.ring_bearer.unwrap_or_else(current),
+        }
+    }
     pub(crate) fn goaded(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_goaded(object.id),

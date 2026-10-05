@@ -393,6 +393,10 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if filter.ring_bearer && (subject.zone() != Zone::Battlefield || !subject.ring_bearer(game)) {
+        return false;
+    }
+
     // Controller check
     if let Some(controller_filter) = &filter.controller
         && !subject.controller(game).is_some_and(|controller| {

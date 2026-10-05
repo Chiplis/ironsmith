@@ -54,8 +54,6 @@ pub mod chain_splitting;
 pub mod combat_damage_family_shapes;
 #[path = "effects/combat_shapes.rs"]
 pub mod combat_shapes;
-#[path = "effects/toughness_assignment.rs"]
-pub mod toughness_assignment;
 #[path = "effects/control_copy_attach_shapes.rs"]
 pub mod control_copy_attach_shapes;
 #[path = "effects/control_flow.rs"]
@@ -64,6 +62,10 @@ pub mod control_flow;
 pub mod coordination;
 #[path = "effects/damage.rs"]
 mod damage;
+#[path = "effects/life_condition_targets.rs"]
+mod life_condition_targets;
+#[path = "effects/toughness_assignment.rs"]
+pub mod toughness_assignment;
 pub use damage::*;
 #[path = "effects/delayed.rs"]
 mod delayed;
@@ -1476,16 +1478,18 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
-    Ok(vec![match split.predicate {
+    match split.predicate {
         IfClausePredicateSpec::Conditional(predicate) => {
-            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            let mut effects = life_condition_targets::target_prelude(&predicate, tokens)?;
+            effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
                 if_true: split.effects,
                 if_false: Vec::new(),
-            })
+            }));
+            Ok(effects)
         }
-        IfClausePredicateSpec::Result(predicate) => {
-            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+        IfClausePredicateSpec::Result(predicate) => Ok(vec![EffectAst::Conditionals(
+            ConditionalEffectAst::IfResult {
                 predicate,
                 effects: split.effects,
             })

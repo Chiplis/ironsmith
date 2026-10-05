@@ -184,6 +184,7 @@ mod tests {
             vec![ObjectSnapshot {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
+                noted_life_total: None,
                 chosen_object: None,
                 object_id: source,
                 stable_id: crate::ids::StableId::from(source),
@@ -225,6 +226,7 @@ mod tests {
                 tapped: false,
                 attacking: false,
                 goaded: None,
+            ring_bearer: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,

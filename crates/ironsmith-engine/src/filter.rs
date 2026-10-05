@@ -3852,6 +3852,10 @@ impl ObjectFilterExt for ObjectFilter {
             };
         }
 
+        if self == &ObjectFilter::your_ring_bearer() {
+            return "your Ring-bearer".to_string();
+        }
+
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
         let append_token_after_type = self.token;
@@ -3900,6 +3904,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.goaded {
             parts.push("goaded".to_string());
+        }
+        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+            post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
         let has_leading_determiner =
@@ -4919,6 +4926,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.ring_bearer => "Ring-bearer",
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {

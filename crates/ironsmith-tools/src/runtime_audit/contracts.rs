@@ -343,6 +343,7 @@ impl Auditor {
             | "TriggeringAttackerBlockers"
             | "TriggeringAbilityIsManaAbility"
             | "YouWonTriggeringClash"
+            | "YouChoseAnotherRingBearer"
             | "TriggeringAbilityManaSpentToActivateAtLeast"
             | "TriggeringObjectEnteredTransformed"
             | "ManaFromSourceSpentOnTriggeringAction" => scope.event,
@@ -966,7 +967,7 @@ impl Auditor {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;
             }
-            "PlayerAttackDeclaration" => { scope.player = Binding::Present; }
+            "PlayerAttackDeclaration" | "RingBearerChosen" => { scope.player = Binding::Present; }
             "CardsMilled" => {
                 scope.player = Binding::Present;
                 scope.amount = Binding::Present;

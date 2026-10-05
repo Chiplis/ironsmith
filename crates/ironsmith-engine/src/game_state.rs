@@ -1673,6 +1673,20 @@ impl TurnCounterTracker {
 pub struct CastRestrictionFilter {
     pub filter: crate::target::ObjectFilter,
     pub source: Option<ObjectId>,
+    pub controller: Option<PlayerId>,
+    pub iterated_player: Option<PlayerId>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+}
+
+/// A land-play prohibition retains the restriction's source/controller and
+/// resolved bindings, independently of the player proposing the special action.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LandPlayRestrictionFilter {
+    pub filter: crate::target::ObjectFilter,
+    pub source: Option<ObjectId>,
+    pub controller: PlayerId,
+    pub iterated_player: Option<PlayerId>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 /// Tracks active "can't" effects in the game.
@@ -1765,6 +1779,9 @@ pub struct CantEffectTracker {
     /// - default filter => "can't cast spells"
     /// - creature filter => "can't cast creature spells"
     pub cant_cast_filters: HashMap<PlayerId, Vec<CastRestrictionFilter>>,
+
+    pub cant_play_land_filters: HashMap<PlayerId, Vec<LandPlayRestrictionFilter>>,
+    pub cant_activate_loyalty_abilities_of: HashSet<ObjectId>,
 
     /// Players who can cast spells only any time they could cast a sorcery.
     pub cast_spells_only_as_sorcery: HashSet<PlayerId>,
@@ -2426,13 +2443,13 @@ impl CantEffectTracker {
         }
         for (player, filters) in other.cant_cast_filters {
             for restriction in filters {
-                self.add_cant_cast_filter_from_source(
-                    player,
-                    restriction.filter,
-                    restriction.source,
-                );
+                self.add_scoped_cant_cast_filter(player, restriction);
             }
         }
+        for (player, restrictions) in other.cant_play_land_filters {
+            self.cant_play_land_filters.entry(player).or_default().extend(restrictions);
+        }
+        self.cant_activate_loyalty_abilities_of.extend(other.cant_activate_loyalty_abilities_of);
         self.cast_spells_only_as_sorcery
             .extend(other.cast_spells_only_as_sorcery);
         self.cant_activate_non_mana_abilities
@@ -2516,6 +2533,8 @@ impl CantEffectTracker {
         self.cant_be_sacrificed_by_cause.clear();
         self.cant_enter_battlefield.clear();
         self.cant_cast_filters.clear();
+        self.cant_play_land_filters.clear();
+        self.cant_activate_loyalty_abilities_of.clear();
         self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();
         self.cant_activate_abilities_of.clear();
@@ -2785,10 +2804,13 @@ impl CantEffectTracker {
         spell_filter: crate::target::ObjectFilter,
         source: Option<ObjectId>,
     ) {
-        let restriction = CastRestrictionFilter {
-            filter: spell_filter,
-            source,
-        };
+        self.add_scoped_cant_cast_filter(player, CastRestrictionFilter {
+            filter: spell_filter, source, controller: None, iterated_player: None,
+            tagged_objects: Default::default(),
+        });
+    }
+
+    pub fn add_scoped_cant_cast_filter(&mut self, player: PlayerId, restriction: CastRestrictionFilter) {
         let filters = self.cant_cast_filters.entry(player).or_default();
         if !filters.iter().any(|existing| existing == &restriction) {
             filters.push(restriction);
@@ -4584,10 +4606,21 @@ impl GameState {
         player: PlayerId,
     ) -> Option<i32> {
         let life_total = self.player(player)?.life;
-        self.object_annotations_mut()
+        self.set_noted_life_total_for_source(source, life_total);
+        Some(life_total)
+    }
+
+    fn set_noted_life_total_for_source(&mut self, source: ObjectId, life_total: i32) {
+        let previous = self
+            .object_annotations_mut()
             .noted_life_totals
             .insert(source, life_total);
-        Some(life_total)
+        if previous != Some(life_total) {
+            // The note is an input to both later conditions and departure LKI.
+            // Annotation writes alone do not expire cached object snapshots.
+            self.bump_mutation_revision();
+            self.mark_continuous_state_dirty();
+        }
     }
 
     pub fn note_mana_type_for_source(&mut self, source: ObjectId, symbol: crate::mana::ManaSymbol) {
@@ -5485,6 +5518,8 @@ impl GameState {
             | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
             | crate::effect::Value::PartySize(player)
             | crate::effect::Value::LifeTotal(player)
+            | crate::effect::Value::MaximumLifeTotal(player)
+            | crate::effect::Value::CountPlayersBelowHalfStartingLifeTotal(player)
             | crate::effect::Value::LifeTotalDifference(player)
             | crate::effect::Value::UnspentMana(player)
             | crate::effect::Value::Speed(player)

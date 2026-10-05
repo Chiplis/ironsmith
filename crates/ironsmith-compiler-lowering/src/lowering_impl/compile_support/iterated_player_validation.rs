@@ -228,6 +228,8 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -513,7 +515,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BecomeMonarch(player)
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
-        CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
+        PlayLandsMatching(player, filter) | CastSpellsMatching(player, filter) | CastMoreThanOneSpellEachTurn(player, filter) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(filter)
         }
         BeSacrificedByCause { filter, cause } => {
@@ -523,7 +525,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
                     .as_ref()
                     .is_some_and(object_filter_mentions_iterated_player)
         }
-        ActivateAbilitiesOf(filter)
+        ActivateLoyaltyAbilitiesOf(filter)
+        | ActivateAbilitiesOf(filter)
         | ActivateTapAbilitiesOf(filter)
         | ActivateNonManaAbilitiesOf(filter)
         | Attack(filter)

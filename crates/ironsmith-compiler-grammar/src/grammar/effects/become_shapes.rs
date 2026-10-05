@@ -290,3 +290,7 @@ use condition_programs::parse_modifier_words;
 #[path = "become_shapes/object_template.rs"]
 mod object_template;
 pub use object_template::{ObjectTemplateShape, parse_object_template_tokens};
+
+#[path = "become_shapes/land_choices.rs"]
+mod land_choices;
+pub use land_choices::{BasicLandChoiceTemplate, parse_basic_land_choice_template};

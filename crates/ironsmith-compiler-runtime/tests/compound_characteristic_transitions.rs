@@ -331,7 +331,7 @@ fn defiling_tears_announces_one_target_then_keeps_color_pump_and_usable_regenera
         let ability=game.calculated_characteristics(target).unwrap().abilities.iter().position(|a|matches!(a.kind,ironsmith::ability::AbilityKind::Activated(_))).unwrap();
         activate(&mut game,target,ability,&mut Choices::default());resolve_all(&mut game,&mut Choices::default());
         apply(&mut game,target,Effect::destroy(ChooseSpec::SpecificObject(target)));
-        assert_eq!(game.object(target).unwrap().zone,Zone::Battlefield);assert!(game.object(target).unwrap().tapped);
+        assert_eq!(game.object(target).unwrap().zone,Zone::Battlefield);assert!(game.is_tapped(target));
         ironsmith::turn::execute_cleanup_step(&mut game);game.refresh_continuous_state().unwrap();assert_eq!(pt(&game,target),(2,2));
     }
 }

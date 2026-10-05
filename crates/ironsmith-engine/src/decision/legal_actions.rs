@@ -529,14 +529,15 @@ fn push_back_face_land_play_action(
     player: PlayerId,
     card_id: ObjectId,
     card: &crate::object::Object,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     if crate::decision::linked_back_face_land_definition(game, card).is_none() {
-        return;
+        return Ok(());
     }
     let action = SpecialAction::PlayLandBackFace { card_id };
-    if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+    if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
         actions.push(LegalAction::PlayLandBackFace { land_id: card_id });
     }
+    Ok(())
 }
 
 fn append_granted_land_play_actions_from_public_zone(
@@ -545,37 +546,38 @@ fn append_granted_land_play_actions_from_public_zone(
     player: PlayerId,
     zone: Zone,
     view: &DerivedGameView<'_>,
-) {
-    crate::object_query::for_each_candidate_id_for_zone(game, Some(zone), |card_id| {
-        if !requested_action_source(card_id) { return; }
+) -> Result<(), crate::effects::ExecutionError> {
+    for card_id in game.zone_ids(zone) {
+        if !requested_action_source(card_id) { continue; }
         let Some(card) = game.object(card_id) else {
-            return;
+            continue;
         };
         if !card.is_land()
             && crate::decision::linked_other_face_land_definition(game, card).is_none()
         {
-            return;
+            continue;
         }
         if view
             .granted_play_from_for_card(card_id, zone, player)
             .is_empty()
         {
-            return;
+            continue;
         }
 
         let action = SpecialAction::PlayLand { card_id };
-        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+        if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
-        push_back_face_land_play_action(game, actions, player, card_id, card);
-    });
+        push_back_face_land_play_action(game, actions, player, card_id, card)?;
+    }
+    Ok(())
 }
 
 fn append_adventure_exiled_land_play_actions(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for &card_id in &game.exile {
         if !requested_action_source(card_id) {
             continue;
@@ -588,11 +590,12 @@ fn append_adventure_exiled_land_play_actions(
         }
 
         let action = SpecialAction::PlayLand { card_id };
-        if crate::special_actions::can_perform_check(&action, game, player).is_ok() {
+        if special_action_is_legal(crate::special_actions::can_perform_check(&action, game, player))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
-        push_back_face_land_play_action(game, actions, player, card_id, card);
+        push_back_face_land_play_action(game, actions, player, card_id, card)?;
     }
+    Ok(())
 }
 
 /// Compute legal actions for a player who has priority.
@@ -647,7 +650,7 @@ fn add_land_actions(
     exile_has_active_grants: bool,
     library_has_active_grants: bool,
     view: &DerivedGameView<'_>,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     use crate::special_actions::{SpecialAction, can_perform_check};
 
     for summary in hand_summaries {
@@ -657,7 +660,7 @@ fn add_land_actions(
             let action = SpecialAction::PlayLand {
                 card_id: summary.card_id,
             };
-            if can_perform_check(&action, game, player).is_ok() {
+            if special_action_is_legal(can_perform_check(&action, game, player))? {
                 actions.push(LegalAction::PlayLand {
                     land_id: summary.card_id,
                 });
@@ -668,7 +671,7 @@ fn add_land_actions(
                 player,
                 summary.card_id,
                 summary.card,
-            );
+            )?;
         }
     }
     if graveyard_has_active_grants {
@@ -678,12 +681,12 @@ fn add_land_actions(
             player,
             Zone::Graveyard,
             view,
-        );
+        )?;
     }
     if exile_has_active_grants {
-        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view);
+        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view)?;
     }
-    append_adventure_exiled_land_play_actions(game, actions, player);
+    append_adventure_exiled_land_play_actions(game, actions, player)?;
     if library_has_active_grants
         && let Some(card_id) = game
             .player(player)
@@ -697,11 +700,12 @@ fn add_land_actions(
             .is_empty()
     {
         let action = SpecialAction::PlayLand { card_id };
-        if can_perform_check(&action, game, player).is_ok() {
+        if special_action_is_legal(can_perform_check(&action, game, player))? {
             actions.push(LegalAction::PlayLand { land_id: card_id });
         }
-        push_back_face_land_play_action(game, actions, player, card_id, card);
+        push_back_face_land_play_action(game, actions, player, card_id, card)?;
     }
+    Ok(())
 }
 
 fn add_hand_normal_cast_actions(
@@ -816,7 +820,7 @@ fn add_exile_cast_actions(
     player: PlayerId,
     view: &DerivedGameView<'_>,
     exile_has_active_grants: bool,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for &card_id in &game.exile {
         if !requested_action_source(card_id) {
             continue;
@@ -849,8 +853,9 @@ fn add_exile_cast_actions(
         }
     }
     if exile_has_active_grants {
-        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view);
+        append_granted_land_play_actions_from_public_zone(game, actions, player, Zone::Exile, view)?;
     }
+    Ok(())
 }
 
 fn add_hand_alternative_cast_actions(
@@ -1326,7 +1331,7 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
         exile_has_active_grants,
         library_has_active_grants,
         &view,
-    );
+    )?;
     perf.lands_ms = lands_started_at.elapsed_ms();
 
     let hand_casts_started_at = PerfTimer::start();
@@ -1349,7 +1354,7 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
     perf.graveyard_casts_ms = graveyard_casts_started_at.elapsed_ms();
 
     let exile_casts_started_at = PerfTimer::start();
-    add_exile_cast_actions(game, &mut actions, player, &view, exile_has_active_grants);
+    add_exile_cast_actions(game, &mut actions, player, &view, exile_has_active_grants)?;
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants);
@@ -1378,7 +1383,7 @@ fn compute_legal_actions_checked(game: &GameState, player: PlayerId) -> Result<V
             player,
             Zone::OutsideGame,
             &view,
-        );
+        )?;
     }
 
     let hand_alternatives_started_at = PerfTimer::start();
@@ -2039,7 +2044,8 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    if activated.is_loyalty_ability() && controller != source_facts.controller {
+    if activated.is_loyalty_ability() && (controller != source_facts.controller
+        || game.effect_store.cant_effects.cant_activate_loyalty_abilities_of.contains(&source)) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -2755,4 +2761,76 @@ pub(crate) fn commander_action_indices(actions: &[LegalAction]) -> Vec<usize> {
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod land_enumeration_failure_tests {
+    use super::*;
+    use crate::ability::{Ability, AbilityKind};
+    use crate::cards::CardDefinitionBuilder;
+    use crate::card::LinkedFaceLayout;
+    use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
+    use crate::ids::CardId;
+    use crate::static_abilities::{StaticAbility, StaticAbilityId, StaticAbilityKind};
+
+    /// Finite for the real front face, deliberately nonconvergent only after
+    /// the isolated land-face proposal has been installed. This ensures an
+    /// outer successful discovery cannot hide the inner query's typed error.
+    #[derive(Debug, Clone)]
+    struct RegrantOnlyForBackFace;
+    impl StaticAbilityKind for RegrantOnlyForBackFace {
+        fn id(&self) -> StaticAbilityId { StaticAbilityId::GrantObjectAbilityForFilter }
+        fn display(&self) -> String { "Back-face discovery failure fixture".into() }
+        fn generate_effects(&self, source: ObjectId, controller: PlayerId, game: &GameState) -> Vec<ContinuousEffect> {
+            if !game.objects_in_deterministic_order().iter().any(|object| object.name.as_str() == "Unbounded back") {
+                return Vec::new();
+            }
+            let AbilityKind::Static(parent) = &game.object(source).unwrap().abilities[0].kind else { panic!("fixture parent"); };
+            vec![ContinuousEffect::new(source, controller, EffectTarget::Source, Modification::AddAbility(parent.clone()))]
+        }
+    }
+
+    #[test]
+    fn every_land_origin_propagates_selected_face_discovery_failure_without_publishing_partial_actions() {
+        // Authored only; no execution before the campaign validation gate.
+        for (zone, adventure) in [(Zone::Hand, false), (Zone::Graveyard, false),
+            (Zone::Exile, false), (Zone::Library, false), (Zone::OutsideGame, false), (Zone::Exile, true)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let player = PlayerId::from_index(0);
+            game.turn.active_player = player; game.turn.priority_player = Some(player);
+            game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
+            let host = CardDefinitionBuilder::new(CardId::new(), "Finite front query host")
+                .card_types(vec![crate::types::CardType::Artifact])
+                .with_ability(Ability::static_ability(StaticAbility::new(RegrantOnlyForBackFace)))
+                .build();
+            game.create_object_from_definition(&host, player, Zone::Battlefield);
+            if zone != Zone::Hand && !adventure {
+                let mut spec = crate::grant::GrantSpec::play_from_graveyard(); spec.zone = zone;
+                let permission = CardDefinitionBuilder::new(CardId::new(), "Exact zone permission")
+                    .card_types(vec![crate::types::CardType::Artifact])
+                    .with_ability(Ability::static_ability(StaticAbility::grants(spec))).build();
+                game.create_object_from_definition(&permission, player, Zone::Battlefield);
+            }
+            let front_id = CardId::new(); let back_id = CardId::new();
+            let front = CardDefinitionBuilder::new(front_id, "Finite front")
+                .card_types(vec![crate::types::CardType::Land]).other_face(back_id).other_face_name("Unbounded back")
+                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+            let back = CardDefinitionBuilder::new(back_id, "Unbounded back")
+                .card_types(vec![crate::types::CardType::Land]).other_face(front_id).other_face_name("Finite front")
+                .linked_face_layout(LinkedFaceLayout::TransformLike).build();
+            game.register_linked_face_definition(&front); game.register_linked_face_definition(&back);
+            let candidate = game.create_object_from_definition(&front, player, zone);
+            if adventure { game.set_adventure_exiled_for(candidate, player); }
+            game.continuous_query_snapshot().expect("unselected face is finite");
+            for scoped in [false, true] {
+                let result = if scoped { compute_actions_for_source(&game, player, Some(candidate)) }
+                    else { compute_legal_actions(&game, player) };
+                assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
+                    crate::static_ability_processor::StaticEffectDiscoveryError::RoundLimit { .. }))),
+                    "zone={zone:?}, adventure={adventure}, scoped={scoped}: {result:?}");
+                assert_eq!(game.object(candidate).unwrap().name.as_str(), "Finite front");
+                assert_eq!(game.object(candidate).unwrap().zone, zone);
+            }
+        }
+    }
 }

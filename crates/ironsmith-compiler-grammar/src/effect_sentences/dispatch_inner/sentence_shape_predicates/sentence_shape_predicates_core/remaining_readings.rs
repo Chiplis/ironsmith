@@ -120,7 +120,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("single-sentence-unless-action"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        admits: |input| !input.read_by("sentence-delayed-next-step-unless-pays"),
         read: |input| input.outcome(read_single_sentence_unless_action(input)),
     },
     Reading {
@@ -137,6 +137,7 @@ const READINGS: &[Reading] = &[
         admits: |input| {
             // Readings ranked above this one that read the input read it.
             !input.read_by("single-sentence-unless-action")
+                && !input.read_by("sentence-delayed-next-step-unless-pays")
         },
         read: |input| input.outcome(read_unless_control_flow(input)),
     },

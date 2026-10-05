@@ -269,9 +269,8 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
-                    chars.abilities = overlay.abilities.clone().into();
-                    chars.abilities.rebind(effect);
-                    chars.static_abilities = extract_static_abilities(&overlay.abilities).into();
+                    replace_rules_text_abilities(&mut chars, overlay.abilities.to_vec(), Some(effect.into()), false);
+                    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone().into();
@@ -591,7 +590,7 @@ pub(super) fn calculate_with_layers(
                         });
                     }
                 }
-                Modification::RemoveAllAbilities => {
+                Modification::RemoveAllAbilities | Modification::RemoveLandRulesTextAbilities => {
                     remove_all_abilities_for_effect(effect, &mut chars);
                     abilities_removed = true;
                 }
@@ -995,6 +994,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::Restriction(_) => {}
         }
@@ -1620,6 +1620,7 @@ pub(super) fn effect_can_change_static_ability_presence(effect: &ContinuousEffec
             | Modification::RemoveStaticAbilityFamily(_)
             | Modification::RemoveAbilityGeneric { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
     )
 }

@@ -85,7 +85,10 @@ fn landfall_gate_is_caster_relative_and_both_arms_share_target_player() {
             if let Some(owner) = land_owner {
                 let land = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Landfall probe").card_types(vec![CardType::Land]).build(), owner, Zone::Hand);
                 let mut decisions = ironsmith::decision::SelectFirstDecisionMaker;
-                game.move_object_with_etb_processing_with_dm(land, Zone::Battlefield, &mut decisions).unwrap().assert_completed_without_additions().unwrap();
+                let receipt = game.move_object_with_etb_processing_with_dm(land, Zone::Battlefield, &mut decisions).unwrap();
+                assert!(!receipt.pending);
+                assert!(receipt.programs.is_empty(), "fixture must not discard added entry instructions");
+                receipt.original.into_result().unwrap();
             }
             resolve_stack_entry(&mut game).unwrap();
             assert_eq!(game.player(alice).unwrap().life, 20);

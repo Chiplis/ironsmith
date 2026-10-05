@@ -131,6 +131,44 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             Mode::Continuous(layer) => Ok(layer.players(value, filter)),
         }
     }
+    pub(super) fn aggregate_player_ids(
+        &self,
+        value: &Value,
+        filter: &PlayerFilter,
+    ) -> Result<Vec<PlayerId>, ExecutionError> {
+        match self.mode {
+            Mode::Execution(ctx) => match filter {
+                // Aggregates use actual multiplayer relations, not the older
+                // list adapter's "everyone other than you" opponent shortcut.
+                PlayerFilter::Opponent | PlayerFilter::Teammate => {
+                    let filter_ctx = ctx.filter_context(self.game);
+                    Ok(self
+                        .game
+                        .players
+                        .iter()
+                        .filter(|player| {
+                            player.is_in_game()
+                                && crate::filter::player_filter_matches_game(
+                                    filter,
+                                    player.id,
+                                    self.game,
+                                    &filter_ctx,
+                                )
+                        })
+                        .map(|player| player.id)
+                        .collect())
+                }
+                PlayerFilter::Excluding { base, excluded } => {
+                    let mut players = self.aggregate_player_ids(value, base)?;
+                    let excluded = self.aggregate_player_ids(value, excluded)?;
+                    players.retain(|player| !excluded.contains(player));
+                    Ok(players)
+                }
+                _ => self.player_ids(value, filter),
+            },
+            Mode::Continuous(layer) => Ok(layer.aggregate_players(filter)),
+        }
+    }
     pub(super) fn counter_player_ids(
         &self,
         value: &Value,
@@ -698,5 +736,117 @@ mod referenced_kicker_count_tests {
         assert_eq!(checked_kicker_count(&paid), None);
         paid.costs[1].1 = u32::MAX;
         assert_eq!(checked_kicker_count(&paid), None);
+    }
+}
+
+#[cfg(test)]
+mod aggregate_life_scope_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::ids::CardId;
+    use crate::types::CardType;
+    #[test]
+    fn team_scoped_life_aggregates_agree_in_resolution_and_continuous_contexts() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Teammate".into(),
+                "Bob".into(),
+                "Charlie".into(),
+            ],
+            41,
+        );
+        let [alice, teammate, bob, charlie] = std::array::from_fn(|i| game.players[i].id);
+        game.restore_alternating_teams(
+            vec![vec![alice, teammate], vec![bob, charlie]],
+            vec![alice, bob, teammate, charlie],
+            alice,
+            crate::game_state::FreeForAllAttackOption::MultiplePlayers,
+            None,
+            false,
+        )
+        .unwrap();
+        let card = CardBuilder::new(CardId::new(), "Team life source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        for (player, life) in [(alice, 20), (teammate, 50), (bob, 10), (charlie, 12)] {
+            game.write_life_total(player, life);
+        }
+        let check = |game: &GameState, controller: PlayerId, value: Value, expected: i32| {
+            let ctx = ExecutionContext::new_default(source, controller);
+            assert_eq!(
+                super::super::resolve(&value, &EvaluationContext::execution_context(game, &ctx))
+                    .unwrap(),
+                expected
+            );
+            assert_eq!(
+                crate::continuous::resolve_value_direct(
+                    &value,
+                    game.objects_map(),
+                    &[],
+                    &game.battlefield,
+                    &std::collections::HashSet::new(),
+                    source,
+                    controller,
+                    game
+                ),
+                expected
+            );
+        };
+        check(
+            &game,
+            alice,
+            Value::MaximumLifeTotal(PlayerFilter::Opponent),
+            12,
+        );
+        check(&game, alice, Value::MaximumLifeTotal(PlayerFilter::Any), 50);
+        check(
+            &game,
+            alice,
+            Value::MaximumLifeTotal(PlayerFilter::Teammate),
+            50,
+        );
+        check(
+            &game,
+            alice,
+            Value::MaximumLifeTotal(PlayerFilter::Excluding {
+                base: Box::new(PlayerFilter::Any),
+                excluded: Box::new(PlayerFilter::Opponent),
+            }),
+            50,
+        );
+        check(
+            &game,
+            alice,
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+            2,
+        );
+        game.write_life_total(teammate, 5);
+        check(
+            &game,
+            alice,
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+            2,
+        );
+        check(
+            &game,
+            alice,
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Any),
+            4,
+        );
+        check(
+            &game,
+            bob,
+            Value::MaximumLifeTotal(PlayerFilter::Opponent),
+            20,
+        );
+        check(
+            &game,
+            bob,
+            Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+            2,
+        );
     }
 }

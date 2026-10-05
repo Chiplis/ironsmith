@@ -271,6 +271,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::BeginningOfCombat(player)
         | TriggerSpec::BeginningOfEndStep(player)
         | TriggerSpec::BeginningOfPrecombatMain(player)
+        | TriggerSpec::RingBearerChosen(player)
         | TriggerSpec::PlayerGainsLife { player, .. }
         | TriggerSpec::PlayerLosesLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)

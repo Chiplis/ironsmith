@@ -5,6 +5,11 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = crate::grammar::filters::simple::parse_simple_object_filter_lexed(tokens, other)
+        && filter.ring_bearer
+    {
+        return Ok(filter);
+    }
     let (tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
     let trailing_couldnt_attack_exception = tokens.len() >= 6
         && tokens[tokens.len() - 6].is_word("except")

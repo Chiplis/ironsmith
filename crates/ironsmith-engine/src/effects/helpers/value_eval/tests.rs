@@ -398,3 +398,193 @@ fn canonical_maximum_evaluates_without_overflowing_its_algebraic_intermediates()
         10
     );
 }
+
+#[test]
+fn scoped_life_maxima_and_below_half_counts_preserve_sign_scope_ties_and_odd_thresholds() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 41);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let charlie = game.players[2].id;
+    let card = CardBuilder::new(CardId::new(), "Life quantity source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let check = |game: &GameState, value: &Value, controller: PlayerId, expected| {
+        let ctx = ExecutionContext::new_default(source, controller);
+        assert_eq!(
+            resolve(value, &EvaluationContext::execution_context(game, &ctx)).unwrap(),
+            expected
+        );
+        assert_eq!(continuous(value, game, source, controller), expected);
+    };
+    assert!(game.write_life_total(bob, 20));
+    assert!(game.write_life_total(charlie, 21));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        21,
+    );
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Any),
+        alice,
+        41,
+    );
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        alice,
+        1,
+    );
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        bob,
+        41,
+    );
+    assert!(game.write_life_total(charlie, 20));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        20,
+    );
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(PlayerFilter::Opponent),
+        alice,
+        2,
+    );
+    assert!(game.write_life_total(bob, -3));
+    assert!(game.write_life_total(charlie, -5));
+    check(
+        &game,
+        &Value::MaximumLifeTotal(PlayerFilter::Opponent),
+        alice,
+        -3,
+    );
+    let ceiling = Value::HalfRoundedDown(Box::new(Value::Add(
+        Box::new(Value::MaximumLifeTotal(PlayerFilter::Opponent)),
+        Box::new(Value::Fixed(1)),
+    )));
+    check(&game, &ceiling, alice, -1);
+    assert!(game.write_life_total(bob, i32::MAX));
+    check(&game, &ceiling, alice, 1_073_741_824);
+    let empty = PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Any);
+    check(&game, &Value::MaximumLifeTotal(empty.clone()), alice, 0);
+    check(
+        &game,
+        &Value::CountPlayersBelowHalfStartingLifeTotal(empty),
+        alice,
+        0,
+    );
+}
+
+#[test]
+fn absolute_difference_widens_intermediates_without_inventing_an_out_of_range_value() {
+    let (game, source, player) = fixture();
+    let ctx = ExecutionContext::new_default(source, player);
+    for (a, b, expected) in [
+        (i32::MIN, i32::MIN, 0),
+        (-5, 3, 8),
+        (i32::MAX, i32::MAX - 5, 5),
+    ] {
+        let value = Value::absolute_difference(Value::Fixed(a), Value::Fixed(b));
+        assert_eq!(
+            resolve(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(),
+            expected
+        );
+        assert_eq!(continuous(&value, &game, source, player), expected);
+    }
+    let unrepresentable =
+        Value::absolute_difference(Value::Fixed(i32::MIN), Value::Fixed(i32::MAX));
+    assert!(matches!(
+        resolve(
+            &unrepresentable,
+            &EvaluationContext::execution_context(&game, &ctx)
+        ),
+        Err(ExecutionError::UnresolvableValue(_))
+    ));
+}
+
+#[test]
+fn noted_life_prefers_live_re_notes_and_exact_departure_receipts_without_blink_following() {
+    let (mut game, source, alice) = fixture();
+    game.note_life_total_for_source(source, alice).unwrap();
+    let early = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+    let ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(early);
+    game.write_life_total(alice, 18);
+    let before_note =
+        game.cached_object_snapshot_with_calculated_characteristics(game.object(source).unwrap());
+    assert_eq!(before_note.noted_life_total, Some(20));
+    game.note_life_total_for_source(source, alice).unwrap();
+    let after_note =
+        game.cached_object_snapshot_with_calculated_characteristics(game.object(source).unwrap());
+    assert_eq!(
+        after_note.noted_life_total,
+        Some(18),
+        "the note write itself invalidates cached LKI"
+    );
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18
+    );
+    let graveyard = game
+        .move_object_by_game_rule(source, Zone::Graveyard)
+        .unwrap();
+    assert_eq!(
+        game.noted_life_total_for_source(source),
+        None,
+        "departure still clears the live annotation"
+    );
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18,
+        "the actual departure receipt supersedes an earlier 20-life source snapshot"
+    );
+    let returned = game
+        .move_object_by_game_rule(graveyard, Zone::Battlefield)
+        .unwrap();
+    game.write_life_total(alice, 30);
+    game.note_life_total_for_source(returned, alice).unwrap();
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        18
+    );
+    game.write_life_total(alice, 19);
+    game.note_life_total_for_source(source, alice).unwrap();
+    assert_eq!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &ctx)
+        )
+        .unwrap(),
+        19,
+        "an explicit subsequent instruction may re-note for the same departed source identity"
+    );
+    assert_eq!(game.noted_life_total_for_source(returned), Some(30));
+    let wrong = ExecutionContext::new_default(game.new_object_id(), alice)
+        .with_source_snapshot(ctx.source_snapshot.clone().unwrap());
+    assert!(
+        resolve(
+            &Value::LastNotedLifeTotal,
+            &EvaluationContext::execution_context(&game, &wrong)
+        )
+        .is_err(),
+        "a snapshot for another object is not a receipt"
+    );
+}

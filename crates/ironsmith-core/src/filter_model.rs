@@ -2175,6 +2175,9 @@ pub struct ObjectFilter {
     /// Requires a permanent currently designated as goaded.
     #[cfg_attr(feature = "serde", serde(default))]
     pub goaded: bool,
+    /// Requires the current Ring-bearer designation (or its captured LKI).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub ring_bearer: bool,
     pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
@@ -3627,6 +3630,17 @@ impl ObjectFilter {
         self
     }
 
+    /// The unique current designation for the ability's controller. This
+    /// noun remains meaningful if the designated permanent stops being a creature.
+    pub fn your_ring_bearer() -> Self {
+        Self { ring_bearer: true, controller: Some(PlayerFilter::You), zone: Some(Zone::Battlefield), ..Self::default() }
+    }
+
+    pub fn ring_bearer(mut self) -> Self {
+        self.ring_bearer = true;
+        self
+    }
+
     pub fn suspected(mut self) -> Self {
         self.suspected = true;
         self
@@ -4001,6 +4015,10 @@ impl ObjectFilter {
             return description;
         }
 
+        if self == &ObjectFilter::your_ring_bearer() {
+            return "your Ring-bearer".to_string();
+        }
+
         let mut parts = Vec::new();
         let mut post_noun_qualifiers: Vec<String> = Vec::new();
         let append_token_after_type = self.token;
@@ -4056,6 +4074,9 @@ impl ObjectFilter {
         }
         if self.goaded {
             parts.push("goaded".to_string());
+        }
+        if self.ring_bearer && (!self.card_types.is_empty() || !self.all_card_types.is_empty() || !self.subtypes.is_empty() || !self.all_subtypes.is_empty() || self.token) {
+            post_noun_qualifiers.push("that is a Ring-bearer".to_string());
         }
 
         let has_leading_determiner =
@@ -5118,6 +5139,7 @@ impl ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.ring_bearer => "Ring-bearer",
                     Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
@@ -7626,6 +7648,24 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!(
                     "the number of creature types among {}",
                     filter.description()
+                )
+            }
+            Value::MaximumLifeTotal(players) => {
+                let scope = match players {
+                    PlayerFilter::Any => "all players".to_string(),
+                    PlayerFilter::Opponent => "your opponents".to_string(),
+                    _ => players.description(),
+                };
+                format!("the highest life total among {scope}")
+            }
+            Value::CountPlayersBelowHalfStartingLifeTotal(players) => {
+                let scope = match players {
+                    PlayerFilter::Opponent => "opponents".to_string(),
+                    PlayerFilter::Any => "players".to_string(),
+                    _ => players.description(),
+                };
+                format!(
+                    "the number of {scope} whose life total is less than half their starting life total"
                 )
             }
             Value::LifeTotal(PlayerFilter::MostLifeTied) => "the highest life total among all players".to_string(),

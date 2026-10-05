@@ -737,6 +737,7 @@ pub enum TriggerKind {
     PlayerDrawsCardDuringTurn { player: PlayerFilter, during_turn: PlayerFilter },
     PlayerDrawsFirstCardInOwnDrawStep { player: PlayerFilter },
     ControlChanged(ControlChangeTrigger),
+    RingBearerChosen { player: PlayerFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1198,6 +1199,9 @@ impl Trigger {
         Self::typed("player_changes_tap_state", TriggerKind::PlayerChangesTapState {
             player, filter, tapped, one_or_more, during_untap_step,
         })
+    }
+    pub fn ring_bearer_chosen(player: PlayerFilter) -> Self {
+        Self::typed("ring_bearer_chosen", TriggerKind::RingBearerChosen { player })
     }
     pub fn control_changed(trigger: ControlChangeTrigger) -> Self {
         Self::typed("control_changed", TriggerKind::ControlChanged(trigger))

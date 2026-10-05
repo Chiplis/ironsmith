@@ -561,6 +561,17 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
+    fn activation_cost_condition(condition: &ironsmith_core::ActivatedAbilityCostCondition) -> super::ActivatedAbilityCostCondition {
+        use ironsmith_core::ActivatedAbilityCostCondition as Model;
+        use super::ActivatedAbilityCostCondition as Runtime;
+        match condition {
+            Model::TargetsExactly { count, filter } => Runtime::TargetsExactly { count: *count, filter: filter.clone() },
+            Model::EquipAbility { targeting } => Runtime::EquipAbility { targeting: targeting.clone() },
+            Model::ThisAbility { ability_index } => Runtime::ThisAbility { ability_index: *ability_index },
+            Model::All(conditions) => Runtime::All(conditions.iter().map(Self::activation_cost_condition).collect()),
+        }
+    }
+
     fn cached_activated_ability_cost_reduction(
         model: &CompiledStaticAbility,
     ) -> Option<super::ActivatedAbilityCostReduction> {
@@ -608,25 +619,7 @@ impl StaticAbilityModelInterpreter {
                         .with_per_basic_land_types_among(per_basic_land_types_among.clone());
                 }
                 if let Some(condition) = condition {
-                    converted = converted.with_condition(match condition {
-                        ironsmith_core::ActivatedAbilityCostCondition::TargetsExactly {
-                            count,
-                            filter,
-                        } => super::ActivatedAbilityCostCondition::TargetsExactly {
-                            count: *count,
-                            filter: filter.clone(),
-                        },
-                        ironsmith_core::ActivatedAbilityCostCondition::EquipAbility { targeting } => {
-                            super::ActivatedAbilityCostCondition::EquipAbility {
-                                targeting: targeting.clone(),
-                            }
-                        }
-                        ironsmith_core::ActivatedAbilityCostCondition::ThisAbility {
-                            ability_index,
-                        } => super::ActivatedAbilityCostCondition::ThisAbility {
-                            ability_index: *ability_index,
-                        },
-                    });
+                    converted = converted.with_condition(Self::activation_cost_condition(condition));
                 }
                 Some(converted)
             }
@@ -648,6 +641,8 @@ impl StaticAbilityModelInterpreter {
                 activator,
                 non_mana_only,
                 condition,
+                ability_condition,
+                display,
             } => {
                 let mut parsed = if let Some(activator) = activator.clone() {
                     super::ActivatedAbilityCostIncrease::for_activator(
@@ -661,6 +656,8 @@ impl StaticAbilityModelInterpreter {
                     increase_model.non_mana_only = *non_mana_only;
                     increase_model
                 };
+                parsed.ability_condition = ability_condition.as_ref().map(Self::activation_cost_condition);
+                parsed.display = display.clone();
                 if let Some(condition) = condition.clone() {
                     parsed = parsed.with_condition(condition);
                 }
@@ -2589,6 +2586,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
+        if let Some(reduction) = &self.activated_ability_cost_reduction {
+            return reduction.is_active(game, source);
+        }
+        if let Some(increase) = &self.activated_ability_cost_increase {
+            return increase.is_active(game, source);
+        }
         if let Some(reduction) = &self.cost_reduction {
             return reduction.is_active(game, source);
         }

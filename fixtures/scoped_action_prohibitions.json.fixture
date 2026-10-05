@@ -1,0 +1,108 @@
+[
+  {
+    "name": "Aggressive Mining",
+    "oracle_id": "ff321c13-03ae-4cb9-b371-1242290f8433",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "You can't play lands.\nSacrifice a land: Draw two cards. Activate only once each turn."
+  },
+  {
+    "name": "Ashes of the Abhorrent",
+    "oracle_id": "a75d5b54-5cc9-49c4-8e8c-3bef22d4c01c",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Players can't cast spells from graveyards or activate abilities of cards in graveyards.\nWhenever a creature dies, you gain 1 life."
+  },
+  {
+    "name": "Cornered Market",
+    "oracle_id": "1784bbaa-67b1-4bd1-bf77-53da2bfbf7fc",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Players can't cast spells with the same name as a nontoken permanent.\nPlayers can't play nonbasic lands with the same name as a nontoken permanent."
+  },
+  {
+    "name": "Exclusion Ritual",
+    "oracle_id": "5e3fd5da-6724-4134-ab15-4616cb659f88",
+    "mana_cost": "{4}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Imprint — When this enchantment enters, exile target nonland permanent.\nPlayers can't cast spells with the same name as the exiled card."
+  },
+  {
+    "name": "Experimental Frenzy",
+    "oracle_id": "3715e8b8-31df-499b-8a91-1bcd1199d6eb",
+    "mana_cost": "{3}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "You may look at the top card of your library any time.\nYou may play lands and cast spells from the top of your library.\nYou can't play lands or cast spells from your hand.\n{3}{R}: Destroy this enchantment."
+  },
+  {
+    "name": "Iona, Shield of Emeria",
+    "oracle_id": "5e816472-561d-43d1-ad28-80a829e2a91a",
+    "mana_cost": "{6}{W}{W}{W}",
+    "type_line": "Legendary Creature — Angel",
+    "oracle_text": "Flying\nAs Iona enters, choose a color.\nYour opponents can't cast spells of the chosen color.",
+    "power": "7",
+    "toughness": "7"
+  },
+  {
+    "name": "Ixalan's Binding",
+    "oracle_id": "5a2d0df9-950e-4c3d-8a08-275f179e33c7",
+    "mana_cost": "{3}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, exile target nonland permanent an opponent controls until this enchantment leaves the battlefield.\nYour opponents can't cast spells with the same name as the exiled card."
+  },
+  {
+    "name": "Llawan, Cephalid Empress",
+    "oracle_id": "55f9a9a2-2842-4555-8b54-03aebc8d6fb8",
+    "mana_cost": "{3}{U}",
+    "type_line": "Legendary Creature — Octopus Noble",
+    "oracle_text": "When Llawan enters, return all blue creatures your opponents control to their owners' hands.\nYour opponents can't cast blue creature spells.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Pardic Miner",
+    "oracle_id": "e1788b54-4cd9-459f-b2c9-06773e68e9e3",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Dwarf",
+    "oracle_text": "Sacrifice this creature: Target player can't play lands this turn.",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "name": "Territorial Dispute",
+    "oracle_id": "a1785817-f17b-471b-a63b-866e7972df1f",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, sacrifice this enchantment unless you sacrifice a land.\nPlayers can't play lands."
+  },
+  {
+    "name": "The Immortal Sun",
+    "oracle_id": "52232aad-e4ca-4551-8c8d-c69a3b6b49c7",
+    "mana_cost": "{6}",
+    "type_line": "Legendary Artifact",
+    "oracle_text": "Players can't activate planeswalkers' loyalty abilities.\nAt the beginning of your draw step, draw an additional card.\nSpells you cast cost {1} less to cast.\nCreatures you control get +1/+1."
+  },
+  {
+    "name": "Tomik, Distinguished Advokist",
+    "oracle_id": "9895a33f-9bbd-4440-8c1a-0d401431b77f",
+    "mana_cost": "{W}{W}",
+    "type_line": "Legendary Creature — Human Advisor",
+    "oracle_text": "Flying\nLands on the battlefield and land cards in graveyards can't be the targets of spells or abilities your opponents control.\nYour opponents can't play land cards from graveyards.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Turf Wound",
+    "oracle_id": "8dc48180-1482-40c4-8c5f-1724018e9c5b",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Target player can't play lands this turn.\nDraw a card."
+  },
+  {
+    "name": "Solfatara",
+    "oracle_id": "6053a192-fcf9-4b06-9f46-e84eaadaa882",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Target player can't play lands this turn.\nDraw a card at the beginning of the next turn's upkeep."
+  }
+]

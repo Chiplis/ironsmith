@@ -582,6 +582,9 @@ pub enum ActionError {
 
     /// Not the active player.
     NotActivePlayer,
+
+    /// A continuous or resolved prohibition prevents this land play.
+    LandPlayProhibited,
 }
 
 impl std::fmt::Display for ActionError {
@@ -622,6 +625,7 @@ impl std::fmt::Display for ActionError {
                 f.write_str("You cannot perform that action at this time")
             }
             ActionError::NotActivePlayer => f.write_str("You are not the active player"),
+            ActionError::LandPlayProhibited => f.write_str("An active rule prevents playing that land"),
         }
     }
 }
@@ -1223,6 +1227,11 @@ fn can_play_land(
     card_id: ObjectId,
     back_face: bool,
 ) -> Result<(), ActionError> {
+    // Direct special-action validation must preserve failed discovery, just as
+    // the checked legal-action enumerator does; unknown is not "prohibited".
+    let checked = game.continuous_query_snapshot().map_err(|error| ActionError::ExecutionFailure {
+        source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?;
+    let game = &checked;
     // Must be the active player
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1253,17 +1262,33 @@ fn can_play_land(
         return Err(ActionError::AlreadyPlayedLand);
     }
 
-    // Check the object exists
+    // CR 712.12: evaluate the chosen face in an isolated query. Merely passing
+    // a cloned Object to a live filter lets characteristic lookup by ObjectId
+    // silently read the unchosen front face again.
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    // CR 712.12: validate the face the player chose to play.
     let land_face = crate::decision::land_play_face_definition(game, object, back_face)
-        .map_err(|()| ActionError::NotALand)?
-        .map(|definition| {
-            let mut face = object.clone();
-            face.apply_definition_face(&definition);
-            face
-        });
-    let proposed_land = land_face.as_ref().unwrap_or(object);
+        .map_err(|()| ActionError::NotALand)?;
+    let proposed_game;
+    let game = if let Some(definition) = land_face {
+        let mut branch = game.clone();
+        branch.object_mut(card_id).ok_or(ActionError::ObjectNotFound)?.apply_definition_face(&definition);
+        branch.refresh_continuous_state().map_err(|error| ActionError::ExecutionFailure {
+            source: card_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?;
+        proposed_game = branch;
+        &proposed_game
+    } else { game };
+    let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    let proposed_land = object;
+    if game.effect_store.cant_effects.cant_play_land_filters.get(&player).is_some_and(|restrictions| {
+        restrictions.iter().any(|restriction| {
+            let ctx = game.filter_context_for_combat(restriction.controller, restriction.source, None, None)
+                .with_iterated_player(restriction.iterated_player.or(Some(player)))
+                .with_tagged_objects(&restriction.tagged_objects);
+            restriction.filter.matches(proposed_land, &ctx, game)
+        })
+    }) {
+        return Err(ActionError::LandPlayProhibited);
+    }
     let permission_view = crate::derived_view::DerivedGameView::new(game);
     let can_play_from_zone = object.zone == Zone::Hand
         || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))

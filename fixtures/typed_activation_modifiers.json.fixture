@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Agatha of the Vile Cauldron",
+    "oracle_id": "f398d222-f8e7-4983-9a77-267adef7f551",
+    "text": "Mana cost: {R}{G}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 1/1\nActivated abilities of creatures you control cost {X} less to activate, where X is Agatha's power. This effect can't reduce the mana in that cost to less than one mana.\n{4}{R}{G}: Other creatures you control get +1/+1 and gain trample and haste until end of turn.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Baru, Wurmspeaker",
+    "oracle_id": "1cf27d78-d6ae-4fa2-9c8d-c277913f821c",
+    "text": "Mana cost: {2}{G}{G}\nType: Legendary Creature — Human Druid\nPower/Toughness: 3/3\nWurms you control get +2/+2 and have trample.\n{7}{G}, {T}: Create a 4/4 green Wurm creature token. This ability costs {X} less to activate, where X is the greatest power among Wurms you control.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Belt of Giant Strength",
+    "oracle_id": "eb70939f-c4ce-4224-ab74-acc24771d7f0",
+    "text": "Mana cost: {1}{G}\nType: Artifact — Equipment\nEquipped creature has base power and toughness 10/10.\nEquip {10}. This ability costs {X} less to activate, where X is the power of the creature it targets.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Crown of Gondor",
+    "oracle_id": "f95021cf-14c4-4792-8746-432bf9e7c1a9",
+    "text": "Mana cost: {3}\nType: Legendary Artifact — Equipment\nEquipped creature gets +1/+1 for each creature you control.\nWhen a legendary creature you control enters, if there is no monarch, you become the monarch.\nEquip {4}. This ability costs {3} less to activate if you're the monarch.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Esquire of the King",
+    "oracle_id": "3ccaa78e-f3e5-4de4-b53c-cecd73a73b9c",
+    "text": "Mana cost: {W}\nType: Creature — Human Soldier\nPower/Toughness: 1/1\n{4}{W}, {T}: Creatures you control get +1/+1 until end of turn. This ability costs {2} less to activate if you control a legendary creature.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Ghostfire Blade",
+    "oracle_id": "093b1d8d-c836-4e9b-855b-4020361aa6ac",
+    "text": "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature gets +2/+2.\nEquip {3}\nThis Equipment's equip ability costs {2} less to activate if it targets a colorless creature.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Hylda's Crown of Winter",
+    "oracle_id": "a8291d04-240e-456b-8c86-1fb4eb460476",
+    "text": "Mana cost: {3}\nType: Legendary Artifact\n{1}, {T}: Tap target creature. This ability costs {1} less to activate during your turn.\n{3}, Sacrifice Hylda's Crown of Winter: Draw a card for each tapped creature your opponents control.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Loreseeker's Stone",
+    "oracle_id": "28a21e56-b97f-487d-9a89-61c248192cec",
+    "text": "Mana cost: {6}\nType: Artifact\n{3}, {T}: Draw three cards. This ability costs {1} more to activate for each card in your hand.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Power Artifact",
+    "oracle_id": "9a8c8d52-1701-4ae0-9d2d-cce4e476673b",
+    "text": "Mana cost: {U}{U}\nType: Enchantment — Aura\nEnchant artifact\nEnchanted artifact's activated abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Razorlash Transmogrant",
+    "oracle_id": "580996d4-db9a-4b57-a0e1-a2dbb524121a",
+    "text": "Mana cost: {2}\nType: Artifact Creature — Zombie\nPower/Toughness: 3/1\nThis creature can't block.\n{4}{B}{B}: Return this card from your graveyard to the battlefield with a +1/+1 counter on it. This ability costs {4} less to activate if an opponent controls four or more nonbasic lands.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Sewer Crocodile",
+    "oracle_id": "b01e9ff2-865a-401e-a839-568cd4a0451d",
+    "text": "Mana cost: {5}{U}\nType: Creature — Crocodile\nPower/Toughness: 4/6\n{3}{U}: This creature can't be blocked this turn. This ability costs {3} less to activate if there are five or more mana values among cards in your graveyard.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Starport Security",
+    "oracle_id": "5454dddf-c6e5-4b0d-b96d-4904c13606dc",
+    "text": "Mana cost: {W}\nType: Artifact Creature — Robot Soldier\nPower/Toughness: 1/1\n{3}{W}, {T}: Tap another target creature. This ability costs {2} less to activate if you control a creature with a +1/+1 counter on it.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Survey Mechan",
+    "oracle_id": "53745903-de8f-42cf-a949-842e5831de30",
+    "text": "Mana cost: {4}\nType: Artifact Creature — Robot\nPower/Toughness: 1/3\nFlying\nHexproof (This creature can't be the target of spells or abilities your opponents control.)\n{10}, Sacrifice this creature: It deals 3 damage to any target. Target player draws three cards and gains 3 life. This ability costs {X} less to activate, where X is the number of differently named lands you control.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Thaumaton Torpedo",
+    "oracle_id": "9f9ae015-dc59-4ecb-a2bb-668496b48a48",
+    "text": "Mana cost: {1}\nType: Artifact\n{6}, {T}, Sacrifice this artifact: Destroy target nonland permanent. This ability costs {3} less to activate if you attacked with a Spacecraft this turn.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]

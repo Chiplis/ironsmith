@@ -2238,6 +2238,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 )
             }
         }
+        Condition::YouChoseAnotherRingBearer => "you chose a creature other than this creature as your Ring-bearer".into(),
         Condition::SourceIsRingBearer { player } => format!(
             "this creature is {} Ring-bearer",
             describe_possessive_player_filter(player)

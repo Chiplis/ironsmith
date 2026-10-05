@@ -892,6 +892,16 @@ fn parse_cant_clauses_unbound(
         return Ok(None);
     }
 
+    // An announced player target plus a duration belongs to a resolving spell
+    // or ability. Do not send it through object-only static target parsing.
+    if let Some((neg_start, _)) = find_negation_span(tokens)
+        && super::activation_restriction_clauses::parse_player_restriction_subject(&tokens[..neg_start])?
+            .is_some_and(|(_, target)| target.is_some())
+        && parse_restriction_duration(tokens)?.is_some()
+    {
+        return Ok(None);
+    }
+
     // NOTE(equip-grant threshold, 2026-07-25): a guard declining
     // "equipped/enchanted creature has ..." lines here was tried and
     // REVERTED — with parse_cant_clauses out of the way the line reaches
@@ -918,6 +928,23 @@ fn parse_cant_clauses_unbound(
             })
             .collect::<Vec<_>>();
         return Ok(Some(conditioned));
+    }
+
+    // A final origin can be shared by two different actions. Own the complete
+    // clause before generic "or" splitting can turn a hand-only prohibition
+    // into a ban on every land play.
+    if let Some((_, neg_end)) = find_negation_span(tokens) {
+        let tail_storage = normalize_cant_words(&tokens[neg_end..]);
+        let tail = tail_storage.iter().map(String::as_str).collect::<Vec<_>>();
+        if crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(&tail).is_some()
+            && let Some(restrictions) = super::activation_restriction_clauses::parse_cant_restrictions(tokens)?
+            && restrictions.iter().all(|restriction| restriction.target.is_none())
+        {
+            return Ok(Some(vec![StaticAbility::restrictions(
+                restrictions.into_iter().map(|parsed| parsed.restriction).collect(),
+                format_negated_restriction_display(tokens),
+            )]));
+        }
     }
 
     // The combined attack-or-block wording is also superficially a blocking
@@ -1171,6 +1198,8 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
             crate::effect::Restriction::GainLife(_)
                 | crate::effect::Restriction::SearchLibraries(_)
                 | crate::effect::Restriction::CastSpellsMatching(_, _)
+                | crate::effect::Restriction::PlayLandsMatching(_, _)
+                | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateNonManaAbilities(_)
                 | crate::effect::Restriction::ActivateAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateTapAbilitiesOf(_)

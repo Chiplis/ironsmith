@@ -32,6 +32,10 @@ pub const SOURCE_EXILED_THIS_RESOLUTION_TAG: &str = "__source_exiled_this_resolu
 /// from the source's recorded devour snapshots rather than captured.
 pub const SOURCE_DEVOURED_TAG: &str = "__source_devoured__";
 
+/// Exact creature chosen by one completed Ring-temptation action. This is
+/// event evidence, not a dynamically resolved current-bearer reference.
+pub const RING_BEARER_CHOSEN_TAG: &str = "__ring_bearer_chosen__";
+
 /// Runtime tag, recorded on a token when it is created, for the objects the
 /// creating ability exiled to pay its cost, the ability's source included
 /// ("all triggered abilities of the exiled cards", The Book of Vile

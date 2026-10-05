@@ -915,6 +915,24 @@ fn parse_half_starting_life_total_threshold_predicate(
 }
 
 fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if surface::exact_any(
+        clause,
+        &[
+            &["a", "players", "life", "total"],
+            &["a", "player", "s", "life", "total"],
+        ],
+    ) {
+        return Some(PlayerAst::Any);
+    }
+    if surface::exact_any(
+        clause,
+        &[
+            &["an", "opponents", "life", "total"],
+            &["an", "opponent", "s", "life", "total"],
+        ],
+    ) {
+        return Some(PlayerAst::Opponent);
+    }
     if surface::exact(clause, &["your", "life", "total"]) {
         return Some(PlayerAst::You);
     }
@@ -2090,6 +2108,14 @@ fn parse_ring_has_tempted_you_this_game_predicate(
 }
 
 fn parse_ring_bearer_temptation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    if let Some(source_words) = words.strip_prefix(&["you", "chose", "a", "creature", "other", "than"])
+        .and_then(|tail| tail.strip_suffix(&["as", "your", "ring", "bearer"]))
+        && is_source_reference_words(source_words)
+    {
+        return Some(PredicateAst::Triggering(TriggeringPredicateAst::YouChoseAnotherRingBearer));
+    }
     if let Some(predicate) = parse_source_is_your_ring_bearer_predicate(tokens) {
         return Some(predicate);
     }

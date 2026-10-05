@@ -164,6 +164,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | crate::effect::Value::PartySize(player)
         | crate::effect::Value::LifeTotal(player)
+        | crate::effect::Value::MaximumLifeTotal(player)
+        | crate::effect::Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | crate::effect::Value::LifeTotalDifference(player)
         | crate::effect::Value::Speed(player)
         | crate::effect::Value::StartingLifeTotal(player)

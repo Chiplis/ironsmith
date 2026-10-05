@@ -589,6 +589,7 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
     fn single_filter_mut(restriction: &mut Restriction) -> Option<&mut crate::ObjectFilter> {
         match restriction {
             Restriction::PreventDamageFrom { sources: filter, .. }
+            | Restriction::ActivateLoyaltyAbilitiesOf(filter)
             | Restriction::Attack(filter)
             | Restriction::Block(filter)
             | Restriction::Untap(filter)

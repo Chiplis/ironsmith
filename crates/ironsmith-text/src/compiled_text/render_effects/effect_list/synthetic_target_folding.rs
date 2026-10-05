@@ -189,6 +189,8 @@ fn value_references_identity(value: &Value, identity: &SyntheticTargetIdentity<'
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
+        | Value::MaximumLifeTotal(player)
+        | Value::CountPlayersBelowHalfStartingLifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
         | Value::LifeTotalDifference(player)
         | Value::UnspentMana(player)
@@ -257,7 +259,8 @@ fn restriction_references_identity(
         | Restriction::BeTargetedPlayer(player) => {
             player_filter_references_identity(player, identity)
         }
-        Restriction::CastSpellsMatching(player, filter)
+        Restriction::PlayLandsMatching(player, filter)
+        | Restriction::CastSpellsMatching(player, filter)
         | Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
@@ -284,7 +287,8 @@ fn restriction_references_identity(
                     .as_ref()
                     .is_some_and(|source| object_filter_references_identity(source, identity))
         }
-        Restriction::ActivateAbilitiesOf(filter)
+        Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
         | Restriction::ActivateNonManaAbilitiesOf(filter)
         | Restriction::Attack(filter)

@@ -1519,6 +1519,10 @@ pub fn resolve_restriction_it_tag(
         Restriction::SearchLibraries(player) => {
             Restriction::search_libraries(resolve_contextual_player_filter(player, refs)?)
         }
+        Restriction::PlayLandsMatching(player, filter) => Restriction::PlayLandsMatching(
+            resolve_contextual_player_filter(player, refs)?, resolve_it_tag(filter, refs)?,
+        ),
+        Restriction::ActivateLoyaltyAbilitiesOf(filter) => Restriction::ActivateLoyaltyAbilitiesOf(resolve_it_tag(filter, refs)?),
         Restriction::CastSpellsMatching(player, filter) => Restriction::cast_spells_matching(
             resolve_contextual_player_filter(player, refs)?,
             resolve_it_tag(filter, refs)?,

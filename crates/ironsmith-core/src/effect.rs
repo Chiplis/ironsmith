@@ -3655,6 +3655,11 @@ pub struct BecomeBasicLandTypeChoiceEffect {
     pub duration: Until,
     pub chooser: PlayerFilter,
     pub fixed_subtype: Option<crate::types::Subtype>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub preserve_other_types: bool,
+    /// Empty means the five basic land types; otherwise one of this exact set.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allowed_subtypes: Vec<crate::types::Subtype>,
 }
 
 impl BecomeBasicLandTypeChoiceEffect {
@@ -3664,6 +3669,8 @@ impl BecomeBasicLandTypeChoiceEffect {
             duration,
             chooser: PlayerFilter::You,
             fixed_subtype: None,
+            preserve_other_types: false,
+            allowed_subtypes: Vec::new(),
         }
     }
 
@@ -3673,7 +3680,13 @@ impl BecomeBasicLandTypeChoiceEffect {
             duration,
             chooser: PlayerFilter::You,
             fixed_subtype: Some(subtype),
+            preserve_other_types: false,
+            allowed_subtypes: Vec::new(),
         }
+    }
+
+    pub fn with_options(mut self, allowed_subtypes: Vec<crate::types::Subtype>, preserve_other_types: bool) -> Self {
+        self.allowed_subtypes = allowed_subtypes; self.preserve_other_types = preserve_other_types; self
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {

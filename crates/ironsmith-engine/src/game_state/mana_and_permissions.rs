@@ -909,6 +909,7 @@ impl GameState {
             | Modification::SetAbilities(_)
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana
             | Modification::RemoveStaticAbilityFamily(_) => true,
             Modification::AddAbility(static_ability)
@@ -3474,6 +3475,7 @@ impl GameState {
             | Modification::CopyTriggeredAbilities { .. }
             | Modification::AddCombatDamageDrawAbility
             | Modification::RemoveAllAbilities
+            | Modification::RemoveLandRulesTextAbilities
             | Modification::RemoveAllAbilitiesExceptMana => true,
             Modification::AddAbilityGeneric(ability)
             | Modification::RemoveAbilityGeneric { ability, .. } => {

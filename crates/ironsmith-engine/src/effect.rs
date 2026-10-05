@@ -228,6 +228,7 @@ impl OutcomeObjectMemory {
             .unwrap_or_else(|| ObjectSnapshot {
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
+                noted_life_total: None,
                 chosen_object: None,
                 object_id: self.object_id,
                 stable_id: self.stable_id,
@@ -273,6 +274,7 @@ impl OutcomeObjectMemory {
                 tapped: false,
                 attacking: false,
                 goaded: None,
+            ring_bearer: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,
@@ -1319,21 +1321,41 @@ impl RestrictionExt for Restriction {
                                     if !chosen_name.is_empty() {
                                         let mut resolved_filter = spell_filter.clone();
                                         resolved_filter.name = Some(chosen_name.to_string());
-                                        tracker.add_cant_cast_filter_from_source(
-                                            player.id,
-                                            resolved_filter,
-                                            Some(source),
-                                        );
+                                        tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
+                                            filter: resolved_filter, source: Some(source), controller: Some(controller),
+                                            iterated_player, tagged_objects: tagged_objects.clone(),
+                                        });
                                     }
                                 }
                             }
                         } else {
-                            tracker.add_cant_cast_filter_from_source(
-                                player.id,
-                                spell_filter.clone(),
-                                source,
-                            );
+                            tracker.add_scoped_cant_cast_filter(player.id, crate::game_state::CastRestrictionFilter {
+                                filter: spell_filter.clone(), source, controller: Some(controller),
+                                iterated_player, tagged_objects: tagged_objects.clone(),
+                            });
                         }
+                    }
+                }
+            }
+            Restriction::PlayLandsMatching(player_filter, land_filter) => {
+                let restriction = crate::game_state::LandPlayRestrictionFilter {
+                    filter: land_filter.clone(), source, controller, iterated_player,
+                    tagged_objects: tagged_objects.clone(),
+                };
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, player_filter)
+                        && ctx.players_in_range.as_ref().is_none_or(|players| players.contains(&player.id))
+                    {
+                        tracker.cant_play_land_filters.entry(player.id).or_default().push(restriction.clone());
+                    }
+                }
+            }
+            Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
+                for &id in &game.battlefield {
+                    if let Some(object) = game.object(id)
+                        && !game.is_phased_out(id) && filter.matches(object, &ctx, game)
+                    {
+                        tracker.cant_activate_loyalty_abilities_of.insert(id);
                     }
                 }
             }
@@ -1352,11 +1374,18 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ActivateAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
+                // A graveyard-card prohibition applies to real ability sources
+                // there, including mana abilities. Unqualified permanent bans
+                // retain their battlefield domain.
+                fn explicit_off_battlefield(filter: &crate::target::ObjectFilter) -> bool {
+                    filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield)
+                        || filter.any_of.iter().any(explicit_off_battlefield)
+                }
+                for object in game.objects_in_deterministic_order() {
+                    if (object.zone == crate::zone::Zone::Battlefield || explicit_off_battlefield(filter))
+                        && !game.is_phased_out(object.id) && filter.matches(object, &ctx, game)
                     {
-                        tracker.cant_activate_abilities_of.insert(obj_id);
+                        tracker.cant_activate_abilities_of.insert(object.id);
                     }
                 }
             }
@@ -1664,8 +1693,8 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
-                    filter: filter.clone(),
-                    source,
+                    filter: filter.clone(), source, controller: Some(controller),
+                    iterated_player, tagged_objects: tagged_objects.clone(),
                 };
                 if !tracker.cant_enter_battlefield.contains(&restriction) {
                     tracker.cant_enter_battlefield.push(restriction);

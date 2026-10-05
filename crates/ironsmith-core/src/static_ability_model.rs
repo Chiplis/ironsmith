@@ -971,6 +971,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         activator: Option<PlayerFilter>,
         non_mana_only: bool,
         condition: Option<ICond>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        ability_condition: Option<ActivatedAbilityCostCondition>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        display: Option<String>,
     },
     ChooseColorAsEnters {
         excluded: Option<Color>,
@@ -2408,12 +2412,16 @@ where
                 activator,
                 non_mana_only,
                 condition,
+                ability_condition,
+                display,
             } => StaticAbilityPayload::ActivatedAbilityCostIncrease {
                 filter,
                 increase: map_total_cost(increase, map_cost)?,
                 activator,
                 non_mana_only,
                 condition: condition.map(&mut *map_intervening).transpose()?,
+                ability_condition,
+                display,
             },
             StaticAbilityPayload::ChooseColorAsEnters { excluded, display } => {
                 StaticAbilityPayload::ChooseColorAsEnters { excluded, display }
@@ -4220,6 +4228,8 @@ impl<
                 activator,
                 non_mana_only,
                 condition: existing,
+                ability_condition,
+                display,
             } => StaticAbility {
                 id: self.id,
                 label: self.label,
@@ -4228,6 +4238,8 @@ impl<
                     increase,
                     activator,
                     non_mana_only,
+                    ability_condition,
+                    display,
                     condition: Some(match existing {
                         Some(existing) => existing.and(condition),
                         None => condition,
@@ -4574,19 +4586,25 @@ impl<
             },
         }
     }
-    /// Attach an activation condition to an activated-ability cost
-    /// reduction; other payloads are returned unchanged.
+    /// Add an independent gate without losing an existing target/ability gate.
     pub fn with_activated_ability_cost_condition(
         mut self,
         condition: ActivatedAbilityCostCondition,
     ) -> Self {
-        if let StaticAbilityPayload::ActivatedAbilityCostReduction {
-            condition: existing,
-            ..
-        } = &mut self.payload
-        {
-            *existing = Some(condition);
+        fn add<T, E, C, Cond, ICond>(ability: &mut StaticAbility<T, E, C, Cond, ICond>, condition: ActivatedAbilityCostCondition) {
+            let existing = match &mut ability.payload {
+                StaticAbilityPayload::ActivatedAbilityCostReduction { condition, .. } => condition,
+                StaticAbilityPayload::ActivatedAbilityCostIncrease { ability_condition, .. } => ability_condition,
+                StaticAbilityPayload::Conditional { ability, .. } => { add(ability, condition); return; }
+                _ => return,
+            };
+            *existing = Some(match existing.take() {
+                None => condition,
+                Some(old) if old == condition => old,
+                Some(old) => ActivatedAbilityCostCondition::All(vec![old, condition]),
+            });
         }
+        add(&mut self, condition);
         self
     }
     pub fn reduce_activated_ability_costs_if_targets(
@@ -5332,6 +5350,8 @@ impl<
                 activator: None,
                 non_mana_only: false,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
@@ -5350,6 +5370,8 @@ impl<
                 activator: None,
                 non_mana_only: true,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
@@ -5367,6 +5389,8 @@ impl<
                 activator: Some(activator),
                 non_mana_only,
                 condition: None,
+                ability_condition: None,
+                display: None,
             },
         }
     }
