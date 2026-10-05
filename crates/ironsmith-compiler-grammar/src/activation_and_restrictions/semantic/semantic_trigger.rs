@@ -15,6 +15,8 @@ mod milling_transitions;
 mod player_attack_declarations;
 #[path = "life_change_triggers.rs"]
 mod life_change_triggers;
+#[path = "qualified_player_events.rs"]
+mod qualified_player_events;
 
 // Private-zone membership implies ownership. Parse the complete origin list so
 // a shared or repeated "your" stays attached to every alternative.
@@ -3976,6 +3978,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         );
     }
 
+    if let Some(trigger) = qualified_player_events::parse(tokens)? { return Ok(trigger); }
     if let Some(trigger) = life_change_triggers::parse_life_change_trigger(tokens) {
         return Ok(trigger);
     }

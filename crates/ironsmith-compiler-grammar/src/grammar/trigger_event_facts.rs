@@ -274,6 +274,8 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::PlayerLosesLife(player)
         | TriggerSpec::PlayersLoseLifeOneOrMore(player)
         | TriggerSpec::PlayerLosesGame(player)
+        | TriggerSpec::PlayerDrawsCardDuringTurn { player, .. }
+        | TriggerSpec::PlayerDrawsFirstCardInOwnDrawStep(player)
         | TriggerSpec::PlayerDrawsCard(player)
         | TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player)
         | TriggerSpec::PlayerGivesGift(player)

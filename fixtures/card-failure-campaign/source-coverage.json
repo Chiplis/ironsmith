@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "97bac9efeb1bd58a61e31549bf37d83c631c7a60",
+  "source_implementation_commit": "5d4ab53939b4bb93f9e8f07ec3cc6b1b0ddd0607",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 527,
-    "additional_proposed_compile_entries": 528,
+    "additional_proposed_unique_cards": 549,
+    "additional_proposed_compile_entries": 550,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 22,
-    "source_proposals_excluding_identified_runtime_gaps": 505,
+    "identified_source_proposals_with_known_runtime_gaps": 27,
+    "source_proposals_excluding_identified_runtime_gaps": 522,
     "runtime_gap_inventory_is_not_exhaustive": true
   },
   "workflow": {
@@ -1649,6 +1649,99 @@
         "Native action commitment, immutable signed-attempt journal, accepted-prefix recovery and retained original timing preserve disclosure across failures.",
         "Current decision-player authority, non-dispatch Cancel compatibility, stale-plan/invalid-group prechecks and public proof validation retained.",
         "Earlier four discard costs, five SNC exiled mana grants and three shared-name/color hand costs admitted after coordinated source review; execution remains entirely deferred."
+      ]
+    },
+    {
+      "id": "qualified-player-draws",
+      "stage": 41,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/qualified_player_draws.json.fixture",
+      "baseline_entries": [
+        "Psychic Possession",
+        "The Watcher in the Water",
+        "Wiretapping"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Wedding Ring",
+          "remaining_blocker": "Event-time qualification in combat/cost replacement-added programs outside per-instruction matching scope; follow-up in progress."
+        }
+      ],
+      "implementation_commit": "4fecc6b2ae6dba90a70e4b83923f2ad098cfa541",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Per-player actual draw-step ordinals survive priority, extra steps, native lanes and checkpoints.",
+        "Typed live event subjects and first/during-turn draw filters retain per-card cardinality; Wedding Ring receipt boundary remains partial."
+      ]
+    },
+    {
+      "id": "latest-drawn-hand-cost",
+      "stage": 41,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/latest_drawn_hand_cost.json.fixture",
+      "baseline_entries": [
+        "Jandor's Ring"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "1d9535aa2da9db8c0e82c54132cff3927d3770a1",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Exact latest successful draw incarnation in the payer hand, with no older-card or blink fallback.",
+        "Whole Jandor body and public selection/payment safeguards retained; draw/activation/artifact regressions authored."
+      ]
+    },
+    {
+      "id": "single-source-damage-set",
+      "stage": 41,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/single_source_damage_set.json.fixture",
+      "baseline_entries": [
+        "Friendly Fire",
+        "Volcanic Eruption"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "3c500d3b91d3746e40adbe552b1dcecd96a26b98",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "One sampled amount and deduplicated complete object/player recipient union uses native simultaneous damage.",
+        "Actual prior revealed-card mana value and destroyed-Mountain receipts remain distinct from prior recipients; source/LKI, independent prevention and lifelink scenarios authored."
+      ]
+    },
+    {
+      "id": "complete-anthem-tails",
+      "stage": 41,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/complete_anthem_tails.json.fixture",
+      "baseline_entries": [
+        "Cagemail",
+        "Dancer's Chakrams",
+        "Dark Matter Manipulator",
+        "Dust Corona",
+        "Gauntlets of Light",
+        "Gift of the Deity",
+        "Infiltrator's Magemark",
+        "Ninja's Blades",
+        "Predatory Impetus",
+        "Saddle of the Cavalier",
+        "Skyblinder Staff",
+        "Stalactite Dagger",
+        "Treefolk Umbra",
+        "Treetop Bracers",
+        "Undercover Skrull",
+        "Wall Crawl"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Ghoulish Impetus",
+          "remaining_blocker": "Review exact Aura incarnation across its own state-based graveyard move and extra zone changes before delayed registration; complete tail and normal return tests are authored, no final source claim yet."
+        }
+      ],
+      "implementation_commit": "5d4ab53939b4bb93f9e8f07ec3cc6b1b0ddd0607",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete compound static predicates, quoted grants and type additions preserve every shared-subject/condition operation.",
+        "Exact attachment blocker rules, native continuous goad designation surviving recipient ability loss, all creature types and grouped live quantities.",
+        "Ghoulish delayed-source incarnation remains partial; token-producing members retain the resource-cap dependency."
       ]
     }
   ],
@@ -5231,8 +5324,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Calamity, Galloping Inferno",
@@ -7759,8 +7854,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "complete-anthem-tails"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Danse Macabre",
@@ -7819,8 +7919,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Dark Sphere",
@@ -9355,8 +9457,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Dust of Moments",
@@ -11951,8 +12055,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-set"
+      ]
     },
     {
       "card_name": "Friendly Rivalry",
@@ -12305,8 +12411,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Gavi, Nest Warden",
@@ -12657,8 +12765,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Gigantoplasm",
@@ -15317,8 +15427,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Infinite Coursework",
@@ -15991,8 +16103,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "latest-drawn-hand-cost"
+      ]
     },
     {
       "card_name": "Jar of Eyeballs",
@@ -20886,8 +21000,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "complete-anthem-tails"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Nissa of Shadowed Boughs",
@@ -22904,8 +23023,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Press the Enemy",
@@ -23212,8 +23333,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "qualified-player-draws"
+      ]
     },
     {
       "card_name": "Psychic Surgery",
@@ -25263,8 +25386,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Sadistic Shell Game",
@@ -27088,8 +27213,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Skyclave Shade",
@@ -28047,8 +28174,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "complete-anthem-tails"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Stalking Leonin",
@@ -30607,8 +30739,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "qualified-player-draws"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "The Water Crystal",
@@ -31489,8 +31626,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Treetop Ambusher",
@@ -31509,8 +31648,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Trench Behemoth",
@@ -32023,8 +32164,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-anthem-tails"
+      ]
     },
     {
       "card_name": "Undergrowth",
@@ -33029,8 +33172,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "single-source-damage-set"
+      ]
     },
     {
       "card_name": "Volcano Hellion",
@@ -33255,8 +33400,13 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "mechanic_source_implemented_known_runtime_limit",
+      "source_families": [
+        "complete-anthem-tails"
+      ],
+      "runtime_correctness_gaps": [
+        "token-creation-silent-cap"
+      ]
     },
     {
       "card_name": "Wall of Deceit",
@@ -34322,8 +34472,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "qualified-player-draws"
+      ]
     },
     {
       "card_name": "Witch Hunt",
@@ -35235,7 +35387,12 @@
         "Jinnie Fay, Jetmir's Second // Jinnie Fay, Jetmir's Second",
         "Case of the Pilfered Proof",
         "Fisher's Talent",
-        "Rakish Revelers"
+        "Rakish Revelers",
+        "The Watcher in the Water",
+        "Dancer's Chakrams",
+        "Ninja's Blades",
+        "Stalactite Dagger",
+        "Wall Crawl"
       ],
       "source_location": "crates/ironsmith-engine/src/effects/tokens/lifecycle.rs::TOKEN_PER_PLAYER_LIMIT",
       "behavior": "Native token creation silently truncates at500 token permanents per player. Mechanic source proposals do not establish correct larger outcomes.",

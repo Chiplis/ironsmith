@@ -5456,6 +5456,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.drawn_this_turn {
             parts.push("drawn this turn".to_string());
         }
+        if let Some(player) = &self.last_drawn_this_turn {
+            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
+        }
 
         parts.extend(chosen_trailing_qualifiers);
 

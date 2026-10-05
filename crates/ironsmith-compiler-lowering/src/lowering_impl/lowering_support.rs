@@ -253,6 +253,10 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     amount: count,
                     ..
                 })
+                | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                    amount: count,
+                    ..
+                })
                 | SubjectVerbActionAst::DamagePrevention(
                     DamagePreventionActionAst::PreventDamage { amount: count, .. },
                 )
@@ -805,9 +809,11 @@ fn preserve_counter_removed_this_way_damage_amount(effect: &mut EffectAst) {
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount, ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
-                Some(amount)
-            }
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            }) => Some(amount),
             _ => None,
         };
         if let Some(amount) = amount
@@ -3138,6 +3144,7 @@ fn statement_terminal_needs_participant_result_export(effect: &EffectAst) -> boo
                 action,
                 SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
+                    | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                     | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
             ),

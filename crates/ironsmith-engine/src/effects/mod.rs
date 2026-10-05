@@ -236,3 +236,4 @@ pub use zones::{
 };
 
 pub use replacement::RegisterDamageMultiplierEffect;
+pub use damage::DealDamageToRecipientsEffect;

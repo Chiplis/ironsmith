@@ -2325,3 +2325,79 @@ mod damage_source_phase_publication_tests {
     #[test] fn present_source_publication_control() { check(0, false); check(0, true); }
     #[test] fn departed_source_publication_control() { check(2, false); check(2, true); }
 }
+
+
+pub use ironsmith_core::DealDamageToRecipientsEffect;
+
+impl EffectExecutor for DealDamageToRecipientsEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        // The amount and every recipient belong to one pre-damage world.
+        // In particular, lifelink or a prevention follow-up on one recipient
+        // must not change the amount or membership of a later recipient.
+        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let mut targets = Vec::new();
+        for spec in &self.recipients {
+            let proposed = match spec.base() {
+                ChooseSpec::Player(_)
+                | ChooseSpec::EachPlayer(_)
+                | ChooseSpec::SourceController => resolve_players_from_spec(game, spec, ctx)?
+                    .into_iter()
+                    .map(DamageTarget::Player)
+                    .collect::<Vec<_>>(),
+                ChooseSpec::All(_)
+                | ChooseSpec::Object(_)
+                | ChooseSpec::Tagged(_)
+                | ChooseSpec::SpecificObject(_)
+                | ChooseSpec::Source
+                | ChooseSpec::Iterated => {
+                    let objects =
+                        match crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx) {
+                            Ok(objects) => objects,
+                            Err(ExecutionError::InvalidTarget) => Vec::new(),
+                            Err(error) => return Err(error),
+                        };
+                    objects
+                        .into_iter()
+                        .filter(|id| {
+                            game.object(*id).is_some_and(|object| {
+                                object.zone == crate::zone::Zone::Battlefield
+                                    && object_can_be_dealt_damage(game, *id)
+                            })
+                        })
+                        .map(DamageTarget::Object)
+                        .collect::<Vec<_>>()
+                }
+                _ => {
+                    return Err(ExecutionError::UnresolvableValue(
+                        "damage recipient set requires resolved references or groups".into(),
+                    ));
+                }
+            };
+            for target in proposed {
+                if !targets.contains(&target) {
+                    targets.push(target);
+                }
+            }
+        }
+        if targets.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+        apply_simultaneous_damage_outcome_opts(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+            targets,
+            amount,
+            false,
+            false,
+            ctx.provenance,
+            ctx.cause.clone(),
+            &ctx.replacement,
+            &mut *ctx.decision_maker,
+        )
+    }
+}

@@ -1,5 +1,8 @@
 //! Card-related triggers (draw, discard).
 
+mod qualified_player_draw;
+pub use qualified_player_draw::QualifiedPlayerDrawTrigger;
+
 mod card_put_into_your_graveyard;
 mod player_draws_card;
 mod player_draws_card_except_first_in_draw_step;

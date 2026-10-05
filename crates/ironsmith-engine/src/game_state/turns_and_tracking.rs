@@ -1090,10 +1090,7 @@ impl GameState {
                 assignments.retain(|recipient, _| !removed_ids.contains(recipient));
                 true
             });
-        if self.turn_store.tracked_draw_step_player == Some(player) {
-            self.turn_store.tracked_draw_step_player = None;
-            self.turn_store.cards_drawn_this_draw_step = 0;
-        }
+        self.turn_store.cards_drawn_this_draw_step.remove(&player);
 
         if let Some(combat) = self.combat.as_mut() {
             combat.remember_blocked_attackers();
@@ -1437,8 +1434,7 @@ impl GameState {
         self.refresh_range_of_influence_snapshot();
         self.turn.phase = Phase::Beginning;
         self.turn.step = Some(Step::Untap);
-        self.turn_store.tracked_draw_step_player = None;
-        self.turn_store.cards_drawn_this_draw_step = 0;
+        self.finish_draw_step_tracking();
         self.turn_store.combat_phases_started_this_turn = 0;
         self.turn_store.main_phases_started_this_turn = 0;
         self.turn_store.additional_phases.clear();

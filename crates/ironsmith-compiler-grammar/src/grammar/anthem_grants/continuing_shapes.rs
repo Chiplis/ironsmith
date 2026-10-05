@@ -19,6 +19,11 @@ pub struct PersistentAnthemTailHead {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContinuingSegmentShape<'a> {
     CantBlock,
+    CantAttack,
+    MustBeBlocked,
+    AllMustBlock,
+    AssignUsingToughness,
+    Goaded,
     CantAttackAlone,
     MustAttack,
     CantBeBlockedByMoreThan(usize),
@@ -89,6 +94,18 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
     // One declared alternation: the alternatives are exclusive shapes, and the
     // first that reads the input names it.
     let alternation = None::<ContinuingSegmentShape<'_>>
+        .or_else(|| {
+            for (phrases, shape) in [
+                (&[&["cant", "attack"][..], &["can't", "attack"], &["cannot", "attack"], &["can", "t", "attack"]][..], ContinuingSegmentShape::CantAttack),
+                (&[&["must", "be", "blocked", "if", "able"][..]][..], ContinuingSegmentShape::MustBeBlocked),
+                (&[&["all", "creatures", "able", "to", "block", "it", "do", "so"][..]][..], ContinuingSegmentShape::AllMustBlock),
+                (&[&["assigns", "combat", "damage", "equal", "to", "its", "toughness", "rather", "than", "its", "power"][..], &["assign", "combat", "damage", "equal", "to", "their", "toughness", "rather", "than", "their", "power"]][..], ContinuingSegmentShape::AssignUsingToughness),
+                (&[&["is", "goaded"][..], &["are", "goaded"]][..], ContinuingSegmentShape::Goaded),
+            ] {
+                if parse_complete_any_phrase(tokens, phrases) { return Some(shape); }
+            }
+            None
+        })
         .or_else(|| {
             if parse_complete_any_phrase(
                 tokens,

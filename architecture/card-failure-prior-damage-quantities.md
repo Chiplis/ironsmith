@@ -30,3 +30,5 @@ Normal tools target `prior_damage_quantities`: all four metadata-bearing strict/
 Friendly Fire and Volcanic Eruption remain **partial and uncounted** in this checkpoint. Their single-source damage goes to multiple object/player recipients with a shared prior-result amount. Existing compound fan-out lowers to sequential player/object effects; simply parsing their suffix quantity would not establish simultaneous damage, shared prevention allocation, or a single lifelink event. A bounded one-source recipient-set effect can gather the amount and recipient set before entering the existing simultaneous damage executor. That mechanism, exact prior revealed-object / destroyed-Mountain result binding, and tests must precede any full-card claim.
 
 Whipkeeper and Impact Resonance remain separate damage-history primitives. No new coverage is claimed for them.
+
+The later `card-failure-single-source-damage-set.md` checkpoint implements the two remaining recipient-set bodies and their exact fixtures. This document's checkpoint remains four identities.

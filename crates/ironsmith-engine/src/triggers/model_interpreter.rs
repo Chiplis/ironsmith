@@ -560,6 +560,8 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::YouDrawCard => crate::triggers::Trigger::you_draw_card(),
         TriggerKind::Miracle => crate::triggers::Trigger::miracle(),
+        TriggerKind::PlayerDrawsCardDuringTurn { player, during_turn } => crate::triggers::Trigger::new(crate::triggers::QualifiedPlayerDrawTrigger { player, during_turn: Some(during_turn), first_in_own_draw_step: false }),
+        TriggerKind::PlayerDrawsFirstCardInOwnDrawStep { player } => crate::triggers::Trigger::new(crate::triggers::QualifiedPlayerDrawTrigger { player, during_turn: None, first_in_own_draw_step: true }),
         TriggerKind::PlayerDrawsCard { player } => {
             crate::triggers::Trigger::player_draws_card(player)
         }

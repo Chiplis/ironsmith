@@ -117,7 +117,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
     Some(StaticAbilityShapeResolution::Ability(ability))
 }
 
-fn blocking_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+pub(crate) fn blocking_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let fact = cant_shapes::parse_blocking_cant_fact_tokens(tokens)?;
     let display = format_negated_restriction_display(tokens);
     Some(match fact {

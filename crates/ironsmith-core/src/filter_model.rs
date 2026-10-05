@@ -2389,6 +2389,10 @@ pub struct ObjectFilter {
     /// must contain a color. Colorless objects do not share a color.
     #[cfg_attr(feature = "serde", serde(default))]
     pub shares_color: bool,
+    /// Exact latest successfully drawn incarnation for a matching player this
+    /// turn. Never falls back when that card leaves its current zone.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub last_drawn_this_turn: Option<PlayerFilter>,
 }
 
 impl ObjectFilter {
@@ -3028,6 +3032,7 @@ impl ObjectFilter {
             || self.counters_put_on_this_turn.is_some()
             || self.discarded_or_cycled_this_turn_by.is_some()
             || self.drawn_this_turn
+            || self.last_drawn_this_turn.is_some()
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
@@ -5866,6 +5871,9 @@ impl ObjectFilter {
         }
         if self.drawn_this_turn {
             parts.push("drawn this turn".to_string());
+        }
+        if let Some(player) = &self.last_drawn_this_turn {
+            parts.push(format!("drawn last this turn by {}", describe_player_filter(player)));
         }
 
         parts.extend(chosen_trailing_qualifiers);

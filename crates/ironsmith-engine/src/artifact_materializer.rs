@@ -182,6 +182,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CumulativeUpkeepEffect" => {
             decode_as::<T, ironsmith_core::CumulativeUpkeepEffect<wire::WireEffect>>(effect)
         }
+        "DealDamageToRecipientsEffect" => decode_as::<T, ironsmith_core::DealDamageToRecipientsEffect>(effect),
         "DealDamageEffect" => decode_as::<T, ironsmith_core::DealDamageEffect>(effect),
         "DealDistributedDamageEffect" => {
             decode_as::<T, ironsmith_core::DealDistributedDamageEffect>(effect)
@@ -1354,6 +1355,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::CounterEffect,
             crate::effects::CrewCostEffect,
             crate::effects::DealDamageEffect,
+            crate::effects::DealDamageToRecipientsEffect,
             crate::effects::DevourEffect,
             crate::effects::DirectionalAdjacentPlayerControlEffect,
             crate::effects::DiscardHandEffect,

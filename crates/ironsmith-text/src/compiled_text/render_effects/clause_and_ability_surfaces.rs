@@ -9516,12 +9516,22 @@ pub(crate) fn describe_static_ability_with_subject(
         static_ability.compiled_model().map(|model| &model.payload)
     {
         let mut filter = filter.clone();
+        let attached_surface = filter.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                && matches!(constraint.relation, crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+        });
+        if attached_surface && filter.with_attached_object.as_ref().is_some_and(|inner| **inner == crate::target::ObjectFilter::source()) {
+            // Redundant runtime proof of this exact attachment must not print
+            // as a second unrelated attachment condition.
+            filter.with_attached_object = None;
+        }
+        let singular = filter.source || attached_surface;
         let relation = filter.power_relative_to_source.take();
         let mut affected = capitalize_first(&describe_count_filter_value_subject(&filter));
         if relation == Some(ironsmith_core::SourcePowerRelation::LessThanSource) {
             affected.push_str(&format!(" with power less than {subject}'s power"));
         }
-        return format!("{affected} are goaded");
+        return format!("{affected} {} goaded", if singular { "is" } else { "are" });
     }
     if let Some(tax) = static_ability.attack_cost_model() {
         let mut attackers = tax.attackers().clone();

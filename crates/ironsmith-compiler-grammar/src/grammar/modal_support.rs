@@ -509,6 +509,10 @@ fn replace_modal_header_x_in_effect_ast(
                 amount, ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..

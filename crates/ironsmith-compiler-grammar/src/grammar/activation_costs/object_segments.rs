@@ -142,6 +142,15 @@ pub fn parse_discard_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
     if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, false) { return group; }
+    if crate::lexer::token_word_refs(tokens) == ["discard", "the", "last", "card", "you", "drew", "this", "turn"] {
+        return Ok(ActivationCostSegmentCst::DiscardFiltered {
+            count: 1, card_types: Vec::new(), supertypes: Vec::new(),
+            filter: Some(ObjectFilter { zone: Some(Zone::Hand), owner: Some(crate::target::PlayerFilter::You),
+                last_drawn_this_turn: Some(crate::target::PlayerFilter::You), ..Default::default() }),
+            random: false, name: None, other: false,
+        });
+    }
+
     let shape = match primitives::parse_all(tokens, parse_discard_cost_shape_lexed, "discard-cost") {
         Ok(shape) => shape,
         Err(_) => return parse_typed_discard_selector(tokens),

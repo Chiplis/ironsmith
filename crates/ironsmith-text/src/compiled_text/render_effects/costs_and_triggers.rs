@@ -796,6 +796,11 @@ pub(super) fn describe_simple_discard_cost(
         return None;
     };
     let count = count.max(0) as u32;
+    if count == 1 && discard.card_filter.as_ref().is_some_and(|filter|
+        *filter == ObjectFilter { zone: Some(Zone::Hand), owner: Some(PlayerFilter::You),
+            last_drawn_this_turn: Some(PlayerFilter::You), ..Default::default() }) {
+        return Some("Discard the last card you drew this turn".into());
+    }
     if count == 1
         && let Some(filter) = discard.card_filter.as_ref()
         && filter.colors.is_some()

@@ -439,6 +439,8 @@ pub enum TriggerSpec {
     },
     YouDrawCard,
     PlayerDrawsCard(PlayerFilter),
+    PlayerDrawsCardDuringTurn { player: PlayerFilter, during_turn: PlayerFilter },
+    PlayerDrawsFirstCardInOwnDrawStep(PlayerFilter),
     PlayerDrawsCardNotDuringTurn {
         player: PlayerFilter,
         during_turn: PlayerFilter,

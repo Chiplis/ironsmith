@@ -11686,7 +11686,11 @@ pub fn replace_unbound_x_in_damage_effect(
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage {
                 amount, ..
             })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. }) => {
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            }) => {
                 if value_contains_unbound_x(amount) {
                     *amount = replace_unbound_x_with_value(amount.clone(), replacement, clause)?;
                 } else if amount.unhinted() == replacement.unhinted()
@@ -12090,6 +12094,10 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
+            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                ..
+            })
             | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
                 amount,
                 ..

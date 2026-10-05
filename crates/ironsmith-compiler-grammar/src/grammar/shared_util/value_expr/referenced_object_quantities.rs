@@ -142,7 +142,7 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     // subsequent instruction happened to name. Its result memory survives a
     // replacement destination without borrowing an unrelated later object.
     if rest.len() >= 4
-        && rest[0] == "milled"
+        && matches!(rest[0], "milled" | "revealed")
         && matches!(rest[1], "cards" | "card's" | "card")
         && rest[2..4] == ["mana", "value"]
     {
@@ -152,7 +152,11 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
                     ironsmith_core::EffectMetricSource::AffectedObjects,
                     ironsmith_core::EffectMetric::FirstManaValue,
                 )
-                .with_action(ironsmith_core::PriorEffectAction::Milled),
+                .with_action(if rest[0] == "milled" {
+                    ironsmith_core::PriorEffectAction::Milled
+                } else {
+                    ironsmith_core::PriorEffectAction::Revealed
+                }),
             ),
             offset + 4,
         ));

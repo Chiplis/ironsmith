@@ -35,4 +35,12 @@ pub enum DamageActionAst {
     ExcessDamageToController {
         condition: Option<PredicateAst>,
     },
+    /// One source deals one shared amount to a union of referenced recipients
+    /// and quantified groups. The complete set is sampled before any damage.
+    DealDamageToRecipients {
+        amount: Value,
+        recipients: Vec<TargetAst>,
+        object_groups: Vec<ObjectFilter>,
+        player_groups: Vec<PlayerFilter>,
+    },
 }

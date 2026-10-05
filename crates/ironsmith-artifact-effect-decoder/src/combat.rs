@@ -12,6 +12,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::AssignNoCombatDamageEffect>(payload).map(Some)
         }
         "DealDamageEffect" => decode_as::<ironsmith_core::DealDamageEffect>(payload).map(Some),
+        "DealDamageToRecipientsEffect" => {
+            decode_as::<ironsmith_core::DealDamageToRecipientsEffect>(payload).map(Some)
+        }
         "DealDistributedDamageEffect" => {
             decode_as::<ironsmith_core::DealDistributedDamageEffect>(payload).map(Some)
         }
@@ -80,6 +83,10 @@ pub(super) fn map_card_ids(
     match kind {
         "AssignNoCombatDamageEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::AssignNoCombatDamageEffect,
+        >(payload, context)
+        .map(Some),
+        "DealDamageToRecipientsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::DealDamageToRecipientsEffect,
         >(payload, context)
         .map(Some),
         "DealDamageEffect" => {

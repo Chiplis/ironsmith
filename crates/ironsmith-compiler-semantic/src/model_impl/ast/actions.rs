@@ -2030,6 +2030,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("target", target)
                 .finish(),
+            Self::Damage(DamageActionAst::DealDamageToRecipients {
+                amount,
+                recipients,
+                object_groups,
+                player_groups,
+            }) => f
+                .debug_struct("DealDamageToRecipients")
+                .field("amount", amount)
+                .field("recipients", recipients)
+                .field("object_groups", object_groups)
+                .field("player_groups", player_groups)
+                .finish(),
             Self::Damage(DamageActionAst::DealDamageEach { amount, filter }) => f
                 .debug_struct("DealDamageEach")
                 .field("amount", amount)

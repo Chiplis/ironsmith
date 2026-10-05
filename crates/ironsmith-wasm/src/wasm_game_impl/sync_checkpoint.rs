@@ -1045,6 +1045,42 @@ struct SyncRulesState {
     /// Future schedule replacements and the actual-turn control boundary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scheduled_skips: Option<SyncScheduledSkips>,
+    /// Draw ordinals are lane-local public rules state, including draw-step priority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    draw_step_counts: Option<Vec<(u8, u32)>>,
+}
+
+fn sync_draw_step_counts(store: &ironsmith::game_state::TurnStore) -> Vec<(u8, u32)> {
+    let mut counts: Vec<_> = store.cards_drawn_this_draw_step.iter().map(|(p, n)| (p.0, *n)).collect();
+    counts.sort_unstable();
+    counts
+}
+
+fn restore_draw_step_counts(
+    store: &mut ironsmith::game_state::TurnStore,
+    counts: Option<&[(u8, u32)]>,
+    seats: &[PlayerId],
+    phase: Phase,
+    step: Option<Step>,
+) -> Result<(), String> {
+    let in_draw_step = phase == Phase::Beginning && step == Some(Step::Draw);
+    // Old checkpoints never retained draw-step ordinals. Outside that step
+    // they are safely empty; inside it, neither zero nor the turn-wide count
+    // can reconstruct the truth (extra draw steps are independent).
+    let counts = match counts {
+        Some(counts) => counts,
+        None if in_draw_step => return Err("legacy draw-step checkpoint lacks actual draw ordinals".into()),
+        None => &[],
+    };
+    let mut restored = std::collections::HashMap::new();
+    for (seat, count) in counts {
+        let player = PlayerId::from_index(*seat);
+        if !in_draw_step || *count == 0 || !seats.contains(&player)
+            || restored.insert(player, *count).is_some()
+        { return Err("invalid draw-step ordinal state".into()); }
+    }
+    store.cards_drawn_this_draw_step = restored;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1692,6 +1728,9 @@ struct SyncGrandMeleeMarker {
     retained_extra_turn_waiting: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scheduled_skips: Option<SyncScheduledSkips>,
+    /// Draw ordinals are lane-local public rules state, including draw-step priority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    draw_step_counts: Option<Vec<(u8, u32)>>,
     turn: SyncTurn,
     #[serde(default)]
     extra_turns: Vec<u8>,
@@ -2418,6 +2457,7 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                     normal_turn_pending: marker.normal_turn_pending,
                     retained_extra_turn_waiting: marker.retained_extra_turn_waiting,
                     scheduled_skips: Some(SyncScheduledSkips::from_store(&marker.turn_store)),
+                    draw_step_counts: Some(sync_draw_step_counts(&marker.turn_store)),
                     turn: sync_turn_state(&marker.turn),
                     extra_turns: marker
                         .turn_store
@@ -2511,6 +2551,12 @@ fn grand_melee_restore_from_sync(
                 } else {
                     turn_store.continuous_control_turn_started = Some(marker.turn.turn_number);
                 }
+                let seats = turn_store.turn_order.clone();
+                restore_draw_step_counts(
+                    &mut turn_store, marker.draw_step_counts.as_deref(), &seats,
+                    sync_phase_from_name(&marker.turn.phase)?,
+                    marker.turn.step.as_deref().map(sync_step_from_name).transpose()?,
+                )?;
                 Ok(ironsmith::GrandMeleeMarkerRestore {
                     number: marker.number,
                     holder: PlayerId::from_index(marker.holder),
@@ -3475,6 +3521,7 @@ impl WasmGame {
         let (regeneration_shields, regenerated_this_turn) = self.game.regeneration_state();
         Ok(SyncRulesState {
             scheduled_skips: Some(SyncScheduledSkips::from_game(&self.game)),
+            draw_step_counts: Some(sync_draw_step_counts(&self.game.turn_store)),
             regeneration_shields: regeneration_shields.into_iter().map(|(id, count)| (id.0, count)).collect(),
             regenerated_this_turn: regenerated_this_turn.into_iter().map(|(id, count)| (id.0, count)).collect(),
             combat: if grand_melee {
@@ -3791,6 +3838,11 @@ impl WasmGame {
     }
 
     fn restore_sync_rules_state(&mut self, rules: &SyncRulesState, grand_melee: bool) -> Result<(), String> {
+        let seats: Vec<_> = self.game.players.iter().map(|p| p.id).collect();
+        restore_draw_step_counts(
+            &mut self.game.turn_store, rules.draw_step_counts.as_deref(), &seats,
+            self.game.turn.phase, self.game.turn.step,
+        )?;
         if let Some(schedule) = &rules.scheduled_skips { schedule.restore(&mut self.game)?; }
         else {
             // Older checkpoints omit schedule facts, but their per-object
@@ -10063,5 +10115,43 @@ mod completed_cast_origin_wire_tests {
         encoded["rules"].as_object_mut().unwrap().remove("completedCastOrigins");
         let legacy: SyncCheckpoint = serde_json::from_value(encoded).unwrap();
         assert!(legacy.rules.completed_cast_origins.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod draw_step_ordinal_transport_tests {
+    use super::*;
+    #[test]
+    fn draw_step_checkpoint_preserves_independent_ordinals_and_rejects_unknown_legacy_state() {
+        let _guard = crate::test_id_counter_guard();
+        let mut host = WasmGame::new();
+        host.initialize_empty_match(vec!["A".into(), "B".into()], 20, 1);
+        host.game.turn.phase = Phase::Beginning; host.game.turn.step = Some(Step::Draw);
+        host.game.turn_store.cards_drawn_this_draw_step.insert(PlayerId(0), 3);
+        let encoded = serde_json::to_value(host.build_sync_checkpoint()).unwrap();
+        let mut guest = WasmGame::new();
+        guest.apply_sync_checkpoint(serde_json::from_value(encoded.clone()).unwrap()).unwrap();
+        assert_eq!(guest.game.turn_store.cards_drawn_this_draw_step.get(&PlayerId(0)), Some(&3));
+        let mut old = encoded;
+        old["rules"].as_object_mut().unwrap().remove("drawStepCounts");
+        assert!(WasmGame::new().apply_sync_checkpoint(serde_json::from_value(old).unwrap()).is_err());
+    }
+    #[test]
+    fn lane_local_draw_counts_round_trip_and_malformed_counts_do_not_mutate_store() {
+        let mut lane = ironsmith::game_state::TurnStore::default();
+        lane.cards_drawn_this_draw_step.insert(PlayerId(0), 2);
+        lane.cards_drawn_this_draw_step.insert(PlayerId(1), 4);
+        let wire: Vec<(u8, u32)> = serde_json::from_str(&serde_json::to_string(&sync_draw_step_counts(&lane)).unwrap()).unwrap();
+        let mut peer = ironsmith::game_state::TurnStore::default();
+        let seats = [PlayerId(0), PlayerId(1)];
+        restore_draw_step_counts(&mut peer, Some(&wire), &seats, Phase::Beginning, Some(Step::Draw)).unwrap();
+        assert_eq!(peer.cards_drawn_this_draw_step, lane.cards_drawn_this_draw_step);
+        for invalid in [vec![(0, 1), (0, 2)], vec![(2, 1)], vec![(0, 0)]] {
+            assert!(restore_draw_step_counts(&mut peer, Some(&invalid), &seats, Phase::Beginning, Some(Step::Draw)).is_err());
+            assert_eq!(peer.cards_drawn_this_draw_step, lane.cards_drawn_this_draw_step);
+        }
+        assert!(restore_draw_step_counts(&mut peer, Some(&wire), &seats, Phase::FirstMain, None).is_err());
+        restore_draw_step_counts(&mut peer, None, &seats, Phase::FirstMain, None).unwrap();
+        assert!(peer.cards_drawn_this_draw_step.is_empty());
     }
 }

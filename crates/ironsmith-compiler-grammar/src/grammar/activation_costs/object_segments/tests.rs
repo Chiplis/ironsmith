@@ -225,3 +225,15 @@ fn complete_discard_selectors_preserve_color_historic_x_and_other() {
         assert!(parse_discard_segment_tokens(&lex_line(text, 0).unwrap()).is_err(), "{text}");
     }
 }
+
+#[test]
+fn latest_draw_discard_cost_keeps_exact_player_and_history_predicate() {
+    let tokens = lex_line("Discard the last card you drew this turn", 0).unwrap();
+    let ActivationCostSegmentCst::DiscardFiltered { count, filter: Some(filter), .. } =
+        parse_discard_segment_tokens(&tokens).unwrap() else { panic!("latest-draw filter"); };
+    assert_eq!(count, 1);
+    assert_eq!(filter.zone, Some(Zone::Hand));
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(filter.last_drawn_this_turn, Some(crate::target::PlayerFilter::You));
+    assert!(parse_discard_segment_tokens(&lex_line("Discard the last card you drew this turn or any card", 0).unwrap()).is_err());
+}
