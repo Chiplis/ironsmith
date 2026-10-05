@@ -2827,7 +2827,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
             }
         }
         if candidates.is_empty() && !hidden_hand_choice {
-            if count.min == 0 || resolved_dynamic_count.is_some() {
+            if count.min == 0 || count.is_random() || resolved_dynamic_count.is_some() {
                 return Ok(Vec::new());
             }
             return Err(ExecutionError::InvalidTarget);
@@ -2846,7 +2846,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
             };
             if count.is_up_to_dynamic_x() {
                 (0, x.min(candidates.len()))
-            } else if spec.count_value().is_some() {
+            } else if spec.count_value().is_some() || count.is_random() {
                 let bounded = x.min(candidates.len());
                 (bounded, bounded)
             } else if x > candidates.len() && !hidden_hand_choice {

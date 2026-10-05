@@ -19,7 +19,9 @@ pub(crate) fn describe_choose_then_return_from_graveyard(
         || choose.bottom_only
         || choose.replace_tagged_objects
         || choose.count_value.is_some()
-        || (choose_exact_count(choose) != Some(1) && choose.aggregate_constraint.is_none())
+        || (choose_exact_count(choose) != Some(1)
+            && !(choose.count.is_random() && choose_exact_count(choose).is_some())
+            && choose.aggregate_constraint.is_none())
         || choose_primary_zone(choose) != Some(Zone::Graveyard)
         || !choose.additional_zones.is_empty()
         || returned.as_aura.is_some()

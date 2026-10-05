@@ -2283,6 +2283,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);
+        if choose.count.is_random() {
+            selection.push_str(" at random");
+        }
         selection.push_str(&describe_runtime_choice_where_clause(choose).unwrap_or_default());
         selection.push_str(&where_x_suffix);
         return selection;
@@ -2295,6 +2298,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             count_text
         };
         let mut selection = describe_plural_selection(count_text, &card_desc);
+        if choose.count.is_random() {
+            selection.push_str(" at random");
+        }
         selection.push_str(&where_x_suffix);
         return selection;
     }

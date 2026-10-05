@@ -138,12 +138,10 @@ pub fn parse_enters_with_counters_line(
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
-    // "enters tapped with five slumber counters on it" (Arixmethes) is the
-    // tapped rule's line.
-    if full_words
-        .windows(2)
-        .any(|pair| pair[0] == "tapped" && pair[1] == "with")
-    {
+    // The complete tapped-and-counters production owns both entry effects.
+    // Its grammar also recognizes the optional conjunction in "tapped and
+    // with ..."; the counters-only reader must not drop that entry modifier.
+    if etb_grammar::parse_enters_tapped_with_counters_clause_tokens(tokens).is_some() {
         return Ok(None);
     }
     if let Some(shape) = etb_grammar::parse_enters_with_dual_for_each_counter_tokens(tokens) {
@@ -1730,6 +1728,11 @@ pub fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
 pub fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // Both complete readers describe the same unfiltered replacement. Keep
+    // one canonical payload instead of competing AllPermanents/Filter forms.
+    if is_permanents_enter_tapped_line_lexed(tokens) {
+        return parse_permanents_enter_tapped_line(tokens);
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     // A resolving "... enter tapped this turn" sentence establishes a
     // temporary replacement rule. It is not a static ability of the spell
@@ -2136,6 +2139,29 @@ fn parse_enters_tapped_unless_control_quantity_static_ability(
 #[cfg(test)]
 mod etb_enters_tapped_with_counters_tests {
     use super::*;
+
+    #[test]
+    fn optional_conjunction_keeps_both_entry_effects_under_one_reader() {
+        for text in [
+            "This artifact enters tapped and with three charge counters on it.",
+            "This artifact enters tapped with three charge counters on it.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let both = parse_enters_tapped_with_counters_line(&tokens).unwrap().unwrap();
+            assert_eq!(both.len(), 2);
+            assert!(parse_enters_with_counters_line(&tokens).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn unfiltered_entry_reader_has_the_same_canonical_payload() {
+        let tokens = crate::lexer::lex_line("Permanents enter tapped.", 0).unwrap();
+        assert_eq!(parse_enters_tapped_for_filter_line(&tokens).unwrap(),
+            parse_permanents_enter_tapped_line(&tokens).unwrap());
+        let filtered = crate::lexer::lex_line("Artifacts your opponents control enter tapped.", 0).unwrap();
+        assert!(parse_permanents_enter_tapped_line(&filtered).unwrap().is_none());
+        assert!(parse_enters_tapped_for_filter_line(&filtered).unwrap().is_some());
+    }
 
     #[test]
     fn enters_tapped_with_counters_uses_capture_parser() {

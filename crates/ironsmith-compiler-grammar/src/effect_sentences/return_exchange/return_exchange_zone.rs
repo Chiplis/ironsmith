@@ -673,6 +673,25 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 target =
                     TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
             }
+            // The shape parser removes the selection modifier before parsing
+            // the noun phrase. Preserve it as executable count metadata for
+            // zone moves, just as ReturnToHand preserves its random flag.
+            if shape.random
+                && destination.zone != crate::grammar::effects::ReturnZoneShape::Hand
+            {
+                target = match target {
+                    TargetAst::WithCount(inner, count) => {
+                        TargetAst::WithCount(inner, count.at_random())
+                    }
+                    TargetAst::WithCountValue(inner, count, value) => {
+                        TargetAst::WithCountValue(inner, count.at_random(), value)
+                    }
+                    target => TargetAst::WithCount(
+                        Box::new(target),
+                        crate::effect::ChoiceCount::exactly(1).at_random(),
+                    ),
+                };
+            }
             if choice.is_some() && target_tokens.iter().any(|token| token.is_word("target")) {
                 choice_prefix.push(EffectAst::subject_verb_explicit_target_only_for_chooser(
                     target,

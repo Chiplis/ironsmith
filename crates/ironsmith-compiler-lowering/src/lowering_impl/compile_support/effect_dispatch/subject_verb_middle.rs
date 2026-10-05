@@ -1904,6 +1904,7 @@ pub(super) fn compile_subject_verb_middle(
                     }
                     ChooseSpec::WithCount(inner, count)
                         if (count.is_single()
+                            || count.is_random()
                             || count_value.is_some()
                             || inner.target_set_aggregate_constraint().is_some())
                             && matches!(inner.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty() && filter.zone == Some(Zone::Graveyard)) =>

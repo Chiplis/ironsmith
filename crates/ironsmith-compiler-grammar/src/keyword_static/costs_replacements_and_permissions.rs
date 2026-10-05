@@ -2947,11 +2947,14 @@ pub fn parse_creatures_cant_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if is_creatures_cant_block_line_lexed(tokens) {
-        return Ok(Some(StaticAbilityAst::GrantStaticAbility {
-            filter: ObjectFilter::creature(),
-            ability: Box::new(StaticAbilityAst::Static(StaticAbility::cant_block())),
-            condition: None,
-        }));
+        // This is a rule imposed by the source, not an ability granted to
+        // every creature. Use the same typed restriction as the complete
+        // generic reader, including its live source lifetime.
+        let Some(abilities) = parse_cant_clauses(tokens)? else { return Ok(None); };
+        let [ability]: [StaticAbility; 1] = abilities.try_into().map_err(|_| {
+            CardTextError::ParseError("a complete creatures-cant-block clause must contain one restriction".into())
+        })?;
+        return Ok(Some(StaticAbilityAst::Static(ability)));
     }
     Ok(None)
 }

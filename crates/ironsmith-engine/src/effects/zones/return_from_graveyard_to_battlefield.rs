@@ -644,6 +644,132 @@ mod tests {
         assert!(format!("{:?}", cloned).contains("ReturnFromGraveyardToBattlefieldEffect"));
     }
 
+    struct RandomOnly;
+    impl DecisionMaker for RandomOnly {
+        fn decide_objects(&mut self, _: &GameState, _: &SelectObjectsContext) -> Vec<ObjectId> {
+            panic!("random returns must not delegate object selection to a player");
+        }
+    }
+
+    fn random_return(count: crate::effect::ChoiceCount) -> ReturnFromGraveyardToBattlefieldEffect {
+        ReturnFromGraveyardToBattlefieldEffect::new(
+            ChooseSpec::Object(
+                crate::filter::ObjectFilter::creature()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(crate::target::PlayerFilter::You),
+            ).with_count(count.at_random()),
+            false,
+        )
+    }
+
+    #[test]
+    fn random_return_samples_without_replacement_and_clamps_empty_or_insufficient_pools() {
+        for dynamic in [false, true] {
+            for size in [0, 1, 4] {
+                let mut game = setup_game();
+                let alice = PlayerId(0);
+                let source = game.new_object_id();
+                for index in 0..size {
+                    create_creature_in_graveyard(&mut game, &format!("Eligible {index}"), alice);
+                }
+                let foreign = create_creature_in_graveyard(&mut game, "Foreign", PlayerId(1));
+                let before = game.irreversible_random_count();
+                let count = if dynamic { crate::effect::ChoiceCount::dynamic_x() }
+                    else { crate::effect::ChoiceCount::exactly(2) };
+                let mut dm = RandomOnly;
+                let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_x(2);
+                let outcome = random_return(count).execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(game.battlefield.len(), size.min(2));
+                assert_eq!(game.players[0].graveyard.len(), size.saturating_sub(2));
+                assert_eq!(game.object(foreign).unwrap().zone, Zone::Graveyard);
+                assert_eq!(game.irreversible_random_count(), before + u64::from(size > 0));
+                if size > 0 {
+                    let crate::effect::OutcomeValue::Objects(ids) = outcome.value else {
+                        panic!("expected successful return identities");
+                    };
+                    assert_eq!(ids.len(), size.min(2));
+                    assert_eq!(ids.iter().copied().collect::<std::collections::HashSet<_>>().len(), ids.len());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn random_return_rolls_back_random_authority_and_objects_on_later_value_error() {
+        let mut game = setup_game();
+        let alice = PlayerId(0);
+        let source = game.new_object_id();
+        let original = create_creature_in_graveyard(&mut game, "Eligible", alice);
+        game.queue_transcript_random_seeds([9876]);
+        let before_seed = game.random_seed();
+        let before_count = game.irreversible_random_count();
+        let before_ids = game.next_object_id_counter();
+        let effect = random_return(crate::effect::ChoiceCount::exactly(1))
+            .with_entry_counter(ironsmith_core::BattlefieldEntryCounterSpec::new(
+                crate::CounterType::PlusOnePlusOne,
+                crate::effect::Value::X,
+                ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+            ));
+        let mut dm = RandomOnly;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::UnresolvableValue(_))));
+        assert_eq!(game.random_seed(), before_seed);
+        assert_eq!(game.irreversible_random_count(), before_count);
+        assert_eq!(game.next_object_id_counter(), before_ids);
+        assert_eq!(game.object(original).unwrap().zone, Zone::Graveyard);
+        assert!(game.battlefield.is_empty());
+        // A retry consumes the same queued authority, after supplying X.
+        ctx.x_value = Some(3);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = outcome.value else { panic!("expected return") };
+        assert_eq!(game.random_seed(), 9876);
+        assert_eq!(game.irreversible_random_count(), before_count + 1);
+        assert_eq!(game.counter_count(ids[0], crate::CounterType::PlusOnePlusOne), 3);
+    }
+
+    #[test]
+    fn random_return_pending_entry_choice_does_not_commit_the_draw_or_move() {
+        struct PauseColor { pending: bool, pause: bool }
+        impl DecisionMaker for PauseColor {
+            fn decide_colors(&mut self, _: &GameState, _: &crate::decisions::context::ColorsContext) -> Vec<crate::color::Color> {
+                self.pending = self.pause;
+                vec![crate::color::Color::Blue]
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        let mut game = setup_game();
+        let alice = PlayerId(0);
+        let source = game.new_object_id();
+        let original = create_creature_in_graveyard(&mut game, "Color entrant", alice);
+        game.object_mut(original).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::choose_color_as_enters(None, "As this enters, choose a color.".into()),
+        ));
+        game.queue_transcript_random_seeds([4567]);
+        let before_ids = game.next_object_id_counter();
+        let before_seed = game.random_seed();
+        let before_count = game.irreversible_random_count();
+        let mut dm = PauseColor { pending: false, pause: true };
+        let effect = random_return(crate::effect::ChoiceCount::exactly(1));
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            effect.execute(&mut game, &mut ctx).unwrap();
+        }
+        assert!(dm.pending);
+        assert_eq!(game.object(original).unwrap().zone, Zone::Graveyard);
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.next_object_id_counter(), before_ids);
+        assert_eq!(game.random_seed(), before_seed);
+        assert_eq!(game.irreversible_random_count(), before_count);
+        dm.pending = false;
+        dm.pause = false;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+        let crate::effect::OutcomeValue::Objects(ids) = outcome.value else { panic!("expected return") };
+        assert_eq!(game.chosen_color(ids[0]), Some(crate::color::Color::Blue));
+        assert_eq!(game.random_seed(), 4567);
+        assert_eq!(game.irreversible_random_count(), before_count + 1);
+    }
+
     #[test]
     fn test_reanimate_get_target_spec() {
         let effect = ReturnFromGraveyardToBattlefieldEffect::creature();
