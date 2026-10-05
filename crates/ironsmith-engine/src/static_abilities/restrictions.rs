@@ -632,6 +632,14 @@ impl StaticAbilityKind for CounterLimit {
     }
 }
 
+/// A restriction on copying this spell, not abilities of its source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantBeCopied;
+impl StaticAbilityKind for CantBeCopied {
+    fn id(&self) -> StaticAbilityId { StaticAbilityId::CantBeCopied }
+    fn display(&self) -> String { "This spell can't be copied".into() }
+}
+
 /// "This spell can't be countered"
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CantBeCountered;

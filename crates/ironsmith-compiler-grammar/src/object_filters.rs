@@ -1598,6 +1598,12 @@ pub fn parse_object_filter_words(
     word_refs: &[&str],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if word_refs.windows(5).any(|words| words == ["with", "the", "same", "name", "as"]) {
+        let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
+        if let Some(result) = crate::grammar::filters::parse_live_name_relation(&tokens, other) {
+            return result;
+        }
+    }
     let (entry_sacrifice_words, sacrificed_as_it_entered) = if word_refs.len()
         > SACRIFICED_AS_IT_ENTERED_SUFFIX.len()
         && crate::word_primitives::parse_sequence_suffix(word_refs, SACRIFICED_AS_IT_ENTERED_SUFFIX)
@@ -1700,6 +1706,9 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = crate::grammar::filters::parse_live_name_relation(tokens, other) {
+        return result;
+    }
     if let Some(split) = split_source_relation_phrases(tokens) {
         let mut filter = parse_object_filter_lexed(&split.tokens, other)?;
         apply_source_relation_phrases(&mut filter, &split);

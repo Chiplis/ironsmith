@@ -62,6 +62,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
             StaticAbility::opponents_cant_draw_extra_cards()
         }
         DirectCantFact::CantHaveCountersPlaced => StaticAbility::cant_have_counters_placed(),
+        DirectCantFact::ThisSpellCantBeCopied => StaticAbility::cant_be_copied(),
         DirectCantFact::ThisSpellCantBeCountered => StaticAbility::cant_be_countered_ability(),
         DirectCantFact::SourceCantAttack => StaticAbility::cant_attack(),
         DirectCantFact::SourceCantBlock => StaticAbility::cant_block(),

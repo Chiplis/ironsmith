@@ -77,6 +77,7 @@ pub enum DirectCantFact {
     OpponentsCantDrawExtraCards,
     CantHaveCountersPlaced,
     ThisSpellCantBeCountered,
+    ThisSpellCantBeCopied,
     SourceCantAttack,
     SourceCantBlock,
     SourceCantAttackItsOwner,
@@ -204,6 +205,11 @@ fn parse_other_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult
             primitives::phrase(&["be", "countered"]),
         )
             .value(DirectCantFact::ThisSpellCantBeCountered),
+        (
+            primitives::phrase(&["this", "spell"]),
+            parse_cant,
+            primitives::phrase(&["be", "copied"]),
+        ).value(DirectCantFact::ThisSpellCantBeCopied),
         (
             primitives::phrase(&["permanents", "you", "control"]),
             parse_cant,

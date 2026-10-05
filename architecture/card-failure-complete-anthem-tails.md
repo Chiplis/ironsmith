@@ -59,3 +59,7 @@ Defiance's most-common-color condition remain separate unaddressed families.
 Token-producing members also depend on the campaign's token resource-limit
 remediation and its deferred runtime validation; no larger-token outcome is
 claimed proven by this parser change.
+
+## Stage42 source closure
+
+The held Ghoulish source-incarnation prerequisite is addressed by the exact recorded Aura/SBA graveyard result in `card-failure-aura-source-incarnations.md`. It becomes a source proposal in stage42, not a stage41 recovery. All authored execution remains deferred.

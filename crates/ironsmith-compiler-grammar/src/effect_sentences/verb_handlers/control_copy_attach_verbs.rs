@@ -304,12 +304,9 @@ pub fn parse_gain_control(
     let clause_words = crate::lexer::token_word_refs(tokens);
     let shape = cca_shapes::parse_gain_control_clause_shape(tokens)
         .ok_or_else(|| CardTextError::ParseError("missing control keyword".to_string()))?;
-    if shape.dynamic_power_bound {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported dynamic power-bound control clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
+    // Dynamic power bounds belong to the ordinary typed target filter. It
+    // evaluates the bound during target announcement and again on resolution;
+    // it is not an extra continuous duration on the resulting control effect.
     let invalid_conditional_error = || {
         CardTextError::ParseError(format!(
             "unsupported conditional gain-control clause (clause: '{}')",
@@ -741,3 +738,56 @@ mod looked_card_count_tests;
 #[path = "control_copy_attach_verbs/control_copy_attach_verbs_zone.rs"]
 mod control_copy_attach_verbs_zone_programs;
 pub use control_copy_attach_verbs_zone_programs::{parse_put_into_hand};
+
+#[cfg(test)]
+mod dynamic_control_bound_tests {
+    use super::*;
+    #[test]
+    fn dynamic_control_bounds_are_typed_target_filters_with_separate_durations() {
+        for (text, tapped) in [
+            (
+                "control of target creature with power less than or equal to the number of creatures you control",
+                false,
+            ),
+            (
+                "control of target creature with power less than or equal to the number of Islands you control for as long as this artifact remains tapped",
+                true,
+            ),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let (result, loss) = crate::parse_loss::capture(|| parse_gain_control(&tokens, None));
+            assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+                        target,
+                        duration: until,
+                        ..
+                    }),
+                ..
+            }) = result.unwrap()
+            else {
+                panic!();
+            };
+            let TargetAst::Object(filter, Some(_), _) = target else {
+                panic!("missing announced creature target");
+            };
+            let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.power else {
+                panic!("missing typed bound");
+            };
+            assert!(
+                matches!(value.unhinted(),Value::Count(counted) if counted.controller==Some(PlayerFilter::You))
+            );
+            assert!(filter.controller.is_none());
+            assert_eq!(matches!(until, Until::ForAsLongAs(_)), tapped);
+            if !tapped {
+                assert_eq!(until, Until::Forever);
+            }
+        }
+    }
+    #[test]
+    fn unknown_power_operand_does_not_fall_back_to_unconditional_control() {
+        let tokens=crate::lexer::lex_line("control of target creature with power less than or equal to the unsupported number of mysteries you control",0).unwrap();
+        assert!(parse_gain_control(&tokens, None).is_err());
+    }
+}

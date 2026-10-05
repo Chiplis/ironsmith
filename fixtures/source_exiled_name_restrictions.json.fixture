@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Circu, Dimir Lobotomist",
+    "oracle_id": "c87d547b-00a4-4fdd-ade4-f3f032e5ea3b",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Creature \u2014 Human Wizard",
+    "oracle_text": "Whenever you cast a blue spell, exile the top card of target player's library.\nWhenever you cast a black spell, exile the top card of target player's library.\nYour opponents can't cast spells with the same name as a card exiled with Circu.",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Godsend",
+    "oracle_id": "dd91f4f2-ea46-48c5-8a80-0dc4ae5b79c4",
+    "mana_cost": "{1}{W}{W}",
+    "type_line": "Legendary Artifact \u2014 Equipment",
+    "oracle_text": "Equipped creature gets +3/+3.\nWhenever equipped creature blocks or becomes blocked by one or more creatures, you may exile one of those creatures.\nYour opponents can't cast spells with the same name as a card exiled with Godsend.\nEquip {3}"
+  }
+]

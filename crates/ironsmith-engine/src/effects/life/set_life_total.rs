@@ -42,10 +42,31 @@ struct SetLifeTotalProposal {
     amount: i32,
     current: i32,
     can_change: bool,
+    prepared: Option<crate::events::processing::TraitEventResult>,
     provenance: crate::provenance::ProvNodeId,
 }
 
 impl SimultaneousEffectProposal for SetLifeTotalProposal {
+    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
+        if self.amount == self.current || !self.can_change { return Ok(()); }
+        let amount = self.amount.abs_diff(self.current);
+        let event = if self.amount > self.current {
+            crate::events::Event::new_with_provenance(crate::events::LifeGainEvent::new(self.player, amount).with_source(ctx.source), self.provenance)
+        } else {
+            crate::events::Event::new_with_provenance(crate::events::LifeLossEvent::from_effect(self.player, amount), self.provenance)
+        };
+        self.prepared = Some(super::life_change::prepare_life_change(game, ctx, event)?);
+        Ok(())
+    }
+    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>
+    {
+        if self.amount == self.current { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::resolved())); }
+        if !self.can_change { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::prevented())); }
+        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
+        super::life_change::commit_prepared_life_original(game, ctx, self.prepared.take().expect("life proposal prepared"))
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
@@ -154,6 +175,7 @@ impl EffectExecutor for SetLifeTotalEffect {
             amount,
             current,
             can_change: game.can_change_life_total(player),
+            prepared: None,
             provenance: ctx.provenance,
         }))
     }

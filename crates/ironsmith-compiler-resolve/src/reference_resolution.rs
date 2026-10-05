@@ -1841,6 +1841,13 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target }) => {
                     maybe_tag_target(target, frame, id_gen, "tapped")?;
                     remember_explicit_object_target_binding(target, frame);
+                    let alias = TagKey::from(crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG);
+                    frame.snapshot_tag_aliases.retain(|(existing, _)| existing != &alias);
+                    if frame.auto_tag_object_targets
+                        && let Some(tapped) = frame.last_object_tag.as_ref()
+                    {
+                        frame.snapshot_tag_aliases.push((alias, tapped.clone()));
+                    }
                 }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { target }) => {
                     maybe_tag_target(target, frame, id_gen, "untapped")?;
@@ -3603,6 +3610,17 @@ fn annotate_effect_sequence_with_env_internal(
         cost_tag_index_from_env(&current_env, "sacrifice_cost_");
     let imported_exile_cost_tag_index = cost_tag_index_from_env(&current_env, "exile_cost_");
     let imported_tap_cost_tag = tap_cost_tag_from_env(&current_env).cloned();
+    let tapped_quantity_alias = TagKey::from(crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG);
+    if !current_env
+        .snapshot_tag_aliases
+        .iter()
+        .any(|(alias, _)| alias == &tapped_quantity_alias)
+        && let Some(tapped) = imported_tap_cost_tag.as_ref()
+    {
+        current_env
+            .snapshot_tag_aliases
+            .push((tapped_quantity_alias, tapped.clone()));
+    }
 
     while let Some(mut effect) = effects.next() {
         bind_additional_cost_object_placeholder(&mut effect, &current_env);
@@ -3806,6 +3824,7 @@ fn annotate_effect_sequence_with_env_internal(
         } else {
             effects_reference_it_tag(remaining)
                 || effects_reference_tag(remaining, crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG)
+                || effects_reference_tag(remaining, crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG)
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(
                     remaining,

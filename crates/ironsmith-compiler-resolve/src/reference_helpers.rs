@@ -739,6 +739,9 @@ fn resolve_object_filter_player_refs(
     if let Some(owner) = resolved.owner.as_mut() {
         *owner = resolve_contextual_player_filter(owner, refs)?;
     }
+    if let Some(player) = resolved.last_drawn_this_turn.as_mut() {
+        *player = resolve_contextual_player_filter(player, refs)?;
+    }
     if let Some(power) = resolved.power.as_mut() {
         *power = resolve_object_filter_comparison(power, refs)?;
     }
@@ -1374,6 +1377,11 @@ pub fn resolve_it_tag_key(tag: &TagKey, refs: &ReferenceEnv) -> Result<TagKey, C
         .find(|(alias, _)| alias == tag)
     {
         return Ok(concrete.clone());
+    }
+    if tag.as_str() == crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG {
+        return Err(CardTextError::ParseError(
+            "tapped-object quantity requires a prior tap instruction or imported tap cost".into(),
+        ));
     }
     if tag.as_str() == crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG {
         return Err(CardTextError::ParseError(

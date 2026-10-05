@@ -5076,6 +5076,9 @@ impl<
             },
         }
     }
+    pub fn cant_be_copied() -> Self {
+        Self::identified(StaticAbilityId::CantBeCopied, "This spell can't be copied")
+    }
     pub fn cant_be_countered_ability() -> Self {
         Self::identified(
             StaticAbilityId::CantBeCountered,

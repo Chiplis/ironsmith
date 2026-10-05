@@ -123,14 +123,14 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
                     }
                 }
             }
-            let copy_id = create_stack_copy(
+            let Some(copy_id) = create_stack_copy(
                 game,
                 target_id,
                 &original_entry,
                 copier,
                 &self.removed_supertypes,
                 Some(targets),
-            )?;
+            )? else { continue; };
             created_ids.push(copy_id);
 
             events.push(TriggerEvent::new_with_provenance(

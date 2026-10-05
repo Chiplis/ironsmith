@@ -133,3 +133,55 @@ fn missing_tap_group_and_different_metric_domains_are_not_guessed() {
         );
     }
 }
+
+#[test]
+fn tapped_power_is_a_live_object_alias_with_local_body_precedence_over_a_cost() {
+    let value = Value::PowerOf(Box::new(ChooseSpec::Tagged(
+        crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG.into(),
+    )));
+    let consumer = || {
+        EffectAst::subject_verb_damage(value.clone(), TargetAst::Player(PlayerFilter::You, None))
+    };
+    let imports = ReferenceImports::with_last_object_tag("tap_cost_2");
+    let imported = annotate_effect_sequence(
+        &[consumer()],
+        &imports,
+        Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let bound = crate::reference_helpers::resolve_value_it_tag(&value, &imported.effects[0].in_env)
+        .unwrap();
+    assert!(
+        matches!(bound,Value::PowerOf(spec) if matches!(spec.base(),ChooseSpec::Tagged(tag) if tag.as_str()=="tap_cost_2"))
+    );
+    let tap = EffectAst::subject_verb_tap(TargetAst::Object(ObjectFilter::creature(), None, None));
+    let unrelated = EffectAst::subject_verb_explicit_target_only(TargetAst::Object(
+        ObjectFilter::artifact(),
+        None,
+        None,
+    ));
+    let body = annotate_effect_sequence(
+        &[tap, unrelated, consumer()],
+        &imports,
+        Default::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let concrete = &body.effects[0]
+        .out_env
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias.as_str() == crate::tag::PRIOR_TAPPED_OBJECT_QUANTITY_TAG)
+        .unwrap()
+        .1;
+    assert_ne!(concrete.as_str(), "tap_cost_2");
+    let bound =
+        crate::reference_helpers::resolve_value_it_tag(&value, &body.effects[2].in_env).unwrap();
+    assert!(
+        matches!(bound,Value::PowerOf(spec) if matches!(spec.base(),ChooseSpec::Tagged(tag) if tag==concrete))
+    );
+    assert!(
+        crate::reference_helpers::resolve_value_it_tag(&value, &ReferenceEnv::default()).is_err()
+    );
+}

@@ -1361,6 +1361,22 @@ impl ForPlayersEffect {
                     &mut optional_limits,
                 );
                 let game_checkpoint = game.clone();
+                // Replacement eligibility observes one pre-mutation world.
+                // One-shot consumption and APNAP choices remain ordered, but
+                // no player's original life change has committed yet.
+                for (index, tags, proposal, optional, path) in &mut prepared {
+                    ctx.tagged_objects = tags.clone();
+                    ctx.effect_outcomes = effect_outcomes_by_player[*index].clone();
+                    ctx.tagged_players = tagged_players_by_player[*index].clone();
+                    ctx.with_temp_iterated_player(Some(players[*index]), |ctx| {
+                        in_optional_action(ctx, *optional, |ctx| {
+                            let scopes = program_path_scopes(path, &program_groups, *index);
+                            with_program_scope(ctx, &scopes, |ctx| proposal.prepare_original(game, ctx))
+                        })
+                    })?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                }
+                ctx.tagged_objects = pre_unit_tagged_objects.clone();
                 // CR 101.4 / 603.2c / 603.10a: the players' prepared actions
                 // happen at the same time, as one event that looks back at
                 // the same trigger sources.
@@ -1431,6 +1447,15 @@ impl ForPlayersEffect {
                 // state before any replacement-added program can move a card.
                 for (_, _, completion) in &mut batch_outcomes {
                     if let Some((completion, _, _, _)) = completion { completion.freeze(game)?; }
+                }
+                // Every original participant has committed. Match the whole
+                // original batch before the first appended program mutates
+                // event-time qualifications for another participant.
+                if batch_outcomes.iter().any(|(_, _, completion)| completion.is_some()) {
+                    crate::effects::runtime::capture_triggers_before_added_program(
+                        game, ctx, None,
+                        batch_outcomes.iter_mut().flat_map(|(_, outcome, _)| outcome.events.iter_mut()),
+                    );
                 }
                 let mut completed_outcomes = Vec::with_capacity(batch_outcomes.len());
                 for (player_index, mut outcome, completion) in batch_outcomes {

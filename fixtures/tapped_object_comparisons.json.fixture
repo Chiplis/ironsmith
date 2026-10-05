@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Nihiloor",
+    "oracle_id": "148271de-3351-41a1-bcf5-3ecaadc51540",
+    "mana_cost": "{2}{W}{U}{B}",
+    "type_line": "Legendary Creature — Horror",
+    "power": "3",
+    "toughness": "5",
+    "oracle_text": "When Nihiloor enters, for each opponent, tap up to one untapped creature you control. When you do, gain control of target creature that player controls with power less than or equal to the tapped creature's power for as long as you control Nihiloor.\nWhenever you attack with a creature an opponent owns, you gain 2 life and that player loses 2 life."
+  }
+]

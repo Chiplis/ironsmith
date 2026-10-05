@@ -253,3 +253,27 @@ For deterministic, no-network diagnostic-first clustering with Oracle-ID joins,
 see [Offline Oracle-tag enrichment](card-failure-tags.md). It preserves all
 compile entries, separates direct and inherited tags, and keeps functional labels
 and keywords as secondary hints rather than correctness or completion evidence.
+
+## Source checkpoint 42 (UNVALIDATED)
+
+The frozen matrix now contains 563 additional proposed unique cards (564
+compile entries), including 29 identities with explicitly recorded token-limit
+or damage-representation gaps. The 534 outside those recorded gaps are still
+source proposals, not verified recoveries or exhaustive runtime claims.
+Stage 42 adds 14 identities through exact Aura/source-exile references, dynamic
+control and return bounds, live name selectors, per-opponent tap/reflexive
+scopes and spell-copy prohibitions. Wedding Ring remains partial at the nested
+quantified replacement-draw iterator boundary, despite the integrated original
+receipt capture and branch/scope continuations.
+
+The token resource-remediation chain is held outside this stage for source
+review of payment-query and UI failure propagation. No cap closure is claimed
+by publishing this branch. No builds, compiler probes or tests were run.
+
+Main advanced to `2c6fc93258aab06df9b778d707f0a36293179771` (ZKP sync fixes)
+after the frozen baseline. A read-only comparison found overlapping payment
+hydration, public-opening evidence, proof-preserving retry and replay-resync
+changes, plus referenced ChooseObjects X-bound corrections. Those upstream
+changes are not a new corpus baseline and have not been blindly rebased into
+the draft stack. Eventual integration must retain both those changes and this
+campaign's payment-disclosure transaction/source-reference invariants.

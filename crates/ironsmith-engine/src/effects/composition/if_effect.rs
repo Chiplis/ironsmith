@@ -159,6 +159,10 @@ fn result_memories_share_characteristic(
                 .count()
                 >= required_count
         }),
+        crate::ObjectCharacteristic::Name => memories.iter().any(|candidate| {
+            candidate.name.split(" // ").filter(|name| !crate::filter::name_is_nameless(name)).any(|name|
+                memories.iter().filter(|memory| crate::filter::names_match(name, &memory.name)).count() >= required_count)
+        }),
     }
 }
 
@@ -287,49 +291,36 @@ pub(super) fn predicate_matches_with_context(
 ///     ),
 /// ];
 /// ```
-impl EffectExecutor for IfEffect {
-    fn clone_box(&self) -> Box<dyn EffectExecutor> {
-        Box::new(self.clone())
-    }
+#[derive(Clone)]
+pub(crate) struct PreparedIfBranch {
+    pub(crate) player: Option<crate::ids::PlayerId>,
+    pub(crate) effects: Vec<crate::effect::Effect>,
+    pub(crate) repetitions: usize,
+}
 
-    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
-        for effect in &self.then {
-            visitor(effect);
-        }
-        for effect in &self.else_ {
-            visitor(effect);
-        }
-    }
-
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        // A prior instruction that never ran (a declined optional, an
-        // untaken branch, an antecedent skipped because its object is gone)
-        // left no result: it didn't happen (CR 608.2c).
+/// Freeze contextual result predicates and participant partitions once.
+pub(crate) fn prepare_if_branches(effect: &IfEffect, game: &GameState, ctx: &ExecutionContext) -> Vec<PreparedIfBranch> {
         let outcome = ctx
-            .get_outcome(self.condition)
+            .get_outcome(effect.condition)
             .cloned()
             .unwrap_or_else(EffectOutcome::impossible);
         let outcome = outcome.instruction_result();
 
         if matches!(
-            self.predicate,
+            effect.predicate,
             EffectPredicate::Happened
                 | EffectPredicate::DidNotHappen
                 | EffectPredicate::SearchedLibrary
-        ) && (self.per_player_result
-            || effect_list_mentions_iterated_player(&self.then)
-            || effect_list_mentions_iterated_player(&self.else_))
+        ) && (effect.per_player_result
+            || effect_list_mentions_iterated_player(&effect.then)
+            || effect_list_mentions_iterated_player(&effect.else_))
             && let Some(player_counts) =
                 outcome.execution_facts.iter().find_map(|fact| match fact {
                     ExecutionFact::PlayerCounts(counts) => Some(counts.clone()),
                     _ => None,
                 })
         {
-            let mut outcomes = Vec::new();
+            let mut branches = Vec::new();
             let searched_players = outcome
                 .events
                 .iter()
@@ -355,28 +346,23 @@ impl EffectExecutor for IfEffect {
                 None => player_counts,
             };
             for (player_id, count) in player_counts {
-                let predicate_matches = match self.predicate {
+                let predicate_matches = match effect.predicate {
                     EffectPredicate::Happened => count > 0,
                     EffectPredicate::DidNotHappen => count <= 0,
                     EffectPredicate::SearchedLibrary => searched_players.contains(&player_id),
                     _ => false,
                 };
                 let branch = if predicate_matches {
-                    &self.then
+                    &effect.then
                 } else {
-                    &self.else_
+                    &effect.else_
                 };
-                ctx.with_temp_iterated_player(Some(player_id), |ctx| {
-                    for eff in branch {
-                        outcomes.push(execute_effect(game, eff, ctx)?);
-                    }
-                    Ok::<(), ExecutionError>(())
-                })?;
+                branches.push(PreparedIfBranch { player: Some(player_id), effects: branch.clone(), repetitions: 1 });
             }
-            return Ok(EffectOutcome::aggregate(outcomes));
+            return branches;
         }
 
-        let match_repetitions = if let EffectPredicate::Value(cmp) = &self.predicate {
+        let match_repetitions = if let EffectPredicate::Value(cmp) = &effect.predicate {
             let chosen_numbers = outcome
                 .execution_facts
                 .iter()
@@ -400,41 +386,67 @@ impl EffectExecutor for IfEffect {
 
         let (branch, repetitions) = if let Some(matches) = match_repetitions {
             if matches > 0 {
-                (&self.then, matches)
+                (&effect.then, matches)
             } else {
-                (&self.else_, 1)
+                (&effect.else_, 1)
             }
-        } else if predicate_matches_with_context(&self.predicate, outcome, game, ctx) {
-            (&self.then, 1)
+        } else if predicate_matches_with_context(&effect.predicate, outcome, game, ctx) {
+            (&effect.then, 1)
         } else {
-            (&self.else_, 1)
+            (&effect.else_, 1)
         };
 
-        // A condition selecting an absent branch is a successful evaluation,
-        // but no game action happened. Preserve that distinction so a later
-        // "otherwise" gate can observe this conditional's result.
-        if branch.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+        if branch.is_empty() { Vec::new() }
+        else { vec![PreparedIfBranch { player: None, effects: branch.clone(), repetitions }] }
 
-        let mut outcomes = Vec::new();
-        for repetition in 0..repetitions {
-            for (index, eff) in branch.iter().enumerate() {
-                outcomes.push(execute_effect(game, eff, ctx)?);
-                let next = branch
-                    .get(index + 1)
-                    .or_else(|| (repetition + 1 < repetitions).then(|| &branch[0]));
-                if let Some(next) = next {
-                    crate::effects::match_triggers_at_instruction_boundary(
-                        game,
-                        ctx,
-                        Some(next),
-                        outcomes.iter().flat_map(|outcome| outcome.events.iter()),
-                    );
+}
+
+pub(crate) fn execute_if_branches(game: &mut GameState, ctx: &mut ExecutionContext, branches: &[PreparedIfBranch]) -> Result<EffectOutcome, ExecutionError> {
+    let mut outcomes = Vec::new();
+    for branch in branches {
+        let previous = ctx.iteration.iterated_player;
+        if let Some(player) = branch.player { ctx.iteration.iterated_player = Some(player); }
+        let result = (|| {
+            for _ in 0..branch.repetitions {
+                for effect in &branch.effects {
+                    crate::effects::match_triggers_at_instruction_boundary(game, ctx, Some(effect), outcomes.iter().flat_map(|outcome: &EffectOutcome| outcome.events.iter()));
+                    outcomes.push(execute_effect(game, effect, ctx)?);
+                    if ctx.decision_maker.awaiting_choice() { return Ok::<_, ExecutionError>(()); }
                 }
             }
+            Ok(())
+        })();
+        ctx.iteration.iterated_player = previous;
+        result?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    }
+    if outcomes.is_empty() { Ok(EffectOutcome::count(0)) } else { Ok(EffectOutcome::aggregate(outcomes)) }
+}
+
+impl EffectExecutor for IfEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
+        for effect in &self.then {
+            visitor(effect);
         }
-        Ok(EffectOutcome::aggregate(outcomes))
+        for effect in &self.else_ {
+            visitor(effect);
+        }
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        // A prior instruction that never ran (a declined optional, an
+        // untaken branch, an antecedent skipped because its object is gone)
+        // left no result: it didn't happen (CR 608.2c).
+        let branches = prepare_if_branches(self, game, ctx);
+        execute_if_branches(game, ctx, &branches)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -989,4 +1001,25 @@ mod replacement_original_if_adapter_contract_tests {
         assert_eq!(ctx.get_outcome(EffectId(923)).unwrap().events.len(), 1, "actual auxiliary search remains observable");
         assert_eq!(game.player(alice).unwrap().life, 20);
     }
+    #[test]
+    fn result_name_relation_requires_one_common_name_and_retains_split_names() {
+        use crate::{ObjectCharacteristic, PlayerId, Zone};
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let mut memory = |left: &str, right: Option<&str>| {
+            let id = game.new_object_id();
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(id, id.into(), PlayerId(0), PlayerId(0), Zone::Hand);
+            snapshot.name = left.into();
+            if let Some(right) = right { snapshot.linked_face_layout = crate::card::LinkedFaceLayout::Split; snapshot.other_face_name = Some(right.into()); }
+            crate::effect::OutcomeObjectMemory::from_snapshot(&snapshot)
+        };
+        let ab = memory("Alpha", Some("Beta"));
+        let bc = memory("Beta", Some("Gamma"));
+        let ca = memory("Gamma", Some("Alpha"));
+        let beta = memory("Beta", None);
+        let nameless = memory("", None);
+        assert!(result_memories_share_characteristic(&[&ab, &bc, &beta], 3, ObjectCharacteristic::Name));
+        assert!(!result_memories_share_characteristic(&[&ab, &bc, &ca], 3, ObjectCharacteristic::Name));
+        assert!(!result_memories_share_characteristic(&[&nameless], 1, ObjectCharacteristic::Name));
+    }
+
 }

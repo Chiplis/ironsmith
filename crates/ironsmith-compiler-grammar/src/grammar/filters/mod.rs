@@ -51,6 +51,8 @@ pub use domain_unions::{
 };
 mod extremum;
 mod meld_and_special_subjects;
+mod live_name_relations;
+pub(crate) use live_name_relations::parse_live_name_relation;
 mod naming_and_reference;
 mod player_relations;
 mod predicate_phrases;

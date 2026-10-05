@@ -14,7 +14,7 @@ use crate::target::PlayerFilter;
 // payload must not erase that action's numeric result (for example, how many
 // permanents were sacrificed). Keep all choice facts and retain a standalone
 // choice's result when the optional program contains only choices.
-pub(super) fn is_object_selection(effect: &Effect) -> bool {
+pub(crate) fn is_object_selection(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()
         .is_some()
@@ -95,6 +95,10 @@ pub struct MayEffect {
     pub fallback: FallbackStrategy,
 }
 
+pub(crate) struct PreparedOptionalExecution {
+    pub(crate) previous_iterated_player: Option<PlayerId>,
+}
+
 impl MayEffect {
     /// Create a new May effect with default Decline fallback.
     pub fn new(effects: Vec<Effect>) -> Self {
@@ -168,6 +172,92 @@ impl MayEffect {
         ))
     }
 
+    /// Prepare exactly the same optional branch as live execution, retaining
+    /// accepted choice/identity/limit bookkeeping before a continuation pauses.
+    pub(crate) fn prepare_optional_execution(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<Option<PreparedOptionalExecution>, ExecutionError> {
+            let identity_guard = ctx.optional_identity_guard.take();
+            // "Do this only once each turn" governs the ability's first optional
+            // instruction. Once it has been performed the limit's number of times
+            // this turn, it is no longer offered; declining doesn't count.
+            let do_this_limit = ctx.do_this_limit.take();
+            if do_this_limit.is_some_and(|limit| limit.reached(game)) {
+                return Ok(None);
+            }
+            if self.should_auto_decline_without_prompt(game, ctx)? {
+                return Ok(None);
+            }
+
+            // Prefer a friendly search prompt over the raw compiled lowering text
+            // for same-name library searches like Doubling Chant.
+            let description = self
+                .effects
+                .first()
+                .and_then(|effect| {
+                    let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+                    if !choose.is_search {
+                        return None;
+                    }
+                    let max = choose.count.max.unwrap_or(choose.count.min);
+                    super::choose_objects_runtime::friendly_same_name_search_prompt(
+                        game,
+                        ctx,
+                        &choose.filter,
+                        choose.count.min,
+                        max,
+                    )
+                })
+                .unwrap_or_else(|| self.prompt_description(game, ctx));
+
+            // Use explicit decider when present ("that player may ..."), otherwise
+            // preserve established behavior: iterated player if set, then controller.
+            let deciding_player = if let Some(decider) = &self.decider {
+                crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
+            } else {
+                ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+            };
+
+            let should_do = crate::decisions::make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                deciding_player,
+                Some(ctx.source),
+                crate::decisions::MaySpec::new(ctx.source, description)
+                    .with_can_accept(identity_guard.as_ref().is_none_or(|guard| guard.can_accept)),
+                self.fallback,
+            );
+
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+            if should_do {
+                if let Some(guard) = identity_guard {
+                    if !guard.can_accept {
+                        return Err(ExecutionError::InvalidTarget);
+                    }
+                    // This is a positive claim only. Declining a reveal makes
+                    // no assertion about a private card's characteristics.
+                    game.record_hidden_identity_obligations(
+                        &[guard.object],
+                        &guard.filter,
+                        &guard.filter_ctx,
+                        "accepted conditional reveal",
+                    );
+                }
+                if let Some(limit) = do_this_limit
+                    && !ctx.decision_maker.awaiting_choice()
+                {
+                    game.record_do_this_action(limit.source, limit.trigger_identity);
+                }
+                let previous_iterated_player = ctx.iteration.iterated_player;
+                if self.decider_binds_iterated_player(ctx) {
+                    ctx.iteration.iterated_player = Some(deciding_player);
+                }
+                Ok(Some(PreparedOptionalExecution { previous_iterated_player }))
+            } else { Ok(None) }
+    }
+
     /// Outside any per-player iteration, an explicit non-controller decider
     /// ("any opponent may ...") is the player the accepted effects' "they" /
     /// "that player" name.
@@ -220,95 +310,12 @@ impl EffectExecutor for MayEffect {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let identity_guard = ctx.optional_identity_guard.take();
-            // "Do this only once each turn" governs the ability's first optional
-            // instruction. Once it has been performed the limit's number of times
-            // this turn, it is no longer offered; declining doesn't count.
-            let do_this_limit = ctx.do_this_limit.take();
-            if do_this_limit.is_some_and(|limit| limit.reached(game)) {
+            let Some(prepared) = self.prepare_optional_execution(game, ctx)? else {
                 return Ok(EffectOutcome::declined());
-            }
-            if self.should_auto_decline_without_prompt(game, ctx)? {
-                return Ok(EffectOutcome::declined());
-            }
-
-            // Prefer a friendly search prompt over the raw compiled lowering text
-            // for same-name library searches like Doubling Chant.
-            let description = self
-                .effects
-                .first()
-                .and_then(|effect| {
-                    let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-                    if !choose.is_search {
-                        return None;
-                    }
-                    let max = choose.count.max.unwrap_or(choose.count.min);
-                    super::choose_objects_runtime::friendly_same_name_search_prompt(
-                        game,
-                        ctx,
-                        &choose.filter,
-                        choose.count.min,
-                        max,
-                    )
-                })
-                .unwrap_or_else(|| self.prompt_description(game, ctx));
-
-            // Use explicit decider when present ("that player may ..."), otherwise
-            // preserve established behavior: iterated player if set, then controller.
-            let deciding_player = if let Some(decider) = &self.decider {
-                crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
-            } else {
-                ctx.iteration.iterated_player.unwrap_or(ctx.controller)
             };
-
-            let should_do = crate::decisions::make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                deciding_player,
-                Some(ctx.source),
-                crate::decisions::MaySpec::new(ctx.source, description)
-                    .with_can_accept(identity_guard.as_ref().is_none_or(|guard| guard.can_accept)),
-                self.fallback,
-            );
-
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if should_do {
-                if let Some(guard) = identity_guard {
-                    if !guard.can_accept {
-                        return Err(ExecutionError::InvalidTarget);
-                    }
-                    // This is a positive claim only. Declining a reveal makes
-                    // no assertion about a private card's characteristics.
-                    game.record_hidden_identity_obligations(
-                        &[guard.object],
-                        &guard.filter,
-                        &guard.filter_ctx,
-                        "accepted conditional reveal",
-                    );
-                }
-                if let Some(limit) = do_this_limit
-                    && !ctx.decision_maker.awaiting_choice()
-                {
-                    game.record_do_this_action(limit.source, limit.trigger_identity);
-                }
-                // "Any opponent may tap an untapped creature they control": the
-                // accepted effects are performed by the deciding player, whom
-                // their "they"/"that player" references name.
-                let bind_decider = self.decider_binds_iterated_player(ctx);
-                let previous_iterated_player = ctx.iteration.iterated_player;
-                if bind_decider {
-                    ctx.iteration.iterated_player = Some(deciding_player);
-                }
-                let result = execute_optional_effects(&self.effects, game, ctx);
-                if bind_decider {
-                    ctx.iteration.iterated_player = previous_iterated_player;
-                }
-                result
-            } else {
-                Ok(EffectOutcome::declined())
-            }
+            let result = execute_optional_effects(&self.effects, game, ctx);
+            ctx.iteration.iterated_player = prepared.previous_iterated_player;
+            result
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if result.is_err() || pending {

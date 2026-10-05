@@ -1263,6 +1263,8 @@ pub enum ObjectCharacteristic {
     Subtype(SubtypeFamily),
     Color,
     ManaValue,
+    /// At least one shared name; nameless objects never share a name.
+    Name,
 }
 
 impl ObjectCharacteristic {
@@ -1273,6 +1275,7 @@ impl ObjectCharacteristic {
             Self::Subtype(family) => format!("a {}", family.type_phrase()),
             Self::Color => "a color".to_string(),
             Self::ManaValue => "mana value".to_string(),
+            Self::Name => "a name".to_string(),
         }
     }
 }
@@ -1297,6 +1300,10 @@ pub struct ObjectCharacteristicRelation {
     pub kind: ObjectCharacteristicRelationKind,
     pub characteristics: Vec<ObjectCharacteristic>,
     pub comparison: ObjectFilter,
+    /// "another" is relative to the candidate being compared, not the
+    /// ability's source. Older relation payloads retain inclusive semantics.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exclude_candidate: bool,
 }
 
 impl ObjectCharacteristicRelation {
@@ -1305,6 +1312,7 @@ impl ObjectCharacteristicRelation {
             kind: ObjectCharacteristicRelationKind::SharesAny,
             characteristics,
             comparison,
+            exclude_candidate: false,
         }
     }
 
@@ -1316,10 +1324,22 @@ impl ObjectCharacteristicRelation {
             kind: ObjectCharacteristicRelationKind::SharesNone,
             characteristics,
             comparison,
+            exclude_candidate: false,
         }
     }
 
+    pub fn excluding_candidate(mut self) -> Self {
+        self.exclude_candidate = true;
+        self
+    }
+
     pub fn comparison_description(&self) -> String {
+        if self.comparison.zone == Some(Zone::Hand)
+            && self.comparison.owner == Some(PlayerFilter::OwnerOf(ObjectRef::FilterCandidate))
+            && (ObjectFilter { zone: None, owner: None, ..self.comparison.clone() }) == ObjectFilter::default()
+        {
+            return if self.exclude_candidate { "another card in their hand" } else { "a card in their hand" }.into();
+        }
         if self.comparison.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
@@ -1328,6 +1348,10 @@ impl ObjectCharacteristicRelation {
         }
 
         let description = self.comparison.description();
+        if self.exclude_candidate {
+            let bare = description.strip_prefix("a ").or_else(|| description.strip_prefix("an ")).unwrap_or(&description);
+            return format!("another {bare}");
+        }
         let keep_bare_reference = self.comparison.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && matches!(constraint.tag.as_str(), "equipped" | "enchanted")
@@ -2521,6 +2545,7 @@ impl ObjectFilter {
                 .map(|constraint| &constraint.source_controller),
             self.discarded_or_cycled_this_turn_by.as_ref(),
             self.dealt_damage_to_player_this_turn.as_ref(),
+            self.last_drawn_this_turn.as_ref(),
         ]
         .into_iter()
         .flatten()
@@ -4476,6 +4501,14 @@ impl ObjectFilter {
             ));
         }
         for relation in &self.characteristic_relations {
+            if relation.characteristics == [ObjectCharacteristic::Name] {
+                let phrase = match relation.kind {
+                    ObjectCharacteristicRelationKind::SharesAny => "with the same name as",
+                    ObjectCharacteristicRelationKind::SharesNone => "that doesn't have the same name as",
+                };
+                post_noun_qualifiers.push(format!("{phrase} {}", relation.comparison_description()));
+                continue;
+            }
             let characteristics = relation
                 .characteristics
                 .iter()

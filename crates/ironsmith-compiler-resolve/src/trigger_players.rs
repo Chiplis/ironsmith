@@ -174,6 +174,19 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
         | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
             Some(PlayerFilter::Defending)
         }
+        // "You attack with a creature an opponent owns": the attacker is
+        // under your control; the explicitly named other player is its owner.
+        TriggerSpec::Attacks(filter)
+            if filter.controller == Some(PlayerFilter::You)
+                && filter
+                    .owner
+                    .as_ref()
+                    .is_some_and(|owner| *owner != PlayerFilter::You) =>
+        {
+            Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            )))
+        }
         // "... attack you ..., that player": you are the defender, so the
         // only player antecedent is the attacking player.
         TriggerSpec::Attacks(filter)

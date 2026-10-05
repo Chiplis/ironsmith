@@ -10,7 +10,7 @@ use crate::target::ChooseSpec;
 pub type ExecuteWithSourceEffect = ironsmith_core::ExecuteWithSourceEffect<Effect>;
 
 /// Freeze the source and LKI used by the complete child action.
-pub(super) fn resolve_source_binding(
+pub(crate) fn resolve_source_binding(
     effect: &ExecuteWithSourceEffect, game: &mut GameState, ctx: &mut ExecutionContext,
 ) -> Option<(crate::ids::ObjectId, Option<ObjectSnapshot>)> {
     let resolved = resolve_effect_source_with_lki(game, ctx, &effect.source);

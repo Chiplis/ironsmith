@@ -30,6 +30,7 @@ fn with_source_exiled_tagged_objects(
         .iter()
         .filter_map(|id| {
             game.object(*id)
+                .filter(|object| object.zone == Zone::Exile)
                 .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game))
         })
         .collect::<Vec<_>>();
@@ -160,6 +161,20 @@ fn shared_spell_characteristic_count(
             .iter()
             .any(|object| object.subject_mana_value() == spell.subject_mana_value())
             as i32,
+        crate::ObjectCharacteristic::Name => {
+            let primary = game.current_name(spell.id).unwrap_or_else(|| spell.name.to_string());
+            let mut names: Vec<String> = Vec::new();
+            for name in primary.split(" // ").chain(spell.split_other_half_name().into_iter().flat_map(|name| name.split(" // "))) {
+                if !crate::filter::name_is_nameless(name)
+                    && !names.iter().any(|other| crate::filter::names_match(name, other)) {
+                    names.push(name.to_string());
+                }
+            }
+            names.into_iter().filter(|name| comparison_objects.iter().any(|object|
+                crate::filter::names_share(name, None,
+                    &game.current_name(object.id).unwrap_or_else(|| object.name.to_string()), object.split_other_half_name())))
+                .count() as i32
+        },
     }
 }
 
@@ -1301,7 +1316,7 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
             .with_iterated_player(Some(player))
             .with_prospective_cast(spell.id);
         if let Some(source) = restriction.source {
-            ctx = ctx.with_source(source);
+            ctx = with_source_exiled_tagged_objects(game, ctx.with_source(source), source);
         }
         restriction.filter.matches(spell, &ctx, game)
     })
