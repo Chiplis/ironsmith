@@ -4015,7 +4015,7 @@ pub(crate) fn prepare_zone_change_scoped_with_draws(
         Ok(completed)
     })();
     if outcome.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, outcome.is_ok() && dm.awaiting_choice());
         if let Some(draws) = draws { draws.0.truncate(draw_count); }
     }
     if dm.awaiting_choice() {

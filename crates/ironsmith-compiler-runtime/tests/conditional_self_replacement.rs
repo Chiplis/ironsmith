@@ -180,6 +180,40 @@ fn epicenter_late_replacement_suspension_or_resource_error_restores_the_whole_ba
     }}
 }
 
+#[test]
+fn epicenter_prepares_replacements_before_any_original_and_finishes_additions_after_all() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    use ironsmith::target::{ObjectFilter, PlayerFilter};
+    for definition in definitions("Epicenter") {
+        let mut game = game(); graveyard_count(&mut game, A, 7);
+        let lord = compile_to_runtime_definition("Simultaneous land witness",
+            "Type: Land Creature\nPower/Toughness: 1/3\nOther creatures get +1/+1.", false).unwrap();
+        let body = compile_to_runtime_definition("Simultaneous affected land", "Type: Land Creature\nPower/Toughness: 1/3", false).unwrap();
+        let a = game.create_object_from_definition(&lord, A, Zone::Battlefield);
+        let b = game.create_object_from_definition(&body, B, Zone::Battlefield);
+        let c = game.create_object_from_definition(&body, C, Zone::Battlefield);
+        assert_eq!(game.current_power(b), Some(2));
+        let b_stable = game.object(b).unwrap().stable_id;
+        let c_stable = game.object(c).unwrap().stable_id;
+        let spell = put_spell(&mut game, &definition, Target::Player(B), OptionalCostsPaid::default());
+        card(&mut game, A, Zone::Library, vec![CardType::Land]);
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(spell, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(a), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(vec![Effect::draw(1), Effect::gain_life(ironsmith::effect::Value::Count(ObjectFilter::land().controlled_by(PlayerFilter::Opponent)))])));
+        let mut b_filter = ObjectFilter::specific(b); b_filter.power = Some(ironsmith::target::Comparison::GreaterThanOrEqual(2));
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(spell, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(b_filter, Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::ChangeDestination(Zone::Exile)));
+        resolve_stack_entry_with(&mut game, &mut Choices::default()).unwrap();
+        assert_eq!(game.object(game.find_object_by_stable_id(b_stable).unwrap()).unwrap().zone, Zone::Exile,
+            "B's replacement matched while A's continuous effect still existed");
+        assert_eq!(game.object(game.find_object_by_stable_id(c_stable).unwrap()).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.player(A).unwrap().life, 20, "A's addition observes both later players' completed original departures");
+        assert_eq!(game.player(A).unwrap().hand.len(), 1, "the replacement-added native draw completes once after all originals");
+        assert!(game.battlefield.is_empty());
+    }
+}
+
 fn opposing_spell(game: &mut GameState, uncounterable: bool) -> ObjectId {
     let text = if uncounterable { "Type: Instant\nThis spell can't be countered.\nYou gain 1 life." }
         else { "Type: Instant\nYou gain 1 life." };
@@ -385,7 +419,7 @@ fn bog_down_modified_sacrifice_payment_still_records_the_kicker_choice() {
         let mut game = game(); hand(&mut game, B, 5);
         let lands = [card(&mut game, A, Zone::Battlefield, vec![CardType::Land]), card(&mut game, A, Zone::Battlefield, vec![CardType::Land])];
         game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(lands[0], A,
-            ironsmith::events::permanents::matchers::WouldBeSacrificedMatcher::any(), ReplacementAction::Prevent));
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(lands[0]), Some(Zone::Battlefield), Some(Zone::Graveyard)), ReplacementAction::Prevent));
         mana(&mut game, A, ManaSymbol::Black, 1); mana(&mut game, A, ManaSymbol::Colorless, 2);
         let mut dm = Choices { kick: true, target: Some(Target::Player(B)), lands: lands.to_vec(), ..Default::default() };
         cast(&mut game, &definition, &mut dm);

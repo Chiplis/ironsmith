@@ -74,3 +74,51 @@ garbage before a broad verb reader can discard them.
 Neither the source ledger nor the central checkout is edited here. All six
 remain subject to the campaign's deferred execution gate; source review is
 reported separately per checkpoint.
+
+## Simultaneous sacrifice correction
+
+Review found that the old `SacrificeProposal::commit` prepared and finished
+each participant's zones and added programs before advancing to the next
+participant. Epicenter and the previously proposed **By Invitation Only** were
+held on that concrete shared path. Expel the Interlopers does not use it.
+
+`PreparedSacrifices` now captures selected objects, eligibility and LKI before
+any participant mutates state. `prepare_original` resolves all zone proposals
+on the same game, preserving ordered consumption of one-shot replacements.
+`commit_original` applies only those prepared originals; `ZoneInstructionDraws`
+owns their completion and preserves deferred draws and additional programs.
+The direct sacrifice owner uses the same preparation/commit/completion contract
+inside its native transaction. Actual `OriginalSacrificeObjects` and sacrifice
+events remain separate from chosen cost resources: redirected departures count,
+wholly prevented/replaced originals are known empty, and modified payment may
+still complete under CR 118.11.
+
+Exact Epicenter and By Invitation Only scenarios use an early A departure whose
+added observation must see later B/C originals already gone, and B's replacement
+depends on A's pre-departure static power bonus. The Epicenter addition includes
+an actual draw. Native direct/dispatcher scenarios also pin single-instruction
+completion and shared one-shot consumption. Existing pending/resource failure
+scenarios exercise the full original batch and retry. The Bog Down modified-cost
+control now targets the actual zone-change proposal with its replacement matcher.
+All scenarios remain unrun.
+
+Each completed original sacrifice now allocates a distinct child Sacrifice
+occurrence under the common instruction provenance. The shared history owner
+can stage, commit, and republish each physical event without either collapsing
+different sacrifices or counting a duplicate publication twice. Native direct
+and dispatcher controls retain all three staged/committed originals and their
+common parent/group; prevented and wholly replaced originals emit none.
+
+The direct Sacrifice, SacrificeTarget and EachPlayerSacrifices entry points now
+open the shared resource/routing transaction before count or selection and
+refresh checked continuous state. Immutable participant preparation uses a
+checked query frame. Selected/source LKI and attached-object characteristics
+come from one checked batch before snapshot assembly. Discovery and scalar
+range failures propagate before zero/empty results or choices are accepted.
+The exact shared zone-preparation wrapper also uses the routing-preserving
+restore, so an inner pending choice's actual controller survives every enclosing
+rollback. Direct/dispatched numeric, incomplete-discovery and control-prefix
+pending/retry scenarios are authored for these existing entry paths.
+Known phased targets remain ineligible rather than becoming missing evidence;
+phased ability sources use their exact retained source LKI while a live recipient
+can still be sacrificed. Direct and dispatcher positive/zero controls cover both.

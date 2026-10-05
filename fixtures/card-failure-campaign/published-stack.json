@@ -1039,6 +1039,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/840"
+    },
+    {
+      "stage": 75,
+      "branch": "fix/card-failures-75-conditional-replacement-bodies",
+      "base": "fix/card-failures-74-counter-payments-and-miracle",
+      "source_integration_commit": "7931bf6502704f151c6c75605887c08a2db2e615",
+      "remote_commit": "5ed4b8fb3dfcf8e670517823d25532432c838207",
+      "tree": "475ed49ca8af62598360536961a3fa6a8c8631c1",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 841,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/841"
     }
   ]
 }
