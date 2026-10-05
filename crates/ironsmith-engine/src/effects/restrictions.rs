@@ -224,6 +224,10 @@ fn normalize_restriction_for_resolution(
         Restriction::BeCountered(filter) => Restriction::be_countered(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
+        Restriction::MaximumBlockers { filter, maximum } => Restriction::MaximumBlockers {
+            filter: collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+            maximum: *maximum,
+        },
         Restriction::MustAttack(filter) => Restriction::must_attack(
             // Plain creature/controller filters stay live. Exact anaphoric
             // object references remain the identities the instruction named.

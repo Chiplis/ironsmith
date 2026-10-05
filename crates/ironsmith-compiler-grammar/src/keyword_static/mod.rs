@@ -507,6 +507,17 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("the", "chosen"),
         ],
+        "parse_base_pt_and_blocker_restriction_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Single("creatures"),
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Single("during"),
+        ],
+        "parse_conditional_no_defender_and_unblockable_line" => vec![
+            StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
         "parse_can_be_attached_only_to_line" => vec![
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "equipment"),
@@ -1512,6 +1523,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         multi_static_ability_ast_passthrough_rule!(parse_subject_color_and_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_no_defender_line),
+        multi_static_ability_ast_passthrough_rule!(parse_base_pt_and_blocker_restriction_line),
+        multi_static_ability_ast_passthrough_rule!(parse_conditional_no_defender_and_unblockable_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_subject_is_subtype_with_base_pt_and_granted_abilities_line
         ),
@@ -3571,10 +3584,16 @@ pub fn parse_composed_anthem_effects_line(
 
     if comma_segments.len() == 2 {
         let where_tail = trim_commas(&comma_segments[1]);
-        if keyword_static_lines::parse_where_x_value_prefix_tokens(&where_tail).is_some()
-            && let Some(ability) = parse_anthem_line(tokens)?
-        {
-            return Ok(Some(vec![ability.into()]));
+        if keyword_static_lines::parse_where_x_value_prefix_tokens(&where_tail).is_some() {
+            // The comma introduces a value binding, not a second predicate.
+            // Keep every distributive subject when this route and the
+            // multi-subject route recognize the same complete line.
+            if let Some(abilities) = parse_multi_subject_anthem_line(tokens)? {
+                return Ok(Some(abilities.into_iter().map(StaticAbilityAst::from).collect()));
+            }
+            if let Some(ability) = parse_anthem_line(tokens)? {
+                return Ok(Some(vec![ability.into()]));
+            }
         }
     }
 
@@ -7213,3 +7232,7 @@ mod entry_copy_exception_root_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "compound_static_body_tests.rs"]
+mod compound_static_body_tests;

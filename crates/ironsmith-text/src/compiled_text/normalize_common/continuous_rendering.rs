@@ -5434,6 +5434,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::MaximumBlockers { filter, maximum } => {
+            format!("{} can't be blocked by more than {} {}", filter.description(), maximum,
+                if *maximum == 1 { "creature" } else { "creatures" })
+        }
         crate::effect::Restriction::BecomeSuspected(filter) => {
             format!("{} can't become suspected", filter.description())
         }

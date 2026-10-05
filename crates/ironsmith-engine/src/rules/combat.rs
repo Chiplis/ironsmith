@@ -570,7 +570,9 @@ pub(crate) fn maximum_blockers_with_view(
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(attacker).into());
 
-    abilities.iter().filter_map(|a| a.maximum_blockers()).min()
+    abilities.iter().filter_map(|ability| ability.maximum_blockers())
+        .chain(view.rule_maximum_blockers(attacker.id))
+        .min()
 }
 
 /// Check if a creature can attack this turn.

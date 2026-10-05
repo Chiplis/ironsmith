@@ -22,24 +22,36 @@ impl EffectExecutor for TargetOnlyEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         // Count bounds constrain announcement (CR 601.2c), not how many of
-        // those targets must survive resolution (CR 608.2b). Synthetic object
-        // declarations retain every surviving member for later instructions.
-        let member_spec = if !self.explicit_declaration && self.target.is_target() {
+        // those targets must survive resolution (CR 608.2b). Both explicit
+        // and synthetic declarations retain every surviving member for later
+        // instructions; explicit wording does not repeat announcement here.
+        let member_spec = if self.target.is_target() {
             ChooseSpec::target(self.target.base().clone())
         } else {
             self.target.clone()
         };
-        if let Ok(objects) = resolve_objects_for_effect(game, ctx, &member_spec)
-            && !objects.is_empty()
-        {
-            return Ok(EffectOutcome::count(objects.len() as i32)
-                .with_chosen_objects_from_game(game, objects));
+        let player_only = matches!(member_spec.base(),
+            ChooseSpec::Player(_) | ChooseSpec::SpecificPlayer(_)
+                | ChooseSpec::SourceController | ChooseSpec::SourceOwner | ChooseSpec::EachPlayer(_))
+            || (matches!(member_spec.base(), ChooseSpec::Iterated)
+                && ctx.iteration.iterated_object.is_none() && ctx.iteration.iterated_player.is_some());
+        let object_only = matches!(member_spec.base(),
+            ChooseSpec::Object(_) | ChooseSpec::SpecificObject(_) | ChooseSpec::Source
+                | ChooseSpec::Tagged(_) | ChooseSpec::All(_));
+        if !player_only {
+            match resolve_objects_for_effect(game, ctx, &member_spec) {
+                Ok(objects) if !objects.is_empty() => return Ok(EffectOutcome::count(objects.len() as i32)
+                    .with_chosen_objects_from_game(game, objects)),
+                Ok(_) | Err(ExecutionError::InvalidTarget) => {}
+                Err(error) => return Err(error),
+            }
         }
-
-        if let Ok(players) = resolve_players_from_spec(game, &self.target, ctx)
-            && !players.is_empty()
-        {
-            return Ok(EffectOutcome::count(players.len() as i32));
+        if !object_only {
+            match resolve_players_from_spec(game, &self.target, ctx) {
+                Ok(players) if !players.is_empty() => return Ok(EffectOutcome::count(players.len() as i32)),
+                Ok(_) | Err(ExecutionError::InvalidTarget) => {}
+                Err(error) => return Err(error),
+            }
         }
 
         if self.target.count().min == 0 {
@@ -126,5 +138,42 @@ mod partial_target_declaration_tests {
         assert_eq!(outcome.chosen_objects().unwrap()[0], survivor);
         ctx.targets.clear();
         assert!(declaration.execute(&mut game, &mut ctx).is_ok());
+    }
+
+    #[test]
+    fn explicit_counted_declaration_keeps_partial_survivors_without_rechoosing() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Survivor")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let surviving = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Graveyard);
+        let other = game.create_object_from_definition(&definition, alice, crate::zone::Zone::Graveyard);
+        let filter = crate::target::ObjectFilter::creature()
+            .in_zone(crate::zone::Zone::Graveyard).owned_by(crate::target::PlayerFilter::You);
+        let target = ChooseSpec::target(ChooseSpec::Object(filter))
+            .with_count(crate::effect::ChoiceCount::exactly(3));
+        let declaration = TargetOnlyEffect::explicit(target);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(surviving)]);
+        let outcome = declaration.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(outcome.chosen_objects(), Some(&[surviving][..]));
+        assert!(!outcome.chosen_objects().unwrap().contains(&other));
+        assert_eq!(declaration.get_target_count().unwrap().min, 3);
+        ctx.targets.clear();
+        assert!(matches!(declaration.execute(&mut game, &mut ctx), Err(ExecutionError::InvalidTarget)));
+    }
+
+    #[test]
+    fn unresolved_selection_value_is_not_swallowed_by_the_player_fallback() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), crate::PlayerId(0));
+        let spec = ChooseSpec::Object(crate::target::ObjectFilter::creature())
+            .with_count_value(crate::effect::ChoiceCount::dynamic_x(), crate::effect::Value::X);
+        let result = TargetOnlyEffect::new(spec).execute(&mut game, &mut ctx);
+        assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))), "{result:?}");
+        let player = TargetOnlyEffect::explicit(ChooseSpec::target_player());
+        ctx.targets = vec![crate::effects::ResolvedTarget::Player(crate::PlayerId(1))];
+        assert_eq!(player.execute(&mut game, &mut ctx).unwrap().as_count(), Some(1));
     }
 }

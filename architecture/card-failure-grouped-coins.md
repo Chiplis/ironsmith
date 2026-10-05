@@ -19,8 +19,7 @@ three Ral loyalty abilities are part of the claimed full body. The prior source
 already owns partner-with search, power/toughness doubling, tokens attacking,
 and extra turns; this patch composes those owners with grouped coin evidence.
 
-Mirror March's token-copy group, haste, and delayed exile; Mutalith's secondary
-body; Yusri's chosen count and casting permission; and Ral Zarek, Guest Lecturer's
+Mutalith's secondary body; Yusri's chosen count and casting permission; and Ral Zarek, Guest Lecturer's
 skip-turn body remain outside this claimed cohort. Krark's Thumb and Edgar are
 modifier interaction scenarios, not additional claimed frozen recoveries here.
 
@@ -82,3 +81,19 @@ consumers; coin and die namespaces stay separate across reference frames.
 First-batch semantics follow the official [FINAL FANTASY release notes](https://magic.wizards.com/en/news/feature/final-fantasy-release-notes): a fixed multi-coin
 batch is modified in full, and its explicit win override can give face-only
 coins winners. A repeated-until-loss instruction performs successive batches.
+
+## Mirror March continuation
+
+`fixtures/grouped_coin_followups.json.fixture` adds Mirror March as a separate
+UNVALIDATED full-body source proposal. Its quantified copy is one existing token
+creation instruction; the shared token followup owner attaches haste and delayed
+exile to that exact group. The original copy source and the enchantment may both
+leave before resolution; the copy owner retains exact source LKI. Typed target
+resolution errors now survive rather than being discarded during LKI fallback.
+
+The shared copy owner distinguishes separate haste grants from copy exceptions:
+“those tokens gain haste” uses an undated continuous ability grant for original
+and replacement-added tokens, so copying one again does not inherit haste.
+Authored native scenarios cover zero and multiple wins, both source departures,
+recopy semantics, a control change before cleanup, and delayed exile limited to
+the actual created group. No added scenario has run.

@@ -301,6 +301,11 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
     let Some(parsed) = parse_keywords_and_cant_be_blocked_by_more_than_clause(tokens) else {
         return Ok(None);
     };
+    // A prior stat predicate is not part of the subject. The complete anthem
+    // tail production owns `gets +P/+T, has ..., and can't ...`.
+    if anthem_grant_grammar::parse_anthem_modifier_head(parsed.subject_tokens).is_some() {
+        return Ok(None);
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(actions) = parse_ability_line(parsed.keyword_tokens) else {
         return Ok(None);
@@ -347,15 +352,9 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
             },
         })
         .collect::<Vec<_>>();
-    let restriction = StaticAbility::cant_be_blocked_by_more_than(maximum_blockers);
-    granted.push(match subject {
-        AnthemSubjectAst::Source => StaticAbilityAst::Static(restriction),
-        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-            filter,
-            ability: Box::new(StaticAbilityAst::Static(restriction)),
-            condition: None,
-        },
-    });
+    granted.push(maximum_blockers_rule_for_subject(
+        &fixed_anthem_clause(subject, 0, 0, None), maximum_blockers,
+    ));
     Ok(Some(granted))
 }
 
@@ -1096,6 +1095,16 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A complete comma-separated predicate list owns every clause and every
+    // local condition; this family cannot suffix-match one of its `has` verbs.
+    if complete_composed_anthem_owns_line(tokens) {
+        return Ok(None);
+    }
+    if matches!(parse_base_pt_and_blocker_restriction_line(tokens), Ok(Some(_)))
+        || matches!(parse_conditional_no_defender_and_unblockable_line(tokens), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
     // A complete attack-permission effect owns its hypothetical `have`.
     // In particular, `this turn` belongs to the duration, not to a subject
     // that may be recovered as the suffix `it didn't`. Do not let either
@@ -4702,6 +4711,13 @@ pub fn parse_anthem_and_type_color_addition_line(
             filter.clone(),
             additions.subtypes,
         ));
+    }
+    // The condition guards the whole coordinated predicate, including the
+    // type/color layer. The anthem already carries it in its typed payload.
+    if let Some(condition) = clause.condition {
+        for ability in result.iter_mut().skip(1) {
+            *ability = ability.clone().with_condition(condition.clone());
+        }
     }
     Ok(Some(result))
 }

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "f5db94888ccfa220b2ba0614f6e36caba0144aed",
+  "source_implementation_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1028,
-    "additional_proposed_compile_entries": 1032,
+    "additional_proposed_unique_cards": 1036,
+    "additional_proposed_compile_entries": 1040,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 0,
+    "known_runtime_partial_previous_proposals": 1,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1028,
+    "identified_source_proposals_with_known_runtime_gaps": 1,
+    "source_proposals_excluding_identified_runtime_gaps": 1036,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -3981,12 +3981,12 @@
         "Moldgraf Monstrosity",
         "Tomb Tyrant",
         "Singe-Mind Ogre",
-        "Kheru Lich Lord"
+        "Kheru Lich Lord",
+        "Sinister Waltz"
       ],
       "partial_entries": [
         "Goblin Test Pilot",
         "Witch Hunt",
-        "Sinister Waltz",
         "Nebuchadnezzar"
       ],
       "implementation_commit": "cfd528ac4288676cfae5c2ba678b71981ad2bcfe",
@@ -3996,7 +3996,8 @@
       "semantic_scope": [
         "Typed random graveyard counts survive into resolving selections and exact linked returns, with transcript authority, distinct sampling and complete program pending/error rollback.",
         "Full Moldgraf/Tomb/Ogre bodies preserve death/source-exile, anthem/cost/turn restrictions, actual entry and exact random public reveal/life value; four broader random bodies remain partial.",
-        "Kheru retains the actual paid return, indefinite keyword grants, exact incarnation-bound leave replacement and captured-controller next-end-step trigger; no new rider encoding is needed."
+        "Kheru retains the actual paid return, indefinite keyword grants, exact incarnation-bound leave replacement and captured-controller next-end-step trigger; no new rider encoding is needed.",
+        "Sinister retains announcement cardinality but resolves surviving targets, samples one subset, captures its complement before moves, and pins the final whole-set remainder to original ObjectIds/zone with typed failures preserved."
       ]
     },
     {
@@ -4036,7 +4037,6 @@
         "Zndrsplt, Eye of Wisdom // Zndrsplt, Eye of Wisdom"
       ],
       "partial_entries": [
-        "Mirror March",
         "Mutalith Vortex Beast",
         "Yusri, Fortune's Flame"
       ],
@@ -4048,6 +4048,47 @@
         "Grouped and repeated completed flips retain exact local instruction receipts, actor/call/face/winner distinctions, ignored-versus-retained flips, unique provenance and checked transaction rollback.",
         "Six full bodies retain partner search/per-win tails, all loyalty modes and creature grants; Thumb/Edgar modifiers are reviewed prerequisites, not additional card claims.",
         "Coin and die producers have separate bindings; mixed face/win consumers stay called, and missing/known-empty outcomes remain distinct."
+      ]
+    },
+    {
+      "id": "complete-compound-static-bodies",
+      "stage": 66,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/compound_static_bodies.json.fixture",
+      "baseline_entries": [
+        "Expedition Lookout",
+        "Machinist's Arsenal",
+        "Nighthowler",
+        "Rope",
+        "Spire Serpent",
+        "Tek",
+        "Wrecking Ball Arm"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Complete compound stat/type/keyword/restriction readers retain subject, value and conjunctive conditions without competing partial readings.",
+        "Unquoted attached combat rules remain source-owned, including typed live MaximumBlockers; quoted grants, Bestow, job selection and all equip prices remain distinct."
+      ]
+    },
+    {
+      "id": "coin-copy-group-followups",
+      "stage": 66,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/grouped_coin_followups.json.fixture",
+      "baseline_entries": [
+        "Mirror March"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
+      "source_review_commit": "a74ae46394944a9750fd77547d3bbceca88dce60",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
+      "tests": "authored_not_run",
+      "semantic_scope": [
+        "Mirror retains exact copied-source LKI and created group through delayed cleanup; separate haste applies after completed entry/additions and remains noncopiable, while inline copy-exception haste retains its prior copiable behavior."
       ]
     }
   ],
@@ -13379,8 +13420,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Expel the Interlopers",
@@ -21705,8 +21750,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Madame Masque",
@@ -22763,8 +22812,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "coin-copy-group-followups"
+      ],
+      "source_review_commit": "a74ae46394944a9750fd77547d3bbceca88dce60",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Mirror Match",
@@ -24036,8 +24089,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Nightkin Ambusher",
@@ -28472,8 +28529,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Rose, Cutthroat Raider",
@@ -30485,12 +30546,13 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "random-return-and-reveal-bodies"
       ],
       "source_review_commit": "f0c3f2b1184c08109ad4a9d0d2e97dd85247f7da",
-      "integrated_source_review_commit": "551dd5d91a81df6e47bd1d40453c8938aeb6733c"
+      "integrated_source_review_commit": "551dd5d91a81df6e47bd1d40453c8938aeb6733c",
+      "known_runtime_gap": "RevealTagged has no public hidden-card opening before snapshot/value consumption on peers."
     },
     {
       "card_name": "Sinister Gnarlbark",
@@ -30509,8 +30571,12 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "random-return-and-reveal-bodies"
+      ],
+      "source_review_commit": "79e2d98b6660022f2295478e22ab83f151e2a214",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Siona, Captain of the Pyleas",
@@ -31510,8 +31576,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Spirespine",
@@ -33147,8 +33217,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Telekinesis",
@@ -38564,8 +38638,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-compound-static-bodies"
+      ],
+      "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
     },
     {
       "card_name": "Wren's Run Hydra",
@@ -39457,6 +39535,19 @@
       "evidence": "architecture/card-failure-life-payment-trigger.md",
       "source_review_commit": "3787e4527",
       "individual_price_casts_use_supported_single_payer_paths": true
+    },
+    {
+      "id": "tagged-public-reveal-opening",
+      "status": "source_gap_confirmed_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Singe-Mind Ogre"
+      ],
+      "held_new_cards": [
+        "Nebuchadnezzar"
+      ],
+      "remaining_boundary": "Selected generic hidden-hand IDs need the existing owner-answered Public opening, then refreshed exact snapshots, before reveal receipts and downstream values. Current view_cards-only behavior does not establish shared identity.",
+      "evidence": "crates/ironsmith-engine/src/effects/cards/reveal_tagged.rs; effects/runtime.rs hidden All preflight excludes this owner",
+      "source_review_commit": "79e2d98b6"
     }
   ]
 }

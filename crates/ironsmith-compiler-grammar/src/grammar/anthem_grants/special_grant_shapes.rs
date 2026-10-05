@@ -286,3 +286,50 @@ mod tests {
         assert!(parse_no_defender_granted_fragment_tokens(&tokens));
     }
 }
+
+/// A complete base-P/T clause followed by an unquoted blocker restriction.
+/// The shared subject and condition are retained by the base clause shape.
+pub fn parse_base_pt_and_blocker_restriction_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(super::tail_static_shapes::BasePowerToughnessShape<'_>, crate::ObjectFilter, &[OwnedLexToken])> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    let (base_tokens, blocker_tokens) = primitives::split_lexed_once_on_separator(tokens, || {
+        (
+            primitives::kw("and"),
+            alt((primitives::kw("can't"), primitives::kw("cant"), primitives::kw("cannot"))),
+            primitives::phrase(&["be", "blocked", "by"]),
+        ).void()
+    })?;
+    let base = super::parse_base_power_toughness_shape(base_tokens)?;
+    let blocker_tokens = super::trim_anthem_clause_tokens(blocker_tokens);
+    // Reuse the complete blocking grammar; a tolerant object-filter suffix
+    // must never swallow an additional predicate after the blocker quality.
+    use crate::grammar::activation_costs::cant_shapes::{BlockingCantFact, parse_blocking_cant_fact_tokens};
+    let restriction_tokens = tokens.get(base_tokens.len() + 1..)?;
+    let blockers = match parse_blocking_cant_fact_tokens(restriction_tokens)? {
+        BlockingCantFact::PowerThreshold { comparison, .. } => {
+            let mut filter = crate::ObjectFilter::creature();
+            filter.power = Some(comparison);
+            filter
+        }
+        BlockingCantFact::DisallowedBlockers { filter, .. } => filter,
+        _ => return None,
+    };
+    Some((base, blockers, blocker_tokens))
+}
+
+/// Own both conditional predicates, including the entire unblockable tail.
+pub fn parse_conditional_no_defender_and_unblockable_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<super::NoDefenderConditionalShape<'_>> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    let (permission_tokens, ()) = primitives::split_lexed_once_before_suffix(tokens, 1, || {
+        (
+            primitives::phrase(&["and", "it"]),
+            alt((primitives::kw("can't"), primitives::kw("cant"), primitives::kw("cannot"))),
+            primitives::phrase(&["be", "blocked"]),
+            primitives::sentence_end(),
+        ).void()
+    })?;
+    super::parse_leading_condition_no_defender_shape(permission_tokens)
+}

@@ -1823,6 +1823,18 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MaximumBlockers { filter, maximum } => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        tracker.maximum_blockers.entry(object.id)
+                            .and_modify(|existing| *existing = (*existing).min(*maximum))
+                            .or_insert(*maximum);
+                    }
+                }
+            }
             Restriction::MustAttack(filter) => {
                 for &object in &game.battlefield {
                     if !game.is_phased_out(object)

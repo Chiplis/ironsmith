@@ -117,3 +117,41 @@ source review cleared checkpoint `6693c17db`; Kheru is source-proposed and no
 longer held. This supersedes its initial hold above. Execution and strict
 quality validation remain deferred; no successful test or corpus result is
 claimed.
+
+## Surviving-target random partition checkpoint (unrun, awaiting review)
+
+The named `declared-graveyard-random-return-complement` pair rule reads the
+announcement and its completing partition together. It emits existing typed
+primitives: a tagged explicit target declaration, random selection from that
+surviving set, a captured set difference, and the two zone moves. Capturing the
+complement before movement ensures a prevented or redirected selected return
+never becomes a member of “the other.” No card-name test or bespoke whole-card
+AST/runtime operation is introduced.
+
+The native explicit target declaration previously enforced its original count
+again at resolution. It now follows the existing synthetic declaration rule:
+announcement requires the full authored count, but only surviving legal targets
+populate the result (CR 608.2b). Zero survivors still invalidate a required
+explicit declaration, and the stack owner handles the all-targets-illegal case.
+
+The text compactor verifies all five operations and exact pool/subset/complement
+links before presenting the combined partition. Full Sinister Waltz direct and
+artifact tests author a real three-target cast, zero through three lost targets,
+fresh graveyard incarnations, untargeted/foreign exclusions, and prevented
+returns retaining the originally selected subset outside the complement.
+Local grammar, native declaration and structural-render tests are authored.
+Sinister remains uncredited pending bounded review and deferred execution.
+
+Sinister review refinements: the reader verifies complete token ownership of
+its completing statement and rejects extra symbols/instructions; TargetOnly
+preserves typed resolver failures rather than converting them to illegal-target
+outcomes. The final complement move carries the existing `SameObjectId`
+relationship and its original graveyard. This excludes a new incarnation even
+if a replacement-added effect moves the complement during the same resolution.
+Authored cases cover both an exile destination and a blink back to the graveyard.
+
+Bounded source review cleared Sinister through `79e2d98b6`, superseding its
+initial hold. The exact complement is lowered as `ChooseSpec::All` so zero
+surviving members complete without error. Sinister is source-proposed with
+execution and strict quality validation still deferred. No runtime or corpus
+success is claimed.

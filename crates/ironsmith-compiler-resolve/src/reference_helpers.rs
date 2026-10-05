@@ -1635,6 +1635,10 @@ pub fn resolve_restriction_it_tag(
                 cause,
             }
         }
+        Restriction::MaximumBlockers { filter, maximum } => Restriction::MaximumBlockers {
+            filter: resolve_it_tag(filter, refs)?,
+            maximum: *maximum,
+        },
         Restriction::BecomeSuspected(filter) => {
             Restriction::BecomeSuspected(resolve_it_tag(filter, refs)?)
         }

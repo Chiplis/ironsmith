@@ -387,6 +387,10 @@ fn static_ability_has_minimum_total_spell_mana(
 }
 
 impl<'a> DerivedGameView<'a> {
+    pub(crate) fn rule_maximum_blockers(&self, attacker: ObjectId) -> Option<usize> {
+        self.game.effect_store.cant_effects.maximum_blockers.get(&attacker).copied()
+    }
+
     /// A fresh activation-local target view. Its memo table must never reuse
     /// answers computed for another announced cost identity.
     pub(crate) fn with_target_reference_bindings(

@@ -299,8 +299,12 @@ fn prepare_token_copy_proposal(
     let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
         snapshot.object_id
     } else {
-        let resolved = crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx);
-        match resolved.as_ref().ok().and_then(|ids| ids.first()) {
+        let resolved = match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx) {
+            Ok(ids) => ids,
+            Err(ExecutionError::InvalidTarget) => Vec::new(),
+            Err(error) => return Err(error),
+        };
+        match resolved.first() {
             Some(id) => *id,
             None => {
                 // A tagged copy source may already have left its zone
@@ -393,7 +397,7 @@ fn prepare_token_copy_proposal(
     );
     let mut static_abilities_to_grant =
         Vec::with_capacity(effect.granted_static_abilities.len() + usize::from(effect.has_haste));
-    if effect.has_haste {
+    if effect.has_haste && effect.haste_followup_reference_surface.is_none() {
         static_abilities_to_grant.push(StaticAbility::haste());
     }
     static_abilities_to_grant.extend(effect.granted_static_abilities.iter().cloned());
@@ -536,6 +540,7 @@ struct TokenCopyCompletion {
     entries: Option<Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>>,
     frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+    haste_recipients: Vec<ObjectId>,
 }
 impl crate::effects::SimultaneousEffectCompletion for TokenCopyCompletion {
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
@@ -548,7 +553,19 @@ impl crate::effects::SimultaneousEffectCompletion for TokenCopyCompletion {
         let _phase = self.instruction.as_ref().map(|permit| permit.enter_phase()).transpose()?;
         let frozen = self.frozen.ok_or_else(|| ExecutionError::InternalError("copy completion requires the original batch".into()))?;
         let original = crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)?;
-        crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, original, self.programs)
+        let mut outcome = crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, original, self.programs)?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(outcome); }
+        if !self.haste_recipients.is_empty() {
+            crate::effects::runtime::capture_triggers_before_added_program(game, ctx, None, outcome.events.iter_mut())?;
+            for id in self.haste_recipients {
+                // The later instruction follows the original created identities,
+                // never a card's new incarnation after an entry program moved it.
+                if game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) && !game.is_phased_out(id) {
+                    super::lifecycle::grant_token_haste(game, ctx, id)?;
+                }
+            }
+        }
+        Ok(outcome)
     }
 }
 fn execute_token_instruction(effect: &CreateTokenCopyEffect, game: &mut GameState, ctx: &mut ExecutionContext)
@@ -569,7 +586,7 @@ fn commit_token_copy_proposal(mut proposal: TokenCopyProposal, game: &mut GameSt
         ExecutionError::InternalError("copy proposal has no prepared creation".into()))? {
         PreparedTokenCreation::Finished { outcome, programs } => crate::effects::SimultaneousEffectCommit {
             outcome: outcome.with_result_objects(Vec::new()), completion: Some(Box::new(TokenCopyCompletion { instruction: proposal.instruction.take(),
-                entries: Some(Vec::new()), frozen: None, programs })),
+                entries: Some(Vec::new()), frozen: None, programs, haste_recipients: Vec::new() })),
         },
         PreparedTokenCreation::Proceed { event, provenance, programs } => {
             ctx.provenance = provenance;
@@ -639,7 +656,6 @@ fn commit_token_copy_original(mut proposal: TokenCopyProposal, game: &mut GameSt
             enters_tapped: effect.enters_tapped, entry: entry_options,
             prepared_attack_targets: (effect.enters_attacking || proposal.configured_attack_player.is_some())
                 .then_some(proposal.additional_attack_targets),
-            gains_haste: effect.has_haste && effect.haste_followup_reference_surface.is_some(),
             ..Default::default()
         }, &mut events, &mut entry_receipts)?;
     if ctx.decision_maker.awaiting_choice() {
@@ -657,10 +673,13 @@ fn commit_token_copy_original(mut proposal: TokenCopyProposal, game: &mut GameSt
             schedule_token_cleanup(game, ctx, id, controller_id, proposal.cleanup.clone())?;
         }
     }
+    let haste_recipients = if effect.has_haste && effect.haste_followup_reference_surface.is_some() {
+        created_ids.clone()
+    } else { Vec::new() };
     Ok(crate::effects::SimultaneousEffectCommit {
         outcome: EffectOutcome::with_objects(created_ids.clone()).with_result_objects(created_ids).with_events(events),
         completion: Some(Box::new(TokenCopyCompletion {
-            instruction: proposal.instruction.take(), entries: Some(entry_receipts), frozen: None, programs,
+            instruction: proposal.instruction.take(), entries: Some(entry_receipts), frozen: None, programs, haste_recipients,
         })),
     })
 }

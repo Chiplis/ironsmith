@@ -9507,6 +9507,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
         | Restriction::BecomeSuspected(filter)
+        | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

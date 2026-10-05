@@ -67,7 +67,8 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
     match restriction {
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
         | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
-        | crate::effect::Restriction::MustAttack(sources) => {
+        | crate::effect::Restriction::MustAttack(sources)
+        | crate::effect::Restriction::MaximumBlockers { filter: sources, .. } => {
             object_filter_mentions_iterated_player(sources)
         }
         crate::effect::Restriction::PlayLandsMatching(player, filter) => {

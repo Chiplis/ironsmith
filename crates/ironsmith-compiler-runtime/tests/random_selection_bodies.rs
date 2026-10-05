@@ -296,3 +296,5 @@ fn compiled_random_return_rolls_back_whole_program_when_entry_suspends() {
 
 #[path = "random_selection_bodies/kheru_riders.rs"]
 mod kheru_riders;
+#[path = "random_selection_bodies/sinister_partition.rs"]
+mod sinister_partition;

@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Mirror March",
+    "oracle_id": "945eaa8b-0ba5-45a6-a02a-763e5bfe3af8",
+    "oracle_text": "Whenever a nontoken creature you control enters, flip a coin until you lose a flip. For each flip you won, create a token that's a copy of that creature. Those tokens gain haste. Exile them at the beginning of the next end step.",
+    "text": "Mana cost: {5}{R}\nType: Enchantment\nWhenever a nontoken creature you control enters, flip a coin until you lose a flip. For each flip you won, create a token that's a copy of that creature. Those tokens gain haste. Exile them at the beginning of the next end step.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "ebc85c5b39cd90b268d6cb6b9b8e7b05567f5a3aa22eadb7c5d91834002a552d",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  }
+]

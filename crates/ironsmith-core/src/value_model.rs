@@ -1154,6 +1154,13 @@ pub enum Restriction {
     /// Matching permanents cannot receive the suspected designation.
     /// Appended to preserve existing serialized variant ordinals.
     BecomeSuspected(ObjectFilter),
+    /// A rule limiting the number of creatures that can block each matching
+    /// attacker. This is independent of abilities on the affected attacker.
+    /// Appended to preserve existing serialized variant ordinals.
+    MaximumBlockers {
+        filter: ObjectFilter,
+        maximum: usize,
+    },
 }
 
 /// How mana may be spent relative to its produced type.

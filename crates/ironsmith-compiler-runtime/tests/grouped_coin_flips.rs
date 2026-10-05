@@ -832,3 +832,104 @@ fn one_instruction_can_count_wins_and_heads_without_conflating_them() {
         assert_eq!(g.player(A).unwrap().life, 32, "two tails wins and zero heads");
     }
 }
+
+fn followup_definitions(name: &str) -> [CardDefinition; 2] {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/grouped_coin_followups.json.fixture")).unwrap();
+    let row = rows.into_iter().find(|row| row["name"] == name).unwrap();
+    program_definitions(name, row["text"].as_str().unwrap())
+}
+
+#[test]
+fn mirror_march_copies_exact_entry_lki_grants_noncopiable_haste_and_exiles_only_its_created_group() {
+    for definition in followup_definitions("Mirror March") {
+        for leaves in [false, true] {
+            for wins in [0usize, 2] {
+                let mut g = game();
+                let mirror = g.create_object_from_definition(&definition, A, Zone::Battlefield);
+                let card = object(&mut g, A, Zone::Hand, "March original", "Mana cost: {0}\nType: Creature — Bear\nPower/Toughness: 2/3\nVigilance");
+                let stable = g.object(card).unwrap().stable_id;
+                let mut dm = Choices::default();
+                cast(&mut g, card, &mut dm);
+                resolve_stack_entry_with(&mut g, &mut dm).unwrap();
+                assert_eq!(stack(&mut g, vec![], &mut dm), 1);
+                let original = g.find_object_by_stable_id(stable).unwrap();
+                if leaves {
+                    g.move_object_by_effect(original, Zone::Graveyard).unwrap();
+                    g.move_object_by_effect(mirror, Zone::Graveyard).unwrap();
+                }
+                force(&mut g, &if wins == 0 { vec![T] } else { vec![H, H, T] });
+                settle(&mut g, &mut dm);
+                let tokens = g.battlefield.iter().copied().filter(|id| {
+                    g.object(*id).is_some_and(|object| object.kind == ironsmith::object::ObjectKind::Token && object.name == "March original")
+                }).collect::<Vec<_>>();
+                assert_eq!(tokens.len(), wins);
+                for &token in &tokens {
+                    assert_eq!(g.current_power(token), Some(2));
+                    assert_eq!(g.current_toughness(token), Some(3));
+                    assert!(g.current_has_static_ability_id(token, StaticAbilityId::Vigilance));
+                    assert!(g.current_has_static_ability_id(token, StaticAbilityId::Haste));
+                }
+                assert!(g.stack.is_empty(), "nontoken restriction must prevent recursive Mirror triggers");
+                let recopy = tokens.first().map(|token| {
+                    let outcome = ironsmith::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(*token))
+                        .execute(&mut g, &mut ExecutionContext::new(mirror, A, &mut dm)).unwrap();
+                    let copied = outcome.explicit_objects().unwrap()[0];
+                    assert!(!g.current_has_static_ability_id(copied, StaticAbilityId::Haste), "a later copy does not inherit a separate haste grant");
+                    copied
+                });
+                if let Some(&token) = tokens.first() {
+                    ironsmith::effects::GainControlEffect::new(ChooseSpec::SpecificObject(token), Until::Forever)
+                        .execute(&mut g, &mut ExecutionContext::new_default(mirror, B)).unwrap();
+                }
+                g.turn.phase = ironsmith::Phase::Ending;
+                g.turn.step = Some(ironsmith::game_state::Step::End);
+                let event = TriggerEvent::new_with_provenance(ironsmith::events::BeginningOfEndStepEvent::new(A), Default::default());
+                stack(&mut g, vec![event], &mut dm);
+                settle(&mut g, &mut dm);
+                assert!(tokens.iter().all(|token| !g.battlefield.contains(token)));
+                if let Some(copied) = recopy { assert!(g.battlefield.contains(&copied), "the extra copy was never part of Mirror's cleanup group"); }
+                if !leaves { assert!(g.battlefield.contains(&original)); }
+            }
+        }
+    }
+}
+
+#[test]
+fn mirror_haste_occurs_after_entry_observation_for_original_and_replacement_added_tokens() {
+    for definition in followup_definitions("Mirror March") {
+        let mut g = game();
+        let mirror = g.create_object_from_definition(&definition, A, Zone::Battlefield);
+        object(&mut g, A, Zone::Battlefield, "Additional Frog",
+            "Type: Artifact\nIf one or more tokens would be created under your control, those tokens plus a 1/1 green Frog creature token are created instead.");
+        let observer = ironsmith::cards::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Haste entry observer")
+            .card_types(vec![ironsmith::CardType::Enchantment])
+            .with_ability(ironsmith::ability::Ability::triggered(
+                ironsmith::triggers::Trigger::enters_battlefield(
+                    ironsmith::target::ObjectFilter::creature().you_control().with_static_ability(StaticAbilityId::Haste), None),
+                vec![ironsmith::effect::Effect::gain_life(7)],
+            )).build();
+        g.create_object_from_definition(&observer, A, Zone::Battlefield);
+        let card = object(&mut g, A, Zone::Hand, "Unhurried original", "Mana cost: {0}\nType: Creature\nPower/Toughness: 2/2");
+        let mut dm = Choices::default();
+        force(&mut g, &[H, T]);
+        cast(&mut g, card, &mut dm);
+        settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().life, 30, "neither original nor added token entered with haste");
+        let tokens = g.battlefield.iter().copied().filter(|id| g.object(*id).unwrap().kind == ironsmith::object::ObjectKind::Token).collect::<Vec<_>>();
+        assert_eq!(tokens.len(), 2);
+        assert!(tokens.iter().all(|id| g.current_has_static_ability_id(*id, StaticAbilityId::Haste)));
+        // The supported inline copy exception remains copiable and qualifies
+        // at entry, unlike Mirror's later grant.
+        let mut inline = ironsmith::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(tokens[0]));
+        inline.has_haste = true;
+        let out = inline.execute(&mut g, &mut ExecutionContext::new(mirror, A, &mut dm)).unwrap();
+        let inline_token = out.result_objects().unwrap()[0];
+        stack(&mut g, out.events, &mut dm);
+        settle(&mut g, &mut dm);
+        assert_eq!(g.player(A).unwrap().life, 37, "only the original inline-exception token enters with haste");
+        let out = ironsmith::effects::CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(inline_token))
+            .execute(&mut g, &mut ExecutionContext::new(mirror, A, &mut dm)).unwrap();
+        let copied = out.result_objects().unwrap()[0];
+        assert!(g.current_has_static_ability_id(copied, StaticAbilityId::Haste), "inline haste survives a subsequent copy");
+    }
+}

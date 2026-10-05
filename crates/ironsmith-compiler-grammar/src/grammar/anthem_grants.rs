@@ -79,6 +79,8 @@ pub use misc_shapes::{
 pub use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
 pub use special_grant_shapes::{
     parse_anthem_goaded_shape, parse_anthem_no_defender_grant_tokens,
+    parse_base_pt_and_blocker_restriction_tokens,
+    parse_conditional_no_defender_and_unblockable_tokens,
     parse_colored_spell_protection_tokens, parse_commander_creature_subject_tokens,
     parse_no_defender_granted_fragment_tokens, parse_subject_color_and_grant_tokens,
     parse_unblockable_keyword_fragment_tokens,

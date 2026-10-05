@@ -3,7 +3,7 @@
 use crate::ability::Ability;
 use crate::effect::Effect;
 use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
 use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -117,7 +117,6 @@ pub(crate) struct AdditionalTokenInstructions {
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
     pub cleanup: Option<TokenCleanupOptions>,
     pub linked_exiles: Vec<ObjectId>,
-    pub gains_haste: bool,
 }
 
 /// Commit every added/substituted group as part of its original creation.
@@ -192,7 +191,6 @@ pub(crate) fn create_replacement_additional_tokens(
                 if let Some(attacker) = instructions.blocking_attacker {
                     crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
                 }
-                if instructions.gains_haste { grant_token_static_abilities(game, ctx, entered, &[StaticAbility::haste()])?; }
                 if let Some(cleanup) = &instructions.cleanup { schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?; }
                 if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
             }
@@ -256,6 +254,20 @@ pub(crate) fn apply_token_battlefield_entry(
         })?;
     }
 
+    Ok(())
+}
+
+/// A separate “those tokens gain haste” instruction is a noncopiable layer-6
+/// effect. Copy exceptions which say “except it has haste” live in the token
+/// prototype instead. The same rule applies to replacement-added tokens.
+pub(crate) fn grant_token_haste(
+    game: &mut GameState, ctx: &mut ExecutionContext, token_id: ObjectId,
+) -> Result<(), ExecutionError> {
+    crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Specific(token_id),
+        crate::continuous::Modification::AddAbility(Ability::static_ability(StaticAbility::haste())),
+        crate::effect::Until::Forever,
+    ).execute(game, ctx)?;
     Ok(())
 }
 

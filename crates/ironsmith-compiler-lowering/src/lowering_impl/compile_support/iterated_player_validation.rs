@@ -588,6 +588,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeRegenerated(filter)
         | BeSacrificed(filter)
         | BecomeSuspected(filter)
+        | MaximumBlockers { filter, .. }
         | HaveCountersPlaced(filter)
         | HaveCounterTypePlaced(filter, _)
         | BeTargeted(filter)

@@ -173,6 +173,17 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
     if !recognized { return Ok(None); }
     let mut effects = Vec::new();
     for (sentence, parsed) in sentences.iter().zip(parsed) {
+        let words = crate::lexer::TokenWordView::new(sentence).word_refs();
+        let token_followup = words == ["those", "tokens", "gain", "haste"]
+            || words == ["exile", "them", "at", "the", "beginning", "of", "the", "next", "end", "step"];
+        if parsed.is_none() && token_followup {
+            if !bare_words(sentence, TokenKind::Period) { return Err(malformed_coin_clause()); }
+            if let Some(followup) = parse_token_copy_modifier_sentence(sentence)
+                && try_apply_token_copy_followup(&mut effects, followup)?
+            {
+                continue;
+            }
+        }
         effects.extend(match parsed { Some(effects) => effects, None => parse_effect_sentences_lexed(sentence)? });
     }
     Ok(Some(effects))

@@ -899,6 +899,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/830"
+    },
+    {
+      "stage": 65,
+      "branch": "fix/card-failures-65-grouped-coin-bodies",
+      "base": "fix/card-failures-64-random-and-static-bodies",
+      "source_integration_commit": "42abc5676d80a4cc463d8d5de13b1ec9ec1bf0aa",
+      "remote_commit": "cf858ca833c6d8afb3be79d7b69bc0368d9d4007",
+      "tree": "5b7f61e64dd06a15c7d050b931b434b025628579",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 831,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/831"
     }
   ]
 }
