@@ -862,8 +862,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("tag", tag)
                 .field("reveal", reveal)
                 .finish(),
-            Self::RevealLook(RevealLookActionAst::LookAtObjects { filter }) => f
+            Self::RevealLook(RevealLookActionAst::LookAtObjects { filter, permit_while_exiled }) => f
                 .debug_struct("LookAtObjects")
+                .field("permit_while_exiled", permit_while_exiled)
                 .field("filter", filter)
                 .finish(),
             Self::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
@@ -1281,6 +1282,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("lands_enter_tapped", lands_enter_tapped)
                 .field("surface", surface)
                 .finish(),
+            Self::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
+                tag, player, allow_land, without_paying_mana_cost, surface,
+            }) => f.debug_struct("GrantPlayTaggedWhileSourceOnBattlefield")
+                .field("tag", tag).field("player", player).field("allow_land", allow_land)
+                .field("without_paying_mana_cost", without_paying_mana_cost).field("surface", surface).finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
                 player,

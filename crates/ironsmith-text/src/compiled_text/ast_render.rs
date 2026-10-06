@@ -17608,6 +17608,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
                 object: Some(ironsmith_core::GrantPlayTaggedObjectSurface::It),
                 mana_reference: None,
                 control_source: None,
+                battlefield_source: None,
                 until_source_exiles_another: None,
                 mana_spend_followup: false,
             })
@@ -17686,6 +17687,7 @@ mod exile_top_treasure_conditional_cast_fallback_tests {
             object: Some(ironsmith_core::GrantPlayTaggedObjectSurface::It),
             mana_reference: None,
             control_source: None,
+            battlefield_source: None,
             until_source_exiles_another: None,
             mana_spend_followup: false,
         });

@@ -157,6 +157,8 @@ impl GameState {
             .expire_presence_durations_for_phased_objects(
                 &outgoing.keys().copied().collect::<Vec<_>>(),
             );
+        self.effect_store.grant_registry.expire_source_presence_for_phasing(
+            &outgoing.keys().copied().collect::<Vec<_>>());
         self.expire_condition_ended_prevention_shields();
         let kind = if outgoing.is_empty() {
             EventKind::PermanentPhasedIn

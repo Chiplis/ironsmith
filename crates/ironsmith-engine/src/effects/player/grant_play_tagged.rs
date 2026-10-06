@@ -230,6 +230,7 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
+            GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => u32::MAX,
         }
     }
 }
@@ -250,6 +251,14 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             || cost.as_all().is_some_and(|components| components.iter().any(|cost| cost.dynamic_mana_cost_ref().is_some()))) {
             return Err(ExecutionError::InternalError("temporary casting price requires an announced flat cost".into()));
         }
+        if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
+            if self.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+                || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
+            { return Err(ExecutionError::IncompleteEvidence("unsupported extra source-lifetime permission scope".into())); }
+            if !game.object(ctx.source).is_some_and(|source| source.zone == crate::zone::Zone::Battlefield)
+                || game.is_phased_out(ctx.source)
+            { return Ok(EffectOutcome::count(0)); }
+        }
         let player_is_each_tagged_owner = matches!(
             &self.player,
             PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
@@ -261,7 +270,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         } else {
             Some(resolve_player_filter(game, &self.player, ctx)?)
         };
+        if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
+            && (self.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG || ctx.get_tagged_all(self.tag.as_str()).is_none())
+        { return Err(ExecutionError::IncompleteEvidence("source-lifetime permission lost its exact exile antecedent".into())); }
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
+            if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield { return None; }
+
             (self.tag.as_str() == "__source_exiled__").then(|| {
                 let linked = game
                     .get_exiled_with_source_links(ctx.source)
@@ -299,7 +313,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             // An open-ended exile permission names this exile incarnation.
             // Leaving and later reentering exile must not revive it, and a
             // card that left before this instruction resolves gets no grant.
-            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+            if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
                 && (snapshot.zone != crate::zone::Zone::Exile
                     || !game.object(snapshot.object_id).is_some_and(|object|
                         object.zone == crate::zone::Zone::Exile))
@@ -372,6 +386,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     player: object_owner,
                     library_top_revision: game.library_top_revision(object_owner),
                 }
+            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
+                GrantSource::EffectWhileSourceOnBattlefield { source_id: ctx.source }
             } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
@@ -444,7 +460,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             }
             if let Some(shared_usage_id) = shared_usage_id {
                 let target_stable_id = ((constraints != PlayFromConstraints::default()
-                    && self.duration != GrantPlayTaggedDuration::ForAsLongAsExiled)
+                    && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                     || self.during_turns_counter_put_on_source.is_some())
                 .then_some(object_stable_id);
                 game.effect_store
@@ -459,7 +475,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                         shared_usage_id,
                     );
             } else if constraints != PlayFromConstraints::default() {
-                if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+                if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                     game.effect_store.grant_registry.grant_play_from_to_card(
                         object_id,
                         object_zone,
@@ -479,7 +495,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                             source,
                         );
                 }
-            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+            } else if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                 game.effect_store.grant_registry.grant_to_card(
                     object_id,
                     object_zone,

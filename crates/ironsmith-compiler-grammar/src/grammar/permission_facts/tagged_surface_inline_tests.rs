@@ -242,3 +242,19 @@ fn snc_self_card_permission_does_not_claim_immediate_source_casts() {
     assert_eq!(target.surface, TaggedPermissionTargetSurface::ThisCard);
     assert!(parse_tagged_permission_target_tokens(&lex("this card without paying its mana cost")).is_none());
 }
+
+#[test]
+fn private_exile_inspection_and_exact_source_presence_are_distinct_complete_permissions() {
+    for text in ["You may look at it for as long as it remains exiled.", "You may look at that card for as long as it remains exiled."] {
+        assert!(parse_look_tagged_while_exiled_tokens(&lex(text)).is_some());
+    }
+    for text in ["You may look at target card for as long as it remains exiled.", "You may look at that card until end of turn.", "You may look at that card for as long as it remains exiled and draw a card."] {
+        assert!(parse_look_tagged_while_exiled_tokens(&lex(text)).is_none());
+    }
+    let tail = parse_permission_tail_tokens(&lex("without paying its mana cost for as long as this creature remains on the battlefield."), PermissionLifetimeFact::Immediate).unwrap();
+    assert_eq!(tail.lifetime, PermissionLifetimeFact::ForAsLongAsSourceOnBattlefield); assert!(tail.without_paying_mana_cost);
+    for text in ["without paying its mana cost for as long as target creature remains on the battlefield.",
+        "without paying its mana cost for as long as this creature remains on the battlefield and you control it."] {
+        assert!(parse_permission_tail_tokens(&lex(text), PermissionLifetimeFact::Immediate).is_none());
+    }
+}

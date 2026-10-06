@@ -92,6 +92,7 @@ pub enum PermissionLifetimeFact {
     UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
+    ForAsLongAsSourceOnBattlefield,
     Static,
 }
 
@@ -264,6 +265,33 @@ pub fn parse_allow_any_color_for_cast_suffix_tokens(
     )
 }
 
+/// Reuse the complete typed source-presence duration grammar. The optional
+/// price precedes the duration, and every remaining token must be consumed.
+pub fn parse_source_battlefield_permission_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(bool, ironsmith_core::SourceReferenceSurface)> {
+    let (free, duration) = primitives::parse_prefix(tokens, opt(parse_without_paying_mana_cost_lexed))?;
+    let parsed = crate::grammar::effects::control_copy_attach_shapes::parse_permanent_control_duration_shape(duration)?;
+    if parsed.until != crate::effect::Until::while_source_remains_on_battlefield() || parsed.condition.is_some() { return None; }
+    Some((free.is_some(), parsed.source_surface?))
+}
+
+/// Complete standalone private inspection permission over an exact antecedent.
+pub fn parse_look_tagged_while_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<TaggedLookReference> {
+    primitives::probe_all(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["you", "may", "look", "at"]).parse_next(input)?;
+        let reference = alt((
+            primitives::kw("it").value(TaggedLookReference::It),
+            primitives::phrase(&["that", "card"]).value(TaggedLookReference::ThatCard),
+            primitives::kw("them").value(TaggedLookReference::Them),
+            primitives::phrase(&["those", "cards"]).value(TaggedLookReference::ThoseCards),
+        )).parse_next(input)?;
+        parse_for_as_long_as_exiled_lexed.parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(reference)
+    }, "look-tagged-while-exiled")
+}
+
 pub fn parse_permission_tail_tokens(
     tokens: &[OwnedLexToken],
     default_lifetime: PermissionLifetimeFact,
@@ -274,11 +302,17 @@ pub fn parse_permission_tail_tokens(
         } else {
             (tokens, false)
         };
-    let (lifetime, without_paying_mana_cost) = crate::grammar::primitives::probe_all(
-        body_tokens,
-        |input: &mut LexStream<'_>| parse_permission_tail_lexed(input, default_lifetime),
-        "permission-tail",
-    )?;
+    let (lifetime, without_paying_mana_cost) = if let Some((free, _)) =
+        parse_source_battlefield_permission_tail_tokens(body_tokens)
+    {
+        (PermissionLifetimeFact::ForAsLongAsSourceOnBattlefield, free)
+    } else {
+        crate::grammar::primitives::probe_all(
+            body_tokens,
+            |input: &mut LexStream<'_>| parse_permission_tail_lexed(input, default_lifetime),
+            "permission-tail",
+        )?
+    };
     Some(PermissionTailFact {
         lifetime,
         without_paying_mana_cost,

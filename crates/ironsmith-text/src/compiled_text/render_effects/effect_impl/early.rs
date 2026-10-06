@@ -6037,6 +6037,9 @@
         return format!("Look at {owner} hand");
     }
     if let Some(look_at_objects) = effect.downcast_ref::<crate::effects::LookAtObjectsEffect>() {
+        if look_at_objects.permit_while_exiled {
+            return format!("{} may look at that card for as long as it remains exiled", describe_player_filter(&look_at_objects.viewer));
+        }
         // "Look at any face-down creatures they control" — a target-player
         // face-down creature scope reads as a pronoun back-reference.
         let targets_player_face_down = look_at_objects.filter.face_down == Some(true)

@@ -52,6 +52,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
             | SubjectVerbActionAst::Grants(
                 GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. }
             )
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })
@@ -1749,6 +1750,28 @@ pub(super) fn compile_subject_verb_middle(
                 ));
             }
             Ok((effects, Vec::new()))
+        }
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
+            tag, player, allow_land, without_paying_mana_cost, surface,
+        }) => {
+            let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| CardTextError::ParseError(
+                    "source-lifetime permission has no exact card antecedent".into()))?
+            } else if tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG {
+                // A resolving tagged permission must refer to this resolution's
+                // actual collection, never a union from prior acquisitions.
+                ctx.last_exiled_collection_tag.clone().ok_or_else(|| CardTextError::ParseError(
+                    "source-lifetime permission has no exact exile antecedent".into()))?
+            } else { tag.clone().into() };
+            let mut grant = crate::effects::GrantPlayTaggedEffect::new(tag, player,
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield,
+                *allow_land, false);
+            grant.surface = surface.clone();
+            if *without_paying_mana_cost {
+                grant = grant.with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
+            }
+            Ok((vec![Effect::new(grant)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(
             GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {

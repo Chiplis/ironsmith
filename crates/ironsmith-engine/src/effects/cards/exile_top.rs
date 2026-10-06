@@ -97,7 +97,9 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
         for tag in &self.moved_tags {
-            ctx.clear_object_tag(tag.as_str());
+            // The producer executed even when its library is empty or every
+            // move is replaced. Preserve that known-empty collection receipt.
+            ctx.set_tagged_objects(tag.clone(), Vec::new());
         }
 
         let top_cards = game

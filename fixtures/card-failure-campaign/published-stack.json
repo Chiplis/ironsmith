@@ -1221,6 +1221,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/853"
+    },
+    {
+      "stage": 88,
+      "branch": "fix/card-failures-88-broker-and-text-owner",
+      "base": "fix/card-failures-87-evasion-and-linked-bodies",
+      "source_integration_commit": "e50a901445329890b7992c69973534602b37cacb",
+      "remote_commit": "cafb57eca45937592b33fb00372e957914ff8d2b",
+      "tree": "34410f9dae39fa14ed1fc41fe2429d11ee685081",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 854,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/854"
     }
   ]
 }

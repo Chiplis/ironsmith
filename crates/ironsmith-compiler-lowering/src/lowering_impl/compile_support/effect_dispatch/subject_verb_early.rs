@@ -2294,7 +2294,7 @@ pub(super) fn compile_subject_verb_early(
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], all_choices))
         }
-        SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }) => {
+        SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter, permit_while_exiled }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -2309,14 +2309,9 @@ pub(super) fn compile_subject_verb_early(
                     .controller
                     .get_or_insert(player_filter.clone());
             }
-            Ok((
-                vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
-                    resolved_filter,
-                    PlayerFilter::You,
-                    player_filter,
-                ))],
-                subject.into_choices(),
-            ))
+            let mut look = crate::effects::LookAtObjectsEffect::new(resolved_filter, PlayerFilter::You, player_filter);
+            look.permit_while_exiled = *permit_while_exiled;
+            Ok((vec![Effect::new(look)], subject.into_choices()))
         }
         SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
             let (spec, choices) =

@@ -22,6 +22,7 @@ pub enum RevealLookActionAst {
     },
     LookAtObjects {
         filter: ObjectFilter,
+        permit_while_exiled: bool,
     },
     LookAtTarget {
         target: TargetAst,

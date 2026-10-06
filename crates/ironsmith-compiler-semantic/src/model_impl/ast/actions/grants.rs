@@ -116,4 +116,13 @@ pub enum GrantActionAst {
         ability: Box<GrantedAbilityAst>,
         mode: ironsmith_core::NextSpellGrantMode,
     },
+    /// A resolving permission with a fixed beneficiary and exact source lifetime.
+    GrantPlayTaggedWhileSourceOnBattlefield {
+        tag: TagRef,
+        player: PlayerAst,
+        allow_land: bool,
+        without_paying_mana_cost: bool,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+    },
+
 }

@@ -423,7 +423,7 @@ fn parse_exile_top_library_then_play_bundle(
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 subject,
                 action:
-                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }),
+                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter, .. }),
             }) = look
             else {
                 return Ok(None);
@@ -618,6 +618,10 @@ fn parse_exile_top_library_then_play_bundle(
     leading_effects.push(permission_effect);
     Ok(Some(leading_effects))
 }
+
+#[path = "effect_composition/private_exile_permission.rs"]
+mod private_exile_permission;
+use private_exile_permission::parse_optional_private_exile_play_bundle;
 
 fn parse_optional_result_exile_choice_play_bundle(
     sentences: &[&[OwnedLexToken]],

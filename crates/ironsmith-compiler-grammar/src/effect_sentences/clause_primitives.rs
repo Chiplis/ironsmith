@@ -474,6 +474,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             parse_unsupported_play_cast_permission_clause,
         ),
         specific_primitive!(
+            "look-tagged-exile-permission",
+            &["you"],
+            crate::permission_helpers::parse_look_tagged_exile_permission,
+        ),
+        specific_primitive!(
             "cast-or-play-tagged-clause",
             &["you", "that", "its"],
             parse_cast_or_play_tagged_clause,

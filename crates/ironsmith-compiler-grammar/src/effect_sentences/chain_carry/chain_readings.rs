@@ -108,6 +108,13 @@ const CHAIN_READINGS: &[Reading] = &[
         read: |input| input.outcome(read_named_token_appositive(input)),
     },
     Reading {
+        id: RuleId::new("look-tagged-exile-permission"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(crate::permission_helpers::parse_look_tagged_exile_permission(input.tokens)
+            .map(|effect| effect.map(|effect| vec![effect]))),
+    },
+    Reading {
         id: RuleId::new("cast-or-play-tagged-permission"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

@@ -4722,7 +4722,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }),
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter, permit_while_exiled: false }),
         )
     }
 

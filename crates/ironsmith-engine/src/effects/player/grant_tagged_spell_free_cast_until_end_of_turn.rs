@@ -20,6 +20,14 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
+            if self.while_on_top_of_library { return Err(ExecutionError::IncompleteEvidence(
+                "source-lifetime casting permission cannot also track a library top".into())); }
+            let mut grant = crate::effects::GrantPlayTaggedEffect::new(self.tag.clone(), self.player.clone(),
+                self.duration, false, false).with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
+            if let Some(zone) = self.zone { let mut filter = crate::filter::ObjectFilter::default(); filter.zone = Some(zone); grant = grant.with_filter(filter); }
+            return grant.execute(game, ctx);
+        }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let Some(snapshots) = ctx.get_tagged_all(self.tag.as_str()).cloned() else {
             return Ok(EffectOutcome::count(0));
@@ -38,7 +46,8 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             }
             crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
-            | crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
+            | crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource
+            | crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => u32::MAX,
         };
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();

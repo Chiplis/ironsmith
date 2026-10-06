@@ -1764,7 +1764,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Grants(
-            GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. },
+            GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. },
         )
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -2513,7 +2514,8 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 ..
             })
             | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. },
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { tag, .. },
             ) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
             SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary) => true,
             SubjectVerbActionAst::Cant { restriction, .. } => restriction_references_tag(

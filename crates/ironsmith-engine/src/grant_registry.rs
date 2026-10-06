@@ -100,6 +100,9 @@ pub enum GrantSource {
         /// The permanent providing this grant.
         source_id: ObjectId,
     },
+    /// Appended: an effect-owned permission; control and ability loss do not
+    /// change its beneficiary. Phasing permanently expires it (CR 702.26f).
+    EffectWhileSourceOnBattlefield { source_id: ObjectId },
 }
 
 impl GrantSource {
@@ -176,7 +179,7 @@ impl GrantSource {
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
-            GrantSource::StaticAbility { source_id } => *source_id,
+            GrantSource::StaticAbility { source_id } | GrantSource::EffectWhileSourceOnBattlefield { source_id } => *source_id,
         }
     }
 
@@ -231,6 +234,9 @@ impl GrantSource {
                 // Valid only while source is on battlefield
                 game.battlefield.contains(source_id)
             }
+            GrantSource::EffectWhileSourceOnBattlefield { source_id } =>
+                game.object(*source_id).is_some_and(|source| source.zone == Zone::Battlefield)
+                    && !game.is_phased_out(*source_id),
             GrantSource::EffectWhileControlled {
                 source_id,
                 controller,
@@ -303,7 +309,8 @@ impl GrantSource {
                 // Valid only while source is on battlefield
                 battlefield.contains(source_id)
             }
-            GrantSource::EffectWhileControlled { source_id, .. } => battlefield.contains(source_id),
+            GrantSource::EffectWhileSourceOnBattlefield { source_id }
+            | GrantSource::EffectWhileControlled { source_id, .. } => battlefield.contains(source_id),
             GrantSource::EffectWhileStableCardOnTopOfLibrary {
                 expires_end_of_turn,
                 ..
@@ -409,7 +416,8 @@ impl GrantSource {
                 source_id: *source_id,
                 exile_revision: *exile_revision,
             },
-            GrantSource::StaticAbility { source_id } => {
+            GrantSource::StaticAbility { source_id }
+            | GrantSource::EffectWhileSourceOnBattlefield { source_id } => {
                 GrantLifetime::WhileSourceOnBattlefield(*source_id)
             }
             GrantSource::EffectWhileControlled {
@@ -1426,6 +1434,7 @@ impl GrantRegistry {
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
+                GrantSource::EffectWhileSourceOnBattlefield { source_id: sid } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
             )
@@ -1550,12 +1559,21 @@ impl GrantRegistry {
                 ..
             } => *expires_end_of_turn > turn_number,
             GrantSource::StaticAbility { source_id }
+            | GrantSource::EffectWhileSourceOnBattlefield { source_id }
             | GrantSource::EffectWhileControlled { source_id, .. } => {
                 battlefield.contains(source_id)
             }
             GrantSource::EffectUntilSourceExilesAnother { .. }
             | GrantSource::EffectDuringTurnsCounterPutOnSource { .. } => true,
         });
+        self.cleanup_orphaned_shared_usage();
+    }
+
+    /// A for-as-long-as presence duration cannot resume after phase-in, even
+    /// if no permission query happened while the source was phased out.
+    pub(crate) fn expire_source_presence_for_phasing(&mut self, sources: &[ObjectId]) {
+        self.grants.retain(|grant| !matches!(&grant.source,
+            GrantSource::EffectWhileSourceOnBattlefield { source_id } if sources.contains(source_id)));
         self.cleanup_orphaned_shared_usage();
     }
 

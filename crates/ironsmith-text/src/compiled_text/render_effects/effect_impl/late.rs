@@ -5216,7 +5216,9 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
-        if let Some(price) = &grant_play_tagged.alternative_cost {
+        let source_presence_free_price = grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
+            && grant_play_tagged.alternative_cost.as_ref().is_some_and(|price| price.as_all().is_some_and(|costs| costs.is_empty()));
+        if let Some(price) = &grant_play_tagged.alternative_cost && !source_presence_free_price {
             let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
             let payment = describe_casting_price_payment(price);
             let payment = payment.strip_prefix("paying ").map(|tail| format!("pay {tail}"))
@@ -5277,6 +5279,11 @@
                 } else {
                     "for as long as it remains exiled".to_string()
                 }
+            }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => {
+                let source = grant_play_tagged.surface.as_ref().and_then(|surface| surface.battlefield_source.as_ref())
+                    .map(ironsmith_core::SourceReferenceSurface::display_text).unwrap_or_else(|| "this source".into());
+                format!("for as long as {source} remains on the battlefield")
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
                 let source = grant_play_tagged
@@ -5419,8 +5426,9 @@
             };
             return format!("Until end of turn, you may cast spells from among {cards_text}");
         }
+        let free_price = if source_presence_free_price { " without paying its mana cost" } else { "" };
         let mut rendered = format!(
-            "{} may {verb} {object_text} {timing}",
+            "{} may {verb} {object_text}{free_price} {timing}",
             describe_player_filter(&grant_play_tagged.player),
         );
         if let Some(cost) = &grant_play_tagged.spell_cost_increase {
@@ -5530,6 +5538,9 @@
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
                 "for as long as you control this source"
+            }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => {
+                "for as long as this source remains on the battlefield"
             }
         };
         return format!(

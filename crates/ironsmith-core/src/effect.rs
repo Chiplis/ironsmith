@@ -406,6 +406,8 @@ pub enum GrantPlayTaggedDuration {
     UntilSourceExilesAnother,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
+    /// Appended; ends permanently when the exact source leaves or phases out.
+    ForAsLongAsSourceOnBattlefield,
 }
 
 /// Oracle-facing noun phrase for a temporary permission over a tagged card
@@ -458,6 +460,9 @@ pub struct GrantPlayTaggedSurface {
     /// Runtime duration semantics remain carried by
     /// `GrantPlayTaggedDuration::ForAsLongAsYouControlSource`.
     pub control_source: Option<SourceReferenceSurface>,
+    /// Authored source noun; the corresponding duration carries the semantics.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub battlefield_source: Option<SourceReferenceSurface>,
     /// Authored source noun in "until you exile another card with this ...".
     /// The event-bounded lifetime itself is carried by
     /// `GrantPlayTaggedDuration::UntilSourceExilesAnother`.
@@ -2277,7 +2282,13 @@ pub struct LookAtObjectsEffect {
     pub filter: ObjectFilter,
     pub viewer: PlayerFilter,
     pub subject: PlayerFilter,
+    /// Create a durable private entitlement without requiring an immediate look.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "immediate_object_inspection"))]
+    pub permit_while_exiled: bool,
 }
+
+#[cfg(feature = "serde")]
+fn immediate_object_inspection(permit: &bool) -> bool { !*permit }
 
 impl LookAtObjectsEffect {
     pub fn new(filter: ObjectFilter, viewer: PlayerFilter, subject: PlayerFilter) -> Self {
@@ -2285,8 +2296,11 @@ impl LookAtObjectsEffect {
             filter,
             viewer,
             subject,
+            permit_while_exiled: false,
         }
     }
+
+    pub fn permit_while_exiled(mut self) -> Self { self.permit_while_exiled = true; self }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

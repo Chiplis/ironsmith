@@ -1024,7 +1024,8 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
                 GrantActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. }
                 | GrantActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }
                 | GrantActionAst::GrantPlayTaggedForAsLongAsExiled { tag, .. }
-                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. },
+                | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { tag, .. },
             ) = &mut subject_verb.action
                 && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                 && let Some(replacement) = off_battlefield_card_antecedent_replacement(env)
@@ -2593,7 +2594,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
                     player,
                     ..
-                }) => {
+                }) | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { player, .. }) => {
                     track_effect_player(*player, frame, true, true)?;
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand) => {
@@ -7083,7 +7084,8 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. },
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. },
             )
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                 ..
@@ -8416,7 +8418,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_value(count, seed_tag)
                     + bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
             }
-            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }) => {
+            SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter, .. }) => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
@@ -8866,7 +8868,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             })
             | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. },
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { tag, .. },
             ) => bind_unresolved_it_in_tag(&mut tag.key, seed_tag),
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target,
