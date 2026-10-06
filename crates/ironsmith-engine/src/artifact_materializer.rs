@@ -293,6 +293,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "ForEachTaggedPlayerEffect" => {
             decode_as::<T, ironsmith_core::ForEachTaggedPlayerEffect<wire::WireEffect>>(effect)
         }
+        "CollectManaPaymentsEffect" => {
+            decode_as::<T, ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(effect)
+        }
         "ForPlayersEffect" => {
             decode_as::<T, ironsmith_core::ForPlayersEffect<wire::WireEffect>>(effect)
         }
@@ -1606,6 +1609,45 @@ pub fn encode_runtime_effect(
         };
         return serde_json::to_value(converted)
             .map(|payload| wire::WireEffect::new("CreateTokenEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    // These native composition owners preserve exactly the same recursive
+    // typed payload as compilation, including order flags and scoped tags.
+    if let Some(payload) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
+        let converted = ironsmith_core::CollectManaPaymentsEffect::new(
+            payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        );
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let converted = ironsmith_core::SequenceEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            surface: payload.surface, result_label: payload.result_label.clone(),
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("SequenceEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        let converted = ironsmith_core::ForPlayersEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            filter: payload.filter.clone(), sequential: payload.sequential,
+            starting_with_controller: payload.starting_with_controller,
+            stop_after_first_happened: payload.stop_after_first_happened,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("ForPlayersEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+        let converted = ironsmith_core::ForEachTaggedEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            tag: payload.tag.clone(), controller_at_last_blocked_by: payload.controller_at_last_blocked_by.clone(),
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("ForEachTaggedEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     Err(RuntimePayloadEncodingError::MissingModel { component: "effect" })

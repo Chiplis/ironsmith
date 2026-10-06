@@ -602,6 +602,7 @@ impl Auditor {
                 }
             }
             "TaggedEffect"
+            | "CollectManaPaymentsEffect"
             | "SequenceEffect"
             | "ManaRetainedEffect"
             | "ExecuteWithSourceEffect" => {

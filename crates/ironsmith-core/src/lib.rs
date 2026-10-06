@@ -119,7 +119,7 @@ pub use effect::{
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
-    ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GoadEffect,
+    ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
     GrantAbilitiesTargetEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
     GrantNextSpellCostReductionEffect, NextSpellGrantMode, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantPlayTaggedManaReferenceSurface, GrantPlayTaggedObjectSurface, GrantPlayTaggedSurface,

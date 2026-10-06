@@ -1151,6 +1151,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/848"
+    },
+    {
+      "stage": 83,
+      "branch": "fix/card-failures-83-clockwork-and-damage-budgets",
+      "base": "fix/card-failures-82-bounded-damage-redirection",
+      "source_integration_commit": "b3e7cce589452123e30e21daa04d12168312d1e0",
+      "remote_commit": "7a38590430fcf8d7d906ca0a1b1daeb363df04e3",
+      "tree": "c12fd5ea4577325e8149f1c5e1382061ef342aa4",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 849,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/849"
     }
   ]
 }

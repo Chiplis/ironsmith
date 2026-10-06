@@ -51,6 +51,8 @@ mod targeted_random_partition;
 mod named_random_reveal;
 #[path = "pair_procedure/counter_total_limit.rs"]
 mod counter_total_limit;
+#[path = "pair_procedure/collect_mana_payments.rs"]
+mod collect_mana_payments;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -159,6 +161,12 @@ const PAIR_SHAPES: &[Shape] = &[
         head: HeadDiscriminator::words(&["put"]),
         consumed: 2,
         read: |sentences, index| statements(sentences, index, counter_total_limit::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("collect-mana-payments-with-total"),
+        head: HeadDiscriminator::words(&["starting", "join"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, collect_mana_payments::read(sentences, index)),
     },
     Shape {
         id: RuleId::new("conditional-discard-self-replacement"),

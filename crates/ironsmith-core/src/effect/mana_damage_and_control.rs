@@ -5143,6 +5143,18 @@ pub struct UnlessActionEffect<E> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CollectManaPaymentsEffect<E> {
+    /// Resolve this complete program with X equal to the accepted payments.
+    /// Every in-game player may contribute, starting with the controller.
+    pub effects: Vec<E>,
+}
+
+impl<E> CollectManaPaymentsEffect<E> {
+    pub fn new(effects: Vec<E>) -> Self { Self { effects } }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,

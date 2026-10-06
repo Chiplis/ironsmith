@@ -185,6 +185,11 @@ pub enum EffectAst {
     SnapshotLastObjectTag {
         into: TagRef,
     },
+    /// Collect optional mana payments in controller-first turn order; bind
+    /// their checked total as a fresh local X for the complete nested body.
+    CollectManaPayments {
+        effects: Vec<EffectAst>,
+    },
 }
 
 impl EffectAst {

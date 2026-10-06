@@ -161,6 +161,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ForEachObjectCorrelatedResultEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedPlayerEffect" => Some(EffectFamily::CompositionAL),
+        "CollectManaPaymentsEffect" => Some(EffectFamily::CompositionAL),
         "ForPlayersEffect" => Some(EffectFamily::CompositionAL),
         "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "GainLifeEffect" => Some(EffectFamily::Resources),

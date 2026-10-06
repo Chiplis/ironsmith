@@ -309,3 +309,4 @@ RegisterDamageMultiplierEffect	ironsmith_core::RegisterDamageMultiplierEffect	st
 SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
 RippleEffect	ironsmith_core::RippleEffect	player
 RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event
+CollectManaPaymentsEffect	ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>	composition-a-l

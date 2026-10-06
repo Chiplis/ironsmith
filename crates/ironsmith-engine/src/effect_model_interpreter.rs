@@ -1005,6 +1005,11 @@ where
     {
         return Ok(converted);
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CollectManaPaymentsEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::CollectManaPaymentsEffect::new(
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ForPlayersEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
         let mut converted = if payload.starting_with_controller {

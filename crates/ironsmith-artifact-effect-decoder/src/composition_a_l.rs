@@ -65,6 +65,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
             decode_as::<ironsmith_core::ForEachTaggedPlayerEffect<wire::WireEffect>>(payload)
                 .map(Some)
         }
+        "CollectManaPaymentsEffect" => {
+            decode_as::<ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(payload).map(Some)
+        }
         "ForPlayersEffect" => {
             decode_as::<ironsmith_core::ForPlayersEffect<wire::WireEffect>>(payload).map(Some)
         }
@@ -178,6 +181,9 @@ pub(super) fn map_card_ids(
             ironsmith_core::ForEachTaggedPlayerEffect<wire::WireEffect>,
         >(payload, context)
         .map(Some),
+        "CollectManaPaymentsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>,
+        >(payload, context).map(Some),
         "ForPlayersEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ForPlayersEffect<wire::WireEffect>,
         >(payload, context)

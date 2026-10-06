@@ -1,4 +1,8 @@
 {
+    if let Some(payments) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
+        let body = payments.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
+        return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));
+    }
     if let Some(grant) = effect.downcast_ref::<
         crate::effects::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     >() && grant.player == PlayerFilter::You

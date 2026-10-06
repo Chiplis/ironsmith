@@ -373,6 +373,10 @@ impl Effect {
             }
             return;
         }
+        if let Some(payments) = self.downcast_ref::<crate::effects::CollectManaPaymentsEffect<Effect>>() {
+            for effect in &payments.effects { visitor(effect); }
+            return;
+        }
         if let Some(for_players) = self.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
             for effect in &for_players.effects {
                 visitor(effect);

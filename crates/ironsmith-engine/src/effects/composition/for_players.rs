@@ -771,7 +771,7 @@ impl crate::effects::CostExecutableEffect for ForPlayersEffect {
 }
 
 impl ForPlayersEffect {
-    fn selected_players(
+    pub(crate) fn selected_players(
         &self,
         game: &GameState,
         ctx: &ExecutionContext,

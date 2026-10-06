@@ -33,7 +33,7 @@ pub use ironsmith_core::{
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject as CoreForEachObject,
     ForEachObjectCorrelatedResultEffect as CoreForEachObjectCorrelatedResultEffect,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GoadEffect,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantEndThisEffectPaymentEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,

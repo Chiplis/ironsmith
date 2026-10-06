@@ -147,3 +147,20 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod collective_payment_contract_tests {
+    #[test]
+    fn full_join_forces_bodies_have_real_simultaneous_proposals() {
+        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../fixtures/join_forces.json.fixture")).unwrap();
+        for row in rows {
+            let name = row["name"].as_str().unwrap();
+            let text = format!("Mana cost: {}\nType: {}\n{}", row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap(), row["oracle_text"].as_str().unwrap());
+            let definition = crate::compile_to_runtime_definition(name, text, false).unwrap();
+            let findings = super::audit(&definition);
+            assert!(findings.is_empty(), "{name}: {findings:?}");
+        }
+        // The existing unsupported conditional-child scenario above remains
+        // unchanged: payment ownership is not a blanket capability exemption.
+    }
+}

@@ -24,6 +24,7 @@ pub(crate) mod choose_objects;
 pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
+mod collect_mana_payments;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -66,6 +67,7 @@ mod vote;
 mod vote_runtime;
 mod with_id;
 
+pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
 pub use bid_life::{BidLifeEffect, LifeBidStart};

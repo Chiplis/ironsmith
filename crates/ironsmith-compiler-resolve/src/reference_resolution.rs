@@ -1663,6 +1663,9 @@ fn advance_reference_frame_for_effect(
                 advance_reference_frames(&statement.effects, id_gen, frame)?;
             }
         }
+        EffectAst::CollectManaPayments { effects } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::PlaySubgame { nonwinner_effects } => {
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
