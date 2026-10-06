@@ -406,6 +406,10 @@ impl GameState {
                         source, controller,
                     ))
                     .with_provenance(provenance);
+            if preparing_entry {
+                context.source_number_owner=crate::source_numbers::capture(source,program.source_number_pair,
+                    Some(&crate::continuous::AbilityOrigin::Printed(0)));
+            }
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
             context.replacement.entry_event = entry_event.cloned().map(Box::new);
             context.replacement.entry_reserved_objects = entry_reserved_objects.clone();
@@ -3107,6 +3111,10 @@ impl GameState {
             if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
                 choice_store.chosen_named_options.insert(new_id, names);
             }
+            let numeric=choice_store.numeric_acquisitions.iter().filter(|(owner,_)|owner.host==old_id)
+                .map(|(owner,number)|(owner.clone(),*number)).collect::<Vec<_>>();
+            choice_store.numeric_acquisitions.retain(|owner,_|owner.host!=old_id);
+            for (mut owner,number) in numeric {owner.host=new_id;choice_store.numeric_acquisitions.insert(owner,number);}
             // Devour runs as the permanent enters (CR 702.82a) and records the
             // devoured count on the pre-move id.
             let devoured = self.devoured_count(old_id);
@@ -4543,6 +4551,7 @@ impl GameState {
             abilities: Vec::new().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+                numeric_choice_error: None,
             text_change_error: None,
             spell_effect: crate::snapshot::SpellProgramState::Absent,
             text_changes: Vec::new(),
@@ -4810,6 +4819,7 @@ impl GameState {
                         .collect::<Vec<_>>()
                         .into(),
                     numeric_range_error: None,
+                numeric_choice_error: None,
                     text_change_error: None,
                     spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
                     text_changes: Vec::new(),
@@ -5535,7 +5545,7 @@ impl GameState {
         let effects_can_change_cant_abilities = all_effects
             .iter()
             .any(Self::continuous_effect_requires_cant_update);
-        let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> =
+        let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId, Option<crate::continuous::AbilityOrigin>)> =
             if !effects_can_change_cant_abilities {
                 self.objects
                     .iter()
@@ -5549,8 +5559,8 @@ impl GameState {
                         let controller = self.controller_of(object);
                         let mut abilities = object
                             .abilities
-                            .iter()
-                            .filter_map(|ability| match &ability.kind {
+                            .iter().enumerate()
+                            .filter_map(|(slot,ability)| match &ability.kind {
                                 AbilityKind::Static(static_ability)
                                     if ability.functions_in(&zone)
                                         && Self::static_ability_requires_cant_update(
@@ -5558,7 +5568,7 @@ impl GameState {
                                         )
                                         && static_ability.is_active(self, object_id) =>
                                 {
-                                    Some((static_ability.clone(), object_id, controller))
+                                    Some((static_ability.clone(), object_id, controller, Some(crate::continuous::AbilityOrigin::Printed(slot))))
                                 }
                                 _ => None,
                             })
@@ -5572,7 +5582,7 @@ impl GameState {
                                         Self::static_ability_requires_cant_update(static_ability)
                                             && static_ability.is_active(self, object_id)
                                     })
-                                    .map(|static_ability| (static_ability, object_id, controller)),
+                                    .map(|static_ability| (static_ability, object_id, controller, None)),
                             );
                             abilities.extend(
                                 object
@@ -5584,7 +5594,7 @@ impl GameState {
                                         Self::static_ability_requires_cant_update(static_ability)
                                             && static_ability.is_active(self, object_id)
                                     })
-                                    .map(|static_ability| (static_ability, object_id, controller)),
+                                    .map(|static_ability| (static_ability, object_id, controller, None)),
                             );
                         }
                         abilities
@@ -5624,26 +5634,22 @@ impl GameState {
                                 .map(Arc::new)
                             }
                             .map(|chars| {
-                                chars
-                                    .static_abilities
-                                    .iter()
-                                    .filter(|static_ability| {
-                                        static_ability.is_active(self, object_id)
-                                    })
-                                    .cloned()
-                                    .map(|static_ability| (static_ability, object_id, controller))
-                                    .collect::<Vec<_>>()
+                                chars.abilities.iter().enumerate().filter_map(|(slot,ability)| {
+                                    let AbilityKind::Static(static_ability)=&ability.kind else{return None};
+                                    (ability.functions_in(&zone) && static_ability.is_active(self,object_id))
+                                        .then(||(static_ability.clone(),object_id,controller,chars.abilities.origin(slot).cloned()))
+                                }).collect::<Vec<_>>()
                             })
                             .unwrap_or_default(),
                             _ => object
                                 .abilities
-                                .iter()
-                                .filter_map(|ability| {
+                                .iter().enumerate()
+                                .filter_map(|(slot,ability)| {
                                     if let AbilityKind::Static(static_ability) = &ability.kind {
                                         if ability.functions_in(&zone)
                                             && static_ability.is_active(self, object_id)
                                         {
-                                            Some((static_ability.clone(), object_id, controller))
+                                            Some((static_ability.clone(), object_id, controller, Some(crate::continuous::AbilityOrigin::Printed(slot))))
                                         } else {
                                             None
                                         }
@@ -5662,7 +5668,7 @@ impl GameState {
         // timestamp order (CR 613.11, 402.2) together with the spell-created
         // "no maximum hand size" effects below, so defer them.
         let mut hand_size_modifications: Vec<(u64, HandSizeModification)> = Vec::new();
-        for (static_ability, permanent_id, controller) in abilities_to_apply {
+        for (static_ability, permanent_id, controller, origin) in abilities_to_apply {
             if Self::static_ability_modifies_maximum_hand_size(&static_ability) {
                 let timestamp = self
                     .effect_store
@@ -5676,6 +5682,21 @@ impl GameState {
                 continue;
             }
             static_ability.apply_restrictions(self, permanent_id, controller);
+            if let Some(pair)=crate::source_numbers::static_pair(&static_ability) {
+                let owner=crate::source_numbers::capture(permanent_id,Some(pair),origin.as_ref());
+                if owner.is_none() {
+                    self.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "numeric cast restriction has no exact acquisition origin".into()));
+                }
+                for restrictions in self.effect_store.cant_effects.cant_cast_filters.values_mut() {
+                    for restriction in restrictions {
+                        if restriction.source==Some(permanent_id) && restriction.source_number_owner.is_none()
+                            && crate::source_numbers::filter_pair(&restriction.filter)==Some(pair) {
+                            restriction.source_number_owner=owner.clone();
+                        }
+                    }
+                }
+            }
         }
 
         // Apply active restriction effects from spells/abilities.

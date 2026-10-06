@@ -10,6 +10,7 @@ use ironsmith_compiler::ir::RewriteSemanticDocument;
 pub(super) struct RewriteNormalizationState {
     latest_spell_exports: ReferenceExports,
     latest_additional_cost_exports: ReferenceExports,
+    source_number_domain: Option<(u32, Option<u32>)>,
 }
 
 impl RewriteNormalizationState {
@@ -125,6 +126,46 @@ fn normalize_parsed_ability(
     Ok(NormalizedParsedAbility { parsed, prepared })
 }
 
+/// An entry numeric producer owns the source's persistent slot. A later
+/// matching upkeep reselection is linked to that domain; local spell and
+/// activated number choices continue to use only their execution receipt.
+fn retain_source_number_choices(
+    effects: &mut [EffectAst],
+    required_domain: Option<(u32, Option<u32>)>,
+    discovered: &mut Option<(u32, Option<u32>)>,
+) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject) = effect {
+            if let crate::cards::builders::SubjectVerbActionAst::Choices(
+                crate::cards::builders::ChoiceActionAst::ChooseNumber { min, max, source_owned },
+            ) = &mut subject.action {
+                let domain = (*min, *max);
+                if required_domain.is_none_or(|required| required == domain) {
+                    *source_owned = true;
+                    *discovered = Some(domain);
+                }
+            }
+        }
+        ironsmith_compiler_semantic::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            retain_source_number_choices(nested, required_domain, discovered);
+        });
+    }
+}
+
+fn own_upkeep(trigger:&TriggerSpec)->bool{
+    match trigger {
+        TriggerSpec::WithIntro{trigger,..}|TriggerSpec::ConditionQualified{trigger,..}=>own_upkeep(trigger),
+        TriggerSpec::BeginningOfUpkeep(PlayerFilter::You)=>true,
+        _=>false,
+    }
+}
+fn retain_entry_numeric_choices(chunk:&mut LineAst,domain:&mut Option<(u32,Option<u32>)>){
+    match chunk {
+        LineAst::Multiple(chunks)=>for chunk in chunks {retain_entry_numeric_choices(chunk,domain);},
+        LineAst::Statement{effects}=>retain_source_number_choices(effects,None,domain),
+        _=>{},
+    }
+}
 fn normalize_line_ast(
     info: crate::model::facts::LineInfo,
     chunks: Vec<LineAst>,
@@ -138,7 +179,10 @@ fn normalize_line_ast(
         .as_enters_effect_program
         .as_ref()
         .is_some_and(|facts| facts.source_reference_enters_with_counter_surface);
-    for chunk in chunks {
+    for mut chunk in chunks {
+        if semantic_facts.statement.as_enters_effect_program.is_some() {
+            retain_entry_numeric_choices(&mut chunk,&mut state.source_number_domain);
+        }
         normalize_line_chunk(
             chunk,
             state,
@@ -190,12 +234,24 @@ fn normalize_line_chunk(
         LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
         LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
         LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
-        LineAst::Ability(parsed) => NormalizedLineChunk::Ability(normalize_parsed_ability(parsed)?),
+        LineAst::Ability(mut parsed) => {
+            if parsed.trigger_spec.as_deref().is_some_and(own_upkeep) {
+                if let (Some(domain),Some(effects))=(state.source_number_domain,parsed.effects_ast.as_mut()) {
+                    retain_source_number_choices(effects,Some(domain),&mut None);
+                }
+            }
+            NormalizedLineChunk::Ability(normalize_parsed_ability(parsed)?)
+        },
         LineAst::Triggered {
             trigger,
-            effects,
+            mut effects,
             max_triggers_per_turn,
         } => {
+            if own_upkeep(&trigger) {
+                if let Some(domain) = state.source_number_domain {
+                    retain_source_number_choices(&mut effects, Some(domain), &mut None);
+                }
+            }
             let (trigger, prepared) = stage_owned_triggered_effects_for_lowering(
                 trigger,
                 effects,

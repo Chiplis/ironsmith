@@ -364,6 +364,7 @@ pub struct ExecutionContext<'a> {
     pub source: ObjectId,
     /// Linked pair and rules-text acquisition captured when the ability was admitted.
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The controller of the source.
     pub controller: PlayerId,
     /// Resolved targets for the effect.
@@ -538,6 +539,7 @@ macro_rules! execution_context_checkpoint {
 execution_context_checkpoint! {
     source: ObjectId,
     linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
@@ -649,6 +651,7 @@ impl<'a> ExecutionContext<'a> {
         Self {
             source,
             linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -716,6 +719,7 @@ impl<'a> ExecutionContext<'a> {
         ExecutionContext {
             source,
             linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -773,6 +777,7 @@ impl<'a> ExecutionContext<'a> {
         ExecutionContext {
             source: self.source,
             linked_exile_owner: self.linked_exile_owner,
+            source_number_owner: self.source_number_owner,
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
@@ -916,6 +921,11 @@ impl<'a> ExecutionContext<'a> {
     /// Retain the exact linked rules acquisition in this execution.
     pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
         self.linked_exile_owner = owner;
+        self
+    }
+
+    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.source_number_owner = owner;
         self
     }
 
@@ -1785,6 +1795,7 @@ impl<'a> ExecutionContext<'a> {
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&tagged_players)
             .with_effect_outcomes(&self.effect_outcomes);
+        filter_ctx.source_number_owner=self.source_number_owner.clone();
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;

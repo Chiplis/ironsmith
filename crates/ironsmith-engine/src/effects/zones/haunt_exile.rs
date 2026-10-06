@@ -92,6 +92,7 @@ impl EffectExecutor for HauntExileEffect {
             ctx.controller,
         )
         .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+        .with_source_number_owner(ctx.source_number_owner.clone())
         .with_ability_source(Some(exiled_id))
         .with_choices(self.haunt_choices.clone())
         .with_tagged_objects(std::collections::HashMap::from([(

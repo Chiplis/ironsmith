@@ -22,6 +22,7 @@ pub(crate) fn resolve_continuous_characteristic(
     value: &Value,
     layer: LayerValueContext<'_, '_>,
     error: &mut Option<(&'static str, i128)>,
+    evidence_error: &mut Option<&'static str>,
 ) -> i32 {
     let context = EvaluationContext::continuous(layer);
     match resolve_wide(value, &context) {
@@ -34,6 +35,10 @@ pub(crate) fn resolve_continuous_characteristic(
         },
         Err(ExecutionError::ResourceLimitExceeded { resource, requested, .. }) => {
             error.get_or_insert((resource, i128::try_from(requested).unwrap_or(i128::MAX)));
+            0
+        }
+        Err(_) if crate::source_numbers::contains_value(value) => {
+            evidence_error.get_or_insert("the source numeric pair or acquisition is unrecorded");
             0
         }
         Err(error) => panic!("unsupported continuous-effect value {value:?}: {error:?}"),
@@ -1127,6 +1132,18 @@ pub(crate) fn resolve_wide(
                 .try_into()
                 .unwrap_or(i32::MAX),
         )),
+        Value::SourceChosenNumber { if_unset, pair } => {
+            let retained = context.execution().and_then(|ctx| ctx.source_snapshot.as_ref());
+            let continuous_owner = context.numeric_origin().and_then(|origin|
+                crate::source_numbers::capture(context.source,*pair,Some(origin)));
+            let explicit = context.execution().and_then(|ctx|ctx.source_number_owner.as_ref())
+                .or(continuous_owner.as_ref());
+            crate::source_numbers::read(game,context.source,*pair,explicit,retained)?
+                .map(i64::from).or_else(|| if_unset.map(i64::from))
+                .ok_or_else(|| ExecutionError::UnresolvableValue(
+                    "source has never chosen a number".into(),
+                ))
+        }
         Value::LastNotedLifeTotal => game
             .noted_life_total_for_source(context.source)
             .or_else(|| {

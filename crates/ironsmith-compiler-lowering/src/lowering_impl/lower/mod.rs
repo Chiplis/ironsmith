@@ -14,6 +14,7 @@ use crate::zone::Zone;
 mod damage_and_cost_rewrites;
 mod finalization_support;
 mod linked_exile;
+mod source_numbers;
 mod first_draw_reveals;
 mod activation_definitions;
 mod line_ast_helpers;

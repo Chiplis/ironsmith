@@ -4,7 +4,7 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-const PUBLIC_AUDIT_VERSION: u32 = 3;
+const PUBLIC_AUDIT_VERSION: u32 = 4;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -146,6 +146,7 @@ struct PublicAuditObject {
     identity: Option<PublicAuditObjectIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chosen_subtype: Option<Subtype>,
+    numeric_choices: ironsmith::source_numbers::NumberChoicePublicProof,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     chosen_subtypes: Vec<Subtype>,
     token: bool,
@@ -1507,9 +1508,9 @@ impl WasmGame {
                 // peers that opened it; hashing them would desync the peers
                 // that hold a placeholder. Face-down permanents and spells
                 // keep their stats: the face-down overlay makes them public.
-                let stats_public = self.public_audit_object_identity_is_public(id)
-                    || object.face_down_cast_state.is_some();
-                Some(PublicAuditObject {
+                let identity_public = self.public_audit_object_identity_is_public(id);
+                let stats_public = identity_public || object.face_down_cast_state.is_some();
+                Some((||Ok(PublicAuditObject {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
@@ -1518,6 +1519,8 @@ impl WasmGame {
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
                     chosen_subtype: self.game.chosen_subtype(id),
+                    numeric_choices: ironsmith::source_numbers::public_proof(&self.game,id,identity_public)
+                        .map_err(|error|JsValue::from_str(&format!("numeric choice proof unavailable: {error:?}")))?,
                     chosen_subtypes: {
                         let mut types: Vec<_> = self.game.chosen_subtypes(id)
                             .into_iter().flatten().copied().collect();
@@ -1560,9 +1563,9 @@ impl WasmGame {
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
                     commander: self.game.is_commander_object(id),
-                })
+                }))())
             })
-            .collect();
+            .collect::<Result<Vec<_>,JsValue>>()?;
 
         let mut hidden_zones = Vec::new();
         for player in &self.game.players {
@@ -1809,6 +1812,29 @@ mod public_audit_tests {
     use ironsmith::game_state::HiddenCardInfo;
 
     #[test]
+    fn public_audit_v4_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
+        let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+        let unset = checkpoint(&wasm);
+        assert_eq!(unset["version"], 4);
+        let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
+            pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
+            acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
+        wasm.game.set_number_for_acquisition(owner.clone(), 0).unwrap();
+        let zero = checkpoint(&wasm); assert_ne!(unset, zero);
+        let saved = wasm.game.clone();
+        wasm.game.set_number_for_acquisition(owner, u32::MAX).unwrap();
+        let large = checkpoint(&wasm); assert_ne!(zero, large);
+        let object = large["objects"].as_array().unwrap().iter().find(|object| object["id"] == id.0).unwrap();
+        assert_eq!(object["numericChoices"]["records"][0]["number"], u32::MAX);
+        assert_eq!(object["numericChoices"]["records"][0]["group"], 0);
+        wasm.game = saved; assert_eq!(checkpoint(&wasm), zero);
+    }
+
+    #[test]
     fn public_audit_v3_commits_exact_manifest_and_cloak_provenance() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
@@ -1820,7 +1846,7 @@ mod public_audit_tests {
         let baseline = wasm.game.clone();
         let object_evidence = |wasm: &WasmGame| {
             let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-            assert_eq!(checkpoint["version"], 3);
+            assert_eq!(checkpoint["version"], 4);
             checkpoint["objects"].as_array().unwrap().iter()
                 .find(|object| object["id"] == id.0).unwrap().clone()
         };

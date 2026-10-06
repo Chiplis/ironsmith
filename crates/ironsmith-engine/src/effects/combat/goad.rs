@@ -184,6 +184,7 @@ mod tests {
             vec![ObjectSnapshot {
                 ability_origins: None,
                 chosen_subtype: None,
+                numeric_choice_memory: None,
                 secret_chosen_subtype: None,
                 noted_life_total: None,
                 saddled: None,

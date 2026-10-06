@@ -44,6 +44,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     let mut entry = StackEntry::new(ctx.source, ctx.controller);
     entry.provenance = ctx.provenance;
     entry.linked_exile_owner = ctx.linked_exile_owner.clone();
+    entry.source_number_owner = ctx.source_number_owner.clone();
     entry.activation_origin = ctx.activation_origin.clone();
     entry.activation_definition = ctx.activation_definition;
     entry.ability_index = ctx.ability_index;
@@ -233,6 +234,7 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
     copy_entry.linked_exile_owner = original_entry.linked_exile_owner.clone();
+    copy_entry.source_number_owner = original_entry.source_number_owner.clone();
     copy_entry.ninjutsu_attack_target = original_entry.ninjutsu_attack_target.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();

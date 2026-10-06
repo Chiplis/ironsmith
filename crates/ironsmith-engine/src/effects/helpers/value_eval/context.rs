@@ -54,6 +54,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             _ => None,
         }
     }
+    pub(super) fn numeric_origin(&self)->Option<&'a crate::continuous::AbilityOrigin>{
+        match self.mode {Mode::Continuous(layer)=>layer.numeric_origin,_=>None}
+    }
     pub(super) fn layer(&self) -> LayerValueContext<'a, 'game> {
         match self.mode {
             Mode::Continuous(layer) => layer,

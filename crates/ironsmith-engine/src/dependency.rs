@@ -1651,7 +1651,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
-        | Value::LastNotedLifeTotal
+        | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
@@ -2304,7 +2304,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
-        | Value::LastNotedLifeTotal
+        | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
@@ -3456,6 +3456,7 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
                 text_change_error: None,
                 spell_effect: crate::snapshot::SpellProgramState::Absent,
                 text_changes: Vec::new(),
@@ -3522,6 +3523,7 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
                 text_change_error: None,
                 spell_effect: crate::snapshot::SpellProgramState::Absent,
                 text_changes: Vec::new(),
@@ -3654,6 +3656,7 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
                 text_change_error: None,
                 spell_effect: crate::snapshot::SpellProgramState::Absent,
                 text_changes: Vec::new(),
@@ -3845,6 +3848,7 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
                 text_change_error: None,
                 spell_effect: crate::snapshot::SpellProgramState::Absent,
                 text_changes: Vec::new(),
@@ -4080,6 +4084,7 @@ mod tests {
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+                numeric_choice_error: None,
             text_change_error: None,
             spell_effect: crate::snapshot::SpellProgramState::Absent,
             text_changes: Vec::new(),

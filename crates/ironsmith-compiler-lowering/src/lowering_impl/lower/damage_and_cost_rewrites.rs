@@ -491,6 +491,7 @@ pub fn lower_normalized_card_ast_with_facts(
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
     let mut definition = builder.build();
+    super::source_numbers::bind_source_number_pair(&mut definition)?;
     super::linked_exile::bind_scalar_linked_exile(&mut definition);
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);

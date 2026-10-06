@@ -6208,10 +6208,16 @@ pub struct ChooseNumberEffect {
     pub chooser: PlayerFilter,
     pub min: u32,
     pub max: Option<u32>,
+    /// Source-owned entry/reselection choices survive this resolution. Local
+    /// numeric producers remain bound by their exact execution effect id.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "number_choice_is_local"))]
+    pub source_owned: bool,
 }
+fn number_choice_is_local(source_owned: &bool) -> bool { !*source_owned }
 impl ChooseNumberEffect {
-    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max) } }
-    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None } }
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max), source_owned: false } }
+    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None, source_owned: false } }
+    pub fn with_source_retention(mut self) -> Self { self.source_owned = true; self }
 }
 
 /// One CR702.60 reveal/cast/remainder resolution transaction.

@@ -1173,6 +1173,7 @@ pub struct ChoiceStore {
     pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
+    pub(crate) numeric_acquisitions: crate::source_numbers::NumberChoiceMemory,
     /// The single player targeted by a permanent's own enters-the-battlefield
     /// trigger, keyed by the permanent's stable identity, so its linked
     /// leaves-the-battlefield trigger can refer to "that player" (CR 607.2a;
@@ -1732,6 +1733,7 @@ impl TurnCounterTracker {
 /// source-dependent spell filters such as "of the chosen type".
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastRestrictionFilter {
+    pub source_number_owner: Option<crate::source_numbers::NumberChoiceOwner>,
     pub filter: crate::target::ObjectFilter,
     pub source: Option<ObjectId>,
     pub controller: Option<PlayerId>,
@@ -2930,6 +2932,7 @@ impl CantEffectTracker {
         self.add_scoped_cant_cast_filter(
             player,
             CastRestrictionFilter {
+                source_number_owner: None,
                 filter: spell_filter,
                 source,
                 controller: None,
@@ -3661,6 +3664,7 @@ pub struct StackEntry {
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// Spending restrictions for mana produced while resolving this stack entry.
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for restricted mana produced by this entry.
@@ -3770,6 +3774,7 @@ impl StackEntry {
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: None,
             linked_exile_owner: None,
+            source_number_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: false,
@@ -3822,6 +3827,7 @@ impl StackEntry {
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: Some(effects.into()),
             linked_exile_owner: None,
+            source_number_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: true,

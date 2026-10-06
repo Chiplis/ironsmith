@@ -395,6 +395,9 @@ fn public_claim_outcome(
             ExecutionFact::OriginalZoneMoveCards(memories) => {
                 ExecutionFact::OriginalZoneMoveCards(memories.iter().map(memory).collect())
             }
+            ExecutionFact::RevealedCards(memories) => {
+                ExecutionFact::RevealedCards(memories.iter().map(memory).collect())
+            }
             ExecutionFact::CardsPutIntoHand { player, cards } => {
                 ExecutionFact::CardsPutIntoHand { player: *player, cards: cards.iter().map(memory).collect() }
             }

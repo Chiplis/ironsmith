@@ -392,14 +392,14 @@ impl CopiableValues {
 /// that cannot (or must not) travel: compiled `abilities` and the secretly
 /// chosen subtype. It is lossless only for snapshots in public claim form
 /// ([`ObjectSnapshot::is_public_claim_form`]); encoders must check that.
+
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectSnapshot {
     /// Noncopiable choices needed by abilities after this exact object leaves.
     pub chosen_subtype: Option<Subtype>,
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub numeric_choice_memory: Option<Arc<crate::source_numbers::NumberChoiceMemory>>,
     pub chosen_object: Option<Box<ObjectSnapshot>>,
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub(crate) secret_chosen_subtype: Option<(PlayerId, Subtype)>,
@@ -592,6 +592,7 @@ impl ObjectSnapshot {
     ) -> Self {
         Self {
             chosen_subtype: None,
+            numeric_choice_memory: None,
             chosen_object: None,
             secret_chosen_subtype: None,
             object_id,
@@ -666,6 +667,7 @@ impl ObjectSnapshot {
             && self.other_face.is_none()
             && self.abilities.is_empty()
             && self.ability_origins.is_none()
+            && self.numeric_choice_memory.is_none()
             && self.copiable_values.abilities.is_empty()
             && !self.copiable_values.spell_effect.has_program()
             && self.revealed_cast_definition.is_none()
@@ -692,6 +694,7 @@ impl ObjectSnapshot {
         self.other_face = None;
         self.abilities = Arc::new(Vec::new());
         self.ability_origins = None;
+        self.numeric_choice_memory = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
         self.copiable_values.spell_effect = SpellProgramState::Unavailable;
         self.revealed_cast_definition = None;
@@ -768,6 +771,7 @@ impl ObjectSnapshot {
                 .map(crate::continuous::AbilityOrigin::Printed).collect())),
             aura_attach_filter: obj.aura_attach_filter_owned(),
             chosen_subtype: game.chosen_subtype(obj.id),
+            numeric_choice_memory: Some(Arc::new(game.numeric_choice_memory(obj.id))),
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
             secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
             copiable_values: CopiableValues::from_object(obj),
@@ -1157,6 +1161,7 @@ impl ObjectSnapshot {
             object_id,
             stable_id: object_id.into(),
             chosen_subtype: None,
+            numeric_choice_memory: None,
             secret_chosen_subtype: None,
             chosen_object: None,
             kind: ObjectKind::Card,

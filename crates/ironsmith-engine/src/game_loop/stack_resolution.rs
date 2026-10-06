@@ -766,6 +766,11 @@ fn execute_resolution_program_inner(
                 crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
     }
     crate::linked_exile::validate_program_owner(program.linked_exile_pair, ctx.linked_exile_owner.as_ref())?;
+    if let Some(pair)=program.source_number_pair {
+        if !ctx.source_number_owner.as_ref().is_some_and(|owner|owner.host==ctx.source && owner.pair==pair) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence("numeric program admission omitted its exact source acquisition".into()));
+        }
+    }
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
     // for this resolution so player filters, object filters, values, and nested
@@ -1153,6 +1158,7 @@ fn resolve_stack_entry_full_inner(
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
     ctx.linked_exile_owner = entry.linked_exile_owner.clone();
+    ctx.source_number_owner = entry.source_number_owner.clone();
     ctx.iteration = entry.iteration;
     // CR 400.7j: only objects this resolution moves are new objects its
     // instructions may still find.
@@ -2091,6 +2097,7 @@ fn resolve_stack_entry_full_inner(
                         .delayed_triggers
                         .push(crate::triggers::DelayedTrigger {
                             linked_exile_owner: None,
+                            source_number_owner: None,
                             trigger: crate::triggers::Trigger::beginning_of_upkeep(
                                 crate::target::PlayerFilter::Specific(entry.controller),
                             ),

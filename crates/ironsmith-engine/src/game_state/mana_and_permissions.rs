@@ -3053,6 +3053,7 @@ impl GameState {
             }
             self.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
                 linked_exile_owner: None,
+                source_number_owner: None,
                 source: mana_source,
                 controller: source_snapshot
                     .as_ref()

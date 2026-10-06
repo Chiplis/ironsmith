@@ -5,6 +5,7 @@ pub(crate) struct LayerValueContext<'a, 'game> {
     pub calculation: &'a CalculationContext<'game>,
     pub source: ObjectId,
     pub controller: PlayerId,
+    pub numeric_origin: Option<&'a crate::continuous::AbilityOrigin>,
     direct_counts: Option<(&'a [ContinuousEffect], &'a HashSet<ObjectId>)>,
 }
 
@@ -19,6 +20,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             source,
             controller,
             direct_counts: None,
+            numeric_origin: None,
         }
     }
     pub fn direct(
@@ -33,7 +35,11 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             source,
             controller,
             direct_counts: Some((effects, commanders)),
+            numeric_origin: None,
         }
+    }
+    pub fn with_numeric_origin(mut self,origin:Option<&'a crate::continuous::AbilityOrigin>)->Self{
+        self.numeric_origin=origin;self
     }
     pub fn filter_context(&self) -> crate::filter::FilterContext {
         continuous_filter_context(self.calculation.game, self.controller, self.source)

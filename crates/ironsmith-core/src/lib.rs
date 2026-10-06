@@ -260,7 +260,7 @@ pub use value_model::{
     AttachmentConditionHost, Condition, ConditionConjunction, DeathHistoryControllerSurface,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
-    PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    PriorEffectMetricQuery, ColorChoiceReference, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

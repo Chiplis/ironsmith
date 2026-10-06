@@ -6368,6 +6368,15 @@ fn parse_characteristic_defining_relative_value(
     tokens: &[OwnedLexToken],
     base: &Value,
 ) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() == 4 && words[1..] == ["minus", "that", "number"] {
+        if let Some((constant, used)) = crate::util::parse_number(tokens) {
+            if used == 1 {
+                return Some(Value::Add(Box::new(Value::Fixed(i32::try_from(constant).ok()?)),
+                    Box::new(Value::Scaled(Box::new(base.clone()), -1))));
+            }
+        }
+    }
     match keyword_static_lines::parse_characteristic_relative_value_tokens(tokens)? {
         keyword_static_lines::CharacteristicRelativeValue::Same => Some(base.clone()),
         keyword_static_lines::CharacteristicRelativeValue::Plus(amount) => Some(Value::Add(
@@ -6430,6 +6439,9 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
+    if words.word_refs().as_slice() == ["the", "last", "chosen", "number"] {
+        return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
+    }
     if let Some(kind) = keyword_static_lines::parse_characteristic_source_value_tokens(trimmed) {
         return Some(match kind {
             keyword_static_lines::CharacteristicSourceValueKind::Power => Value::SourcePower,

@@ -28,6 +28,9 @@ pub struct ResolutionProgram<E> {
     /// Absence does not authorize reading another ability's source-wide links.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub linked_exile_pair: Option<LinkedExilePair>,
+    /// A separately owned linked numeric entry/reselection/read relationship.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub source_number_pair: Option<LinkedExilePair>,
     /// Immutable authored activation occurrence, including its face and costs.
     /// Kept separately from runtime acquisition and from an activation ordinal.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -85,6 +88,7 @@ impl<E> Default for ResolutionProgram<E> {
         Self {
             segments: Vec::new(),
             linked_exile_pair: None,
+            source_number_pair: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -97,6 +101,7 @@ impl<E: Clone> ResolutionProgram<E> {
         let mut program = Self {
             segments,
             linked_exile_pair: None,
+            source_number_pair: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -117,6 +122,11 @@ impl<E: Clone> ResolutionProgram<E> {
         self.linked_exile_pair = Some(pair);
         self
     }
+
+    pub fn with_source_number_pair(mut self,pair:LinkedExilePair)->Self{
+        self.source_number_pair=Some(pair);self
+    }
+
 
     /// Replace instructions while retaining the declared ability owner.
     pub fn replace_segments(&mut self, segments: Vec<ResolutionSegment<E>>) {
@@ -184,6 +194,7 @@ impl<E: Clone> ResolutionProgram<E> {
         self.unavailable_copied_definition |= other.unavailable_copied_definition;
         if self.segments.is_empty() {
             self.linked_exile_pair = other.linked_exile_pair;
+            self.source_number_pair = other.source_number_pair;
             self.activation_definition = other.activation_definition;
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
@@ -192,6 +203,11 @@ impl<E: Clone> ResolutionProgram<E> {
             // records belong to this pair. Such a composite needs explicit
             // per-owner instructions before it can read linked quantities.
             self.linked_exile_pair = None;
+        }
+        if !self.segments.is_empty() && !other.segments.is_empty()
+            && self.source_number_pair != other.source_number_pair
+        {
+            self.source_number_pair = None;
         }
         if !self.segments.is_empty() && !other.segments.is_empty()
             && self.activation_definition != other.activation_definition
@@ -250,6 +266,7 @@ impl<E> ResolutionProgram<E> {
         }
         let mut mapped = ResolutionProgram::new(segments);
         mapped.linked_exile_pair = self.linked_exile_pair;
+        mapped.source_number_pair = self.source_number_pair;
         mapped.activation_definition = self.activation_definition;
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
@@ -378,6 +395,7 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
         f.debug_struct("ResolutionProgram")
             .field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
+            .field("source_number_pair", &self.source_number_pair)
             .field("activation_definition", &self.activation_definition)
             .field("unavailable_copied_definition", &self.unavailable_copied_definition)
             .finish()
@@ -500,5 +518,21 @@ mod copied_program_completeness_tests {
         let decoded: ResolutionProgram<u8> = serde_json::from_value(wire.clone()).unwrap();
         assert!(!decoded.has_complete_definition());
         assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
+    }
+}
+
+#[cfg(all(test,feature="serde"))]
+mod numeric_pair_codec_tests {
+    use super::*;
+    #[test]
+    fn numeric_pair_is_copied_mapped_and_encoded_without_borrowing_exile_pair(){
+        let pair=LinkedExilePair{definition:LinkedExileDefinition([92;32]),pair:3};
+        let program=ResolutionProgram::from_effects(vec![4u32]).with_source_number_pair(pair);
+        let mapped=program.clone().try_map_effects(|value|Ok::<_,()>(value+1)).unwrap();
+        assert_eq!(mapped.source_number_pair,Some(pair));assert_eq!(mapped.linked_exile_pair,None);
+        let restored:ResolutionProgram<u32>=serde_json::from_value(serde_json::to_value(&mapped).unwrap()).unwrap();
+        assert_eq!(restored.source_number_pair,Some(pair));
+        let mut legacy=serde_json::to_value(program).unwrap();legacy.as_object_mut().unwrap().remove("source_number_pair");
+        let restored:ResolutionProgram<u32>=serde_json::from_value(legacy).unwrap();assert_eq!(restored.source_number_pair,None);
     }
 }

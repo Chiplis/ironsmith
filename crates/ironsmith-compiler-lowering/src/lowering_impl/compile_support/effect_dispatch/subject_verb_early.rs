@@ -1229,10 +1229,10 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_card_type(subject.into_player_filter(), options.clone())
             })
         }
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max }) => {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::new(crate::effects::ChooseNumberEffect {
-                    chooser: subject.into_player_filter(), min: *min, max: *max,
+                    chooser: subject.into_player_filter(), min: *min, max: *max, source_owned: *source_owned,
                 })
             })
         }

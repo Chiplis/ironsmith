@@ -2076,6 +2076,7 @@ pub struct CalculatedCharacteristics {
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
+    pub(crate) numeric_choice_error: Option<&'static str>,
     pub(crate) text_change_error: Option<text_changes::TextChangeDomainError>,
     pub name: SharedStr,
     /// A second current split-card name, cleared when layer 1 replaces names.
@@ -2126,6 +2127,9 @@ impl CalculatedCharacteristics {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         if let Some(error) = &self.text_change_error {
             return Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(error.clone()));
+        }
+        if let Some(detail)=self.numeric_choice_error {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::NumericChoiceEvidence{detail});
         }
         if let Some((resource, value)) = self.numeric_range_error {
             Err(
@@ -2460,6 +2464,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         text_changes: Vec::new(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
         text_change_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
@@ -6371,6 +6376,8 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
                 &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
             chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
@@ -6383,6 +6390,8 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
                 &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
         }
 

@@ -7,12 +7,19 @@ impl EffectExecutor for ChooseNumberEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> { Box::new(self.clone()) }
     fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
         if self.max.is_some_and(|max| self.min > max) { return Err(ExecutionError::Impossible("numeric choice has an empty range".into())); }
+        let owner=if self.source_owned {
+            Some(ctx.source_number_owner.as_ref().filter(|owner|owner.host==ctx.source)
+                .ok_or_else(||ExecutionError::IncompleteEvidence("source numeric choice has no admitted linked acquisition".into()))?.clone())
+        }else{None};
         let chooser=crate::effects::helpers::resolve_player_filter_as_chooser(game,&self.chooser,ctx)?;
         let mut choice=NumberContext::new(chooser,Some(ctx.source),self.min,self.max.unwrap_or(u32::MAX),"Choose a number");
         choice.authored_max = self.max;
         let number=ctx.decision_maker.decide_number(game,&choice);
         if ctx.decision_maker.awaiting_choice() {return Ok(EffectOutcome::resolved())}
         if number < self.min || self.max.is_some_and(|max| number > max) {return Err(ExecutionError::Impossible("number is outside the authored choice range".into()))}
+        if let Some(owner)=owner {
+            if game.object(ctx.source).is_some() { game.set_number_for_acquisition(owner,number)?; }
+        }
         Ok(EffectOutcome::count(i64::from(number)).with_execution_fact(ExecutionFact::ChosenNumber(number)))
     }
 }

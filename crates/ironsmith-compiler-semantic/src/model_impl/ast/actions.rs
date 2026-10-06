@@ -463,7 +463,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Choices(ChoiceActionAst::ChooseCardType { options }) => {
                 f.debug_tuple("ChooseCardType").field(options).finish()
             }
-            Self::Choices(ChoiceActionAst::ChooseNumber { min, max }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).finish(),
+            Self::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).field("source_owned", source_owned).finish(),
             Self::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }

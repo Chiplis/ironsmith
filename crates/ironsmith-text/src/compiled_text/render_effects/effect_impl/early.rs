@@ -1555,6 +1555,7 @@
         let chooser = describe_player_filter(&choose.chooser);
         return match choose.max {
             Some(max) => format!("{chooser} {} a number between {} and {max}", player_verb(&chooser, "choose", "chooses"), choose.min),
+            None if choose.min > 0 => format!("{chooser} {} a number greater than {}", player_verb(&chooser, "choose", "chooses"), choose.min - 1),
             None => format!("{chooser} {} a number", player_verb(&chooser, "choose", "chooses")),
         };
     }

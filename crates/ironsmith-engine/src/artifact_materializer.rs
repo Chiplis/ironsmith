@@ -2101,6 +2101,11 @@ mod native_direct_payload_codec_tests {
         check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::Specific(crate::ids::PlayerId::from_index(1)), 0, 13));
     }
     #[test]
+    fn native_direct_payload_codec_source_owned_number_keeps_unbounded_domain() {
+        check(ironsmith_core::ChooseNumberEffect::unbounded(crate::target::PlayerFilter::You).with_source_retention());
+        check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::You, 0, 7).with_source_retention());
+    }
+    #[test]
     fn native_direct_payload_codec_note_activation_mana() {
         check(ironsmith_core::NoteActivationManaTypeEffect::new());
     }

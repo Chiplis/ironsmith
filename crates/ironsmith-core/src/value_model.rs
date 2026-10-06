@@ -132,6 +132,11 @@ pub enum PriorEffectAction {
 /// `filter` is evaluated against captured object memory rather than live game
 /// objects. `player` optionally selects a per-player memory partition before
 /// the filter and aggregate are applied.
+/// Exact local color decision used to filter a separate producer's result set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ColorChoiceReference { Pending, Effect(EffectId) }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PriorEffectMetricQuery {
@@ -148,6 +153,8 @@ pub struct PriorEffectMetricQuery {
     /// rather than its selected set, source LKI, or replacement-added moves.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub original_destination: Option<crate::zone::Zone>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub color_choice: Option<ColorChoiceReference>,
 }
 
 impl PriorEffectMetricQuery {
@@ -159,6 +166,7 @@ impl PriorEffectMetricQuery {
             player: None,
             action: None,
             original_destination: None,
+            color_choice: None,
             counter_type: None,
         }
     }
@@ -888,6 +896,10 @@ pub enum Value {
     /// Actual mana of this color allocated to X in this spell's completed
     /// cast payment, including Assist and excluding fixed/base/tax payments.
     ManaSpentOnX(Color),
+    /// The last actual number chosen by this source's linked entry/reselection
+    /// instruction. `if_unset` applies only to a known never-made choice. Missing
+    /// historical evidence is an error, not an invented zero.
+    SourceChosenNumber { if_unset: Option<i32>, pair: Option<crate::LinkedExilePair> },
 }
 
 impl Value {

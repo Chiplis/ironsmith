@@ -1115,6 +1115,7 @@ impl GameState {
             choices
                 .chosen_named_options
                 .retain(|source, _| !removed_ids.contains(source));
+            choices.numeric_acquisitions.retain(|owner,_|!removed_ids.contains(&owner.host));
         }
 
         {

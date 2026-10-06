@@ -122,6 +122,18 @@ impl<'a> TriggerContext<'a> {
 
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
+        self.filter_ctx.source_number_owner = if let Some(snapshot)=self.filter_ctx.source_snapshot.as_ref() {
+            snapshot.abilities.get(ability_index).and_then(|ability|
+                crate::source_numbers::capture(self.source_id,crate::source_numbers::ability_pair(ability),
+                    snapshot.ability_origins.as_ref().and_then(|origins|origins.get(ability_index))))
+        } else {
+            match self.game.try_current_characteristics(self.source_id) {
+                Ok(Some(chars))=>chars.abilities.get(ability_index).and_then(|ability|
+                    crate::source_numbers::capture(self.source_id,crate::source_numbers::ability_pair(ability),chars.abilities.origin(ability_index))),
+                Ok(None)=>None,
+                Err(error)=>{self.game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));None}
+            }
+        };
         self
     }
 

@@ -3403,6 +3403,30 @@ impl ObjectFilter {
     /// characteristics of the completed spell. Relation and history queries
     /// retain their existing owners; new fields fail this check by default.
     pub fn has_only_completed_cast_characteristics(&self) -> bool {
+        // A spell's printed characteristic disjunction is evaluated against
+        // one completed cast snapshot. The source's choice gates this single
+        // trigger, even when multiple axes match.
+        if self.any_of.len() == 3 {
+            let source_comparison = |comparison: &Option<Comparison>| matches!(comparison,
+                Some(Comparison::EqualExpr(value))
+                    if matches!(value.unhinted(), Value::SourceChosenNumber { .. }));
+            let mut axes = [false; 3];
+            let all_axes = self.any_of.iter().all(|branch| {
+                let mut residual = branch.clone();
+                let axis = if source_comparison(&residual.mana_value) { residual.mana_value = None; 0 }
+                    else if source_comparison(&residual.power) { residual.power = None; 1 }
+                    else if source_comparison(&residual.toughness) { residual.toughness = None; 2 }
+                    else { return false; };
+                axes[axis] = true;
+                residual == Self::default()
+            });
+            let mut residual = self.clone();
+            residual.any_of.clear(); residual.zone = None; residual.stack_kind = None;
+            residual.has_mana_cost = false;
+            if all_axes && axes.into_iter().all(|axis| axis) && residual == Self::default() {
+                return true;
+            }
+        }
         if self.mana_symbol_count.is_none() && self.mana_value_eq_counters_on_source.is_none()
             && self.target_count.is_none() {
             return false;
@@ -7898,6 +7922,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
             Value::LastNotedLifeTotal => "last noted life total".to_string(),
             Value::ThisAbilityResolvedThisTurnCount => {
                 "the number of times this ability has resolved this turn".to_string()

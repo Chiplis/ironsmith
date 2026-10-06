@@ -176,6 +176,7 @@ fn u037_scheduler_skips_end_combat_triggers_and_defers_procedure_triggers() {
     game.suppress_combat_damage_assignment(attacker, Until::EndOfCombat);
     game.effect_store.delayed_triggers.push(DelayedTrigger {
         linked_exile_owner: None,
+        source_number_owner: None,
         trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
         effects: ResolutionProgram::from_effects(vec![Effect::gain_life(50)]),
         one_shot: true,

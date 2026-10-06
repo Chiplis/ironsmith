@@ -3131,6 +3131,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
                 permanent_id, effects.linked_exile_pair,
                 source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index)));
+            let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                permanent_id, effects.source_number_pair,
+                source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index)));
             crate::linked_exile::validate_program_owner(effects.linked_exile_pair, linked_exile_owner.as_ref())
                 .map_err(|error| ActionError::ExecutionFailure { source: permanent_id, error })?;
             let mana = mana_ability.mana_output.clone().unwrap_or_default();
@@ -3188,6 +3191,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                 .with_activation_definition(effects.activation_definition)
                 .with_ability_index(ability_index)
                 .with_linked_exile_owner(linked_exile_owner.clone())
+                .with_source_number_owner(source_number_owner.clone())
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(source_chosen_creature_type)
@@ -3223,6 +3227,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                 .with_activation_definition(effects.activation_definition)
                     .with_ability_index(ability_index)
                     .with_linked_exile_owner(linked_exile_owner.clone())
+                    .with_source_number_owner(source_number_owner.clone())
                     .with_mana_color_restriction(mana_color_restriction.clone())
                     .with_mana_usage_restrictions(mana_usage_restrictions)
                     .with_mana_source_chosen_creature_type(source_chosen_creature_type)

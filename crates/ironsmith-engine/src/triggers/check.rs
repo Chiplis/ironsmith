@@ -351,6 +351,7 @@ pub struct ActiveStateTriggerKey {
 #[derive(Debug, Clone)]
 pub struct TriggeredAbilityEntry {
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The source permanent that has the triggered ability.
     pub source: ObjectId,
     /// The controller of the triggered ability.
@@ -403,6 +404,7 @@ pub struct PendingDelayedTriggerPayment {
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The trigger condition to wait for.
     pub trigger: Trigger,
     /// Effects to execute when the trigger fires.
@@ -1021,6 +1023,7 @@ fn push_monarch_trigger(
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1046,6 +1049,7 @@ fn push_ring_trigger(
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1071,6 +1075,7 @@ fn push_initiative_trigger(
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1752,6 +1757,7 @@ fn add_flanking_triggers(
         flanking.instance_id().hash(&mut hasher);
         triggered.push(TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source: blocked.attacker,
             controller,
             x_value: None,
@@ -1836,6 +1842,7 @@ fn add_ward_triggers(
         ward.cost.display().hash(&mut hasher);
         triggered.push(TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source: target,
             controller: ward.ward_controller,
             x_value: None,
@@ -1919,6 +1926,7 @@ fn add_intrinsic_siege_defeat_trigger(
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -2532,6 +2540,10 @@ fn check_battlefield_trigger_subscriber(
                 obj_id, trigger_ability.effects.linked_exile_pair,
                 view.calculated_characteristics_arc(obj_id).as_ref()
                     .and_then(|chars| chars.abilities.origin(subscriber.ability_index))),
+            source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj_id, trigger_ability.effects.source_number_pair,
+                view.calculated_characteristics_arc(obj_id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(subscriber.ability_index))),
             source: obj_id,
             controller,
             x_value: trigger_entry_x_value(trigger_event, obj.x_value),
@@ -2879,6 +2891,9 @@ fn collect_lookback_source_triggers(
                     linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
                         source_snapshot.object_id, trigger_ability.effects.linked_exile_pair,
                         source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        source_snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: source_snapshot.object_id,
                     controller: source_snapshot.controller,
                     x_value: dynamic_soulshift_x
@@ -3057,6 +3072,9 @@ fn check_triggers_with_view_and_registry(
                     linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
                         snapshot.object_id, trigger_ability.effects.linked_exile_pair,
                         snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: snapshot.object_id,
                     controller: snapshot.controller,
                     x_value: dynamic_soulshift_x
@@ -3137,6 +3155,9 @@ fn check_triggers_with_view_and_registry(
                     linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
                         snapshot.object_id, trigger_ability.effects.linked_exile_pair,
                         snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: snapshot.object_id,
                     controller: snapshot.controller,
                     x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
@@ -3211,6 +3232,7 @@ fn check_triggers_with_view_and_registry(
             let linked_event = TriggerEvent::new_with_provenance(linked_draw, trigger_event.provenance());
             triggered.push(TriggeredAbilityEntry {
                 linked_exile_owner: None,
+                source_number_owner: None,
                 source: proof.card, controller: proof.player, x_value: None, event_value_amount: None,
                 ability, triggering_event: linked_event, source_stable_id: proof.stable_id,
                 source_name: proof.drawn_snapshot.name.clone(), source_snapshot: Some(proof.drawn_snapshot.clone()),
@@ -3278,6 +3300,7 @@ fn check_triggers_with_view_and_registry(
             for _ in 0..cascade_count {
                 triggered.push(TriggeredAbilityEntry {
                     linked_exile_owner: None,
+                    source_number_owner: None,
                     source: cast.spell,
                     controller: cast.caster,
                     x_value: entry.x_value,
@@ -3334,6 +3357,7 @@ fn check_triggers_with_view_and_registry(
             let trigger_identity = TriggerIdentity(identity.finish());
             triggered.push(TriggeredAbilityEntry {
                 linked_exile_owner: None,
+                source_number_owner: None,
                 source: cast.spell,
                 controller: cast.caster,
                 x_value: entry.x_value,
@@ -3458,6 +3482,7 @@ fn add_speed_increase_triggers(
 
         triggered.push(TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source,
             controller,
             x_value: None,
@@ -3545,6 +3570,10 @@ fn collect_state_triggers_for_object(
         triggered.push(TriggeredAbilityEntry {
             linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
                 obj.id, trigger_ability.effects.linked_exile_pair,
+                game.calculated_characteristics_arc(obj.id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(ability_index))),
+            source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj.id, trigger_ability.effects.source_number_pair,
                 game.calculated_characteristics_arc(obj.id).as_ref()
                     .and_then(|chars| chars.abilities.origin(ability_index))),
             source: obj.id,
@@ -3949,6 +3978,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
                     let entry = TriggeredAbilityEntry {
                         linked_exile_owner: delayed.linked_exile_owner.clone(),
+                        source_number_owner: delayed.source_number_owner.clone(),
                         source: ability_source,
                         controller: delayed.controller,
                         x_value: delayed.x_value,
@@ -4115,6 +4145,10 @@ fn check_triggers_in_zone(
                 let entry = TriggeredAbilityEntry {
                     linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
                         obj_id, trigger_ability.effects.linked_exile_pair,
+                        game.calculated_characteristics_arc(obj_id).as_ref()
+                            .and_then(|chars| chars.abilities.origin(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        obj_id, trigger_ability.effects.source_number_pair,
                         game.calculated_characteristics_arc(obj_id).as_ref()
                             .and_then(|chars| chars.abilities.origin(ability_index))),
                     source: obj_id,
@@ -5129,6 +5163,7 @@ mod tests {
         let trigger_identity = compute_trigger_identity(&ability);
         TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source,
             controller,
             x_value: None,

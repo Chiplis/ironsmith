@@ -357,7 +357,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::WasBoughtBack | Value::WasEntwined | Value::WasPaid(_) | Value::WasPaidLabel(_)
         | Value::TimesPaid(_) | Value::TimesPaidLabel(_) | Value::KickCount
         | Value::MagicGamesLostToOpponentsSinceLastWin | Value::DraftNotedHighestNumber { .. }
-        | Value::DraftRemovedCardCount { .. } | Value::LastNotedLifeTotal
+        | Value::DraftRemovedCardCount { .. } | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::CountersOnSource(_) | Value::CountersOnFilterCandidate(_) | Value::TaggedCount
         | Value::VoteCount(_) | Value::CasterManaSpentToCastTriggeringObject => {}
     }

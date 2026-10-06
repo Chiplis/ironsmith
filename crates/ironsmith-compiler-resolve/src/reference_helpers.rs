@@ -2589,6 +2589,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 return Ok(value);
             }
 
+            if let Some(result) = super::reference_resolution::resolve_choice_quantity_query(query, refs) {
+                return result;
+            }
             if let Some(result) =
                 super::reference_resolution::resolve_coin_quantity_query(query, refs)
             {
