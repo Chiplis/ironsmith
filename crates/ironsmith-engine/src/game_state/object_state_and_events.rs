@@ -2523,6 +2523,10 @@ impl GameState {
                 last.checked_add(1).ok_or(crate::effects::ExecutionError::ResourceLimitExceeded{
                     resource:"numeric choice group sequence",requested:u128::from(last)+1,maximum:u128::from(u64::MAX)})?
             }else{0};
+        // Numeric memory is noncopiable snapshot evidence even when no layer
+        // descriptor changes. Invalidate the object snapshot cache as well as
+        // calculated characteristics before publishing the completed choice.
+        self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
         self.choice_store_mut().numeric_acquisitions.insert(owner,crate::source_numbers::NumberChoiceRecord{number,public_group});
         Ok(())
@@ -2534,8 +2538,10 @@ impl GameState {
     pub fn number_for_acquisition(&self,owner:&crate::source_numbers::NumberChoiceOwner,
         retained:Option<&crate::snapshot::ObjectSnapshot>)->Result<Option<u32>,crate::effects::ExecutionError>{
         if self.object(owner.host).is_some(){return Ok(self.choice_store.numeric_acquisitions.get(owner).map(|record|record.number));}
-        let snapshot=retained.filter(|snapshot|snapshot.object_id==owner.host)
-            .or_else(||self.turn_store.turn_history.source_departure_snapshot(owner.host));
+        // A later completed choice before departure supersedes the older
+        // admission snapshot. Neither path follows a new object incarnation.
+        let snapshot=self.turn_store.turn_history.source_departure_snapshot(owner.host)
+            .or_else(||retained.filter(|snapshot|snapshot.object_id==owner.host));
         let choices=snapshot.and_then(|snapshot|snapshot.numeric_choice_memory.as_deref())
             .ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence(
                 "numeric acquisition history is unavailable; the public proof is not an executable acquisition receipt".into()))?;
@@ -3601,8 +3607,8 @@ impl GameState {
             let snapshots = entries.iter().map(|event| {
                 let entry = event.downcast::<crate::events::EnterBattlefieldEvent>().unwrap();
                 observed.object(entry.object).map(|object|
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(object, &observed, &effects))
-            }).collect::<Vec<_>>();
+                    crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(object, &observed, &effects)).transpose()
+            }).collect::<Result<Vec<_>, crate::effects::ExecutionError>>()?;
             let destinations = snapshots.iter().flatten().cloned().collect::<Vec<_>>();
             for (event, snapshot) in entries.iter_mut().zip(snapshots) {
                 let mut entry = event

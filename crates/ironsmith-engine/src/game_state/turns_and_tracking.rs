@@ -3098,10 +3098,9 @@ impl GameState {
         if entry.source_snapshot.is_none()
             && let Some(source) = self.object(entry.object_id)
         {
-            let snapshot =
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    source, self,
-                );
+            let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(source, self) else {
+                return;
+            };
             entry.source_stable_id.get_or_insert(snapshot.stable_id);
             entry
                 .source_name

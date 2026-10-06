@@ -2056,7 +2056,10 @@ fn resolve_filter_comparison_rhs_value(
             resolve_filter_comparison_rhs_value(value, game, ctx, stack_entry)
         }
         Value::SourceChosenNumber { if_unset, pair } => {
-            match crate::source_numbers::read(game,ctx.source?,*pair,
+            // A delayed trigger's watched object can differ from the host
+            // that owns this linked choice. Admission fixes the numeric host.
+            let source = ctx.source_number_owner.as_ref().map(|owner| owner.host).or(ctx.source)?;
+            match crate::source_numbers::read(game,source,*pair,
                 ctx.source_number_owner.as_ref(),ctx.source_snapshot.as_ref()) {
                 Ok(number) => number.map(i64::from).or_else(|| if_unset.map(i64::from)),
                 Err(error) => { game.record_token_resource_failure(&error); None }

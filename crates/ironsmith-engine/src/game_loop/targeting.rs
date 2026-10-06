@@ -125,7 +125,7 @@ pub(crate) fn capture_completed_spell_cast(
     let checkpoint = game.clone();
     let result = (|| {
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-        let cast = SpellCastEvent::from_completed_cast(spell, caster, from_zone, game);
+        let cast = SpellCastEvent::try_from_completed_cast(spell, caster, from_zone, game)?;
         cast.required_completed_snapshot()?;
         if cast.targets.is_none() {
             return Err(ExecutionError::IncompleteEvidence(

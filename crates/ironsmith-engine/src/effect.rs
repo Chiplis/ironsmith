@@ -198,10 +198,17 @@ impl OutcomeObjectMemory {
     }
 
     pub fn from_object_id(game: &GameState, object_id: ObjectId) -> Option<Self> {
+        Self::try_from_object_id(game, object_id)
+            .inspect_err(|error| game.record_token_resource_failure(error)).ok().flatten()
+    }
+
+    pub fn try_from_object_id(game: &GameState, object_id: ObjectId)
+        -> Result<Option<Self>, crate::effects::ExecutionError>
+    {
         game.object(object_id).map(|obj| {
-            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-            Self::from_snapshot(&snapshot)
-        })
+            ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)
+                .map(|snapshot| Self::from_snapshot(&snapshot))
+        }).transpose()
     }
 
     /// Rebuild a filterable snapshot while preserving captured LKI fields.

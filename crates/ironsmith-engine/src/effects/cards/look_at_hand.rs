@@ -100,8 +100,13 @@ impl EffectExecutor for LookAtHandEffect {
                     "Reveal that player's hand",
                     true,
                 );
-                exact_reveal.extend(cards.iter().filter_map(|id|
-                    crate::effect::OutcomeObjectMemory::from_object_id(game, *id)));
+                for id in &cards {
+                    let memory = crate::effect::OutcomeObjectMemory::try_from_object_id(game, *id)?
+                        .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                            "revealed hand card is unavailable at completed capture".into(),
+                        ))?;
+                    exact_reveal.push(memory);
+                }
 
             } else {
                 // Record exactly the looked-at cards so a following "exile

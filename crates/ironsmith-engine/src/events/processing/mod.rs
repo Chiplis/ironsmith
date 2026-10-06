@@ -1738,11 +1738,7 @@ pub fn execute_discard(
     let result = (|| {
         let source = cause.source.unwrap_or(card_id);
         let controller = cause.source_controller.unwrap_or(player);
-        let source_snapshot = game.object(source).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        });
+        let source_snapshot = game.object(source).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
         let receipt = execute_discard_with_scope(
             game,
             card_id,
@@ -2360,11 +2356,9 @@ fn trait_effect_matches_event(
         let zone_change = if let Some(discard) =
             crate::events::downcast_event::<crate::events::DiscardEvent>(event.inner())
         {
-            let snapshot = game.object(discard.card).map(|card| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    card, game,
-                )
-            });
+            let snapshot = game.object(discard.card).map(|card|
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(card, game)
+            ).transpose()?;
             crate::events::ZoneChangeEvent::with_cause(
                 discard.card,
                 Zone::Hand,
@@ -2937,14 +2931,13 @@ fn process_destroy_scoped_inner(
     use crate::effects::ExecutionError;
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    let observer_lookback = game.trigger_source_lookback_snapshots();
-    let snapshot = snapshot.or_else(|| {
-        game.object(permanent).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        })
-    });
+    let observer_lookback = game.try_trigger_source_lookback_snapshots()?;
+    let snapshot = match snapshot {
+        Some(snapshot) => Some(snapshot),
+        None => game.object(permanent).map(|object|
+            crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+        ).transpose()?,
+    };
     if !game
         .object(permanent)
         .is_some_and(|object| object.zone == Zone::Battlefield)
@@ -3007,9 +3000,12 @@ fn process_destroy_scoped_inner(
             receipt.permanent = destroyed.permanent;
             receipt.snapshot = destroyed.snapshot.clone()
                 .filter(|snapshot| snapshot.object_id == destroyed.permanent)
-                .or_else(|| receipt.snapshot.take().filter(|snapshot| snapshot.object_id == destroyed.permanent))
-                .or_else(|| game.object(destroyed.permanent).map(|object|
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)));
+                .or_else(|| receipt.snapshot.take().filter(|snapshot| snapshot.object_id == destroyed.permanent));
+            if receipt.snapshot.is_none() {
+                receipt.snapshot = game.object(destroyed.permanent).map(|object|
+                    crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+                ).transpose()?;
+            }
             if !game
                 .object(destroyed.permanent)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
@@ -3172,46 +3168,50 @@ pub(crate) fn finish_destroy_receipts(
 }
 
 pub(crate) struct FrozenDestroyReceipts(
-    Vec<(
+    Result<Vec<(
         DestroyExecutionReceipt,
         (Vec<ObjectId>, Vec<crate::snapshot::ObjectSnapshot>),
         crate::effects::zones::FrozenZoneChangeReceipts,
-    )>,
+    )>, crate::effects::ExecutionError>,
 );
 
 pub(crate) fn freeze_destroy_receipts(
     game: &mut GameState,
     receipts: Vec<DestroyExecutionReceipt>,
 ) -> FrozenDestroyReceipts {
-    // Freeze each arriving identity before any added program can move it again.
-    let bindings = receipts.iter().map(|receipt| {
-        let mut ids = receipt.zone_receipts.iter().flat_map(|(_, zone)| match &zone.original {
-            EventOutcome::Proceed(applied) => applied.new_object_ids.clone(), _ => Vec::new(),
-        }).collect::<Vec<_>>();
-        if ids.is_empty() {
-            if let Some(applied) = crate::effects::zones::take_recorded_zone_change(game, receipt.permanent) {
-                ids = applied.new_object_ids; game.record_zone_change_results(receipt.permanent, ids.clone());
+    let captured = (|| {
+        // Freeze each arriving identity before any added program can move it again.
+        let bindings = receipts.iter().map(|receipt| {
+            let mut ids = receipt.zone_receipts.iter().flat_map(|(_, zone)| match &zone.original {
+                EventOutcome::Proceed(applied) => applied.new_object_ids.clone(), _ => Vec::new(),
+            }).collect::<Vec<_>>();
+            if ids.is_empty() {
+                if let Some(applied) = crate::effects::zones::take_recorded_zone_change(game, receipt.permanent) {
+                    ids = applied.new_object_ids; game.record_zone_change_results(receipt.permanent, ids.clone());
+                }
             }
-        }
-        if ids.is_empty() { ids.push(receipt.permanent); }
-        let mut snapshots = ids.iter().filter_map(|id| game.object(*id).map(|object|
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))).collect::<Vec<_>>();
-        if snapshots.is_empty() { snapshots.extend(receipt.snapshot.clone()); }
-        (ids, snapshots)
-    }).collect::<Vec<_>>();
-    FrozenDestroyReceipts(
-        receipts
-            .into_iter()
-            .zip(bindings)
-            .map(|(mut receipt, bindings)| {
-                let zones = crate::effects::zones::freeze_zone_change_receipts(
-                    game,
-                    std::mem::take(&mut receipt.zone_receipts),
-                );
-                (receipt, bindings, zones)
-            })
-            .collect(),
-    )
+            if ids.is_empty() { ids.push(receipt.permanent); }
+            let mut snapshots = ids.iter().filter_map(|id| game.object(*id).map(|object|
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))).collect::<Result<Vec<_>, crate::effects::ExecutionError>>()?;
+            if snapshots.is_empty() { snapshots.extend(receipt.snapshot.clone()); }
+            Ok((ids, snapshots))
+        }).collect::<Result<Vec<_>, crate::effects::ExecutionError>>()?;
+        Ok(
+            receipts
+                .into_iter()
+                .zip(bindings)
+                .map(|(mut receipt, bindings)| {
+                    let zones = crate::effects::zones::freeze_zone_change_receipts(
+                        game,
+                        std::mem::take(&mut receipt.zone_receipts),
+                    );
+                    (receipt, bindings, zones)
+                })
+                .collect(),
+        )
+    })();
+    if let Err(error) = &captured { game.record_token_resource_failure(error); }
+    FrozenDestroyReceipts(captured)
 }
 
 pub(crate) fn finish_destroy_receipts_frozen(
@@ -3220,8 +3220,8 @@ pub(crate) fn finish_destroy_receipts_frozen(
     original: crate::effect::EffectOutcome,
     frozen: FrozenDestroyReceipts,
 ) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+    let frozen = frozen.0?;
     let died = frozen
-        .0
         .iter()
         .filter(|(receipt, _, _)| {
             matches!(receipt.result, EventOutcome::Proceed(Zone::Graveyard))
@@ -3239,7 +3239,7 @@ pub(crate) fn finish_destroy_receipts_frozen(
         original.with_execution_fact(crate::effect::ExecutionFact::ObjectsDied(died))
     };
     let mut outcomes = vec![original];
-    for (receipt, (ids, snapshots), zones) in frozen.0 {
+    for (receipt, (ids, snapshots), zones) in frozen {
         let base = receipt
             .payload_outcome
             .unwrap_or_else(crate::effect::EffectOutcome::resolved);
@@ -4181,22 +4181,22 @@ fn prepare_zone_change_with_context_inner(
         return Ok(PreparedEventOutcome::pure(EventOutcome::NotApplicable));
     }
     // Freeze lookback before an entry/replacement program can change sources.
-    let pre_event_lookback = inherited_lookback
-        .map(|snapshots| snapshots.to_vec())
-        .unwrap_or_else(|| game.trigger_source_lookback_snapshots());
+    let pre_event_lookback = match inherited_lookback {
+        Some(snapshots) => snapshots.to_vec(),
+        None => game.try_trigger_source_lookback_snapshots()?,
+    };
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let requested_to = game.resolve_commander_move_destination(object, to, dm);
     if dm.awaiting_choice() {
         return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
-    let snapshot = snapshot.or_else(|| {
-        game.object(object).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        })
-    });
+    let snapshot = match snapshot {
+        Some(snapshot) => Some(snapshot),
+        None => game.object(object).map(|object|
+            crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+        ).transpose()?,
+    };
     let zone = ZoneChangeEvent::with_cause(object, from, requested_to, cause.clone(), snapshot);
     // Match merged-component policies against the original proposal, before
     // one-shots disappear or replacement destinations change its matchers.
@@ -7451,9 +7451,7 @@ pub fn process_zone_change_with_event(
 ) -> Result<Option<Zone>, crate::effects::ExecutionError> {
     use crate::events::{ZoneChangeEvent, downcast_event};
 
-    let snapshot = game.object(object).map(|o| {
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(o, game)
-    });
+    let snapshot = game.object(object).map(|o| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(o, game)).transpose()?;
     let event = Event::zone_change(object, from, to, cause, snapshot);
     let result = process_trait_event(game, event)?;
 
@@ -7819,7 +7817,7 @@ pub(crate) fn process_etb_with_event_and_dm_with_initial_counters_and_controller
     initial_enters_tapped: bool,
     cause: crate::events::cause::EventCause,
 ) -> Result<EtbEventResult, crate::effects::ExecutionError> {
-    let scope = original_entry_zone_context(game, object, from, cause);
+    let scope = original_entry_zone_context(game, object, from, cause)?;
     process_etb_batch_proposal_with_scope(
         game,
         object,
@@ -7937,10 +7935,11 @@ fn original_entry_zone_context(
     object: ObjectId,
     from: Zone,
     cause: crate::events::cause::EventCause,
-) -> ReplacementEventContext {
+) -> Result<ReplacementEventContext, crate::effects::ExecutionError> {
+    // Capture precedes provenance allocation and all entry mutations.
     let snapshot = game.object(object).map(|card| {
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(card, game)
-    });
+        crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(card, game)
+    }).transpose()?;
     let provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::ZoneChange);
@@ -7955,7 +7954,7 @@ fn original_entry_zone_context(
     let mut context =
         ReplacementEventContext::new(game, event, &TraitEventProcessingState::default());
     context.zone_change_context = Some(zone);
-    context
+    Ok(context)
 }
 
 fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
@@ -7977,7 +7976,7 @@ fn process_etb_with_event_and_dm_with_initial_counters_and_reservations(
         object,
         from,
         crate::events::cause::EventCause::effect(),
-    );
+    )?;
     let result = prepare_etb_replacements_inner(
         game,
         object,
@@ -8343,6 +8342,14 @@ fn prepare_etb_replacements_inner(
         loop {
             if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner()) {
                 reserved_objects.extend(etb.linked_exile_with_entering.iter().copied());
+                if etb.copy_duration.is_some() && etb.enters_as_copy_of.is_some()
+                    && etb.program_choices.entry_copy_registration.is_none()
+                {
+                    let mut reserved = etb.clone();
+                    reserved.program_choices.entry_copy_registration = Some(
+                        game.effect_store.continuous_effects.reserve_entry_effect());
+                    current_event = Event::new_with_provenance(reserved, current_event.provenance());
+                }
             }
             if let Some(etb) = downcast_event::<EnterBattlefieldEvent>(current_event.inner())
                 && let Some((program, controller)) = etb.pending_program.clone()
@@ -9118,9 +9125,7 @@ pub fn process_zone_change_full(
 ) -> Result<ZoneChangeResult, crate::effects::ExecutionError> {
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    let snapshot = game.object(object).map(|object| {
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-    });
+    let snapshot = game.object(object).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
     process_trait_event(game, Event::zone_change(object, from, to, cause, snapshot))
 }
 

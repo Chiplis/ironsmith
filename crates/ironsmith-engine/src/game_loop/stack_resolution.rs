@@ -1412,7 +1412,7 @@ fn resolve_stack_entry_full_inner(
 
     // Snapshot target objects for "last known information" before effects execute
     // This allows effects to access power/controller of targets even after they're exiled
-    ctx.snapshot_targets(game);
+    ctx.try_snapshot_targets(game).map_err(GameLoopError::ExecutionFailed)?;
 
     // Get effects to execute
     // For abilities with stored effects (like triggered abilities), use those directly

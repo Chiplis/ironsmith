@@ -56,13 +56,18 @@ fn game() -> GameState {
     game
 }
 #[derive(Default)]
-struct Choices { number: u32, target: Option<PlayerId>, decline: bool, prompts: Vec<(PlayerId,u32,Option<u32>)> }
+struct Choices { number: u32, target: Option<PlayerId>, decline: bool, defer_number: bool, waiting: bool, prompts: Vec<(PlayerId,u32,Option<u32>)> }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _: &GameState, ctx: &NumberContext) -> u32 {
-        self.prompts.push((ctx.player, ctx.min, ctx.authored_max)); self.number
+        self.prompts.push((ctx.player, ctx.min, ctx.authored_max)); self.waiting=self.defer_number; self.number
     }
+    fn awaiting_choice(&self) -> bool { self.waiting }
     fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool { !self.decline }
     fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+        if let Some(option) = ctx.options.iter().find(|option|
+            option.legal && option.description.starts_with("Enter as a copy of")) {
+            return vec![option.index];
+        }
         if ctx.description == "Choose a color" {
             return vec![ctx.options.iter().find(|option| option.description == "Blue").unwrap().index];
         }
@@ -409,4 +414,215 @@ fn pending_upkeep_keeps_its_controller_and_numeric_acquisition_when_control_chan
         resolve(&mut g,&mut dm);assert_eq!(dm.prompts.last(),Some(&(A,0,Some(7))));assert_eq!(pt(&g,source),(Some(4),Some(3)));
         assert_eq!(g.current_controller(source),Some(B));
     }
+}
+
+
+fn duration_copy_definition() -> CardDefinition {
+    // Related fixture exercises the existing entry-copy owner; this family
+    // makes no full-card coverage claim for Cursed Mirror.
+    simple("Cursed Mirror", "Artifact", "{2}{R}", None,
+        "{T}: Add {R}.\nAs this artifact enters, you may have it become a copy of any creature on the battlefield until end of turn, except it has haste.")
+}
+
+#[test]
+fn duration_entry_copies_choose_for_their_actual_acquisitions_and_expire_independently() {
+    for definition in definitions("Sanctum Prelate") {
+        let mut g=game();let mut dm=Choices{number:1,..Default::default()};
+        let donor=enter(&mut g,&definition,B,&mut dm);let mirror=duration_copy_definition();
+        dm.number=3;let first=enter(&mut g,&mirror,A,&mut dm);
+        dm.number=4;let second=enter(&mut g,&mirror,C,&mut dm);
+        g.move_object_by_effect(donor,Zone::Graveyard).unwrap();g.refresh_continuous_state().unwrap();
+        g.turn.active_player=B;g.turn.priority_player=Some(B);
+        for mana in [1,2,3,4] {
+            let spell=g.create_object_from_definition(&simple("Copy prohibition witness","Artifact",
+                &format!("{{{mana}}}"),None,""),B,Zone::Hand);
+            assert_eq!(can_cast(&g,B,spell),!matches!(mana,3|4));
+        }
+        for (source,number) in [(first,3),(second,4)] {
+            let memory=g.numeric_choice_memory(source);
+            assert_eq!(memory.len(),1);assert_eq!(memory.values().next().unwrap().number,number);
+            assert!(memory.keys().all(|owner|matches!(&owner.acquisition,ironsmith::linked_exile::LinkedExileAcquisition::Effect(_))));
+            let proof=ironsmith::source_numbers::public_proof(&g,source,true).unwrap();
+            assert!(proof.bindings.iter().all(|binding|binding.group==Some(0)));
+        }
+        g.effect_store.continuous_effects.cleanup_end_of_turn();g.refresh_continuous_state().unwrap();
+        for source in [first,second] {
+            assert_eq!(g.current_name(source).as_deref(),Some("Cursed Mirror"));
+            let proof=ironsmith::source_numbers::public_proof(&g,source,true).unwrap();
+            assert_eq!(proof.records.len(),1);assert!(proof.bindings.is_empty());
+        }
+        let spell=g.create_object_from_definition(&simple("Released prohibition","Artifact","{3}",None,""),B,Zone::Hand);
+        assert!(can_cast(&g,B,spell));
+    }
+    for definition in definitions("Shapeshifter") {
+        let mut g=game();let mut dm=Choices{number:2,..Default::default()};
+        enter(&mut g,&definition,B,&mut dm);let mirror=duration_copy_definition();
+        dm.number=4;let first=enter(&mut g,&mirror,A,&mut dm);
+        dm.number=6;let second=enter(&mut g,&mirror,C,&mut dm);
+        assert_eq!(pt(&g,first),(Some(4),Some(3)));assert_eq!(pt(&g,second),(Some(6),Some(1)));
+        dm.number=5;
+        assert_eq!(event(&mut g,TriggerEvent::new_with_provenance(ironsmith::events::BeginningOfUpkeepEvent::new(A),Default::default()),&mut dm),1);
+        resolve(&mut g,&mut dm);assert_eq!(pt(&g,first),(Some(5),Some(2)));assert_eq!(pt(&g,second),(Some(6),Some(1)));
+        assert_eq!(event(&mut g,TriggerEvent::new_with_provenance(ironsmith::events::BeginningOfUpkeepEvent::new(A),Default::default()),&mut dm),1);
+        g.effect_store.continuous_effects.cleanup_end_of_turn();g.refresh_continuous_state().unwrap();
+        dm.number=3;resolve(&mut g,&mut dm);
+        assert_eq!(g.current_name(first).as_deref(),Some("Cursed Mirror"));
+        assert_eq!(g.numeric_choice_memory(first).values().next().unwrap().number,3,"captured upkeep can update its dormant acquisition");
+        assert_eq!(g.numeric_choice_memory(second).values().next().unwrap().number,6);
+        assert_eq!(g.numeric_choice_memory(first).len(),1,"reselection keeps the entry acquisition and ordinal");
+    }
+}
+
+#[test]
+fn delayed_numeric_match_keeps_the_admitted_host_acquisition_and_latest_departure_choice() {
+    for definition in definitions("Talion, the Kindly Lord") {
+        let mut g=game();let mut dm=Choices{number:3,..Default::default()};
+        let source=enter(&mut g,&definition,A,&mut dm);
+        let chars=g.current_characteristics(source).unwrap();
+        let (slot,ability)=chars.abilities.iter().enumerate().find_map(|(slot,ability)|
+            if let ironsmith::ability::AbilityKind::Triggered(ability)=&ability.kind {Some((slot,ability.clone()))}else{None}).unwrap();
+        let owner=ironsmith::linked_exile::LinkedExileOwner::capture(source,ability.effects.source_number_pair,chars.abilities.origin(slot)).unwrap();
+        let snapshot=ObjectSnapshot::from_object_with_calculated_characteristics(g.object(source).unwrap(),&g);
+        let watched=g.create_object_from_definition(&simple("Watched object","Artifact","{1}",None,""),C,Zone::Battlefield);
+        g.effect_store.delayed_triggers.push(ironsmith::triggers::DelayedTrigger{
+            linked_exile_owner:None,source_number_owner:Some(owner.clone()),trigger:ability.trigger.clone(),effects:ability.effects.clone(),
+            one_shot:false,x_value:None,not_before_turn:None,expires_at_turn:None,expires_before_controller_turn_after:None,
+            expires_at_end_of_combat:false,bound_extra_turn_index:None,while_any_tagged_object_in_zone:None,
+            target_objects:vec![watched],ability_source:Some(source),ability_source_stable_id:Some(snapshot.stable_id),
+            ability_source_name:Some(snapshot.name.clone()),ability_source_snapshot:Some(snapshot),controller:A,
+            choices:ability.choices.clone(),tagged_objects:Default::default(),tagged_players:Default::default(),
+            defending_player_reference:None,prepayment:None,prevention_shield:None,
+        });
+        let values=ironsmith::snapshot::CopiableValues::from_object(g.object(source).unwrap());
+        g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{target_id:source,copiable_values:Box::new(values),
+                preserve_source_abilities:false,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
+        g.refresh_continuous_state().unwrap();let copied=g.current_characteristics(source).unwrap();
+        let copied_owner=ironsmith::linked_exile::LinkedExileOwner::capture(source,ability.effects.source_number_pair,copied.abilities.origin(slot)).unwrap();
+        assert_ne!(owner,copied_owner);g.set_number_for_acquisition(copied_owner,7).unwrap();
+        let matches=|g:&mut GameState,mana:u32| {
+            let spell=g.create_object_from_definition(&simple("Delayed cast witness","Artifact",&format!("{{{mana}}}"),None,""),B,Zone::Stack);
+            let event=TriggerEvent::new_with_provenance(ironsmith::events::SpellCastEvent::from_completed_cast(spell,B,Zone::Hand,g),Default::default());
+            ironsmith::triggers::check_delayed_triggers(g,&event).len()
+        };
+        assert_eq!(matches(&mut g,3),1);assert_eq!(matches(&mut g,7),0);
+        g.set_number_for_acquisition(owner.clone(),5).unwrap();
+        let later=g.move_object_by_effect(source,Zone::Graveyard).unwrap();
+        g.set_number_for_acquisition(ironsmith::linked_exile::LinkedExileOwner{host:later,..owner},7).unwrap();
+        assert_eq!(matches(&mut g,5),1,"true departure supersedes the old admitted snapshot");
+        assert_eq!(matches(&mut g,3),0);assert_eq!(matches(&mut g,7),0,"neither copied acquisition nor later incarnation supplies the chosen number");
+    }
+}
+
+
+#[test]
+fn simultaneous_same_definition_acquisitions_on_one_host_keep_each_live_prohibition() {
+    // Synthetic preserving-copy effects exercise multiple concurrent text
+    // acquisitions on one host, beyond the five printed card programs.
+    for definition in definitions("Sanctum Prelate") {
+        let mut g=game();let mut dm=Choices{number:2,..Default::default()};
+        let source=enter(&mut g,&definition,A,&mut dm);
+        let pair=g.numeric_choice_memory(source).keys().next().unwrap().pair;
+        let values=ironsmith::snapshot::CopiableValues::from_object(g.object(source).unwrap());
+        let mut copies=Vec::new();
+        for number in [3,4] {
+            let id=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+                source,A,vec![source],ironsmith::continuous::Modification::CopyOf{target_id:source,copiable_values:Box::new(values.clone()),
+                    preserve_source_abilities:true,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
+            let effect=g.effect_store.continuous_effects.effects().iter().find(|effect|effect.id==id).unwrap();
+            let owner=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,
+                acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Effect(effect.into())};
+            dm.number=number;
+            execute_effect(&mut g,&Effect::new(ironsmith::effects::ChooseNumberEffect::unbounded(PlayerFilter::You).with_source_retention()),
+                &mut EffectContext::new(source,A,&mut dm).with_source_number_owner(Some(owner))).unwrap();
+            copies.push(id);
+        }
+        g.refresh_continuous_state().unwrap();
+        let proof=ironsmith::source_numbers::public_proof(&g,source,true).unwrap();
+        assert_eq!(proof.records.iter().map(|record|(record.group,record.number)).collect::<Vec<_>>(),vec![(0,2),(1,3),(2,4)]);
+        assert_eq!(proof.bindings.iter().filter_map(|binding|binding.group).collect::<std::collections::HashSet<_>>(),[0,1,2].into_iter().collect());
+        let mut spells=Vec::new();
+        for mana in [2,3,4,5] {
+            let spell=g.create_object_from_definition(&simple("Concurrent prohibition witness","Artifact",&format!("{{{mana}}}"),None,""),A,Zone::Hand);
+            assert_eq!(can_cast(&g,A,spell),mana==5);spells.push(spell);
+        }
+        g.effect_store.continuous_effects.remove_effect(copies[0]);g.refresh_continuous_state().unwrap();
+        assert!(!can_cast(&g,A,spells[0]));assert!(can_cast(&g,A,spells[1]));assert!(!can_cast(&g,A,spells[2]));
+        g.effect_store.continuous_effects.remove_effect(copies[1]);g.refresh_continuous_state().unwrap();
+        assert!(!can_cast(&g,A,spells[0]));assert!(can_cast(&g,A,spells[1]));assert!(can_cast(&g,A,spells[2]));
+        assert_eq!(g.numeric_choice_memory(source).len(),3,"expired choices remain dormant, not reassigned");
+    }
+}
+
+#[test]
+fn two_preserved_talion_acquisitions_each_trigger_once_when_all_three_axes_match() {
+    for definition in definitions("Talion, the Kindly Lord") {
+        let mut g=game();let mut dm=Choices{number:3,..Default::default()};
+        let source=enter(&mut g,&definition,A,&mut dm);
+        let pair=g.numeric_choice_memory(source).keys().next().unwrap().pair;
+        let values=ironsmith::snapshot::CopiableValues::from_object(g.object(source).unwrap());
+        let copy=g.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::from_resolution(
+            source,A,vec![source],ironsmith::continuous::Modification::CopyOf{target_id:source,copiable_values:Box::new(values),
+                preserve_source_abilities:true,name_override:None,name_override_surface:None,add_supertypes:vec![]}));
+        let effect=g.effect_store.continuous_effects.effects().iter().find(|effect|effect.id==copy).unwrap();
+        let owner=ironsmith::linked_exile::LinkedExileOwner{host:source,pair,
+            acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Effect(effect.into())};
+        g.set_number_for_acquisition(owner,3).unwrap();g.refresh_continuous_state().unwrap();
+        let spell=g.create_object_from_definition(&simple("Triple match","Creature","{3}",Some((3,3)),""),B,Zone::Stack);
+        let cast=ironsmith::events::SpellCastEvent::from_completed_cast(spell,B,Zone::Hand,&g);
+        let life=g.player(B).unwrap().life;let hand=g.player(A).unwrap().hand.len();
+        assert_eq!(event(&mut g,TriggerEvent::new_with_provenance(cast,Default::default()),&mut dm),2,
+            "two independent acquisitions each trigger once, even though each matches three axes");
+        resolve(&mut g,&mut dm);resolve(&mut g,&mut dm);
+        assert_eq!(g.player(B).unwrap().life,life-4);assert_eq!(g.player(A).unwrap().hand.len(),hand+2);
+    }
+}
+
+
+#[test]
+fn pending_and_failed_entry_number_choices_restore_the_reserved_copy_acquisition() {
+    for definition in definitions("Shapeshifter") {
+        for pending in [false,true] {
+            let mut g=game();let mut dm=Choices{number:2,..Default::default()};
+            let donor=enter(&mut g,&definition,B,&mut dm);
+            let entrant=g.create_object_from_definition(&duration_copy_definition(),A,Zone::Hand);
+            let before=g.clone();dm.number=if pending{4}else{8};dm.defer_number=pending;dm.prompts.clear();
+            let result=g.move_object_with_etb_processing_with_dm(entrant,Zone::Battlefield,&mut dm);
+            assert_eq!(dm.prompts,vec![(A,0,Some(7))],"the copy reservation precedes this real number prompt");
+            if pending {assert!(result.unwrap().pending);}else{assert!(result.is_err());}
+            assert_eq!(g.object(entrant).unwrap().zone,Zone::Hand);assert!(g.numeric_choice_memory(entrant).is_empty());
+            assert_eq!(g.numeric_choice_memory(donor),before.numeric_choice_memory(donor));
+            let probe=ironsmith::continuous::ContinuousEffect::new(entrant,A,
+                ironsmith::continuous::EffectTarget::Specific(entrant),ironsmith::continuous::Modification::AddColors(ironsmith::color::ColorSet::BLUE));
+            let mut expected=before.effect_store.continuous_effects.clone();let mut actual=g.effect_store.continuous_effects.clone();
+            assert_eq!(actual.add_effect(probe.clone()),expected.add_effect(probe),
+                "the entry root restores the allocation sequence after allocating its reservation");
+        }
+    }
+}
+
+#[test]
+fn omitted_program_numeric_pair_in_a_full_body_codec_cannot_produce_a_complete_public_proof() {
+    let rows:Vec<serde_json::Value>=serde_json::from_str(include_str!("../../../fixtures/source_number_bodies.json.fixture")).unwrap();
+    let row=rows.iter().find(|row|row["name"]=="Shapeshifter").unwrap();
+    let text=format!("Mana cost: {}\nType: {}\nPower/Toughness: {}/{}\n{}",
+        row["mana_cost"].as_str().unwrap(),row["type_line"].as_str().unwrap(),
+        row["power"].as_str().unwrap(),row["toughness"].as_str().unwrap(),row["oracle_text"].as_str().unwrap());
+    let (artifact,_)=compile_to_artifact("Shapeshifter",text,false).unwrap();
+    let mut wire:serde_json::Value=serde_json::from_str(&artifact.to_json().unwrap()).unwrap();
+    fn omit(value:&mut serde_json::Value)->usize {
+        match value {
+            serde_json::Value::Object(fields)=>{
+                let own=usize::from(fields.remove("source_number_pair").is_some());
+                own+fields.values_mut().map(omit).sum::<usize>()
+            }
+            serde_json::Value::Array(values)=>values.iter_mut().map(omit).sum(),
+            _=>0,
+        }
+    }
+    assert!(omit(&mut wire)>=2,"entry and upkeep program ownership was present before omission");
+    let legacy=ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&wire.to_string()).unwrap();
+    let definition=ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&legacy).unwrap();
+    let mut g=game();let source=g.create_object_from_definition(&definition,A,Zone::Battlefield);
+    assert!(matches!(ironsmith::source_numbers::public_proof(&g,source,true),Err(ironsmith::effects::ExecutionError::IncompleteEvidence(_))));
 }

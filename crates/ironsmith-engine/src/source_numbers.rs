@@ -95,18 +95,39 @@ fn filter_requires_number(filter:&crate::target::ObjectFilter)->bool{
         _=>false,
     })||filter.any_of.iter().any(filter_requires_number)
 }
-fn ability_requires_number(ability:&Ability)->bool{
-    match &ability.kind{
-        AbilityKind::Static(ability)=>ability.canonical_model().is_some_and(|model|match &model.payload{
-            ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt{power,toughness}=>contains_value(power)||contains_value(toughness),
-            ironsmith_core::StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::CastSpellsMatching(_,filter),..}=>filter_requires_number(filter),
-            _=>false,
-        }),
-        AbilityKind::Triggered(ability)=>ability.trigger.compiled_model().is_some_and(|model|match &model.kind{
-            ironsmith_core::TriggerKind::SpellCast{filter:Some(filter),..}|ironsmith_core::TriggerKind::SpellCastQualified{filter:Some(filter),..}=>filter_requires_number(filter),
-            _=>false,
-        }),
-        _=>false,
+fn program_chooses_source_number(program: &crate::resolution::ResolutionProgram) -> bool {
+    fn chooses(effect: &crate::effect::Effect) -> bool {
+        let mut found = effect.downcast_ref::<crate::effects::ChooseNumberEffect>()
+            .is_some_and(|choice| choice.source_owned);
+        effect.visit_child_effects(&mut |child| found |= chooses(child));
+        found
+    }
+    program.all_effects().into_iter().any(chooses)
+}
+fn ability_requires_number(ability: &Ability) -> bool {
+    fn static_requires(model: &crate::static_abilities::CompiledStaticAbility) -> bool {
+        match &model.payload {
+            ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram { program, .. } =>
+                program_chooses_source_number(program),
+            ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } =>
+                contains_value(power) || contains_value(toughness),
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: crate::effect::Restriction::CastSpellsMatching(_, filter), ..
+            } => filter_requires_number(filter),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => static_requires(ability),
+            _ => false,
+        }
+    }
+    match &ability.kind {
+        AbilityKind::Static(ability) => ability.canonical_model().as_ref().is_some_and(static_requires),
+        AbilityKind::Triggered(ability) => program_chooses_source_number(&ability.effects)
+            || ability.trigger.compiled_model().is_some_and(|model| match &model.kind {
+                ironsmith_core::TriggerKind::SpellCast { filter: Some(filter), .. }
+                | ironsmith_core::TriggerKind::SpellCastQualified { filter: Some(filter), .. } => filter_requires_number(filter),
+                _ => false,
+            }),
+        AbilityKind::Activated(ability) => program_chooses_source_number(&ability.effects),
+        _ => false,
     }
 }
 pub(crate) fn ability_pair(ability:&Ability)->Option<LinkedExilePair>{

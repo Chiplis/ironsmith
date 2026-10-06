@@ -1447,7 +1447,19 @@ pub fn check_triggers_checked(
     trigger_event: &TriggerEvent,
 ) -> Result<Vec<TriggeredAbilityEntry>, crate::effects::ExecutionError> {
     validate_first_draw_reveal_evidence(trigger_event)?;
-    Ok(check_triggers(game, trigger_event))
+    // This read-only API owns a local failure scope when no execution root is
+    // active. Numeric matching/capture failures must not become Ok(empty).
+    let mut observed = game.clone();
+    observed.try_all_continuous_effects_arc()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let (root, meter) = observed.begin_token_resource_scope();
+    let entries = check_triggers(&observed, trigger_event);
+    let result = match observed.token_resource_failure() {
+        Some(error) => Err(error),
+        None => Ok(entries),
+    };
+    observed.end_token_resource_scope(root, &meter);
+    result
 }
 
 /// Check all permanents for triggered abilities that match the given event.
@@ -2464,6 +2476,13 @@ fn check_battlefield_trigger_subscriber(
         return;
     };
 
+    let source_snapshot = match ObjectSnapshot::try_from_object_with_known_characteristics(
+        obj, game, view.calculated_characteristics_arc(obj_id).as_deref(),
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(error) => { game.record_token_resource_failure(&error); return; }
+    };
+
     let controller = view
         .calculated_characteristics(obj_id)
         .map(|chars| chars.controller)
@@ -2558,7 +2577,7 @@ fn check_battlefield_trigger_subscriber(
             triggering_event: trigger_event.clone(),
             source_stable_id: obj.stable_id,
             source_name: obj.name.to_string(),
-            source_snapshot: None,
+            source_snapshot: Some(source_snapshot.clone()),
             tagged_objects: tagged_objects_for_matched_trigger_with_view(
                 game,
                 trigger_event,
@@ -3900,6 +3919,10 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                     &delayed.tagged_objects,
                 )
                 .with_trigger_identity(trigger_identity);
+                // Matching and resolution read the same admitted acquisition,
+                // even after its copy effect expires or its source departs.
+                ctx.filter_ctx.source_number_owner = delayed.source_number_owner.clone();
+                ctx.filter_ctx.source_snapshot = delayed.ability_source_snapshot.clone();
                 ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
                 ctx.filter_ctx.target_players = delayed
                     .tagged_players

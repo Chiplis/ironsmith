@@ -46,8 +46,13 @@ bounds happen to match: an explicit last-chosen-number CDA is required. Runtime
 pair identities remain frozen through copy and text rewriting. Card names,
 presentation labels, Debug strings, and coverage results never select semantics.
 
-Entry admission captures the new permanent's printed acquisition. Trigger and
-activation admission retain the actual current ability origin. The separate
+Entry admission resolves the actual prospective ability origin. An ordinary
+entry copy uses its new printed acquisition; a duration copy reserves one native
+continuous-effect registration before choices. Prospective clones and final
+commit use that same registration, so its CDA, restrictions and upkeep read the
+number actually selected while entering. Reservations live only in native game
+state and restore with failed/pending entry transactions. Trigger and activation
+admission retain the actual current ability origin. The separate
 numeric owner travels through pending/native contexts, stack entries, copies,
 reflexive/delayed lanes, and context savepoints. Source-owned number effects
 require that admission before prompting. Ordinary local choices cannot modify a
@@ -60,6 +65,14 @@ snapshot; matching several axes still fires once. CDA evaluation receives the
 originating ability. A copied acquisition starts without its own number even if
 the same permanent had another choice; its upkeep can establish a separate
 number. Copy expiry restores the original acquisition's retained number.
+Preserving copy effects retain equal abilities with distinct native origins,
+including multiple simultaneous linked acquisitions on one host. A delayed
+matcher retains its admitted numeric host separately from its watched object.
+The current exact host wins; after departure its latest true departure receipt
+(including leaving the game) wins over an older admitted snapshot. No lookup
+follows a blinked or otherwise replaced incarnation.
+Completed choices invalidate both characteristic and object-snapshot caches,
+including when their noncopiable memory changes without any layer descriptor.
 
 Native snapshots retain an optional acquisition-memory map. `Some(empty)` is
 checked never-chosen evidence; `None` is unavailable historical evidence. Public
@@ -84,7 +97,9 @@ Pending choices and failed transactions cannot consume ordinals. No CardId,
 static-instance ID, native effect-registration ID, or executable acquisition is
 included in the proof. Equivalent gameplay choices with different internal
 allocation orders must produce equal proofs. Hidden identities suppress both
-groups and definition/binding metadata. These are audit records, never a recipe
+groups and definition/binding metadata. Public proof rejects source-owned entry,
+triggered and activated producers missing their program pair, including omitted
+legacy fields; a missing producer slot cannot silently disappear from proof. These are audit records, never a recipe
 for restoring gameplay owners.
 
 The published coordinator boundary is artifact7 / public digest3 / signed
@@ -108,7 +123,7 @@ missing evidence, rollback, and native/model codecs.
 Native receipt tests vary unrelated later number/color/reveal outcomes and
 source/card departures. Acquisition tests distinguish current versus dormant
 choices, legacy/public snapshots versus native history, pending/failed group
-allocation, native restore, and different internal allocation order with equal
+allocation (including failure after a successful allocation), native restore, and different internal allocation order with equal
 public proof. The copy regression is an ordinary acceptance test, not ignored.
 
 No build, compilation, formatter, test, compiler probe, engine/corpus replay, or

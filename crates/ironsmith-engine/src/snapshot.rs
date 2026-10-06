@@ -854,100 +854,121 @@ impl ObjectSnapshot {
     /// * `game` - The game state (needed to compute continuous effects)
     ///
     /// # Returns
-    /// A snapshot with power/toughness reflecting all continuous effects, or base+counters
-    /// if the object is not on the battlefield or has no calculated characteristics.
+    /// A snapshot with complete current characteristics. Legacy callers must
+    /// establish that capture is complete; production mutation owners should
+    /// use the checked variant to propagate failure through their transaction.
     pub fn from_object_with_calculated_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
     ) -> Self {
-        let all_effects = game.all_continuous_effects();
-        Self::from_object_with_calculated_characteristics_and_effects(obj, game, &all_effects)
+        Self::try_from_object_with_calculated_characteristics(obj, game)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
     }
 
-    /// Create a snapshot from an object with calculated characteristics using precomputed effects.
+    /// Checked capture for production owners. An incomplete calculation is
+    /// never converted into a snapshot with provisional power or toughness.
+    pub fn try_from_object_with_calculated_characteristics(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let effects = game.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Self::try_from_object_with_calculated_characteristics_and_effects(obj, game, &effects)
+    }
+
+    /// Adapter for legacy Option/void capture owners inside an execution
+    /// transaction. The owning root must inspect its incomplete-execution
+    /// latch before committing. No snapshot is returned on failure.
+    pub(crate) fn capture_for_execution(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Option<Self> {
+        Self::try_from_object_with_calculated_characteristics(obj, game)
+            .inspect_err(|error| game.record_token_resource_failure(error)).ok()
+    }
+
     pub fn from_object_with_calculated_characteristics_and_effects(
         obj: &Object,
         game: &crate::game_state::GameState,
         effects: &[ContinuousEffect],
     ) -> Self {
+        Self::try_from_object_with_calculated_characteristics_and_effects(obj, game, effects)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
+    }
+
+    pub fn try_from_object_with_calculated_characteristics_and_effects(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        effects: &[ContinuousEffect],
+    ) -> Result<Self, crate::effects::ExecutionError> {
         let calculated = game.calculated_characteristics_with_effects(obj.id, effects);
-        let copiable_values = crate::continuous::copiable_values_with_effects(
-            obj.id,
-            game.objects_map(),
-            effects,
-            &game.battlefield,
-            game.commander_objects(),
-            game,
-        );
-        Self::from_object_with_known_characteristics_and_copiable_values(
-            obj,
-            game,
-            calculated.as_ref(),
-            copiable_values,
+        Self::try_from_object_with_known_characteristics_and_effects(
+            obj, game, calculated.as_ref(), effects,
         )
     }
 
-    /// Create a snapshot using characteristics already calculated for the same
-    /// game-state instant. Callers that batch characteristic work can use this
-    /// to preserve LKI without rerunning the layer system for each object.
     pub fn from_object_with_known_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
     ) -> Self {
-        let effects = game.all_continuous_effects();
-        let copiable_values = crate::continuous::copiable_values_with_effects(
-            obj.id,
-            game.objects_map(),
-            &effects,
-            &game.battlefield,
-            game.commander_objects(),
-            game,
-        );
-        Self::from_object_with_known_characteristics_and_copiable_values(
-            obj,
-            game,
-            calculated,
-            copiable_values,
-        )
+        Self::try_from_object_with_known_characteristics(obj, game, calculated)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
     }
 
-    fn from_object_with_known_characteristics_and_copiable_values(
+    /// Capture a previously calculated frame from this same immutable instant.
+    /// Missing characteristics are unavailable evidence, not printed defaults.
+    pub fn try_from_object_with_known_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
-        copiable_values: Option<CopiableValues>,
-    ) -> Self {
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let effects = game.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Self::try_from_object_with_known_characteristics_and_effects(obj, game, calculated, &effects)
+    }
+
+    fn try_from_object_with_known_characteristics_and_effects(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        calculated: Option<&CalculatedCharacteristics>,
+        effects: &[ContinuousEffect],
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let checked = |object: ObjectId, calculated: Option<&CalculatedCharacteristics>| {
+            let calculated = calculated.ok_or(
+                crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object },
+            ).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            calculated.validate_numeric_range()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
+        };
+        checked(obj.id, calculated)?;
+        let copiable_values = crate::continuous::copiable_values_with_effects(
+            obj.id, game.objects_map(), effects, &game.battlefield, game.commander_objects(), game,
+        );
         let mut snapshot = Self::from_object(obj, game);
         snapshot.goaded = Some(obj.zone == Zone::Battlefield && game.is_goaded(obj.id));
         if let Some(copiable_values) = copiable_values {
             snapshot.copiable_values = copiable_values;
         }
-
         snapshot.apply_calculated_characteristics(obj, calculated);
         if !obj.attachments.is_empty() {
-            let effects = game.all_continuous_effects();
-            // Phased-out attachments are absent when these characteristics
-            // are captured. Later damage must not turn them into historical
-            // evidence that the source was enchanted (CR 702.26b).
+            // Phased-out attachments are absent at capture (CR 702.26b).
             snapshot.attachments.retain(|id| !game.is_phased_out(*id));
-            snapshot.attachment_snapshots = snapshot
-                .attachments
-                .iter()
-                .filter_map(|id| game.object(*id))
-                .map(|attachment| {
-                    let mut child = Self::from_object(attachment, game);
-                    let calculated =
-                        game.calculated_characteristics_with_effects(attachment.id, &effects);
-                    child.apply_calculated_characteristics(attachment, calculated.as_ref());
-                    child
-                })
-                .collect();
+            let mut attachments = Vec::new();
+            for id in &snapshot.attachments {
+                let Some(attachment) = game.object(*id) else { continue; };
+                let calculated = game.calculated_characteristics_with_effects(attachment.id, effects);
+                checked(attachment.id, calculated.as_ref())?;
+                let mut child = Self::from_object(attachment, game);
+                child.apply_calculated_characteristics(attachment, calculated.as_ref());
+                attachments.push(child);
+            }
+            snapshot.attachment_snapshots = attachments;
             snapshot.was_enchanted = snapshot.attachment_snapshots.iter().any(|attachment|
                 attachment.card_types.contains(&CardType::Enchantment)
                     && attachment.subtypes.contains(&Subtype::Aura));
         }
-        snapshot
+        Ok(snapshot)
     }
 
     fn apply_calculated_characteristics(
@@ -1407,3 +1428,6 @@ mod tests {
         assert_eq!(snapshot.mana_value(), 2);
     }
 }
+
+#[cfg(test)]
+mod checked_capture_tests;

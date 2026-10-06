@@ -2932,3 +2932,20 @@ fn base_pt_boundary_agrees_across_all_evaluators_and_departure_snapshots() {
         );
     }
 }
+
+#[test]
+fn entry_copy_registration_is_native_single_use_and_restores_with_checkpoints() {
+    let mut manager=ContinuousEffectManager::new();
+    let before=manager.clone();
+    let reserved=manager.reserve_entry_effect();
+    let source=ObjectId::from_raw(99001);let controller=PlayerId::from_index(0);
+    let effect=ContinuousEffect::new(source,controller,EffectTarget::Specific(source),
+        Modification::AddColors(crate::color::ColorSet::BLUE));
+    let mut prospective=manager.clone();
+    assert_eq!(prospective.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(manager.effects().is_empty(),"prospective admission does not publish the effect");
+    assert_eq!(manager.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(matches!(manager.add_reserved_entry_effect(reserved,effect),Err(crate::effects::ExecutionError::IncompleteEvidence(_))));
+    manager=before;
+    assert_eq!(manager.reserve_entry_effect(),reserved,"pending or failed native rollback restores the allocation sequence");
+}

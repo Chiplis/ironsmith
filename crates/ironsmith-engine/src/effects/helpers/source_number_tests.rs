@@ -121,7 +121,16 @@ fn pending_and_failed_new_acquisitions_do_not_consume_public_group_ordinals() {
     assert!(execute_effect(&mut game,&transaction,&mut ExecutionContext::new(source,a,&mut invalid)
         .with_source_number_owner(Some(second.clone()))).is_err());
     assert_eq!(game.numeric_choice_memory(source),before);
+    // Allocate the second ordinal successfully, then fail a later instruction.
+    // Rollback must undo the completed record, not merely reject a bad prompt.
     invalid.value=4;
+    let later_failure=Effect::new(SequenceEffect::new(vec![
+        Effect::new(ChooseNumberEffect::new(PlayerFilter::You,0,7).with_source_retention()),
+        Effect::gain_life(Value::SourceChosenNumber{if_unset:Some(0),pair:None}),
+    ]));
+    assert!(execute_effect(&mut game,&later_failure,&mut ExecutionContext::new(source,a,&mut invalid)
+        .with_source_number_owner(Some(second.clone()))).is_err());
+    assert_eq!(game.numeric_choice_memory(source),before);
     execute_effect(&mut game,&Effect::new(ChooseNumberEffect::new(PlayerFilter::You,0,7).with_source_retention()),
         &mut ExecutionContext::new(source,a,&mut invalid).with_source_number_owner(Some(second.clone()))).unwrap();
     let memory=game.numeric_choice_memory(source);assert_eq!(memory[&first].public_group,0);assert_eq!(memory[&second].public_group,1);
@@ -144,4 +153,37 @@ fn public_snapshot_cannot_restore_native_acquisition_or_turn_missing_history_int
     assert_eq!(resolve_value_wide(&game,&value,&context).unwrap(),0);
     let context=ExecutionContext::new_default(source,a).with_source_number_owner(Some(owner)).with_source_snapshot(public);
     assert!(matches!(resolve_value_wide(&game,&value,&context),Err(ExecutionError::IncompleteEvidence(_))));
+}
+
+#[test]
+fn public_proof_requires_pairs_for_source_owned_entry_upkeep_and_activation_producers() {
+    for kind in 0..3 {
+        for source_owned in [false,true] {
+            for paired in [false,true] {
+                let mut game=crate::tests::test_helpers::setup_two_player_game();let source=source(&mut game);
+                let choose=Effect::new(ChooseNumberEffect{chooser:PlayerFilter::You,min:0,max:Some(7),source_owned});
+                let mut program=crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::new(SequenceEffect::new(vec![choose])),
+                ]);
+                if paired {program.source_number_pair=Some(owner(source).pair);}
+                let ability=match kind {
+                    0=>crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::from_model(
+                        crate::static_abilities::CompiledStaticAbility::as_enters_effect_program(program,"this artifact",false,false,None))),
+                    1=>crate::ability::Ability::triggered(crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),program),
+                    _=>crate::ability::Ability::activated(crate::cost::TotalCost::free(),program),
+                };
+                game.object_mut(source).unwrap().abilities_mut().push(ability);
+                let result=crate::source_numbers::public_proof(&game,source,true);
+                if source_owned && !paired {
+                    assert!(matches!(result,Err(ExecutionError::IncompleteEvidence(_))),"producer kind {kind} needs its own pair");
+                } else {
+                    let proof=result.unwrap();assert!(proof.records.is_empty());
+                    assert_eq!(proof.bindings.len(),usize::from(paired));
+                    assert!(proof.bindings.iter().all(|binding|binding.group.is_none()));
+                }
+                assert_eq!(crate::source_numbers::public_proof(&game,source,false).unwrap(),Default::default(),
+                    "hidden producer identity remains redacted even when public evidence is unavailable");
+            }
+        }
+    }
 }

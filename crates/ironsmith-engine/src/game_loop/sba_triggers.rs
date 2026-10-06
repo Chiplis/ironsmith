@@ -1156,7 +1156,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
         .with_announced_target_assignments(super::targeting::current_stack_entry_target_assignments(game, &entry)?);
-    ctx.snapshot_targets(game);
+    ctx.try_snapshot_targets(game).map_err(GameLoopError::ExecutionFailed)?;
 
     let effects = if let Some(ref ability_effects) = entry.ability_effects {
         ability_effects.clone()
@@ -2274,10 +2274,9 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         .source_snapshot
         .clone()
         .or_else(|| {
-            game.object(trigger.source).map(|obj| {
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                    obj, game, effects,
-                )
+            game.object(trigger.source).and_then(|obj| {
+                ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(obj, game, effects)
+                    .inspect_err(|error| game.record_token_resource_failure(error)).ok()
             })
         })
         .or_else(|| {

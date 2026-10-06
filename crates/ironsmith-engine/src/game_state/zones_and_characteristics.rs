@@ -19,6 +19,8 @@ pub(crate) struct PreparedEtbChoices {
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     pub(crate) transfer_as_enters_source_links: bool,
     pub(crate) as_enters_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
+    /// Exact native acquisition shared by prospective and committed duration copies.
+    pub(crate) entry_copy_registration: Option<crate::continuous::ContinuousEffectId>,
 }
 
 /// Real source cards represented by one prospective entering permanent.
@@ -222,9 +224,9 @@ impl GameState {
                         continue;
                     };
                     let copied_tag = crate::tag::TagKey::from("copied_object");
-                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        copied, self,
-                    );
+                    let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(copied, self) else {
+                        return;
+                    };
                     let mut tagged_objects = std::collections::HashMap::new();
                     tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
                     crate::effects::composition::queue_reflexive_trigger(
@@ -246,9 +248,9 @@ impl GameState {
                         continue;
                     };
                     let copied_tag = crate::tag::TagKey::from("copied_object");
-                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        copied, self,
-                    );
+                    let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(copied, self) else {
+                        return;
+                    };
                     let mut tagged_objects = std::collections::HashMap::new();
                     tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
                     let frozen = crate::target::ObjectFilter::default().match_tagged(
@@ -406,9 +408,21 @@ impl GameState {
                         source, controller,
                     ))
                     .with_provenance(provenance);
-            if preparing_entry {
-                context.source_number_owner=crate::source_numbers::capture(source,program.source_number_pair,
-                    Some(&crate::continuous::AbilityOrigin::Printed(0)));
+            if program.source_number_pair.is_some() {
+                context.source_number_owner = Some(if preparing_entry {
+                    let from = self.object(source)
+                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?.zone;
+                    let default_event = crate::events::EnterBattlefieldEvent::new(source, from);
+                    let prospective = entry_event.unwrap_or(&default_event)
+                        .try_prospective_game_state(self)
+                        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?;
+                    crate::source_numbers::resolve_owner(&prospective, source,
+                        program.source_number_pair, None, None)?
+                } else {
+                    crate::source_numbers::resolve_owner(self, source,
+                        program.source_number_pair, None, None)?
+                });
             }
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
             context.replacement.entry_event = entry_event.cloned().map(Box::new);
@@ -531,6 +545,7 @@ impl GameState {
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
             as_enters_continuous_effects: execution.continuous_effects,
+            entry_copy_registration: entry_event.and_then(|event| event.program_choices.entry_copy_registration),
             ..Default::default()
         }))
     }
@@ -793,7 +808,10 @@ impl GameState {
         let pre_event_lookback_source_snapshots = if self
             .may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
         {
-            self.trigger_source_lookback_snapshots()
+            match self.try_trigger_source_lookback_snapshots() {
+                Ok(snapshots) => snapshots,
+                Err(error) => { self.record_token_resource_failure(&error); return None; }
+            }
         } else {
             Vec::new()
         };
@@ -983,6 +1001,17 @@ impl GameState {
                     .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
             },
         );
+        // Capture before the first mutation. Legacy Option movement reports
+        // incompleteness to the surrounding event/effect root and moves nothing.
+        let pre_move_snapshot = match lki_snapshot {
+            Some(snapshot) => Some(snapshot),
+            None => match self.objects.get(&old_id).map(|object|
+                self.try_cached_object_snapshot_with_calculated_characteristics(object)
+            ).transpose() {
+                Ok(snapshot) => snapshot,
+                Err(error) => { self.record_token_resource_failure(&error); return None; }
+            },
+        };
         let was_face_down = self.is_face_down(old_id);
         let was_foretold = self.is_foretold(old_id);
         let preserved_exile_viewers = if self
@@ -990,18 +1019,10 @@ impl GameState {
             .get(&old_id)
             .is_some_and(|obj| obj.zone == Zone::Exile)
         {
-            self.exile_tracking_mut()
-                .face_down_exile_viewers
-                .remove(&old_id)
+            self.exile_tracking_mut().face_down_exile_viewers.remove(&old_id)
         } else {
             None
         };
-        // Capture a full pre-move snapshot for LKI-based trigger matching.
-        let pre_move_snapshot = lki_snapshot.or_else(|| {
-            self.objects
-                .get(&old_id)
-                .map(|obj| self.cached_object_snapshot_with_calculated_characteristics(obj))
-        });
         if self
             .objects
             .get(&old_id)
@@ -2082,11 +2103,30 @@ impl GameState {
                     (!face_up_only).then_some(program)
                 })
                 .collect();
+            let from = self.object(old_id)
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(old_id))?.zone;
+            let mut entry_event = crate::events::EnterBattlefieldEvent::new(old_id, from);
+            entry_event.enters_as_copy_of = result.enters_as_copy_of;
+            entry_event.copy_duration = result.copy_duration.clone();
+            entry_event.copy_name_override = result.copy_name_override.clone();
+            entry_event.added_colors = result.added_colors;
+            entry_event.added_card_types = result.added_card_types.clone();
+            entry_event.removes_other_card_types = result.removes_other_card_types;
+            entry_event.added_supertypes = result.added_supertypes.clone();
+            entry_event.removed_supertypes = result.removed_supertypes.clone();
+            entry_event.added_subtypes = result.added_subtypes.clone();
+            entry_event.added_abilities = result.added_abilities.clone();
+            entry_event.set_base_power_toughness = result.set_base_power_toughness;
+            entry_event.controller_override = Some(prospective_controller);
+            if result.copy_duration.is_some() && result.enters_as_copy_of.is_some() {
+                entry_event.program_choices.entry_copy_registration = Some(
+                    self.effect_store.continuous_effects.reserve_entry_effect());
+            }
             let Some(choices) = self.execute_entry_programs(
                 old_id,
                 prospective_controller,
                 programs,
-                None,
+                Some(&entry_event),
                 decision_maker,
             )?
             else {
@@ -3252,7 +3292,10 @@ impl GameState {
                     );
                     // Stage the copy with the remaining entry fields. Its
                     // counters and prepared choices are not assembled yet.
-                    self.effect_store.continuous_effects.add_effect(effect);
+                    let registration = choices.entry_copy_registration.ok_or_else(||
+                        crate::effects::ExecutionError::IncompleteEvidence(
+                            "temporary entry copy omitted its prospective acquisition".into()))?;
+                    self.effect_store.continuous_effects.add_reserved_entry_effect(registration, effect)?;
                 }
             } else {
                 let copy_source = self.object(copy_source_id).cloned();
@@ -4828,7 +4871,7 @@ impl GameState {
                     controller: self.controller_of(object),
                 });
 
-        if chars.numeric_range_error.is_some() || chars.text_change_error.is_some() {
+        if chars.validate_numeric_range().is_err() {
             return None;
         }
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
