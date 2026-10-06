@@ -4449,6 +4449,10 @@ impl CardDefinitionBuilder {
 
     /// Add suspend with the given time count and cost.
     pub fn suspend(self, time: u32, cost: ManaCost) -> Self {
+        self.suspend_with_time(ironsmith_core::SuspendTime::Fixed(time), cost)
+    }
+
+    pub fn suspend_with_time(self, time: ironsmith_core::SuspendTime, cost: ManaCost) -> Self {
         self.alternative_cast(AlternativeCastingMethod::Suspend { cost, time })
             .with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {

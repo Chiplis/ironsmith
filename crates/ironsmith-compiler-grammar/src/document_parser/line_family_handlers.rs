@@ -1330,10 +1330,11 @@ pub(super) fn run_keyword_line_family(
         );
     }
 
-    if matches!(
-        parse_ability_line_lexed(&ctx.line.tokens).as_deref(),
-        Some([crate::cards::builders::KeywordAction::CumulativeUpkeep { .. }])
-    ) {
+    if let Some(actions) = parse_ability_line_lexed(&ctx.line.tokens)
+        && matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::CumulativeUpkeep { .. } | crate::cards::builders::KeywordAction::Suspend { .. }])
+    {
+        let parsed = matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::Suspend { .. }])
+            .then(|| Box::new(LineAst::Abilities(actions)));
         return line_family_match(
             ctx,
             LineDispatchResult::single(
@@ -1341,7 +1342,7 @@ pub(super) fn run_keyword_line_family(
                     info: ctx.line.info.clone(),
                     parse_tokens: ctx.line.tokens.clone(),
                     chosen_option: None,
-                    parsed: None,
+                    parsed,
                 }),
                 ctx.idx + 1,
             ),

@@ -394,7 +394,7 @@ fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
         .find_map(|method| method.plot_cost().cloned())
 }
 
-fn suspend_spec(object: &crate::object::Object) -> Option<(u32, crate::mana::ManaCost)> {
+fn suspend_spec(object: &crate::object::Object) -> Option<(ironsmith_core::SuspendTime, crate::mana::ManaCost)> {
     object.alternative_casts.iter().find_map(|method| {
         method
             .suspend_spec()
@@ -753,18 +753,26 @@ pub fn perform(
     );
     let mut announced_x = None;
     if let Some(payment) = action.payment_spec(game, player)? {
-        // CR 601.2f / 702.37: a turn-face-up cost with {X} (Bane of the
-        // Living's morph {X}{B}{B}) announces X before it is paid, and the
-        // "when turned face up" ability refers to that X.
-        if matches!(action, SpecialAction::TurnFaceUp { .. })
+        // X is announced once before payment. Morph retains it on the face-up
+        // object; suspend uses it for this action's initial time counters,
+        // independently of any later cast of the exiled card.
+        if matches!(action, SpecialAction::TurnFaceUp { .. } | SpecialAction::Suspend { .. })
             && let Some(max_x) = special_action_payment_max_x(game, player, &payment)
         {
-            let ctx =
-                crate::decisions::context::NumberContext::x_value(player, payment.source, max_x);
-            let chosen = decision_maker.decide_number(game, &ctx).min(max_x);
+            let min_x = if let SpecialAction::Suspend { card_id } = &action {
+                game.object(*card_id).and_then(suspend_spec)
+                    .and_then(|(time, _)| time.minimum_x()).unwrap_or(0)
+            } else { 0 };
+            if max_x < min_x { return Err(ActionError::CantPayCost); }
+            let ctx = crate::decisions::context::NumberContext::x_value_with_min(
+                player, payment.source, min_x, max_x,
+            );
+            let chosen = decision_maker.decide_number(game, &ctx);
+            let chosen = if matches!(action, SpecialAction::Suspend { .. }) { chosen } else { chosen.min(max_x) };
             if decision_maker.awaiting_choice() {
                 return Ok(());
             }
+            if chosen < min_x || chosen > max_x { return Err(ActionError::InvalidTarget); }
             announced_x = Some(chosen);
         }
         if let Err(error) = pay_special_action_payment_with_x(
@@ -796,7 +804,7 @@ pub fn perform(
         // The X paid to turn it face up, or 0 when no X was paid (CR 107.3m).
         object.x_value = Some(announced_x.unwrap_or(0));
     }
-    let result = finish_special_action(action, game, player, decision_maker);
+    let result = finish_special_action(action, game, player, announced_x, decision_maker);
     if (result.is_err() && !decision_maker.awaiting_choice())
         || (restore_on_pending && decision_maker.awaiting_choice())
     {
@@ -812,6 +820,7 @@ fn finish_special_action(
     action: SpecialAction,
     game: &mut GameState,
     player: PlayerId,
+    announced_x: Option<u32>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     match action {
@@ -826,7 +835,7 @@ fn finish_special_action(
             method,
         } => finish_turn_face_up(game, player, permanent_id, method, &mut *decision_maker),
         SpecialAction::Suspend { card_id } => {
-            perform_suspend(game, player, card_id, decision_maker)
+            perform_suspend(game, player, card_id, announced_x, decision_maker)
         }
         SpecialAction::Foretell { card_id } => perform_foretell(game, player, card_id),
         SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
@@ -2165,9 +2174,17 @@ fn can_suspend(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some((_time, _cost)) = suspend_spec(object) else {
+    let Some((time, cost)) = suspend_spec(object) else {
         return Err(ActionError::NoSuchAbility);
     };
+    if let Some(minimum) = time.minimum_x() {
+        let cost = crate::mana::ManaCost::from_pips(GameState::expanded_payment_pips(&cost, minimum, false));
+        check_special_action_payment(game, player, &SpecialActionPayment {
+            source: card_id,
+            cost: crate::cost::TotalCost::mana(cost),
+            reason: crate::costs::PaymentReason::Other,
+        })?;
+    }
 
     if !crate::decision::can_begin_to_cast_from_hand_for_suspend(game, player, object) {
         return Err(ActionError::InvalidTiming);
@@ -2180,12 +2197,14 @@ fn perform_suspend(
     game: &mut GameState,
     player: PlayerId,
     card_id: ObjectId,
+    announced_x: Option<u32>,
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     let (time, _cost) = {
         let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
         suspend_spec(object).ok_or(ActionError::NoSuchAbility)?
     };
+    let time = time.resolve(announced_x).ok_or(ActionError::InvalidTarget)?;
 
     // Move to exile
     let new_id = game
@@ -6549,7 +6568,7 @@ mod replacement_suspend_tests {
         let card_id = game.create_object_from_card(&card, alice, Zone::Hand);
         game.object_mut(card_id).unwrap().alternative_casts =
             vec![crate::alternative_cast::AlternativeCastingMethod::Suspend {
-                time: 2,
+                time: ironsmith_core::SuspendTime::Fixed(2),
                 cost: crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Green]),
             }]
             .into();

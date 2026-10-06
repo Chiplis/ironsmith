@@ -2572,7 +2572,7 @@ use lines_counter_programs::{
     exiled_last_counter_qualifier_stays_on_the_trigger_side_of_the_comma,
 };
 use lines_counter_programs::{
-    lower_spell_cast_snow_mana_enter_counter_static_chunk, parse_exiled_last_counter_triggered_line,
+    lower_spell_cast_snow_mana_enter_counter_static_chunk, parse_exiled_counter_removed_triggered_line,
 };
 #[path = "lines/lines_library.rs"]
 mod lines_library_programs;

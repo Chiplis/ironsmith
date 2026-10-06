@@ -44,7 +44,7 @@ pub(super) fn lower_spell_cast_snow_mana_enter_counter_static_chunk(
     ])))
 }
 
-pub(super) fn parse_exiled_last_counter_triggered_line(
+pub(super) fn parse_exiled_counter_removed_triggered_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
     let Some(split) = semantic_grammar::parse_comma_split_tokens(tokens) else {
@@ -76,16 +76,18 @@ pub(super) fn parse_exiled_last_counter_triggered_line(
         return Ok(None);
     }
 
-    let trigger = parse_trigger_clause_lexed(&split.before[1..while_idx])?;
+    let mut trigger = parse_trigger_clause_lexed(&split.before[1..while_idx])?;
     if !matches!(
         &trigger,
         TriggerSpec::CounterRemovedFrom {
             filter,
-            last: true,
             ..
         } if filter.source
     ) {
         return Ok(None);
+    }
+    if let TriggerSpec::CounterRemovedFrom { filter, .. } = &mut trigger {
+        filter.zone = Some(Zone::Exile);
     }
     let effects = parse_effect_sentences_preserving_source_boundaries(split.after)?;
     if effects.is_empty() {
@@ -106,7 +108,7 @@ pub(super) fn exiled_last_counter_qualifier_stays_on_the_trigger_side_of_the_com
         0,
     )
     .expect("exiled last-counter trigger should lex");
-    let parsed = parse_exiled_last_counter_triggered_line(&exact)
+    let parsed = parse_exiled_counter_removed_triggered_line(&exact)
         .expect("exiled last-counter trigger should parse")
         .expect("typed exiled qualifier should be recognized");
     let LineAst::Triggered {
@@ -149,7 +151,7 @@ pub(super) fn exiled_last_counter_qualifier_stays_on_the_trigger_side_of_the_com
     )
     .expect("last-counter near miss should lex");
     assert!(
-        parse_exiled_last_counter_triggered_line(&near_miss)
+        parse_exiled_counter_removed_triggered_line(&near_miss)
             .expect("near miss should not error")
             .is_none()
     );
@@ -166,4 +168,17 @@ pub(super) fn ability_word_marker_detection_uses_token_kinds() {
     )
     .expect("sentence should lex");
     assert!(semantic_grammar::parse_ability_word_marker_tokens(&sentence_tokens).is_none());
+}
+
+#[cfg(test)]
+#[test]
+fn exiled_counter_trigger_keeps_each_counter_and_its_zone_without_resolution_condition() {
+    let tokens = lex_line("Whenever a time counter is removed from this card while it's exiled, draw a card.", 0).unwrap();
+    let parsed = parse_exiled_counter_removed_triggered_line(&tokens).unwrap().unwrap();
+    let LineAst::Triggered { trigger: TriggerSpec::CounterRemovedFrom { filter, counter_type, last, one_or_more, caused_by_source }, effects, .. } = parsed else { panic!("expected typed removal event") };
+    assert!(filter.source);
+    assert_eq!(filter.zone, Some(Zone::Exile));
+    assert_eq!(counter_type, Some(crate::CounterType::Time));
+    assert!(!last && !one_or_more && !caused_by_source);
+    assert!(!effects.is_empty());
 }

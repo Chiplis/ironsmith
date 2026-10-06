@@ -357,6 +357,9 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
             ..
         }) => vec![*origin],
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
+        TriggerSpec::CounterRemovedFrom { filter, .. } if filter.source && filter.zone.is_some() => {
+            vec![filter.zone.expect("guarded source zone")]
+        }
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,
             ..

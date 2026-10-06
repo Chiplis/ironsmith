@@ -101,7 +101,7 @@ pub fn apply_keyword_action(
         KeywordAction::MobilizeValue { amount, .. } => builder.mobilize_value(amount),
         KeywordAction::Impending { time, cost } => builder.impending(time, cost),
         KeywordAction::Cipher => builder.cipher(),
-        KeywordAction::Suspend { time, cost } => builder.suspend(time, cost),
+        KeywordAction::Suspend { time, cost } => builder.suspend_with_time(time, cost),
         KeywordAction::Overload(cost) => builder.overload(cost),
         KeywordAction::Cleave(cost) => builder.cleave(cost),
         KeywordAction::Awaken { amount, cost } => builder.awaken(amount, cost),

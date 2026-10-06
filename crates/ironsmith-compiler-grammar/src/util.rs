@@ -1035,17 +1035,33 @@ impl Drop for ParserTraceOverrideGuard {
 /// shape being recognized does not apply. There is no diagnostic to surface.
 /// Tokens with parenthetical reminder text removed.
 pub fn strip_parenthetical_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    strip_parenthetical_tokens_with_balance(tokens).0
+}
+
+/// Remove balanced reminder groups while retaining every token outside them.
+/// Complete readers use this checked form so an unclosed reminder cannot
+/// swallow an executable tail and an unmatched closing parenthesis is rejected.
+pub fn strip_parenthetical_tokens_checked(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let (kept, balanced) = strip_parenthetical_tokens_with_balance(tokens);
+    balanced.then_some(kept)
+}
+
+fn strip_parenthetical_tokens_with_balance(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
     let mut depth = 0usize;
+    let mut balanced = true;
     let mut kept = Vec::with_capacity(tokens.len());
     for token in tokens {
         match token.kind {
             TokenKind::LParen => depth += 1,
-            TokenKind::RParen => depth = depth.saturating_sub(1),
+            TokenKind::RParen => {
+                balanced &= depth > 0;
+                depth = depth.saturating_sub(1);
+            }
             _ if depth == 0 => kept.push(token.clone()),
             _ => {}
         }
     }
-    kept
+    (kept, balanced && depth == 0)
 }
 
 pub fn lex_fragment(text: &str, line_index: usize) -> Option<Vec<OwnedLexToken>> {

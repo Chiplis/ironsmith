@@ -6326,7 +6326,7 @@ fn apply_modification_to_chars(
             toughness,
             sublayer,
         } if *sublayer == PtSublayer::CharacteristicDefining => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power,
                 objects,
                 effects,
@@ -6336,8 +6336,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
             ));
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
                 objects,
                 effects,
@@ -6347,6 +6348,7 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
             ));
         }
 

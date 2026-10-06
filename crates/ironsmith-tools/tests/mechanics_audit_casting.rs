@@ -693,7 +693,7 @@ mod granted_suspend {
         let mut game = game(2);
         let card = fixture(&mut game, "Big Creature", vec![CardType::Creature], ALICE, Zone::Exile);
         game.object_mut(card).unwrap().alternative_casts.push(
-            ironsmith::AlternativeCastingMethod::Suspend { cost: ManaCost::new(), time: 0 },
+            ironsmith::AlternativeCastingMethod::Suspend { cost: ManaCost::new(), time: ironsmith_core::SuspendTime::Fixed(0) },
         );
         let on_stack = game.move_object_by_effect(card, Zone::Stack).unwrap();
         let in_graveyard = game.move_object_by_effect(on_stack, Zone::Graveyard).unwrap();

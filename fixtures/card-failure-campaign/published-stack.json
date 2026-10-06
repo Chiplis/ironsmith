@@ -1067,6 +1067,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/842"
+    },
+    {
+      "stage": 77,
+      "branch": "fix/card-failures-77-permanent-prevention",
+      "base": "fix/card-failures-76-simultaneous-sacrifice-programs",
+      "source_integration_commit": "62ee005a92dfde9cb1627f56e340a841421c56a1",
+      "remote_commit": "56e440a9b5216774e7e8f59354d0ad7e4c72597a",
+      "tree": "7ee2e35cfef8eeae35a07fb2f1803772c8db5828",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 843,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/843"
     }
   ]
 }

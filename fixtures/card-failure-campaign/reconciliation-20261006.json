@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-06T05:52:00Z",
+  "checked_at": "2026-10-06T11:50:00Z",
   "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
-  "latest_published_head": "69a946ec767deda59927d63f08dd17fabff470f3",
-  "latest_published_pr": 842,
+  "latest_published_head": "56e440a9b5216774e7e8f59354d0ad7e4c72597a",
+  "latest_published_pr": 843,
   "open_draft_prs": [
     821,
     822,
@@ -26,19 +26,20 @@
     839,
     840,
     841,
-    842
+    842,
+    843
   ],
   "workspace_replaced": true,
-  "published_source_proposals": 1116,
-  "published_source_entries": 1121,
+  "published_source_proposals": 1122,
+  "published_source_entries": 1127,
   "unpublished_pre_outage_source_not_assumed_retained": [
     "Suspend4",
     "mana consumer6",
     "permanent prevention6",
     "linked exile Bishop prerequisites"
   ],
-  "current_reconstructed_source_proposals": 1122,
-  "current_reconstructed_source_entries": 1127,
+  "current_reconstructed_source_proposals": 1126,
+  "current_reconstructed_source_entries": 1131,
   "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "verified_compile_recoveries": 40,
@@ -55,5 +56,17 @@
     "Qarsi Deceiver",
     "Karfell Harbinger"
   ],
-  "held_mana_reason": "Selected casting-face/method projection requires a separate correction; neither identity is counted."
+  "held_mana_reason": "Selected casting-face/method projection requires a separate correction; neither identity is counted.",
+  "second_workspace_recovery": {
+    "shared_mount_absent": true,
+    "prevention_recovered_tree": "7ee2e35cfef8eeae35a07fb2f1803772c8db5828",
+    "prevention_recovery": "Exact original blobs and deterministic pinned fixture; final tree matches original reviewed tree.",
+    "suspend_reconstructed_head": "27d1bd54fb2a2e07820bea93680dacfb5ec9c4df",
+    "suspend_status": "Fresh full source review; no historical hash identity claim.",
+    "remaining_reconstruction": [
+      "mana7",
+      "Bishop linked identity"
+    ],
+    "execution": "No engine builds, compiler probes, tests or corpus execution."
+  }
 }

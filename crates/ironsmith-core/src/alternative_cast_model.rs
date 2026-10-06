@@ -101,7 +101,7 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     },
     Suspend {
         cost: ManaCost,
-        time: u32,
+        time: crate::SuspendTime,
     },
     Disturb {
         cost: ManaCost,
@@ -535,7 +535,7 @@ where
         }
     }
 
-    pub fn suspend_spec(&self) -> Option<(u32, &ManaCost)> {
+    pub fn suspend_spec(&self) -> Option<(crate::SuspendTime, &ManaCost)> {
         match self {
             Self::Suspend { cost, time } => Some((*time, cost)),
             _ => None,

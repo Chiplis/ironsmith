@@ -34,6 +34,42 @@ pub(crate) fn resolve_value_direct_for_recipient(
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
+    resolve_value_direct_for_recipient_impl(
+        value, objects, effects, battlefield, commanders, source, recipient, controller, game,
+        None,
+    )
+}
+
+pub(crate) fn resolve_characteristic_value_direct_for_recipient(
+    value: &Value,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    source: ObjectId,
+    recipient: ObjectId,
+    controller: PlayerId,
+    game: &crate::game_state::GameState,
+    error: &mut Option<(&'static str, i128)>,
+) -> i32 {
+    resolve_value_direct_for_recipient_impl(
+        value, objects, effects, battlefield, commanders, source, recipient, controller, game,
+        Some(error),
+    )
+}
+
+fn resolve_value_direct_for_recipient_impl(
+    value: &Value,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    source: ObjectId,
+    recipient: ObjectId,
+    controller: PlayerId,
+    game: &crate::game_state::GameState,
+    error: Option<&mut Option<(&'static str, i128)>>,
+) -> i32 {
     let mut effect_manager = ContinuousEffectManager::new();
     for effect in effects {
         effect_manager.add_effect(effect.clone());
@@ -52,7 +88,10 @@ pub(crate) fn resolve_value_direct_for_recipient(
         effects,
         commanders,
     );
-    crate::effects::helpers::value_eval::resolve_continuous(value, layer)
+    match error {
+        Some(error) => crate::effects::helpers::value_eval::resolve_continuous_characteristic(value, layer, error),
+        None => crate::effects::helpers::value_eval::resolve_continuous(value, layer),
+    }
 }
 
 /// Apply all layers to calculate final characteristics.
@@ -961,20 +1000,21 @@ pub(super) fn apply_layer_7_effects(
             Modification::SetPowerToughness {
                 power: p,
                 toughness: t,
-                ..
+                sublayer,
             } => {
-                power = Some(resolve_value_with_context(
-                    p,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                ));
-                toughness = Some(resolve_value_with_context(
-                    t,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                ));
+                let mut resolve = |value: &Value| {
+                    if *sublayer == PtSublayer::CharacteristicDefining {
+                        crate::effects::helpers::value_eval::resolve_continuous_characteristic(
+                            value,
+                            super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller),
+                            &mut chars.numeric_range_error,
+                        )
+                    } else {
+                        resolve_value_with_context(value, ctx, effect.source, effect.controller)
+                    }
+                };
+                power = Some(resolve(p));
+                toughness = Some(resolve(t));
             }
             Modification::ModifyPower(delta) => {
                 add_pt_checked(

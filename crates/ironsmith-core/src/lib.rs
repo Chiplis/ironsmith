@@ -38,6 +38,8 @@ pub mod spell_cost_condition_model;
 pub mod spell_timing_model;
 pub mod static_ability_id;
 pub mod static_ability_model;
+pub mod suspend;
+pub use suspend::SuspendTime;
 pub mod tag;
 pub mod target_model;
 pub mod trigger_model;

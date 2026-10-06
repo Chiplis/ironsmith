@@ -119,7 +119,7 @@ impl EffectExecutor for CastSourceEffect {
             obj.alternative_casts.push(
                 crate::alternative_cast::AlternativeCastingMethod::Suspend {
                     cost: crate::mana::ManaCost::new(),
-                    time: 0,
+                    time: ironsmith_core::SuspendTime::Fixed(0),
                 },
             );
         }

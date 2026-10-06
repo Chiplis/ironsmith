@@ -91,7 +91,7 @@ pub enum KeywordAction {
         cost: ManaCost,
     },
     Suspend {
-        time: u32,
+        time: ironsmith_core::SuspendTime,
         cost: ManaCost,
     },
     Disturb(ManaCost),
@@ -445,7 +445,7 @@ impl KeywordAction {
             Self::Melee => "Melee".to_string(),
             Self::Mobilize(amount) => format!("Mobilize {amount}"),
             Self::MobilizeValue { display, .. } | Self::BolsterValue { display, .. } => display.clone(),
-            Self::Suspend { time, cost } => format!("Suspend {time}—{}", cost.to_oracle()),
+            Self::Suspend { time, cost } => time.display_keyword(cost),
             Self::Disturb(cost) => format!("Disturb {}", cost.to_oracle()),
             Self::Overload(cost) => format!("Overload {}", cost.to_oracle()),
             Self::Cleave(cost) => format!("Cleave {}", cost.to_oracle()),

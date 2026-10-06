@@ -14,6 +14,32 @@ pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>
         .unwrap_or_else(|error| panic!("unsupported continuous-effect value {value:?}: {error:?}"))
 }
 
+/// A CDA scalar uses the same checked characteristic boundary as later P/T
+/// arithmetic. Its provisional value cannot be published by a checked query
+/// when this records a range error; in particular an aggregate counter total
+/// must not wrap or panic before that boundary can inspect it.
+pub(crate) fn resolve_continuous_characteristic(
+    value: &Value,
+    layer: LayerValueContext<'_, '_>,
+    error: &mut Option<(&'static str, i128)>,
+) -> i32 {
+    let context = EvaluationContext::continuous(layer);
+    match resolve_wide(value, &context) {
+        Ok(exact) => match i32::try_from(exact) {
+            Ok(value) => value,
+            Err(_) => {
+                error.get_or_insert(("characteristic-defining scalar", i128::from(exact)));
+                0
+            }
+        },
+        Err(ExecutionError::ResourceLimitExceeded { resource, requested, .. }) => {
+            error.get_or_insert((resource, i128::try_from(requested).unwrap_or(i128::MAX)));
+            0
+        }
+        Err(error) => panic!("unsupported continuous-effect value {value:?}: {error:?}"),
+    }
+}
+
 pub(crate) fn resolve(
     value: &Value,
     context: &EvaluationContext<'_, '_>,
@@ -1420,11 +1446,7 @@ pub(crate) fn resolve_wide(
                     Ok(i64::from(total))
                 }
             } else {
-                Ok(i64::from(context.layer().counters_on(
-                    value,
-                    spec,
-                    counter_type,
-                )))
+                context.layer().counters_on(value, spec, counter_type)
             }
         }
         Value::TaggedCount => {

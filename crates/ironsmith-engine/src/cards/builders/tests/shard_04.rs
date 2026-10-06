@@ -2379,7 +2379,7 @@ pub(super) fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_c
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
         AlternativeCastingMethod::Suspend { cost, time } => {
-            assert_eq!(*time, 3);
+            assert_eq!(*time, ironsmith_core::SuspendTime::Fixed(3));
             assert_eq!(cost.to_oracle(), "{0}");
         }
         other => panic!("expected suspend metadata, got {other:?}"),
@@ -2583,7 +2583,7 @@ pub(super) fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
         AlternativeCastingMethod::Suspend { cost, time } => {
-            assert_eq!(*time, 3);
+            assert_eq!(*time, ironsmith_core::SuspendTime::Fixed(3));
             assert_eq!(cost.to_oracle(), "{0}");
         }
         other => panic!("expected Lotus Bloom suspend metadata, got {other:?}"),

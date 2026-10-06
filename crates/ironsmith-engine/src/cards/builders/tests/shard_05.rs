@@ -324,7 +324,7 @@ pub(super) fn venture_forth_exile_until_land_uses_consult_and_suspend() {
     assert!(
         matches!(
             def.alternative_casts.as_slice(),
-            [AlternativeCastingMethod::Suspend { time: 3, .. }]
+            [AlternativeCastingMethod::Suspend { time: ironsmith_core::SuspendTime::Fixed(3), .. }]
         ),
         "expected Venture Forth suspend metadata, got {:?}",
         def.alternative_casts

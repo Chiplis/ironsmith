@@ -31950,7 +31950,7 @@ pub(super) fn describe_alternative_cast_line(
             else { format!("Warp—{}, {}", cost.to_oracle(), capitalize_first(&describe_alternative_costs(costs))) }
         },
         AlternativeCastingMethod::Suspend { cost, time } => {
-            format!("Suspend {time}—{}", cost.to_oracle())
+            time.display_keyword(cost)
         }
         AlternativeCastingMethod::Disturb { cost } => format!("Disturb {}", cost.to_oracle()),
         AlternativeCastingMethod::Overload { cost, .. } => {

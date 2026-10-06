@@ -6142,7 +6142,7 @@ fn is_synthetic_granted_suspend(
 ) -> bool {
     matches!(
         method,
-        crate::alternative_cast::AlternativeCastingMethod::Suspend { cost, time: 0 }
+        crate::alternative_cast::AlternativeCastingMethod::Suspend { cost, time: ironsmith_core::SuspendTime::Fixed(0) }
             if cost.is_empty()
     )
 }
