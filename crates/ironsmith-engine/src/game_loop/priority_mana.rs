@@ -2152,8 +2152,12 @@ pub(super) fn execute_pending_mana_ability(
         );
         drain_pending_trigger_events(game, trigger_queue);
 
+        game.record_ability_activation_with_origin(pending.source, pending.ability_index, pending.activation_origin.clone(), pending.effects.activation_definition);
         let mut mana_ctx =
             ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
+                .with_activation_origin(pending.activation_origin.clone())
+                .with_activation_definition(pending.effects.activation_definition)
+                .with_ability_index(pending.ability_index)
                 .with_linked_exile_owner(pending.linked_exile_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
@@ -2184,6 +2188,9 @@ pub(super) fn execute_pending_mana_ability(
         // Execute additional effects (for complex mana abilities)
         if !pending.effects.is_empty() {
             let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
+                .with_activation_origin(pending.activation_origin.clone())
+                .with_activation_definition(pending.effects.activation_definition)
+                .with_ability_index(pending.ability_index)
                 .with_linked_exile_owner(pending.linked_exile_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
@@ -2212,7 +2219,6 @@ pub(super) fn execute_pending_mana_ability(
             drain_pending_trigger_events(game, trigger_queue);
         }
 
-        game.record_ability_activation(pending.source, pending.ability_index);
         let activation_cost_has_tap =
             activated_ability_has_tap_cost(game, pending.source, pending.ability_index);
 
@@ -5323,11 +5329,13 @@ mod replacement_owner_tests {
         dm: &mut PausePayload,
     ) -> Result<(), GameLoopError> {
         let alice = PlayerId::from_index(0);
+        let activation_origin = game.current_characteristics(source).and_then(|chars| chars.abilities.origin(0).cloned());
         if paid {
             execute_pending_mana_ability(
                 game,
                 queue,
                 &PendingManaAbility {
+                    activation_origin,
                     linked_exile_owner: None,
                     payment_reason: crate::costs::PaymentReason::ActivateManaAbility,
                     source,

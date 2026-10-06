@@ -3179,8 +3179,14 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             game.finish_library_top_announcement(
                 crate::game_state::LibraryTopAnnouncement::Activation(visibility_provenance),
             );
+            let activation_origin = source_snapshot.ability_origins.as_ref()
+                .and_then(|origins| origins.get(ability_index).cloned());
+            game.record_ability_activation_with_origin(permanent_id, ability_index, activation_origin.clone(), effects.activation_definition);
             // Use the same resolved-event owner as mana-producing effects.
             let mut mana_ctx = ExecutionContext::new(permanent_id, player, &mut *decision_maker)
+                .with_activation_origin(activation_origin.clone())
+                .with_activation_definition(effects.activation_definition)
+                .with_ability_index(ability_index)
                 .with_linked_exile_owner(linked_exile_owner.clone())
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions.clone())
@@ -3213,6 +3219,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
             if !effects.is_empty() {
                 let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
+                    .with_activation_origin(activation_origin.clone())
+                .with_activation_definition(effects.activation_definition)
+                    .with_ability_index(ability_index)
                     .with_linked_exile_owner(linked_exile_owner.clone())
                     .with_mana_color_restriction(mana_color_restriction.clone())
                     .with_mana_usage_restrictions(mana_usage_restrictions)
@@ -3246,7 +3255,6 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
                 emitted_events.extend(events);
             }
 
-            game.record_ability_activation(permanent_id, ability_index);
             let is_land_source = game
                 .object(permanent_id)
                 .map(|obj| obj.is_land())

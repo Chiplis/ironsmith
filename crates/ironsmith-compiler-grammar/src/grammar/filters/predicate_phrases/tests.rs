@@ -4465,3 +4465,22 @@ fn public_paid_predicate_reader_rejects_tokens_hidden_by_word_projection() -> Re
     }
     Ok(())
 }
+
+#[test]
+fn activation_threshold_requires_the_exact_ability_current_turn_and_complete_predicate() {
+    for (word, count) in [("four", 4), ("7", 7)] {
+        let tokens = lex_line(&format!("this ability has been activated {word} or more times this turn"), 0).unwrap();
+        assert_eq!(super::parse_this_ability_activation_count_predicate(&tokens),
+            Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count))));
+        assert_eq!(parse_predicate(&tokens).unwrap(),
+            PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)));
+    }
+    for text in [
+        "this ability has resolved four or more times this turn",
+        "an ability has been activated four or more times this turn",
+        "this ability has been activated four or more times last turn",
+        "this ability has been activated four or more times this turn or was copied",
+    ] {
+        assert!(super::parse_this_ability_activation_count_predicate(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}

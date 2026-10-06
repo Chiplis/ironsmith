@@ -454,6 +454,9 @@ pub struct ExecutionContext<'a> {
     pub do_this_limit: Option<DoThisLimit>,
     /// Index of the resolving activated ability on its source object, when available.
     pub ability_index: Option<usize>,
+    /// Exact admitted acquisition; copies retain it and never count as activations.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
+    pub activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     /// Pre-chosen modes for modal spells (set during casting per MTG rule 601.2b).
     /// If Some, ChooseModeEffect should use these instead of prompting.
     pub chosen_modes: Option<Vec<usize>>,
@@ -566,6 +569,8 @@ execution_context_checkpoint! {
     trigger_identity: Option<crate::triggers::TriggerIdentity>,
     do_this_limit: Option<DoThisLimit>,
     ability_index: Option<usize>,
+    activation_origin: Option<crate::continuous::AbilityOrigin>,
+    activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     chosen_modes: Option<Vec<usize>>,
     cause: EventCause,
     provenance: ProvNodeId,
@@ -676,6 +681,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -741,6 +748,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -796,6 +805,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: self.trigger_identity,
             do_this_limit: self.do_this_limit,
             ability_index: self.ability_index,
+            activation_origin: self.activation_origin.clone(),
+            activation_definition: self.activation_definition,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
@@ -1336,7 +1347,18 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
-    /// Set the activated ability index for the resolving activated ability.
+    /// Retain the exact acquisition admitted by the activation owner.
+    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+        self.activation_origin = origin;
+        self
+    }
+
+    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+        self.activation_definition = definition;
+        self
+    }
+
+    /// Legacy ordinal used for selection and existing resolution-count readers.
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
         self

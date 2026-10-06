@@ -495,6 +495,7 @@ pub fn lower_normalized_card_ast_with_facts(
     super::linked_exile::bind_static_linked_exile(&mut definition);
     super::linked_exile::bind_private_return_linked_exile(&mut definition);
     super::first_draw_reveals::stamp_first_draw_pairs(&mut definition)?;
+    super::activation_definitions::stamp_activation_definitions(&mut definition)?;
     drop(_document_references);
     Ok(LoweredCardDocument {
         symbols: symbols.into_inner(),

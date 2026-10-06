@@ -110,6 +110,8 @@ mod tests {
             event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             intervening_if: None,
             keyword_payment_contributions: vec![],
             crew_contributors: vec![],

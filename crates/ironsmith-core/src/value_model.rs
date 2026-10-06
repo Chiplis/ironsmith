@@ -1188,6 +1188,8 @@ pub enum ManaSpendMode {
 }
 
 impl ManaSpendMode {
+    pub fn is_normal(&self) -> bool { *self == Self::Normal }
+
     pub fn allows_any_color(self) -> bool {
         matches!(self, Self::AnyColor | Self::AnyType)
     }
@@ -2213,6 +2215,9 @@ pub enum Condition {
     },
     /// Pre-cast exile designation; appended to preserve published wire ordinals.
     ThisSpellWasForetold,
+    /// Current-turn activations of this exact resolving ability acquisition.
+    /// Appended to preserve existing serialized condition discriminants.
+    ThisAbilityActivatedThisTurnAtLeast(u32),
 }
 
 #[cfg(test)]

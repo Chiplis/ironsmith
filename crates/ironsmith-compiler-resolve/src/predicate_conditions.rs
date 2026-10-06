@@ -860,6 +860,8 @@ pub fn resolve_condition_from_predicate(
             }
         },
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)) =>
+            Condition::ThisAbilityActivatedThisTurnAtLeast(*count),
         PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(
             count,
         )) => Condition::ThisAbilityResolvedThisTurnExactly(*count),

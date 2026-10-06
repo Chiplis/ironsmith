@@ -2199,6 +2199,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TargetIsSoulbondPaired
         | C::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. }
         | C::PlayerOwnsCardNamedInZones { .. }
+        | C::ThisAbilityActivatedThisTurnAtLeast(_)
         | C::ThisAbilityResolvedThisTurnExactly(_)
         | C::FirstTimeThisTurn
         | C::SourceFirstCrewedThisTurn

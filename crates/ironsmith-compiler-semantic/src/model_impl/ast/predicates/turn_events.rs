@@ -36,4 +36,5 @@ pub enum TurnEventPredicateAst {
     AttackedThisTurn,
     ThisAbilityResolvedThisTurnExactly(u32),
     YouAttackedWithTotalPowerAtLeastThisCombat(u32),
+    ThisAbilityActivatedThisTurnAtLeast(u32),
 }

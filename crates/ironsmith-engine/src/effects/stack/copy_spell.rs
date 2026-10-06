@@ -44,6 +44,9 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     let mut entry = StackEntry::new(ctx.source, ctx.controller);
     entry.provenance = ctx.provenance;
     entry.linked_exile_owner = ctx.linked_exile_owner.clone();
+    entry.activation_origin = ctx.activation_origin.clone();
+    entry.activation_definition = ctx.activation_definition;
+    entry.ability_index = ctx.ability_index;
     entry.targets = ctx
         .targets
         .iter()
@@ -239,6 +242,8 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.event_value_amount = original_entry.event_value_amount;
     copy_entry.trigger_identity = original_entry.trigger_identity;
     copy_entry.ability_index = original_entry.ability_index;
+    copy_entry.activation_origin = original_entry.activation_origin.clone();
+    copy_entry.activation_definition = original_entry.activation_definition;
     copy_entry.intervening_if = original_entry.intervening_if.clone();
     copy_entry.mana_usage_restrictions = original_entry.mana_usage_restrictions.clone();
     copy_entry.mana_source_chosen_creature_type = original_entry.mana_source_chosen_creature_type;

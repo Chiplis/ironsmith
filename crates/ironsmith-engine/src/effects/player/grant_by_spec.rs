@@ -101,6 +101,7 @@ impl EffectExecutor for GrantBySpecEffect {
                 grant.play_from_constraints.top_card_only = spec.top_card_only;
                 grant.play_from_constraints.instant_timing = spec.instant_timing;
                 grant.play_from_constraints.may_look_at_top = spec.may_look_at_top;
+                grant.play_from_constraints.cast_mana_spend_mode = spec.cast_mana_spend_mode;
             }
         }
 

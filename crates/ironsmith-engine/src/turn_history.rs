@@ -114,6 +114,10 @@ pub struct TurnHistory {
     /// Per-player snapshot taken before the untap step begins.
     pub untapped_lands_at_turn_start: HashMap<PlayerId, u32>,
     pub activated_abilities_this_turn: HashSet<(ObjectId, usize)>,
+    /// Actual activations, keyed by acquisition instead of a mutable display slot.
+    /// None is unretained history, never a completed zero. Fresh games and
+    /// new turns explicitly establish a complete empty ledger.
+    pub ability_activation_counts: Option<HashMap<(ObjectId, crate::continuous::AbilityOrigin, Option<ironsmith_core::LinkedExileDefinition>), u32>>,
     pub loyalty_abilities_activated_this_turn: HashSet<ObjectId>,
     pub activated_abilities_resolved_this_turn: HashMap<(ObjectId, usize), u32>,
     pub chosen_modes_by_ability_this_turn: HashMap<(ObjectId, usize), HashSet<usize>>,
@@ -185,6 +189,7 @@ impl TurnHistory {
 
         self.monarch_at_turn_start = None;
         self.activated_abilities_this_turn.clear();
+        self.ability_activation_counts = Some(HashMap::new());
         self.loyalty_abilities_activated_this_turn.clear();
         self.activated_abilities_resolved_this_turn.clear();
         self.chosen_modes_by_ability_this_turn.clear();

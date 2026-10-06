@@ -3121,6 +3121,17 @@ fn is_creature_on_battlefield_with_greatest_power(words: &[String]) -> bool {
     word == Some("greatest") && words.next() == Some("power") && words.next().is_none()
 }
 
+/// Entire authored predicate only; resolution counts and other abilities are distinct.
+fn parse_this_ability_activation_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() != tokens.len() { return None; }
+    let ["this", "ability", "has", "been", "activated", count, "or", "more", "times", "this", "turn"] = words.as_slice() else {
+        return None;
+    };
+    let count = crate::util::parse_number_word_u32(count)?;
+    Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)))
+}
+
 fn parse_this_ability_resolution_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     if let Some(counts) = ability_resolution_ordinal_disjunction_counts(clause) {

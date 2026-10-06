@@ -1197,6 +1197,8 @@ fn resolve_stack_entry_full_inner(
     if let Some(ability_index) = entry.ability_index {
         ctx = ctx.with_ability_index(ability_index);
     }
+    ctx.activation_origin = entry.activation_origin.clone();
+    ctx.activation_definition = entry.activation_definition;
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }

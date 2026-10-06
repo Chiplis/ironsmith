@@ -1249,6 +1249,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/855"
+    },
+    {
+      "stage": 90,
+      "branch": "fix/card-failures-90-damage-dealer-filters",
+      "base": "fix/card-failures-89-intet-permission-lifetime",
+      "source_integration_commit": "d4f20cad739f82cf3ebf6562ceb978857a6edb83",
+      "remote_commit": "f41870f60ab6be3fe684ec3d2c0b6baa0cbae41e",
+      "tree": "8965c79ab3e82334995ece69d33ab7e22a96e94b",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 856,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/856"
     }
   ]
 }

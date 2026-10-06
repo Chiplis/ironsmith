@@ -3759,6 +3759,8 @@ fn an_opponent_probe_context(
     probe.optional_costs_paid = exec.optional_costs_paid.clone();
     probe.trigger_identity = exec.trigger_identity;
     probe.ability_index = exec.ability_index;
+    probe.activation_origin = exec.activation_origin.clone();
+    probe.activation_definition = exec.activation_definition;
     probe.set_tagged_players(
         crate::tag::TagKey::from(crate::effects::helpers::AN_OPPONENT_CHOICE_TAG),
         vec![opponent],
@@ -6055,6 +6057,18 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
                 }
             }
             Ok(false)
+        }
+        Condition::ThisAbilityActivatedThisTurnAtLeast(count) => {
+            let execution = ctx.execution().ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "activation-count predicate requires the resolving ability acquisition".into()))?;
+            let origin = execution.activation_origin.as_ref().ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "resolving ability has no retained activation acquisition; native recovery or replay required".into()))?;
+            let definition = execution.activation_definition.ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "resolving ability has no retained definition occurrence; rebuild or native replay required".into()))?;
+            let counts = game.turn_store.turn_history.ability_activation_counts.as_ref()
+                .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "current-turn activation acquisitions were not retained; native recovery or replay required".into()))?;
+            Ok(counts.get(&(execution.source, origin.clone(), Some(definition))).copied().unwrap_or(0) >= *count)
         }
         Condition::ThisAbilityResolvedThisTurnExactly(count) => {
             Ok(if let Some(ability_index) = shared.ability_index {

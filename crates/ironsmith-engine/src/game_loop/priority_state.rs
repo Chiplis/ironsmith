@@ -1070,6 +1070,8 @@ impl PendingActivation {
 /// (like Blood Celebrant's {B}), we need to let the player tap mana sources first.
 #[derive(Debug, Clone)]
 pub struct PendingManaAbility {
+    /// Acquisition captured at admission, before any nested mana payment.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
     /// Exact paired rules acquisition retained before nested mana payments.
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The exact announced ability identity, retained through nested payment.

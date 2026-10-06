@@ -419,6 +419,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 spell_cost_reduction: self.spell_cost_reduction.clone(),
                 lands_enter_tapped: self.lands_enter_tapped,
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
+                cast_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
                 *shared_usage_by_player.entry(player_id).or_insert_with(|| {

@@ -618,6 +618,9 @@ pub struct PlayFromConstraints {
     pub instant_timing: bool,
     /// Retained private current-top view permission, independent of the source remaining in play.
     pub may_look_at_top: bool,
+    /// Conversion applies only to mana spent for this selected cast.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "ironsmith_core::value_model::ManaSpendMode::is_normal"))]
+    pub cast_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
 }
 
 /// Identity of one shared deferred-use budget across multiple card grants.
@@ -1815,6 +1818,7 @@ impl GrantRegistry {
                             play_from_constraints: PlayFromConstraints {
                                 top_card_only: spec.top_card_only, instant_timing: spec.instant_timing,
                                 may_look_at_top: spec.may_look_at_top,
+                                cast_mana_spend_mode: spec.cast_mana_spend_mode,
                                 ..Default::default()
                             },
                             cast_this_way_grants: spec.cast_this_way_grants.clone(),

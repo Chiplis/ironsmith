@@ -1604,6 +1604,7 @@ impl GameState {
         self.turn_store.spells_cast_last_turn_total =
             self.turn_store.turn_history.total_spells_cast_this_turn();
         let completed_turn_history = std::mem::take(&mut self.turn_store.turn_history);
+        self.turn_store.turn_history.ability_activation_counts = Some(HashMap::new());
         for player in completed_turn_players {
             self.turn_store
                 .last_turn_history_by_player
@@ -2646,6 +2647,10 @@ impl GameState {
         let origin = self
             .current_characteristics(source)
             .and_then(|chars| chars.abilities.origin(ability_index).cloned());
+        let definition = self.current_ability(source, ability_index).and_then(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(ability) => ability.effects.activation_definition,
+            _ => None,
+        });
         let origin_before = origin.as_ref().and_then(|origin| {
             self.turn_store
                 .ability_activations_per_object
@@ -2717,6 +2722,7 @@ impl GameState {
             source,
             ability_index,
             origin,
+            definition,
             counters,
             was_activated,
             was_exhausted,
@@ -2732,6 +2738,7 @@ impl GameState {
             source,
             ability_index,
             origin,
+            definition,
             counters,
             was_activated,
             was_exhausted,
@@ -2739,6 +2746,13 @@ impl GameState {
         } = announcement;
         if let Some((origin, before, added)) = origin {
             let key = (source, origin);
+            let turn_key = (source, key.1.clone(), definition);
+            if let Some(counts) = self.turn_store.turn_history.ability_activation_counts.as_mut()
+                && let Some(current) = counts.get_mut(&turn_key)
+            {
+                *current = current.saturating_sub(added);
+                if *current == 0 { counts.remove(&turn_key); }
+            }
             if let Some(current) = self
                 .turn_store
                 .ability_activations_per_object
@@ -2809,7 +2823,11 @@ impl GameState {
         let origin = self
             .current_characteristics(source)
             .and_then(|chars| chars.abilities.origin(ability_index).cloned());
-        self.record_ability_activation_with_origin(source, ability_index, origin);
+        let definition = self.current_ability(source, ability_index).and_then(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(ability) => ability.effects.activation_definition,
+            _ => None,
+        });
+        self.record_ability_activation_with_origin(source, ability_index, origin, definition);
     }
 
     pub(crate) fn record_ability_activation_with_origin(
@@ -2817,6 +2835,7 @@ impl GameState {
         source: ObjectId,
         ability_index: usize,
         origin: Option<crate::continuous::AbilityOrigin>,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
     ) {
         if self
             .turn_store
@@ -2826,12 +2845,19 @@ impl GameState {
             return;
         }
         if let Some(origin) = origin {
+            if let Some(counts) = self.turn_store.turn_history.ability_activation_counts.as_mut() {
+                let turn_total = counts.entry((source, origin.clone(), definition)).or_default();
+                *turn_total = turn_total.saturating_add(1);
+            }
             let total = self
                 .turn_store
                 .ability_activations_per_object
                 .entry((source, origin))
                 .or_default();
             *total = total.saturating_add(1);
+        } else {
+            // A legacy admission without an acquisition is not a known zero.
+            self.turn_store.turn_history.ability_activation_counts = None;
         }
         let exhaust_controller = self
             .current_ability(source, ability_index)

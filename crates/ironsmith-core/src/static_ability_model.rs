@@ -1830,6 +1830,7 @@ where
                     .collect::<Result<_, _>>()?,
                 requires_linked_exile_pair: spec.requires_linked_exile_pair,
                 may_look_at_linked_exile: spec.may_look_at_linked_exile,
+            cast_mana_spend_mode: spec.cast_mana_spend_mode,
                 linked_exile_pair: spec.linked_exile_pair,
                 source_exiled_surface: spec.source_exiled_surface,
                 filtered_zone_surface: spec.filtered_zone_surface,

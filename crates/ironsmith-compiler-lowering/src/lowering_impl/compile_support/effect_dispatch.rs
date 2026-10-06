@@ -2459,7 +2459,7 @@ fn try_compile_simple_source_sacrifice(
         .unwrap_or(ChooseSpec::Source);
     effects.push(Effect::new(crate::effects::SacrificeTargetEffect::new(
         source,
-    )));
+    ).with_player(PlayerFilter::You)));
     Ok(Some((effects, subject.into_choices())))
 }
 

@@ -3456,6 +3456,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceFirstCrewedThisTurn => {
             "this is the first time this source was crewed this turn".to_string()
         }
+        Condition::ThisAbilityActivatedThisTurnAtLeast(count) => format!(
+            "this ability has been activated {} or more times this turn", small_number_word(*count).unwrap_or_else(|| count.to_string())
+        ),
         Condition::ThisAbilityResolvedThisTurnExactly(count) => format!(
             "this is the {} time this ability has resolved this turn",
             ordinal_number_word(*count)

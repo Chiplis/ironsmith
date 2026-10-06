@@ -731,6 +731,12 @@ pub(super) const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_passive_this_way_battlefield_predicate(input)),
     },
     Reading {
+        id: RuleId::new("this-ability-activation-count-predicate"),
+        head: HeadDiscriminator::Words(&["this"]),
+        admits: |input| input.predicate_tokens.first().is_some_and(|token| token.is_word("this")),
+        read: |input| input.outcome(Ok(parse_this_ability_activation_count_predicate(input.predicate_tokens))),
+    },
+    Reading {
         id: RuleId::new("this-ability-resolution-count-predicate"),
         head: HeadDiscriminator::Any,
         admits: |input| {

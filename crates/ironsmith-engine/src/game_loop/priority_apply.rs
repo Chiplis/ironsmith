@@ -306,7 +306,13 @@ pub(super) fn begin_mana_ability_activation(
                 );
                 drain_pending_trigger_events(game, trigger_queue);
 
+                let activation_origin = source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index).cloned());
+                game.record_ability_activation_with_origin(*source, *ability_index, activation_origin.clone(), effects_to_run.activation_definition);
                 let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                    .with_activation_origin(activation_origin.clone())
+                    .with_activation_definition(effects_to_run.activation_definition)
+                    .with_ability_index(*ability_index)
                     .with_linked_exile_owner(linked_exile_owner.clone())
                     .with_provenance(mana_ability_provenance)
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
@@ -337,6 +343,9 @@ pub(super) fn begin_mana_ability_activation(
                 // Execute additional effects (for complex mana abilities)
                 if !effects_to_run.is_empty() {
                     let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                        .with_activation_origin(activation_origin.clone())
+                    .with_activation_definition(effects_to_run.activation_definition)
+                        .with_ability_index(*ability_index)
                         .with_linked_exile_owner(linked_exile_owner.clone())
                         .with_provenance(mana_ability_provenance)
                         .with_mana_usage_restrictions(mana_usage_restrictions.clone())
@@ -362,8 +371,6 @@ pub(super) fn begin_mana_ability_activation(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
 
-                game.record_ability_activation(*source, *ability_index);
-
                 queue_ability_activated_event(
                     game,
                     trigger_queue,
@@ -387,6 +394,8 @@ pub(super) fn begin_mana_ability_activation(
                 let context = format!("{}'s ability", source_name);
 
                 let pending = PendingManaAbility {
+                    activation_origin: source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                        .and_then(|origins| origins.get(*ability_index).cloned()),
                     linked_exile_owner,
                     payment_reason,
                     source: *source,
@@ -1196,7 +1205,8 @@ fn apply_priority_response_with_dm_inner(
                 // No choices needed - put ability on stack directly
                 let mut granting_source_tags = std::collections::HashMap::new();
                 game.insert_granting_source_tag(*source, *ability_index, &mut granting_source_tags);
-                game.record_ability_activation(*source, *ability_index);
+                game.record_ability_activation_with_origin(*source, *ability_index,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index).cloned()), effects.activation_definition);
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
                 }
@@ -1206,6 +1216,8 @@ fn apply_priority_response_with_dm_inner(
                     source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
                 let mut entry = StackEntry::ability(*source, player, effects.clone())
                     .with_ability_index(*ability_index)
+                    .with_activation_origin(source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index).cloned()))
+                    .with_activation_definition(effects.activation_definition)
                     .with_activation_cost_has_x(activation_cost_has_x)
                     .with_activation_cost_has_tap(activation_cost_has_tap)
                     .with_source_info(source_stable_id, source_name)

@@ -70,3 +70,6 @@ mod resource_payment_view_tests {
         assert!(wasm.current_mana_payment_view_checked().unwrap().is_some());
     }
 }
+
+#[cfg(test)]
+mod activation_threshold_savepoint_tests;

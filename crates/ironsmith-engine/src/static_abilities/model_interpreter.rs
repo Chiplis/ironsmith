@@ -403,6 +403,7 @@ impl StaticAbilityModelInterpreter {
             on_use_effects: spec.on_use_effects.clone(),
             requires_linked_exile_pair: spec.requires_linked_exile_pair,
             may_look_at_linked_exile: spec.may_look_at_linked_exile,
+            cast_mana_spend_mode: spec.cast_mana_spend_mode,
             linked_exile_pair: spec.linked_exile_pair,
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),

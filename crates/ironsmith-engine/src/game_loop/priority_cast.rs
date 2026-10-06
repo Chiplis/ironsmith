@@ -6774,6 +6774,8 @@ pub(super) fn continue_activation(
             let ability_id = *pending.announced_stack_ability.get_or_insert_with(|| game.allocate_stack_ability_id());
             let mut entry = StackEntry::ability(pending.source, pending.activator, pending.effects.clone())
                 .with_ability_index(pending.ability_index)
+                        .with_activation_origin(pending.ability_origin.clone())
+                        .with_activation_definition(pending.effects.activation_definition)
                 .with_provenance(pending.provenance)
                 .with_source_snapshot(pending.source_snapshot.clone())
                 .with_chosen_modes(pending.chosen_modes.clone())
@@ -7331,6 +7333,7 @@ pub(super) fn continue_activation(
                     pending.source,
                     pending.ability_index,
                     pending.ability_origin.clone(),
+                    pending.effects.activation_definition,
                 );
                 if pending.is_loyalty_ability {
                     game.record_loyalty_ability_activation(pending.source);
@@ -7340,6 +7343,8 @@ pub(super) fn continue_activation(
                 let mut entry =
                     StackEntry::ability(pending.source, pending.activator, pending.effects.clone())
                         .with_ability_index(pending.ability_index)
+                        .with_activation_origin(pending.ability_origin.clone())
+                        .with_activation_definition(pending.effects.activation_definition)
                         .with_activation_cost_has_x(pending.activation_cost_has_x)
                         .with_activation_cost_has_tap(pending.activation_cost_has_tap)
                         .with_mana_spent_on_activation(pending.mana_spent_on_activation.clone())

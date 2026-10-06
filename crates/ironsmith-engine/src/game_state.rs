@@ -239,6 +239,7 @@ pub struct ExhaustActivationAnnouncement {
     source: ObjectId,
     ability_index: usize,
     origin: Option<(crate::continuous::AbilityOrigin, Option<u32>, u32)>,
+    definition: Option<ironsmith_core::LinkedExileDefinition>,
     counters: Vec<(TurnCounterKey, Option<u32>, u32)>,
     was_activated: bool,
     was_exhausted: bool,
@@ -3703,6 +3704,9 @@ pub struct StackEntry {
     pub trigger_identity: Option<TriggerIdentity>,
     /// Index of the activated ability represented by this stack entry.
     pub ability_index: Option<usize>,
+    /// Exact admitted acquisition; copies retain it and never count as activations.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
+    pub activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     /// Intervening-if condition that must be true at resolution time (for triggered abilities).
     /// If this condition is false when the ability would resolve, the ability does nothing.
     pub intervening_if: Option<crate::ConditionExpr>,
@@ -3783,6 +3787,8 @@ impl StackEntry {
             event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             intervening_if: None,
             chosen_modes: None,
             spliced_cards: Vec::new(),
@@ -3833,6 +3839,8 @@ impl StackEntry {
             event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             intervening_if: None,
             chosen_modes: None,
             spliced_cards: Vec::new(),
@@ -4009,7 +4017,18 @@ impl StackEntry {
         self
     }
 
-    /// Set the activated ability index for this activated ability stack entry.
+    /// Retain the exact acquisition admitted by the activation owner.
+    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+        self.activation_origin = origin;
+        self
+    }
+
+    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+        self.activation_definition = definition;
+        self
+    }
+
+    /// Legacy ordinal used for selection and existing resolution-count readers.
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
         self
@@ -4567,7 +4586,10 @@ impl GameState {
             turn: TurnState::new(active_player),
             turn_store: TurnStore {
                 turn_order,
-                turn_history: TurnHistory::default(),
+                turn_history: TurnHistory {
+                    ability_activation_counts: Some(HashMap::new()),
+                    ..TurnHistory::default()
+                },
                 ..TurnStore::default()
             },
             effect_store: EffectStore::default(),

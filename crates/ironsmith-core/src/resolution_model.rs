@@ -28,6 +28,10 @@ pub struct ResolutionProgram<E> {
     /// Absence does not authorize reading another ability's source-wide links.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub linked_exile_pair: Option<LinkedExilePair>,
+    /// Immutable authored activation occurrence, including its face and costs.
+    /// Kept separately from runtime acquisition and from an activation ordinal.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_definition: Option<LinkedExileDefinition>,
     flattened_default_effects: Vec<E>,
 }
 
@@ -66,6 +70,7 @@ impl<E> Default for ResolutionProgram<E> {
         Self {
             segments: Vec::new(),
             linked_exile_pair: None,
+            activation_definition: None,
             flattened_default_effects: Vec::new(),
         }
     }
@@ -76,6 +81,7 @@ impl<E: Clone> ResolutionProgram<E> {
         let mut program = Self {
             segments,
             linked_exile_pair: None,
+            activation_definition: None,
             flattened_default_effects: Vec::new(),
         };
         program.refresh_flattened_defaults();
@@ -160,6 +166,7 @@ impl<E: Clone> ResolutionProgram<E> {
     pub fn extend(&mut self, other: Self) {
         if self.segments.is_empty() {
             self.linked_exile_pair = other.linked_exile_pair;
+            self.activation_definition = other.activation_definition;
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
         {
@@ -167,6 +174,11 @@ impl<E: Clone> ResolutionProgram<E> {
             // records belong to this pair. Such a composite needs explicit
             // per-owner instructions before it can read linked quantities.
             self.linked_exile_pair = None;
+        }
+        if !self.segments.is_empty() && !other.segments.is_empty()
+            && self.activation_definition != other.activation_definition
+        {
+            self.activation_definition = None;
         }
         for segment in other.segments {
             self.push_segment(segment);
@@ -220,6 +232,7 @@ impl<E> ResolutionProgram<E> {
         }
         let mut mapped = ResolutionProgram::new(segments);
         mapped.linked_exile_pair = self.linked_exile_pair;
+        mapped.activation_definition = self.activation_definition;
         Ok(mapped)
     }
 }
@@ -346,6 +359,7 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
         f.debug_struct("ResolutionProgram")
             .field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
+            .field("activation_definition", &self.activation_definition)
             .finish()
     }
 }
@@ -389,5 +403,30 @@ mod linked_exile_pair_tests {
         let paired = legacy.with_linked_exile_pair(pair(2));
         let restored: ResolutionProgram<u32> = serde_json::from_str(&serde_json::to_string(&paired).unwrap()).unwrap();
         assert_eq!(restored.linked_exile_pair, Some(pair(2)));
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod activation_definition_tests {
+    use super::*;
+    #[test]
+    fn absent_legacy_identity_stays_absent_and_mapping_preserves_a_retained_identity() {
+        let legacy = ResolutionProgram::from_effects(vec![1_u32]);
+        let json = serde_json::to_value(&legacy).unwrap();
+        assert!(json.get("activation_definition").is_none());
+        let restored: ResolutionProgram<u32> = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.activation_definition, None);
+        let mut retained = restored;
+        retained.activation_definition = Some(LinkedExileDefinition([37; 32]));
+        let mapped = retained.clone().try_map_effects(|value| Ok::<_, ()>(u64::from(value))).unwrap();
+        assert_eq!(mapped.activation_definition, retained.activation_definition);
+        let restored: ResolutionProgram<u64> = serde_json::from_value(serde_json::to_value(mapped).unwrap()).unwrap();
+        assert_eq!(restored.activation_definition, retained.activation_definition);
+        retained.replace_segments(vec![ResolutionSegment::from_effects(vec![2])]);
+        assert_eq!(retained.activation_definition, Some(LinkedExileDefinition([37; 32])));
+        let mut other = ResolutionProgram::from_effects(vec![3]);
+        other.activation_definition = Some(LinkedExileDefinition([38; 32]));
+        retained.extend(other);
+        assert_eq!(retained.activation_definition, None);
     }
 }

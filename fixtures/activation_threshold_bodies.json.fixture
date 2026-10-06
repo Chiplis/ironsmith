@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Dragon Whelp",
+    "oracle_id": "705a1985-ed39-4a4b-812e-a677170b596e",
+    "oracle_text": "Flying\n{R}: This creature gets +1/+0 until end of turn. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 2/3\nFlying\n{R}: This creature gets +1/+0 until end of turn. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Farrelite Priest",
+    "oracle_id": "3ee18e5f-3d12-489e-b337-29208caaed7a",
+    "oracle_text": "{1}: Add {W}. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "text": "Mana cost: {1}{W}{W}\nType: Creature — Human Cleric\nPower/Toughness: 1/3\n{1}: Add {W}. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Initiates of the Ebon Hand",
+    "oracle_id": "0bf359ef-669f-41dc-8ab5-ba8e58b2f398",
+    "oracle_text": "{1}: Add {B}. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "text": "Mana cost: {B}\nType: Creature — Cleric\nPower/Toughness: 1/1\n{1}: Add {B}. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Nalathni Dragon",
+    "oracle_id": "0887dc95-3e75-4f72-bf05-4067d3785376",
+    "oracle_text": "Flying; banding (Any creatures with banding, and up to one without, can attack in a band. Bands are blocked as a group. If any creatures with banding you control are blocking or being blocked by a creature, you divide that creature's combat damage, not its controller, among any of the creatures it's being blocked by or is blocking.)\n{R}: This creature gets +1/+0 until end of turn. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature — Dragon\nPower/Toughness: 1/1\nFlying; banding (Any creatures with banding, and up to one without, can attack in a band. Bands are blocked as a group. If any creatures with banding you control are blocking or being blocked by a creature, you divide that creature's combat damage, not its controller, among any of the creatures it's being blocked by or is blocking.)\n{R}: This creature gets +1/+0 until end of turn. If this ability has been activated four or more times this turn, sacrifice this creature at the beginning of the next end step.",
+    "proposed_coverage": "source_complete_unvalidated"
+  }
+]
