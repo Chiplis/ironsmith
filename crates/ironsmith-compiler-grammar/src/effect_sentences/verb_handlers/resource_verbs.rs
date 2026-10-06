@@ -350,11 +350,14 @@ fn parse_take(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    if resource_grammar::parse_resource_take_extra_turn_shape(tokens) {
-        return Ok(EffectAst::subject_verb_extra_turn_after_turn(
-            extract_subject_player(subject).unwrap_or(PlayerAst::You),
-            ExtraTurnAnchorAst::CurrentTurn,
-        ));
+    let player = match subject {
+        None => PlayerAst::You,
+        Some(subject) => extract_subject_player(Some(subject)).ok_or_else(|| {
+            CardTextError::ParseError("extra turn requires a player subject".to_string())
+        })?,
+    };
+    if let Some(shape) = resource_grammar::parse_resource_take_extra_turn_shape(tokens, player) {
+        return Ok(shape.into_effect());
     }
 
     Err(CardTextError::ParseError(format!(

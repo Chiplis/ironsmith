@@ -1095,6 +1095,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/844"
+    },
+    {
+      "stage": 79,
+      "branch": "fix/card-failures-79-mana-methods-and-linked-exile",
+      "base": "fix/card-failures-78-variable-suspend",
+      "source_integration_commit": "43a9ab50bbca37fa83c3a78c647bb0d228c1d259",
+      "remote_commit": "1235eb0a3cfd20a1eb24943fe5fe87f9a21a56fa",
+      "tree": "39a5e571162de45023d0f98b46296ce8858617b0",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 845,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/845"
     }
   ]
 }

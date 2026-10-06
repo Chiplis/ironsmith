@@ -1,0 +1,70 @@
+[
+  {
+    "name": "Beacon of Tomorrows",
+    "oracle_id": "85909caa-d2ad-4487-b9b7-6ac60a14b833",
+    "mana_cost": "{6}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player takes an extra turn after this one. Shuffle Beacon of Tomorrows into its owner's library.",
+    "scryfall_uri": "https://scryfall.com/card/dds/2/beacon-of-tomorrows?utm_source=api"
+  },
+  {
+    "name": "Karn's Temporal Sundering",
+    "oracle_id": "5afbd367-19c7-418f-994d-a7958fb1c4ae",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Legendary Sorcery",
+    "oracle_text": "(You may cast a legendary sorcery only if you control a legendary creature or planeswalker.)\nTarget player takes an extra turn after this one. Return up to one target nonland permanent to its owner's hand. Exile Karn's Temporal Sundering.",
+    "scryfall_uri": "https://scryfall.com/card/pdom/55s/karns-temporal-sundering?utm_source=api"
+  },
+  {
+    "name": "Mu Yanling",
+    "oracle_id": "34e1477a-c0fb-4364-bb93-04a85c0c2517",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Legendary Planeswalker \u2014 Yanling",
+    "loyalty": "5",
+    "oracle_text": "+2: Target creature can't be blocked this turn.\n\u22123: Draw two cards.\n\u221210: Tap all creatures your opponents control. You take an extra turn after this one.",
+    "scryfall_uri": "https://scryfall.com/card/gs1/1/mu-yanling?utm_source=api"
+  },
+  {
+    "name": "Teferi, Master of Time",
+    "oracle_id": "e802fb53-7cf5-46bc-8a0b-f99cf5c20f74",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Legendary Planeswalker \u2014 Teferi",
+    "loyalty": "3",
+    "oracle_text": "You may activate loyalty abilities of Teferi on any player's turn any time you could cast an instant.\n+1: Draw a card, then discard a card.\n\u22123: Target creature you don't control phases out. (Treat it and anything attached to it as though they don't exist until its controller's next turn.)\n\u221210: Take two extra turns after this one.",
+    "scryfall_uri": "https://scryfall.com/card/pm21/75s/teferi-master-of-time?utm_source=api"
+  },
+  {
+    "name": "Time Stretch",
+    "oracle_id": "72e56963-a9dd-44dc-a4d3-992b4d89dd28",
+    "mana_cost": "{8}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player takes two extra turns after this one.",
+    "scryfall_uri": "https://scryfall.com/card/sld/2701/time-stretch?utm_source=api"
+  },
+  {
+    "name": "Time Warp",
+    "oracle_id": "dbd6a94b-62ff-4a10-9d52-bdd90b26e425",
+    "mana_cost": "{3}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player takes an extra turn after this one.",
+    "scryfall_uri": "https://scryfall.com/card/msc/788/time-warp?utm_source=api"
+  },
+  {
+    "name": "Walk the Aeons",
+    "oracle_id": "0ec36301-6282-49d4-85ea-6a46708e2f60",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Buyback\u2014Sacrifice three Islands. (You may sacrifice three Islands in addition to any other costs as you cast this spell. If you do, put this card into your hand as it resolves.)\nTarget player takes an extra turn after this one.",
+    "scryfall_uri": "https://scryfall.com/card/tsr/98/walk-the-aeons?utm_source=api"
+  },
+  {
+    "name": "Wormfang Manta",
+    "oracle_id": "17abf8c6-70b6-4877-a0f2-a87b22fb2828",
+    "mana_cost": "{5}{U}{U}",
+    "type_line": "Creature \u2014 Nightmare Fish Beast",
+    "power": "6",
+    "toughness": "1",
+    "oracle_text": "Flying\nWhen this creature enters, you skip your next turn.\nWhen this creature leaves the battlefield, you take an extra turn after this one.",
+    "scryfall_uri": "https://scryfall.com/card/jud/58/wormfang-manta?utm_source=api"
+  }
+]

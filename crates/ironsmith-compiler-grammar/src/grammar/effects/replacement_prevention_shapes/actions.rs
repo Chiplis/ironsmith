@@ -27,7 +27,24 @@ pub enum TokenEndCombatActionShape {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraTurnShape {
     pub player: PlayerAst,
+    pub count: i32,
     pub anchor: ExtraTurnAnchorAst,
+}
+
+impl ExtraTurnShape {
+    pub fn into_effect(self) -> EffectAst {
+        let effect = EffectAst::subject_verb_extra_turn_after_turn(self.player, self.anchor);
+        if self.count == 1 {
+            effect
+        } else {
+            // Compile the child once: repeating a targeted operation must not
+            // announce another target for each extra turn.
+            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: Value::Fixed(self.count),
+                effects: vec![effect],
+            })
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,36 +142,68 @@ pub fn parse_token_end_combat_action_shape(
     crate::grammar::primitives::probe_all(tokens, token_end_combat, "token end-of-combat action")
 }
 
+fn extra_turn_count<'a>(input: &mut LexStream<'a>) -> WResult<i32> {
+    let count = alt((
+        primitives::kw("an").value(Some(Value::Fixed(1))),
+        leaf::parse_leaf_number_or_x_prefix_lexed.map(|number| number.into_value()),
+    ))
+    .parse_next(input)?;
+    let Some(Value::Fixed(count)) = count else {
+        return Err(primitives::backtrack_err("extra turns", "fixed positive count"));
+    };
+    if count <= 0 {
+        return Err(primitives::backtrack_err("extra turns", "positive count"));
+    }
+    primitives::kw("extra").parse_next(input)?;
+    primitives::kw(if count == 1 { "turn" } else { "turns" }).parse_next(input)?;
+    Ok(count)
+}
+
+fn current_extra_turn_tail<'a>(input: &mut LexStream<'a>) -> WResult<i32> {
+    let count = extra_turn_count.parse_next(input)?;
+    primitives::phrase(&["after", "this", "one"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(count)
+}
+
+/// Shared tail owner for the subject/verb path and complete-sentence rules.
+pub fn parse_extra_turn_tail_shape(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Option<ExtraTurnShape> {
+    primitives::probe_all(tokens, current_extra_turn_tail, "extra turn tail").map(|count| {
+        ExtraTurnShape { player, count, anchor: ExtraTurnAnchorAst::CurrentTurn }
+    })
+}
+
 fn extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<ExtraTurnShape> {
     alt((
         (
-            primitives::phrase(&["take", "an", "extra", "turn", "after", "this", "one"]),
-            primitives::sentence_end(),
+            alt((
+                primitives::phrase(&["you", "take"]).value(PlayerAst::You),
+                primitives::kw("take").value(PlayerAst::You),
+                primitives::phrase(&["target", "player", "takes"]).value(PlayerAst::Target),
+                primitives::phrase(&["target", "opponent", "takes"]).value(PlayerAst::TargetOpponent),
+                primitives::phrase(&["the", "chosen", "player", "takes"]).value(PlayerAst::Chosen),
+                primitives::phrase(&["that", "player", "takes"]).value(PlayerAst::That),
+            )),
+            current_extra_turn_tail,
         )
-            .value(ExtraTurnShape {
-                player: PlayerAst::You,
+            .map(|(player, count)| ExtraTurnShape {
+                player,
+                count,
                 anchor: ExtraTurnAnchorAst::CurrentTurn,
             }),
         (
-            primitives::phrase(&[
-                "the", "chosen", "player", "takes", "an", "extra", "turn", "after", "this", "one",
-            ]),
+            primitives::phrase(&["after", "that", "turn"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["that", "player", "takes"]),
+            extra_turn_count,
             primitives::sentence_end(),
         )
-            .value(ExtraTurnShape {
-                player: PlayerAst::Chosen,
-                anchor: ExtraTurnAnchorAst::CurrentTurn,
-            }),
-        (
-            (
-                primitives::phrase(&["after", "that", "turn"]),
-                opt(primitives::comma()),
-                primitives::phrase(&["that", "player", "takes", "an", "extra", "turn"]),
-            ),
-            primitives::sentence_end(),
-        )
-            .value(ExtraTurnShape {
+            .map(|(_, _, _, count, _)| ExtraTurnShape {
                 player: PlayerAst::That,
+                count,
                 anchor: ExtraTurnAnchorAst::ReferencedTurn,
             }),
     ))

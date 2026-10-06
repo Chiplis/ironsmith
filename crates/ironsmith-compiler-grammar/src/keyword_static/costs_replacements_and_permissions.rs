@@ -7806,26 +7806,50 @@ pub fn parse_loyalty_abilities_any_time_line(
     let body = prefix
         .as_ref()
         .map_or(tokens, |prefix| prefix.remainder_tokens);
-    let words: Vec<&str> = body
-        .iter()
-        .filter(|token| token.as_word().is_some())
-        .map(|token| token.parser_text())
-        .collect();
+    let view = crate::lexer::TokenWordView::new(body);
+    let words = view.to_word_refs();
     const START: &[&str] = &["you", "may", "activate"];
     const END: &[&str] = &["any", "time", "you", "could", "cast", "an", "instant"];
+    const ANY_PLAYER_TURN: &[&[&str]] = &[
+        &["on", "any", "players", "turn"],
+        &["on", "any", "player", "s", "turn"],
+        &["on", "any", "player", "turn"],
+    ];
     if !crate::word_primitives::parse_sequence_prefix(&words, START)
         || !crate::word_primitives::parse_sequence_suffix(&words, END)
     {
         return Ok(None);
     }
-    let subject = &words[START.len()..words.len() - END.len()];
+    let timing_start = words.len() - END.len();
+    let subject_and_turn = &words[START.len()..timing_start];
+    // This optional clause belongs to the timing permission, not its object
+    // selector. Both forms grant the same unrestricted instant timing.
+    let subject_len = ANY_PLAYER_TURN
+        .iter()
+        .find_map(|suffix| suffix_word_start(subject_and_turn, suffix))
+        .unwrap_or(subject_and_turn.len());
+    let subject_end = START.len() + subject_len;
+    let subject = &words[START.len()..subject_end];
     let mut filter = match subject {
         ["its" | "her" | "his" | "their", "loyalty", "abilities"] => ObjectFilter::source(),
         ["loyalty", "abilities", "of", rest @ ..] if !rest.is_empty() => {
-            let view = crate::lexer::TokenWordView::new(body);
-            let first = view.token_start_indices()[START.len() + 3];
-            let end = view.token_start_indices()[words.len() - END.len()];
-            parse_object_filter(&body[first..end], false)?
+            if let Some(surface) = crate::util::source_reference_surface_for_words(rest) {
+                ObjectFilter::source_with_surface(surface)
+            } else {
+                let Some(range) = view.token_span_for_words(START.len() + 3, subject_end) else {
+                    return Ok(None);
+                };
+                // Require the complete selector grammar: the permissive
+                // filter parser can discard an unsupported turn restriction
+                // and accidentally grant permission on every turn.
+                let Some(filter) = crate::grammar::filters::parse_simple_object_filter_lexed(
+                    &body[range],
+                    false,
+                ) else {
+                    return Ok(None);
+                };
+                filter
+            }
         }
         _ => return Ok(None),
     };
@@ -7852,6 +7876,7 @@ pub fn parse_loyalty_abilities_any_time_line(
 #[cfg(test)]
 mod loyalty_timing_tests {
     use super::*;
+
     #[test]
     fn loyalty_permission_parses_scoped_and_conditional_filters() {
         for (line, is_source, entered) in [
@@ -7861,12 +7886,37 @@ mod loyalty_timing_tests {
                 false,
             ),
             (
+                "You may activate its loyalty abilities on any player's turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
+                "You may activate loyalty abilities of this on any player's turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
+                "You may activate loyalty abilities of this planeswalker on any player’s turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
                 "You may activate loyalty abilities of planeswalkers you control any time you could cast an instant.",
                 false,
                 false,
             ),
             (
+                "You may activate loyalty abilities of planeswalkers you control on any player's turn any time you could cast an instant.",
+                false,
+                false,
+            ),
+            (
                 "As long as this entered this turn, you may activate its loyalty abilities any time you could cast an instant.",
+                true,
+                true,
+            ),
+            (
+                "As long as this entered this turn, you may activate its loyalty abilities on any player's turn any time you could cast an instant.",
                 true,
                 true,
             ),
@@ -7885,6 +7935,84 @@ mod loyalty_timing_tests {
             if !is_source {
                 assert!(filter.card_types.contains(&CardType::Planeswalker));
                 assert_eq!(filter.controller, Some(PlayerFilter::You));
+            }
+        }
+    }
+
+    #[test]
+    fn loyalty_permission_preserves_normalized_named_source() {
+        for (name, line) in [
+            (
+                "Teferi, Master of Time",
+                "You may activate loyalty abilities of Teferi on any player's turn any time you could cast an instant.",
+            ),
+            (
+                "Chronicle Adept",
+                "You may activate loyalty abilities of Chronicle Adept on any player's turn any time you could cast an instant.",
+            ),
+        ] {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), name)
+                .card_types(vec![CardType::Planeswalker]);
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let normalized =
+                crate::document_parser::normalize_named_source_tokens_for_builder(&card, &tokens)
+                    .expect("the card's own name should become a source reference");
+            let ability = parse_loyalty_abilities_any_time_line(&normalized)
+                .unwrap()
+                .expect(line);
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                ability.payload
+            else {
+                panic!("{line}");
+            };
+            assert!(filter.source, "{line}");
+            assert!(filter.controller.is_none(), "{line}");
+            assert!(filter.subtypes.is_empty(), "{line}");
+        }
+    }
+
+    #[test]
+    fn loyalty_permission_keeps_generic_filter_scope_before_turn_qualifier() {
+        let line = "You may activate loyalty abilities of legendary planeswalkers your opponents control on any player's turn any time you could cast an instant.";
+        let tokens = crate::lexer::lex_line(line, 0).unwrap();
+        let ability = parse_loyalty_abilities_any_time_line(&tokens)
+            .unwrap()
+            .expect(line);
+        let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = ability.payload
+        else {
+            panic!("{line}");
+        };
+        assert!(!filter.source);
+        assert_eq!(filter.card_types, vec![CardType::Planeswalker]);
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.supertypes, vec![crate::types::Supertype::Legendary]);
+    }
+
+    #[test]
+    fn loyalty_permission_rejects_unmodeled_turn_restrictions() {
+        for subject in [
+            "its loyalty abilities",
+            "loyalty abilities of this planeswalker",
+            "loyalty abilities of planeswalkers you control",
+        ] {
+            for qualifier in [
+                "on your turn",
+                "only on your turn",
+                "during your turn",
+                "on any opponent's turn",
+                "on any player's next turn",
+                "on any player's end step",
+                "on any player's turn this turn",
+                "on your turn on any player's turn",
+            ] {
+                let line = format!(
+                    "You may activate {subject} {qualifier} any time you could cast an instant."
+                );
+                let tokens = crate::lexer::lex_line(&line, 0).unwrap();
+                assert!(
+                    !matches!(parse_loyalty_abilities_any_time_line(&tokens), Ok(Some(_))),
+                    "unsupported restriction was widened: {line}"
+                );
             }
         }
     }

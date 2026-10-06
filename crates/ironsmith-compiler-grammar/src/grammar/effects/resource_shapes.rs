@@ -257,14 +257,11 @@ pub fn parse_resource_note_life_total_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, note_life_total)
 }
 
-fn take_extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["an", "extra", "turn", "after", "this", "one"])
-        .void()
-        .parse_next(input)
-}
-
-pub fn parse_resource_take_extra_turn_shape(tokens: &[OwnedLexToken]) -> bool {
-    exact_unit(tokens, take_extra_turn)
+pub fn parse_resource_take_extra_turn_shape(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Option<super::ExtraTurnShape> {
+    super::parse_extra_turn_tail_shape(tokens, player)
 }
 
 fn proliferate_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {

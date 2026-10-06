@@ -73,3 +73,54 @@ fn parses_counter_removed_pump_shape() {
         })
     );
 }
+
+#[test]
+fn counted_turns_share_one_player_and_preserve_the_exact_anchor() {
+    for (line, player, count, anchor) in [
+        ("Take an extra turn after this one.", PlayerAst::You, 1, ExtraTurnAnchorAst::CurrentTurn),
+        ("You take an extra turn after this one.", PlayerAst::You, 1, ExtraTurnAnchorAst::CurrentTurn),
+        ("Target player takes two extra turns after this one.", PlayerAst::Target, 2, ExtraTurnAnchorAst::CurrentTurn),
+        ("Target opponent takes three extra turns after this one.", PlayerAst::TargetOpponent, 3, ExtraTurnAnchorAst::CurrentTurn),
+        ("The chosen player takes an extra turn after this one.", PlayerAst::Chosen, 1, ExtraTurnAnchorAst::CurrentTurn),
+        ("After that turn, that player takes two extra turns.", PlayerAst::That, 2, ExtraTurnAnchorAst::ReferencedTurn),
+    ] {
+        let shape = parse_extra_turn_shape(&lex_line(line, 0).unwrap()).expect(line);
+        assert_eq!(shape.player, player);
+        assert_eq!(shape.count, count);
+        assert_eq!(shape.anchor, anchor);
+        let expected = EffectAst::subject_verb_extra_turn_after_turn(player, anchor);
+        if count == 1 {
+            assert_eq!(shape.into_effect(), expected);
+        } else {
+            assert_eq!(shape.into_effect(), EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                count: Value::Fixed(count), effects: vec![expected],
+            }));
+        }
+    }
+    for line in [
+        "Take zero extra turns after this one.",
+        "Take X extra turns after this one.",
+        "Take two extra turn after this one.",
+        "Take an extra turns after this one.",
+        "Take two extra turns after your next turn.",
+        "Take two extra turns after this one with no untap step.",
+        "Target creature takes an extra turn after this one.",
+    ] {
+        assert!(parse_extra_turn_shape(&lex_line(line, 0).unwrap()).is_none(), "{line}");
+    }
+}
+
+#[test]
+fn resource_tail_uses_the_same_count_and_does_not_consume_a_rider() {
+    let tokens = lex_line("two extra turns after this one", 0).unwrap();
+    let shape = crate::grammar::effects::resource_shapes::parse_resource_take_extra_turn_shape(
+        &tokens, PlayerAst::Target,
+    ).unwrap();
+    assert_eq!(shape.count, 2);
+    assert_eq!(shape.player, PlayerAst::Target);
+    assert_eq!(shape.anchor, ExtraTurnAnchorAst::CurrentTurn);
+    let tokens = lex_line("an extra turn after this one with no combat phase", 0).unwrap();
+    assert!(crate::grammar::effects::resource_shapes::parse_resource_take_extra_turn_shape(
+        &tokens, PlayerAst::You,
+    ).is_none());
+}

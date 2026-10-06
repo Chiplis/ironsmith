@@ -48,7 +48,7 @@ pub fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(replacement_grammar::parse_extra_turn_shape(tokens)
-        .map(|shape| EffectAst::subject_verb_extra_turn_after_turn(shape.player, shape.anchor)))
+        .map(replacement_grammar::ExtraTurnShape::into_effect))
 }
 
 pub fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
