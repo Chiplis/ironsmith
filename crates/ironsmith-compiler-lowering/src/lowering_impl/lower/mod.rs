@@ -13,6 +13,7 @@ use crate::zone::Zone;
 
 mod damage_and_cost_rewrites;
 mod finalization_support;
+mod linked_exile;
 mod line_ast_helpers;
 mod line_lowering;
 mod modal_and_level_lowering;

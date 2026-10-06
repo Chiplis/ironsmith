@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-06T11:50:00Z",
+  "checked_at": "2026-10-06T12:07:00Z",
   "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
-  "latest_published_head": "56e440a9b5216774e7e8f59354d0ad7e4c72597a",
-  "latest_published_pr": 843,
+  "latest_published_head": "000fa2000ee0df25aad526618cc47191d3a09c88",
+  "latest_published_pr": 844,
   "open_draft_prs": [
     821,
     822,
@@ -27,19 +27,20 @@
     840,
     841,
     842,
-    843
+    843,
+    844
   ],
   "workspace_replaced": true,
-  "published_source_proposals": 1122,
-  "published_source_entries": 1127,
+  "published_source_proposals": 1126,
+  "published_source_entries": 1131,
   "unpublished_pre_outage_source_not_assumed_retained": [
     "Suspend4",
     "mana consumer6",
     "permanent prevention6",
     "linked exile Bishop prerequisites"
   ],
-  "current_reconstructed_source_proposals": 1126,
-  "current_reconstructed_source_entries": 1131,
+  "current_reconstructed_source_proposals": 1134,
+  "current_reconstructed_source_entries": 1139,
   "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "verified_compile_recoveries": 40,
@@ -51,22 +52,18 @@
     "overlap_with_stage77": [],
     "status": "Separate upstream commit preserved; bounded source compatibility inspection found no overlap with the protocol changes."
   },
-  "bishop_status": "Partial. Exact duration return membership corrected; linked producer/consumer occurrence identity remains incomplete.",
-  "held_new_cards": [
-    "Qarsi Deceiver",
-    "Karfell Harbinger"
-  ],
-  "held_mana_reason": "Selected casting-face/method projection requires a separate correction; neither identity is counted.",
+  "bishop_status": "Fresh reconstructed full source and integrated union reviewed; proposed unvalidated.",
+  "held_new_cards": [],
   "second_workspace_recovery": {
     "shared_mount_absent": true,
     "prevention_recovered_tree": "7ee2e35cfef8eeae35a07fb2f1803772c8db5828",
     "prevention_recovery": "Exact original blobs and deterministic pinned fixture; final tree matches original reviewed tree.",
     "suspend_reconstructed_head": "27d1bd54fb2a2e07820bea93680dacfb5ec9c4df",
     "suspend_status": "Fresh full source review; no historical hash identity claim.",
-    "remaining_reconstruction": [
-      "mana7",
-      "Bishop linked identity"
-    ],
-    "execution": "No engine builds, compiler probes, tests or corpus execution."
+    "remaining_reconstruction": [],
+    "execution": "No engine builds, compiler probes, tests or corpus execution.",
+    "mana_reconstructed_head": "964fae5dfe248ebd31cbee556f68e8990a989673",
+    "bishop_reconstructed_head": "4c7076aa526c48def5922a985e809ebeb39b2e7b",
+    "integrated_source_review_head": "2aa985aa6dc6463ed8794c20865cea711322d5a1"
   }
 }

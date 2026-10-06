@@ -145,13 +145,14 @@ fn activation_mana_payment_available(
         source: ObjectId,
         cost: &ironsmith::cost::TotalCost,
         minimum_x: u32,
+        reason: ironsmith::costs::PaymentReason,
         planner: &mut impl FnMut(&ManaPaymentRequest) -> Option<bool>,
     ) -> Option<bool> {
         match cost.kind() {
             ironsmith_core::TotalCostKind::OneOf(branches) => {
                 let mut unknown = false;
                 for branch in branches {
-                    match check_cost(game, payer, source, branch, minimum_x, planner) {
+                    match check_cost(game, payer, source, branch, minimum_x, reason, planner) {
                         Some(true) => return Some(true),
                         None => unknown = true,
                         Some(false) => {}
@@ -175,7 +176,7 @@ fn activation_mana_payment_available(
                 let mut request = ManaPaymentRequest::new(
                     payer,
                     source,
-                    ironsmith::costs::PaymentReason::ActivateAbility,
+                    reason,
                     mana,
                 )
                 .with_x(minimum_x)
@@ -212,6 +213,7 @@ fn activation_mana_payment_available(
         *source,
         &cost,
         activated.activation_x_minimum(),
+        ironsmith::costs::PaymentReason::activation(activated.keyword, matches!(action, LegalAction::ActivateManaAbility { .. })),
         planner,
     );
     if available != Some(false) {

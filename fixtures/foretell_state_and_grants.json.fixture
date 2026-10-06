@@ -198,7 +198,8 @@
     "baseline_category": "parser_failure",
     "baseline_content_hash": "0703d9b75d6d89ded9c47845bd7607ebe13c184f9a6ca20bdb5132de2b28d914",
     "baseline_parse_error": "compiled card still contains unsupported parser fallback marker KeywordFallbackText; oracle-only fallback also failed: compiled card still contains unsupported parser fallback marker KeywordFallbackText",
-    "cohort": "unaddressed-foretell-family"
+    "cohort": "unaddressed-foretell-family",
+    "proposed_coverage": "source_complete_unvalidated"
   },
   {
     "name": "Poison the Cup",

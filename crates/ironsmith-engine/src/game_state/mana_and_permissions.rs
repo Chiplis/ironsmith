@@ -1377,14 +1377,18 @@ impl GameState {
             .filter_context_for(controller, Some(unit.source))
             .with_caster(Some(controller));
         let mut stack_filter = filter.clone();
-        if stack_filter.zone == Some(Zone::Battlefield) {
+        if let Some(zone) = stack_filter.zone {
+            if !matches!(zone, Zone::Stack | Zone::Battlefield)
+                && !self.cast_origin_snapshot(source_id).is_some_and(|origin| origin.zone == zone)
+            {
+                return false;
+            }
             stack_filter.zone = Some(Zone::Stack);
         }
         stack_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        // Origin evidence establishes only the origin zone, never the
+        // printed face's color/type/keyword for another selected spell face.
         stack_filter.matches(source_obj, &filter_ctx, self)
-            || self
-                .cast_origin_snapshot(source_id)
-                .is_some_and(|origin| filter.matches_snapshot(origin, &filter_ctx, self))
     }
 
     fn activate_ability_source_filter_matches_payment_source(
@@ -1462,6 +1466,24 @@ impl GameState {
                     .unwrap_or_else(|| self.controller_of(source_obj));
                 let filter_ctx = self.filter_context_for(controller, Some(unit.source));
                 filter.matches(source_obj, &filter_ctx, self)
+            }
+            crate::ability::ManaPaymentPredicate::ActivatedAbilityKeyword(keyword) => {
+                matches!(reason, crate::costs::PaymentReason::ActivateAbilityWithKeyword { keyword: actual, .. } if actual == *keyword)
+            }
+            crate::ability::ManaPaymentPredicate::TurnFaceUpMethod(method) => {
+                reason == crate::costs::PaymentReason::TurnFaceUpWithMethod(*method)
+            }
+            crate::ability::ManaPaymentPredicate::SourceManifested => {
+                payment_source.is_some_and(|id| self.is_manifested(id)
+                    && self.is_face_down(id) && !self.is_phased_out(id)
+                    && self.object(id).is_some_and(|o| o.zone == Zone::Battlefield))
+            }
+            crate::ability::ManaPaymentPredicate::DisturbCost => {
+                reason == crate::costs::PaymentReason::CastSpell
+                    && payment_source.and_then(|id| self.object(id)).is_some_and(|object| {
+                        object.zone == Zone::Stack && matches!(object.cast_alternative_method.as_deref(),
+                            Some(crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }))
+                    })
             }
             crate::ability::ManaPaymentPredicate::CostContains(symbol) => effective_cost
                 .is_some_and(|cost| cost.pips().iter().any(|pip| pip.contains(symbol))),
@@ -1585,11 +1607,7 @@ impl GameState {
                         spell_filter,
                         payment_source,
                     ))
-                    || (matches!(
-                        reason,
-                        crate::costs::PaymentReason::ActivateAbility
-                            | crate::costs::PaymentReason::ActivateManaAbility
-                    ) && self.activate_ability_source_filter_matches_payment_source(
+                    || (reason.is_ability() && self.activate_ability_source_filter_matches_payment_source(
                         unit,
                         ability_source_filter,
                         payment_source,
@@ -1604,7 +1622,7 @@ impl GameState {
                         spell_filter,
                         payment_source,
                     ))
-                    || (reason == crate::costs::PaymentReason::TurnFaceUp
+                    || (reason.mana_payment_purpose() == crate::ability::ManaPaymentPurpose::TurnFaceUp
                         && payment_source.is_some_and(|source_id| {
                             self.object(source_id)
                                 .is_some_and(|source_obj| source_obj.zone == Zone::Battlefield)
@@ -1616,11 +1634,7 @@ impl GameState {
                         }))
             }
             crate::ability::ManaUsageRestriction::ActivateAbility => {
-                matches!(
-                    reason,
-                    crate::costs::PaymentReason::ActivateAbility
-                        | crate::costs::PaymentReason::ActivateManaAbility
-                ) && payment_source.is_some_and(|source_id| {
+                reason.is_ability() && payment_source.is_some_and(|source_id| {
                     self.object(source_id)
                         .is_some_and(|source_obj| source_obj.zone != Zone::Stack)
                 })
@@ -3034,6 +3048,7 @@ impl GameState {
                 );
             }
             self.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+                linked_exile_owner: None,
                 source: mana_source,
                 controller: source_snapshot
                     .as_ref()
@@ -3124,7 +3139,7 @@ impl GameState {
                 .iter()
                 .any(|component| component.mana_cost_ref().is_some_and(|cost| cost == mana))
         }
-        if reason != crate::costs::PaymentReason::ActivateAbility {
+        if !reason.is_non_mana_ability() {
             return None;
         }
 

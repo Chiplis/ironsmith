@@ -102,7 +102,7 @@ fn collect_nested_result_references(value: &Value, references: &mut Vec<NestedRe
     }
 }
 
-fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut impl FnMut(&Value)) {
+pub(crate) fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut impl FnMut(&Value)) {
     if let Some(with_id) = effect.as_with_id() {
         visit_direct_nested_effect_values(&with_id.effect, visit);
         return;
@@ -133,6 +133,8 @@ fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut impl FnMut(&Va
             }
         };
     }
+    value_field!(crate::effects::ModifyPowerToughnessEffect, power);
+    value_field!(crate::effects::ModifyPowerToughnessEffect, toughness);
     value_field!(crate::effects::DealDamageEffect, amount);
     value_field!(crate::effects::DrawCardsEffect, count);
     value_field!(crate::effects::PutCountersEffect, amount);

@@ -33,13 +33,34 @@ pub enum PaymentReason {
     /// Paying another special-action or generic engine cost.
     #[default]
     Other,
+    /// The special action from hand, not the later spell cast.
+    Foretell,
+    /// Exact announcement. Legacy TurnFaceUp does not assert a method.
+    TurnFaceUpWithMethod(ironsmith_core::ManaTurnFaceUpMethod),
+    /// Frozen at announcement; source changes do not change the paid ability.
+    ActivateAbilityWithKeyword { keyword: ironsmith_core::ActivatedAbilityKeyword, mana_ability: bool },
 }
 
 impl PaymentReason {
+    pub fn activation(keyword: Option<ironsmith_core::ActivatedAbilityKeyword>, mana_ability: bool) -> Self {
+        match keyword {
+            Some(keyword) => Self::ActivateAbilityWithKeyword { keyword, mana_ability },
+            None if mana_ability => Self::ActivateManaAbility,
+            None => Self::ActivateAbility,
+        }
+    }
+    pub fn is_mana_ability(self) -> bool {
+        matches!(self, Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { mana_ability: true, .. })
+    }
+    pub fn is_non_mana_ability(self) -> bool {
+        matches!(self, Self::ActivateAbility | Self::ActivateAbilityWithKeyword { mana_ability: false, .. })
+    }
+    pub fn is_ability(self) -> bool { self.is_mana_ability() || self.is_non_mana_ability() }
+
     pub fn is_cast_or_ability_payment(self) -> bool {
         matches!(
             self,
-            Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility
+            Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { .. }
         )
     }
 
@@ -48,8 +69,11 @@ impl PaymentReason {
             Self::CastSpell => crate::ability::ManaPaymentPurpose::CastSpell,
             Self::ActivateAbility => crate::ability::ManaPaymentPurpose::ActivateAbility,
             Self::ActivateManaAbility => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
+            Self::ActivateAbilityWithKeyword { mana_ability: true, .. } => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
+            Self::ActivateAbilityWithKeyword { mana_ability: false, .. } => crate::ability::ManaPaymentPurpose::ActivateAbility,
             Self::UnlockDoor => crate::ability::ManaPaymentPurpose::UnlockDoor,
-            Self::TurnFaceUp => crate::ability::ManaPaymentPurpose::TurnFaceUp,
+            Self::TurnFaceUp | Self::TurnFaceUpWithMethod(_) => crate::ability::ManaPaymentPurpose::TurnFaceUp,
+            Self::Foretell => crate::ability::ManaPaymentPurpose::Foretell,
             Self::CumulativeUpkeep => crate::ability::ManaPaymentPurpose::CumulativeUpkeep,
             Self::Effect => crate::ability::ManaPaymentPurpose::Effect,
             Self::Other => crate::ability::ManaPaymentPurpose::Other,

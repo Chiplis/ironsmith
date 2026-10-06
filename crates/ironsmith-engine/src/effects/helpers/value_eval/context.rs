@@ -741,7 +741,13 @@ impl EvaluationContext<'_, '_> {
                 && !ctx.source_snapshot.as_ref().is_some_and(|snapshot| snapshot.object_id == ctx.source) {
                 return Err(missing("linked exile quantity requires the original source identity"));
             }
-            return self.game.get_exiled_with_source_links(ctx.source).iter().try_fold(0i64, |total, id| {
+            let owner = ctx.linked_exile_owner.as_ref().ok_or_else(||
+                missing("linked exile quantity requires explicit pair and acquisition metadata"))?;
+            let members = self.game.linked_exile_pair_members(owner).map_err(|error| {
+                self.game.record_token_resource_failure(&error);
+                error
+            })?;
+            return members.iter().try_fold(0i64, |total, id| {
                 let object = self.game.object(*id).ok_or_else(||
                     missing("linked exile quantity has an unavailable linked object"))?;
                 if object.zone != crate::zone::Zone::Exile { return Ok(total); }

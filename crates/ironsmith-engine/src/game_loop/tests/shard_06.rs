@@ -2016,6 +2016,7 @@ pub(super) fn activation_announces_damage_distribution_after_targets() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: crate::cost::TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::DealDistributedDamageEffect::new(4, distributed_target),
@@ -2234,6 +2235,7 @@ pub(super) fn modal_x_activation_announces_modes_before_x() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: crate::cost::TotalCost::mana(ManaCost::from_pips(vec![vec![
                     ManaSymbol::X,
                 ]])),
@@ -3141,6 +3143,7 @@ pub(super) fn activation_mana_ability_window_precedes_every_cost_payment() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: crate::cost::TotalCost::from_costs(vec![
                     crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
                         1,

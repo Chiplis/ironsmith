@@ -362,6 +362,8 @@ pub(crate) enum ResolutionControl {
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
     pub source: ObjectId,
+    /// Linked pair and rules-text acquisition captured when the ability was admitted.
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The controller of the source.
     pub controller: PlayerId,
     /// Resolved targets for the effect.
@@ -532,6 +534,7 @@ macro_rules! execution_context_checkpoint {
 
 execution_context_checkpoint! {
     source: ObjectId,
+    linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
@@ -640,6 +643,7 @@ impl<'a> ExecutionContext<'a> {
     ) -> Self {
         Self {
             source,
+            linked_exile_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -704,6 +708,7 @@ impl<'a> ExecutionContext<'a> {
             Box::leak(Box::new(crate::decision::SelectFirstDecisionMaker));
         ExecutionContext {
             source,
+            linked_exile_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -758,6 +763,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_decision_maker<'b>(self, dm: &'b mut dyn DecisionMaker) -> ExecutionContext<'b> {
         ExecutionContext {
             source: self.source,
+            linked_exile_owner: self.linked_exile_owner,
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
@@ -893,6 +899,12 @@ impl<'a> ExecutionContext<'a> {
     /// Retain the resolving activated ability's mana payment.
     pub fn with_activation_mana_payment(mut self, payment: crate::player::ManaPool) -> Self {
         self.mana.activation_payment = payment;
+        self
+    }
+
+    /// Retain the exact linked rules acquisition in this execution.
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
         self
     }
 

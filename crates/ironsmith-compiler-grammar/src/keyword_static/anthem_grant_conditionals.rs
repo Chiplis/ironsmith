@@ -1279,6 +1279,7 @@ pub fn parse_equipment_you_control_have_equip_line(
         ability: Ability {
             kind: AbilityKind::Activated(
                 crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                    keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
                     mana_cost: total_cost,
                     effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                         EffectAst::subject_verb_attach(TargetAst::Source(None), target),

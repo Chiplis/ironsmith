@@ -157,6 +157,7 @@ fn parse_direct_controller_sacrifice_draw_ability(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::default(),
                 choices: vec![],
@@ -227,6 +228,7 @@ fn parse_direct_simple_effect_ability(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::default(),
                 choices: vec![],
@@ -312,6 +314,7 @@ fn parse_activated_line_with_raw_remaining(
         return Ok(Some(ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost,
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],
@@ -381,6 +384,7 @@ fn parse_activated_line_with_raw_remaining(
         return Ok(Some(ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost,
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],
@@ -481,6 +485,7 @@ fn parse_activated_line_with_raw_remaining(
                 )?;
                 let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost,
                         effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
@@ -511,6 +516,7 @@ fn parse_activated_line_with_raw_remaining(
                 {
                     let ability = Ability {
                         kind: AbilityKind::Activated(ActivatedAbility {
+                            keyword: None,
                             mana_cost,
                             effects: ironsmith_core::ResolutionProgram::default(),
                             choices: vec![],
@@ -539,6 +545,7 @@ fn parse_activated_line_with_raw_remaining(
                 )?;
                 let ability = Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost,
                         effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
@@ -584,6 +591,7 @@ fn parse_activated_line_with_raw_remaining(
             ability: {
                 Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost,
                         effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
@@ -631,6 +639,7 @@ fn parse_activated_line_with_raw_remaining(
         ability: {
             Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost,
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],

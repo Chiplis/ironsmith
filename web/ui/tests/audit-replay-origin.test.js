@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAuditReplayActionWithGame } from '../src/lib/audit-replay.js';
+import { applyAuditReplayActionWithGame, startAuditTranscriptReplayWithGame } from '../src/lib/audit-replay.js';
+import { CURRENT_AUDIT_PROTOCOL_VERSION, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION } from '../src/lib/multiplayer-audit.js';
 
 function replayGame() {
   const calls = [];
   const game = {
+    startMatch: async () => {},
     getHiddenCardState: async () => ({ objects: [{ id: 212, stableId: 85, hiddenCard: {
       owner: 1, slot: 4, commitment: 'salted-ring-4', publicSlot: 51, publicCommitment: 'ziffle:current:51',
       originSlot: 23, originCommitment: 'ziffle:initial:23',
@@ -12,7 +14,7 @@ function replayGame() {
     revealHiddenPosition: async opening => calls.push(['reveal', opening]),
     previewCryptoRequirements: async () => [],
     dispatch: async command => calls.push(['dispatch', command]),
-    exportPublicAuditCheckpoint: async () => ({}),
+    exportPublicAuditCheckpoint: async () => ({ version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION }),
   };
   return { game, calls };
 }
@@ -22,6 +24,10 @@ const opening = { owner: 1, objectId: 211, slot: 4, commitment: 'salted-ring-4',
   originPositionCommitment: 'ziffle:initial:23', timing: 'pre' };
 
 async function replay(game, candidate) {
+  await startAuditTranscriptReplayWithGame({ game, transcript: {
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, players: [] },
+  } });
   return applyAuditReplayActionWithGame({ game, action: { seq: 1,
     command: { type: 'priority_action', action_ref: { kind: 'pass_priority' } },
     audit: { openings: [candidate] } } });
@@ -40,6 +46,7 @@ test('post-action replay reopens a revealed card through its authenticated ident
   const calls = [];
   let objectId = 168;
   const game = {
+    startMatch: async () => {},
     getHiddenCardState: async () => ({ objects: [{ id: objectId, stableId: 116,
       name: 'Goblin Guide', zone: objectId === 168 ? 'stack' : 'battlefield', hiddenCard: {
         owner: 1, slot: 22, commitment: 'salted-guide-22', publicSlot: 54,
@@ -58,7 +65,7 @@ test('post-action replay reopens a revealed card through its authenticated ident
     revealHiddenSlot: async () => { throw new Error('hidden card commitment does not match reveal'); },
     previewCryptoRequirements: async () => [],
     dispatch: async () => { objectId = 169; calls.push(['dispatch']); },
-    exportPublicAuditCheckpoint: async () => ({}),
+    exportPublicAuditCheckpoint: async () => ({ version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION }),
   };
   await replay(game, { owner: 1, objectId: 168, slot: 22, card: 'Goblin Guide',
     commitment: 'salted-guide-22', position: 54, positionCommitment: 'ziffle:initial:54',

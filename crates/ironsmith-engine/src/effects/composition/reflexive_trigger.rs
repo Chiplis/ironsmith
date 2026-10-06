@@ -185,6 +185,7 @@ fn snapshot_from_memory(game: &GameState, memory: &OutcomeObjectMemory) -> Objec
         .object(memory.object_id)
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
         .unwrap_or_else(|| ObjectSnapshot {
+            ability_origins: None,
             chosen_subtype: None,
             secret_chosen_subtype: None,
             noted_life_total: None,
@@ -402,6 +403,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
                 )
             };
         let pending = PendingReflexiveTrigger {
+            linked_exile_owner: ctx.linked_exile_owner.clone(),
             trigger_identity,
             source: ctx.source,
             controller: ctx.controller,
@@ -428,6 +430,7 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             )
         });
         game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+            linked_exile_owner: ctx.linked_exile_owner.clone(),
             source: ctx.source,
             controller: ctx.controller,
             x_value: reflexive_x,
@@ -523,6 +526,7 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
     game.effect_store
         .pending_reflexive_triggers
         .push(PendingReflexiveTrigger {
+            linked_exile_owner: None,
             trigger_identity,
             source,
             controller,
@@ -548,6 +552,7 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
         provenance,
     );
     game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+        linked_exile_owner: None,
         source,
         controller,
         x_value: None,
@@ -579,6 +584,7 @@ pub(crate) const REFLEXIVE_TRIGGER_ID: &str = "reflexive_trigger";
 /// resolution that triggered it.
 #[derive(Debug, Clone)]
 pub(crate) struct PendingReflexiveTrigger {
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub trigger_identity: crate::triggers::TriggerIdentity,
     pub source: crate::ids::ObjectId,
     pub controller: crate::ids::PlayerId,
@@ -616,6 +622,7 @@ pub(crate) fn reflexive_trigger_stack_entry(
     let pending = game.effect_store.pending_reflexive_triggers[index].clone();
 
     let mut ctx = ExecutionContext::new(pending.source, pending.controller, decision_maker);
+    ctx.linked_exile_owner = pending.linked_exile_owner.clone();
     ctx.tagged_objects = pending.tagged_objects.clone();
     ctx.tagged_players = pending.tagged_players.clone();
     ctx.effect_outcomes = pending.effect_outcomes.clone();
@@ -680,6 +687,7 @@ pub(crate) fn reflexive_trigger_stack_entry(
         .with_trigger_identity(pending.trigger_identity);
     // References such as "that player" in the follow-up still refer to
     // the event that supplied the enclosing ability's context.
+    entry.linked_exile_owner = pending.linked_exile_owner.clone();
     entry.iteration = pending.iteration;
     entry.triggering_event = pending.triggering_event;
     entry.event_value_amount = pending.event_value_amount;

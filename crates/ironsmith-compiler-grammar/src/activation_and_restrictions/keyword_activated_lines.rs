@@ -103,6 +103,7 @@ pub fn parse_cycling_line_lexed(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),
@@ -189,6 +190,7 @@ pub fn parse_craft_line_lexed(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: ironsmith_core::TotalCost::from_costs(merged_costs),
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![return_transformed]),
                 choices: Vec::new(),
@@ -416,6 +418,7 @@ fn build_equip_ability(
     ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
                 mana_cost: total_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                     EffectAst::subject_verb_attach(TargetAst::Source(None), target),
@@ -470,6 +473,7 @@ pub fn parse_reconfigure_line_lexed(
         .map(|(branch, target)| ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: total_cost.clone(),
                     effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                         EffectAst::subject_verb(

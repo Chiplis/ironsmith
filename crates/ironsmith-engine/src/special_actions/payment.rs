@@ -23,14 +23,14 @@ impl SpecialAction {
             | Self::ActivateManaAbility { .. } => return Ok(None),
             Self::Plot { card_id } => (card_id, TotalCost::mana(plot_cost(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?), PaymentReason::Other),
             Self::Suspend { card_id } => (card_id, TotalCost::mana(suspend_spec(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?.1), PaymentReason::Other),
-            Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0), PaymentReason::Other),
+            Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0), PaymentReason::Foretell),
             Self::Companion { card_id } => (card_id, TotalCost::mana(companion_action_cost()), PaymentReason::Other),
             Self::TurnFaceUp { permanent_id, method } => {
                 let object = game.object(permanent_id).ok_or(ActionError::ObjectNotFound)?;
                 let spec = turn_face_up_spec(game, object, method).map_err(|error| ActionError::ExecutionFailure {
                     source: permanent_id, error: crate::effects::ExecutionError::ContinuousDiscovery(error) })?
                     .ok_or(ActionError::NoSuchAbility)?;
-                (permanent_id, adjusted_turn_face_up_cost(game, player, permanent_id, &spec), PaymentReason::TurnFaceUp)
+                (permanent_id, adjusted_turn_face_up_cost(game, player, permanent_id, &spec), method.payment_reason())
             }
             Self::UnlockRoomDoor { room_id, door } => (room_id, adjusted_room_unlock_cost(game, player, room_id, door)?, PaymentReason::UnlockDoor),
             Self::RollPlanarDie => {

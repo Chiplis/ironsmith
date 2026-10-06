@@ -2,10 +2,32 @@ use crate::tag::TagKeyWalk;
 
 use crate::{Condition, PresentationLabel};
 
+/// Immutable identity of the executable rules definition. This is deliberately
+/// independent of caller-local CardId values and physical card identities.
+/// Compilers use a SHA-256 of the typed executable definition; native authors
+/// explicitly provide a stable identity for their paired rules definition.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub struct LinkedExileDefinition(pub [u8; 32]);
+
+/// A compiler/native-authored pair of linked executable abilities. This
+/// definition identity is copied with the program, rather than read from the
+/// current host card. Runtime acquisitions supply a separate occurrence key.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub struct LinkedExilePair {
+    pub definition: LinkedExileDefinition,
+    pub pair: u32,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ResolutionProgram<E> {
     pub segments: Vec<ResolutionSegment<E>>,
+    /// Explicit provenance of this ability's linked exile producer/consumer.
+    /// Absence does not authorize reading another ability's source-wide links.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub linked_exile_pair: Option<LinkedExilePair>,
     flattened_default_effects: Vec<E>,
 }
 
@@ -43,6 +65,7 @@ impl<E> Default for ResolutionProgram<E> {
     fn default() -> Self {
         Self {
             segments: Vec::new(),
+            linked_exile_pair: None,
             flattened_default_effects: Vec::new(),
         }
     }
@@ -52,6 +75,7 @@ impl<E: Clone> ResolutionProgram<E> {
     pub fn new(segments: Vec<ResolutionSegment<E>>) -> Self {
         let mut program = Self {
             segments,
+            linked_exile_pair: None,
             flattened_default_effects: Vec::new(),
         };
         program.refresh_flattened_defaults();
@@ -64,6 +88,17 @@ impl<E: Clone> ResolutionProgram<E> {
         } else {
             Self::new(vec![ResolutionSegment::from_effects(effects)])
         }
+    }
+
+    pub fn with_linked_exile_pair(mut self, pair: LinkedExilePair) -> Self {
+        self.linked_exile_pair = Some(pair);
+        self
+    }
+
+    /// Replace instructions while retaining the declared ability owner.
+    pub fn replace_segments(&mut self, segments: Vec<ResolutionSegment<E>>) {
+        self.segments = segments;
+        self.refresh_flattened_defaults();
     }
 
     pub fn is_empty(&self) -> bool {
@@ -123,6 +158,16 @@ impl<E: Clone> ResolutionProgram<E> {
     }
 
     pub fn extend(&mut self, other: Self) {
+        if self.segments.is_empty() {
+            self.linked_exile_pair = other.linked_exile_pair;
+        } else if !other.segments.is_empty()
+            && self.linked_exile_pair != other.linked_exile_pair
+        {
+            // Appending a distinct ability is not evidence that its exile
+            // records belong to this pair. Such a composite needs explicit
+            // per-owner instructions before it can read linked quantities.
+            self.linked_exile_pair = None;
+        }
         for segment in other.segments {
             self.push_segment(segment);
         }
@@ -173,7 +218,9 @@ impl<E> ResolutionProgram<E> {
         for segment in self.segments {
             segments.push(segment.try_map_effects(&mut f)?);
         }
-        Ok(ResolutionProgram::new(segments))
+        let mut mapped = ResolutionProgram::new(segments);
+        mapped.linked_exile_pair = self.linked_exile_pair;
+        Ok(mapped)
     }
 }
 
@@ -298,6 +345,49 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ResolutionProgram")
             .field("segments", &self.segments)
+            .field("linked_exile_pair", &self.linked_exile_pair)
             .finish()
+    }
+}
+
+
+#[cfg(test)]
+mod linked_exile_pair_tests {
+    use super::*;
+
+    fn pair(slot: u32) -> LinkedExilePair {
+        LinkedExilePair { definition: LinkedExileDefinition([120; 32]), pair: slot }
+    }
+
+    #[test]
+    fn mapping_and_instruction_replacement_preserve_pair_identity() {
+        let program = ResolutionProgram::from_effects(vec![1u32]).with_linked_exile_pair(pair(0));
+        let mut mapped = program.try_map_effects(|value| Ok::<_, ()>(u64::from(value))).unwrap();
+        mapped.replace_segments(vec![ResolutionSegment::from_effects(vec![2u64])]);
+        assert_eq!(mapped.linked_exile_pair, Some(pair(0)));
+        assert_eq!(mapped.flattened_default_effects(), &[2]);
+    }
+
+    #[test]
+    fn extending_different_owners_does_not_coalesce_pairs() {
+        let mut first = ResolutionProgram::from_effects(vec![1u32]).with_linked_exile_pair(pair(0));
+        first.extend(ResolutionProgram::from_effects(vec![2]).with_linked_exile_pair(pair(1)));
+        assert_eq!(first.linked_exile_pair, None);
+        let mut empty = ResolutionProgram::default();
+        empty.extend(ResolutionProgram::from_effects(vec![3u32]).with_linked_exile_pair(pair(1)));
+        assert_eq!(empty.linked_exile_pair, Some(pair(1)));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn unknown_legacy_program_and_explicit_pair_round_trip() {
+        let legacy = ResolutionProgram::from_effects(vec![1u32]);
+        let json = serde_json::to_value(&legacy).unwrap();
+        assert!(json.get("linked_exile_pair").is_none());
+        let restored: ResolutionProgram<u32> = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.linked_exile_pair, None);
+        let paired = legacy.with_linked_exile_pair(pair(2));
+        let restored: ResolutionProgram<u32> = serde_json::from_str(&serde_json::to_string(&paired).unwrap()).unwrap();
+        assert_eq!(restored.linked_exile_pair, Some(pair(2)));
     }
 }

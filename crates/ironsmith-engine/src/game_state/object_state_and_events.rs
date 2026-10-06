@@ -760,6 +760,18 @@ impl GameState {
         }
     }
 
+    /// Record cloak on the exact battlefield incarnation. Current ward and
+    /// characteristics cannot reconstruct this provenance.
+    pub fn set_cloaked(&mut self, id: ObjectId) {
+        if self.battlefield_flags_mut().cloaked.insert(id) {
+            self.mark_object_characteristics_dirty(id);
+        }
+    }
+
+    pub fn is_cloaked(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.cloaked.contains(&id)
+    }
+
     /// Check if a permanent is manifested.
     pub fn is_manifested(&self, id: ObjectId) -> bool {
         self.battlefield_flags.manifested.contains(&id)
@@ -985,13 +997,13 @@ impl GameState {
             .object_store
             .object_mut(id)
             .is_some_and(|object| object.end_face_down_cast_overlay());
-        let (face_down_changed, manifested_changed) = {
+        let (face_down_changed, origin_changed) = {
             let flags = self.battlefield_flags_mut();
-            (flags.face_down.remove(&id), flags.manifested.remove(&id))
+            (flags.face_down.remove(&id), flags.manifested.remove(&id) | flags.cloaked.remove(&id))
         };
         if face_down_changed {
             self.mark_face_down_state_changed(id);
-        } else if manifested_changed {
+        } else if origin_changed {
             self.mark_object_characteristics_dirty(id);
         }
         face_down_changed
@@ -1833,6 +1845,7 @@ impl GameState {
             flags.flipped.remove(&id);
             flags.face_down.remove(&id);
             flags.manifested.remove(&id);
+            flags.cloaked.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
             flags.rooms_with_no_unlocked_door.remove(&id);
             flags.transform_count.remove(&id);
@@ -2771,6 +2784,22 @@ impl GameState {
     }
 
     /// Get cards exiled by a specific source object ID.
+    /// Record the exact resulting incarnation for this proven ability pair.
+    pub fn add_linked_exile_pair_member(&mut self, owner: crate::linked_exile::LinkedExileOwner, member: ObjectId) {
+        let members = self.exile_tracking_mut().linked_exile_pairs.entry(owner).or_default();
+        if !members.contains(&member) { members.push(member); }
+    }
+
+    pub fn linked_exile_pair_members(&self, owner: &crate::linked_exile::LinkedExileOwner)
+        -> Result<&[ObjectId], crate::effects::ExecutionError>
+    {
+        if self.exile_tracking.linked_exile_pairs_incomplete {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "linked exile ownership was omitted by a source-only state import; full replay required".into()));
+        }
+        Ok(self.exile_tracking.linked_exile_pairs.get(owner).map(Vec::as_slice).unwrap_or(&[]))
+    }
+
     pub fn get_exiled_with_source_links(&self, source_id: ObjectId) -> &[ObjectId] {
         self.exile_tracking
             .exiled_with_source
@@ -2850,7 +2879,10 @@ impl GameState {
     }
 
     pub fn replace_exiled_with_source_links(&mut self, links: HashMap<ObjectId, Vec<ObjectId>>) {
-        self.exile_tracking_mut().exiled_with_source = links;
+        let tracking = self.exile_tracking_mut();
+        tracking.exiled_with_source = links;
+        tracking.linked_exile_pairs.clear();
+        tracking.linked_exile_pairs_incomplete = true;
     }
 
     pub fn replace_return_exiled_when_source_leaves(&mut self, sources: HashSet<ObjectId>) {
@@ -2901,6 +2933,10 @@ impl GameState {
     /// Remove an exiled card from all source-link lists.
     pub fn remove_exiled_with_source_link(&mut self, exiled_card_id: ObjectId) {
         let tracking = self.exile_tracking_mut();
+        tracking.linked_exile_pairs.retain(|_, members| {
+            members.retain(|member| *member != exiled_card_id);
+            !members.is_empty()
+        });
         tracking.exiled_with_source.retain(|_, linked| {
             linked.retain(|id| *id != exiled_card_id);
             !linked.is_empty()
@@ -3196,6 +3232,7 @@ impl GameState {
             } else {
                 let changed = flags.face_down.remove(&target_id);
                 flags.manifested.remove(&target_id);
+                flags.cloaked.remove(&target_id);
                 changed
             }
         };

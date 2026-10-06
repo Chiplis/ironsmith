@@ -32098,6 +32098,9 @@ fn alternative_cast_method_matches_kind(
         ) | (
             AlternativeCastKind::Suspend,
             AlternativeCastingMethod::Suspend { .. }
+        ) | (
+            AlternativeCastKind::Foretell,
+            AlternativeCastingMethod::Foretell { .. }
         )
     )
 }

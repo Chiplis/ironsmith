@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { verifyEndOfMatchDisclosuresWithGame } from '../src/lib/audit-replay.js';
-import { buildPrivateDeckManifest, buildDeckSlotOpening, publicDeckManifest,
+import { CURRENT_AUDIT_PROTOCOL_VERSION, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION,
+  buildPrivateDeckManifest, buildDeckSlotOpening, publicDeckManifest,
   createAuditSessionKey, exportAuditPublicKey, signAuditPayload } from '../src/lib/multiplayer-audit.js';
 
 async function fixture() {
@@ -17,11 +18,13 @@ async function fixture() {
     originSlot: 23, originCommitment: opening.originPositionCommitment };
   let engineChecks = 0;
   const game = {
+    exportPublicAuditCheckpoint: async () => ({ version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION }),
     uiState: async () => ({ game_over: true, players: [{ id: 0 }, { id: 1, has_lost: true }] }),
     endOfMatchDisclosureRequirements: async owner => owner === 1 ? [requirement] : [],
     verifyEndOfMatchDisclosure: async () => { engineChecks++; return { violations: [], missing: [] }; },
   };
-  const transcript = { matchId: 'disclosure-replay', match: { players: [{ name: 'Alice' }, {
+  const transcript = { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    matchId: 'disclosure-replay', match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, players: [{ name: 'Alice' }, {
     name: 'Bob', index: 1, auditPublicKey: await exportAuditPublicKey(key, webcrypto),
     deckAuditManifest: publicDeckManifest(manifest),
   }] }, endOfMatchDisclosures: [] };

@@ -79,3 +79,66 @@ restore the exact hand card, untapped land and mana pool, with no exile designat
 or Foretell action history, before a subsequent native action pays the reduced
 price and succeeds. This adds the pending/rollback boundaries without changing
 the shared payment owner.
+
+## Reconstructed Niko Defies Destiny
+
+Niko Defies Destiny (`e79bf038-071e-448e-ad95-234c207a9575`) is reconstructed
+against recovery base `69a946ec`, with prerequisite `8e30fe828`. Its exact frozen
+fixture includes the Saga reminder and all three chapters. The new source
+contracts compile this complete body through the direct route and through
+validated, serialized, decoded artifacts. Those operations are authored in the
+contracts only: no build, compiler probe, test, formatter, or corpus execution
+was performed for this reconstruction. No retained historical source hash or
+historical execution result is claimed.
+
+Chapter I uses the existing gain-life and counted-object primitives: twice the
+number of cards owned by the controller that are in exile and retain an actual
+Foretell designation. This filter deliberately does not ask whether the card
+currently has the Foretell capability. Chapter II uses the existing restricted
+mana composition and typed transaction predicate: `Foretell` purpose OR
+(`CastSpell` purpose AND source has `AlternativeCastKind::Foretell`). The second
+arm does not demand an exile origin, prior designation, or a Foretell casting
+price. It therefore pays an ordinary face-up cast of a card with Foretell as
+well as a later face-up Foretell cast. It cannot pay another action merely
+because that action's source is a physical card with Foretell.
+
+Chapter III uses the existing targeted graveyard-to-hand operation. Its target
+filter carries all three semantic qualifiers together: the controller's
+graveyard, ownership by that player, and Foretell capability. It does not reuse
+the prior-designation predicate, which a zone change retires. Saga entry lore,
+precombat lore progression, target identity, and final-chapter sacrifice remain
+owned by the existing engine rules rather than card-specific executors.
+
+The capability discriminator is appended to the shared alternative-cast enum and
+travels through the existing grammar/filter/rendering maps and shared runtime
+leaf. A face-down spell must not expose its physical card's Foretell capability.
+The selected face-up Foretell casting projection clears the concealed exile
+origin in its isolated candidate state before payment evaluation; the real exile
+object remains concealed until the casting transaction commits. These are typed
+facts at their existing owners, following `parser-lowering-dry.md`; no Oracle
+string matching or Niko-name special case belongs in lowering or payment.
+
+`crates/ironsmith-tools/tests/niko_defies_destiny.rs` contains the new unrun native
+contracts. They require a paid three-mana Saga cast, actual entry lore, opponent
+and controller precombat-main transitions through `TurnRunner`, and sacrifice
+only after the final chapter leaves the stack. Chapter-I controls include zero
+and multiple owned foretold cards, an opponent's foretold card, undesignated exile
+cards, and former foretold cards moved to hand or graveyard. Chapter-II scenarios
+spend the actual produced white/blue units on the real Foretell special action,
+an ordinary full-Cosmos cast, and a later Foretell cast, including producer
+departure, cancellation with exact unit restoration followed by retry, and
+funded same-turn Foretell-cast denial. Unrelated spell and activated-ability
+controls require unrestricted payment and leave the restricted units untouched.
+A synthetic card with both Morph and Foretell isolates the concealed-capability
+boundary: its face-down cast cannot spend those units, while its ordinary and
+later face-up casts can.
+
+Chapter III records the actual target prompt, requires exactly the two eligible
+own-graveyard cards, excludes other owners/zones and cards without Foretell, and
+checks successful return versus a target that leaves and reenters the graveyard
+as a new incarnation. Both resolution paths require final Saga sacrifice and no
+fallback retargeting. Grammar contracts in `tests/shard_00.rs` and
+`tests/shard_02.rs` separately assert the exact chapter-II disjunction and the
+complete chapter-III qualifier. The full-body lowering contract additionally
+requires chapter numbers I, II, III, the scaled designation count, exact white
+and blue production, and the target's owner/zone/capability constraints.

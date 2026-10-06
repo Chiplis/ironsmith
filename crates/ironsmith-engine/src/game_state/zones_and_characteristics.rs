@@ -3731,7 +3731,17 @@ impl GameState {
             return;
         }
         self.remove_from_zone_index(id, zone, owner);
+        // Casting face up from concealed exile is not a turn-face-up action.
+        // The isolated declaration clears old concealment; its caller reapplies
+        // the face-down flag only for a declared face-down cast.
+        let concealed = {
+            let flags = self.battlefield_flags_mut();
+            flags.manifested.remove(&id);
+            flags.cloaked.remove(&id);
+            flags.face_down.remove(&id)
+        };
         self.object_mut(id).expect("proposal source exists").zone = Zone::Stack;
+        if concealed { self.mark_face_down_state_changed(id); }
     }
 
     /// Removes an object ID from its zone index.

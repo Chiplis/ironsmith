@@ -110,6 +110,9 @@ impl EffectExecutor for ExileUntilEffect {
                 && result.final_zone == Zone::Exile
             {
                 for &new_id in &result.new_object_ids {
+                    if let Some(owner) = &ctx.linked_exile_owner {
+                        game.add_linked_exile_pair_member(owner.clone(), new_id);
+                    }
                     if self.face_down {
                         game.set_face_down(new_id);
                     }

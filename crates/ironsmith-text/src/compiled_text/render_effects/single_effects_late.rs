@@ -5955,6 +5955,20 @@ fn describe_payment_action_predicate(
 ) -> Option<String> {
     use crate::ability::{ManaPaymentPredicate as P, ManaPaymentPurpose as Purpose};
     match predicate {
+        P::ActivatedAbilityKeyword(keyword) => Some(match keyword {
+            ironsmith_core::ActivatedAbilityKeyword::Equip => "activate an equip ability",
+            ironsmith_core::ActivatedAbilityKeyword::PowerUp => "activate power-up abilities",
+        }.to_string()),
+        P::DisturbCost => Some("pay a disturb cost".to_string()),
+        P::Purpose(Purpose::Foretell) => Some("foretell cards".to_string()),
+        P::AnyOf(parts) if parts.as_slice() == [
+            P::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::Morph),
+            P::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::Megamorph),
+        ] => Some("pay a morph cost".to_string()),
+        P::All(parts) if parts.as_slice() == [
+            P::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::PrintedManaCost),
+            P::SourceManifested,
+        ] => Some("pay a mana cost to turn a manifested creature face up".to_string()),
         P::AnyOf(parts) if !parts.is_empty() => {
             let parts = parts
                 .iter()

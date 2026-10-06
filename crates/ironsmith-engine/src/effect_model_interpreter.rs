@@ -2359,7 +2359,7 @@ pub fn prune_redundant_target_only_effects_in_program(
             ));
         }
     }
-    *program = crate::resolution::ResolutionProgram::new(segments);
+    program.replace_segments(segments);
 }
 
 fn convert_effect_mode<M, H>(

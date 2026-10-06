@@ -8,6 +8,13 @@ use crate::ids::CardId;
 use crate::target::ObjectFilter;
 use crate::types::CardType;
 
+fn linked_owner(source: ObjectId) -> crate::linked_exile::LinkedExileOwner {
+    crate::linked_exile::LinkedExileOwner::capture(source,
+        Some(ironsmith_core::LinkedExilePair {
+            definition: ironsmith_core::LinkedExileDefinition([91; 32]), pair: 0,
+        }), Some(&crate::continuous::AbilityOrigin::Printed(0))).unwrap()
+}
+
 fn fixture() -> (GameState, ObjectId, PlayerId) {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = game.players[0].id;
@@ -64,6 +71,7 @@ fn source_linked_characteristics_use_the_live_incarnation_set_and_checked_wide_s
     let (mut game, source, alice) = fixture();
     let value = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
     let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.linked_exile_owner = Some(linked_owner(source));
     assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
     let card = CardBuilder::new(CardId::new(), "Linked quantity witness")
         .card_types(vec![CardType::Creature])
@@ -71,7 +79,9 @@ fn source_linked_characteristics_use_the_live_incarnation_set_and_checked_wide_s
     let first = game.create_object_from_card(&card, alice, Zone::Exile);
     let second = game.create_object_from_card(&card, alice, Zone::Exile);
     game.add_exiled_with_source_link(source, first);
+    game.add_linked_exile_pair_member(linked_owner(source), first);
     game.add_exiled_with_source_link(source, second);
+    game.add_linked_exile_pair_member(linked_owner(source), second);
     assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 2 * i64::from(i32::MAX));
     ctx.tag_object(crate::tag::SOURCE_EXILED_TAG, ObjectSnapshot::from_object(game.object(first).unwrap(), &game));
     game.move_object_by_game_rule(first, Zone::Hand).unwrap();
@@ -92,6 +102,7 @@ fn missing_original_sacrifice_is_an_error_while_completed_empty_is_zero_for_scal
         Value::Count(ObjectFilter::tagged(tag.clone())),
     ] {
         let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.linked_exile_owner = Some(linked_owner(source));
         assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)), Err(ExecutionError::IncompleteEvidence(_))));
         ctx.set_tagged_objects(tag.clone(), Vec::new());
         assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
@@ -110,8 +121,10 @@ fn source_linked_split_card_keeps_checked_combined_mana_value_and_face_down_zero
     object.linked_face_layout = crate::card::LinkedFaceLayout::Split;
     object.linked_face_mana_cost = Some(crate::ManaCost::from_pips(vec![vec![crate::ManaSymbol::Generic(3)]]).into());
     game.add_exiled_with_source_link(source, linked);
+    game.add_linked_exile_pair_member(linked_owner(source), linked);
     let value = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
-    let ctx = ExecutionContext::new_default(source, alice);
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.linked_exile_owner = Some(linked_owner(source));
     assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 5);
     assert!(game.set_face_down(linked));
     assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
@@ -127,10 +140,12 @@ fn direct_and_dispatched_linked_quantity_failures_leave_no_partial_stat_effect()
         let linked = game.create_object_from_card(&card, alice, Zone::Exile);
         let link = if invalid { ObjectId::from_raw(u64::MAX) } else { linked };
         game.add_exiled_with_source_link(source, link);
+        game.add_linked_exile_pair_member(linked_owner(source), link);
         if !invalid { game.object_mut(linked).unwrap().counters.insert(crate::CounterType::PlusOnePlusOne, u32::MAX); }
         let number = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
         let pump = crate::effects::ModifyPowerToughnessEffect::new(ChooseSpec::SpecificObject(source), number.clone(), number, crate::effect::Until::EndOfTurn);
         let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.linked_exile_owner = Some(linked_owner(source));
         let ids = game.next_object_id_counter(); let history = game.turn_store.turn_history.event_records.len();
         let provenance = game.provenance_graph().node_count();
         let outcome = if dispatched { crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(pump.clone()), &mut ctx) }
@@ -169,10 +184,12 @@ fn linked_quantity_propagates_incomplete_static_discovery_without_a_printed_fall
             .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(7, 8)).build();
         let linked = game.create_object_from_card(&card, alice, Zone::Exile);
         game.add_exiled_with_source_link(source, linked);
+    game.add_linked_exile_pair_member(linked_owner(source), linked);
         game.object_mut(source).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::new(UnboundedLinkedSource(Default::default()))));
         let value = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
-        let ctx = ExecutionContext::new_default(source, alice);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.linked_exile_owner = Some(linked_owner(source));
         assert!(matches!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)),
             Err(ExecutionError::ContinuousDiscovery(crate::static_ability_processor::StaticEffectDiscoveryError::RoundLimit { .. }))));
     }).unwrap().join().unwrap();
@@ -818,4 +835,29 @@ fn an_authoritative_empty_object_quantity_is_zero_but_absent_evidence_still_erro
         Err(ExecutionError::InvalidTarget)));
     ctx.set_tagged_objects(tag, Vec::new());
     assert_eq!(resolve_wide(&value, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0);
+}
+
+
+#[test]
+fn linked_scalar_unknown_native_and_source_only_import_require_recovery() {
+    let (mut game, source, alice) = fixture();
+    let card = CardBuilder::new(CardId::new(), "Unrelated native exile")
+        .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(9, 9)).build();
+    let linked = game.create_object_from_card(&card, alice, Zone::Exile);
+    game.add_exiled_with_source_link(source, linked);
+    let number = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    assert!(matches!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)),
+        Err(ExecutionError::IncompleteEvidence(_))), "native metadata is required even when source-wide links exist");
+    ctx.linked_exile_owner = Some(linked_owner(source));
+    assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0,
+        "a proven pair with no members is known zero");
+    game.add_linked_exile_pair_member(linked_owner(source), linked);
+    let native_checkpoint = game.clone();
+    assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&native_checkpoint, &ctx)).unwrap(), 9);
+    game.replace_exiled_with_source_links(HashMap::from([(source, vec![linked])]));
+    assert!(matches!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)),
+        Err(ExecutionError::IncompleteEvidence(_))), "source-only import must never claim empty complete pair state");
+    game = native_checkpoint;
+    assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 9);
 }

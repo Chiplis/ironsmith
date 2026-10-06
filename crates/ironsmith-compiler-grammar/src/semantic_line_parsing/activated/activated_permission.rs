@@ -274,6 +274,7 @@ pub(super) fn parse_activated_line_impl(
         let parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                     mana_cost: normalized_cost,
                     effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                         EffectAst::subject_verb_put_counters(
@@ -311,6 +312,7 @@ pub(super) fn parse_activated_line_impl(
         let mut parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                     mana_cost: normalized_cost.clone(),
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],
@@ -357,6 +359,7 @@ pub(super) fn parse_activated_line_impl(
             let mut parsed = ParsedAbility {
                 ability: Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                         mana_cost: normalized_cost.clone(),
                         effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
@@ -404,6 +407,7 @@ pub(super) fn parse_activated_line_impl(
     let mut parsed = ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                 mana_cost: normalized_cost,
                 effects: ironsmith_core::ResolutionProgram::default(),
                 choices: vec![],

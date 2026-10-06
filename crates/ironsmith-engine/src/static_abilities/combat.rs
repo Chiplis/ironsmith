@@ -727,6 +727,7 @@ impl StaticAbilityKind for ExertAttack {
                     return Err("Exert source left the battlefield".to_string());
                 };
                 trigger_queue.add(TriggeredAbilityEntry {
+                    linked_exile_owner: None,
                     source,
                     controller,
                     x_value: source_object.x_value,
@@ -901,6 +902,7 @@ impl StaticAbilityKind for EnlistAttack {
         );
         game.queue_trigger_event(enlist_provenance, enlist_event.clone());
         trigger_queue.add(TriggeredAbilityEntry {
+            linked_exile_owner: None,
             source,
             controller,
             x_value: source_object.x_value,

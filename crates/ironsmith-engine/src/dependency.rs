@@ -3596,6 +3596,7 @@ mod tests {
         );
         land.abilities_mut().push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::gain_life(1),

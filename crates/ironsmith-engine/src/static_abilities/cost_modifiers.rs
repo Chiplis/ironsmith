@@ -243,6 +243,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 
@@ -1519,6 +1520,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
             | AlternativeCastKind::Madness
             | AlternativeCastKind::Miracle
             | AlternativeCastKind::Suspend
+            | AlternativeCastKind::Foretell
     ) || !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
@@ -1543,6 +1545,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
         AlternativeCastKind::Madness => "Madness",
         AlternativeCastKind::Miracle => "Miracle",
         AlternativeCastKind::Suspend => "Suspend",
+        AlternativeCastKind::Foretell => "Foretell",
     };
 
     match filter.cast_by.as_ref() {

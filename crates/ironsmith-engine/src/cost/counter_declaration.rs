@@ -1,5 +1,6 @@
 //! A prospective cost choice is not a paid outcome. Only announcement target
 //! views read this quantity; resolution reads the actual retained cost result.
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::{CostPaymentError, TotalCost};
 use crate::costs::Cost;
 use crate::effect::{Effect, EffectId, Value};
@@ -112,7 +113,7 @@ pub(crate) fn preflight(game: &GameState, source: ObjectId, ability_index: usize
             if let Some(part) = component.mana_cost_ref() { mana = crate::decision::add_mana_cost(&mana, part); }
             else { nonmana.push(component.clone()); }
         }
-        let reason = crate::costs::PaymentReason::ActivateAbility;
+        let reason = activated.payment_reason(game, source, payer);
         if !view.can_potentially_pay_with_reason(payer, Some(source), &mana, 0, reason) { return false; }
         let mut execution = crate::effects::ExecutionContext::new_default(source, payer).with_tagged_objects(references.clone());
         execution.x_value = Some(x);

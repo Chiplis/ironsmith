@@ -1972,35 +1972,11 @@ fn activated_minimum_x_cost_is_payable(
 }
 
 pub(crate) fn is_equip_ability(
-    game: &GameState,
-    source: ObjectId,
+    _game: &GameState,
+    _source: ObjectId,
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
-    let Some(source_object) = game.object(source) else {
-        return false;
-    };
-    if !source_object
-        .subtypes
-        .contains(&crate::types::Subtype::Equipment)
-    {
-        return false;
-    }
-    activated
-        .effects
-        .flattened_default_effects()
-        .iter()
-        .any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::AttachToEffect>()
-                .is_some()
-                // Printed "Equip {N}" compiles to the Equipment attaching
-                // itself (CR 702.6a).
-                || effect
-                    .downcast_ref::<crate::effects::AttachObjectsEffect>()
-                    .is_some_and(|attach| {
-                        matches!(attach.objects, crate::target::ChooseSpec::Source)
-                    })
-        })
+    activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip)
 }
 
 fn player_may_activate_loyalty_abilities_any_time(
@@ -2418,7 +2394,7 @@ fn activation_precheck_with_view(
             return None;
         }
 
-        let reason = crate::costs::PaymentReason::ActivateAbility;
+        let reason = activated.payment_reason(game, source, controller);
         let loyalty_costs_payable = match activated.mana_cost.kind() {
             ironsmith_core::TotalCostKind::All(costs) => {
                 loyalty_negative_costs_payable(game, source, costs)
@@ -2520,7 +2496,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    let reason = crate::costs::PaymentReason::ActivateAbility;
+    let reason = activated.payment_reason(game, source, controller);
     let loyalty_costs_payable = match activated.mana_cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
             loyalty_negative_costs_payable(game, source, costs)
@@ -2621,8 +2597,8 @@ fn activation_cost_is_payable_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     _view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
-    let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
         .validate_cost_for_payment_reason(controller, source, cost, reason)
         .is_err()
@@ -2649,6 +2625,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
     source: ObjectId,
     cost: &crate::cost::TotalCost,
     view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(components) => {
@@ -2673,6 +2650,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
                         source,
                         paired_cost,
                         view,
+                        reason,
                     ) {
                         return false;
                     }
@@ -2686,7 +2664,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
                         source,
                         &components,
                         idx,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        reason,
                         None,
                     ) {
                         return false;
@@ -2701,6 +2679,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
                     source,
                     &components[idx],
                     view,
+                    reason,
                 ) {
                     return false;
                 }
@@ -2709,7 +2688,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
             true
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-            activation_total_cost_is_payable_with_view(game, controller, source, branch, view)
+            activation_total_cost_is_payable_with_view(game, controller, source, branch, view, reason)
         }),
     }
 }
@@ -2720,8 +2699,8 @@ fn activation_cost_branch_is_payable_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
-    let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
         .validate_cost_for_payment_reason(controller, source, cost, reason)
         .is_err()
@@ -2751,6 +2730,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
     source: ObjectId,
     cost: &crate::cost::TotalCost,
     view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(components) => {
@@ -2775,6 +2755,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
                         source,
                         paired_cost,
                         view,
+                        reason,
                     ) {
                         return false;
                     }
@@ -2788,7 +2769,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
                         source,
                         &components,
                         idx,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        reason,
                         None,
                     ) {
                         return false;
@@ -2803,6 +2784,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
                     source,
                     &components[idx],
                     view,
+                    reason,
                 ) {
                     return false;
                 }
@@ -2812,7 +2794,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
             activation_total_cost_branch_is_payable_with_view(
-                game, controller, source, branch, view,
+                game, controller, source, branch, view, reason,
             )
         }),
     }
@@ -2920,7 +2902,7 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         }
         return false;
     }
-    if !activation_total_cost_is_payable_with_view(game, controller, source, &total_cost, view) {
+    if !activation_total_cost_is_payable_with_view(game, controller, source, &total_cost, view, activated.payment_reason(game, source, controller)) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_total_ms(total_started_at.elapsed_ms());
         }

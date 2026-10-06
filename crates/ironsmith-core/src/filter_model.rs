@@ -1420,6 +1420,7 @@ pub enum AlternativeCastKind {
     Madness,
     Miracle,
     Suspend,
+    Foretell,
 }
 
 /// Counter-state qualifier for object filters.
@@ -7479,6 +7480,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 

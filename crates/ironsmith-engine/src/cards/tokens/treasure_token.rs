@@ -14,6 +14,7 @@ use crate::zone::Zone;
 pub fn treasure_token_definition() -> CardDefinition {
     let mana_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::add_mana_of_any_color(1),

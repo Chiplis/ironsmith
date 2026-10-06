@@ -21,6 +21,7 @@ pub fn map_token_definition() -> CardDefinition {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
     let explore_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]])),
                 Cost::tap(),

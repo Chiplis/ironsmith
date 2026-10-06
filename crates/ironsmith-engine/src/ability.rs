@@ -44,6 +44,8 @@ pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> Option<String
 }
 
 pub trait ActivatedAbilityRuntimeExt {
+    fn payment_reason(&self, game: &crate::game_state::GameState, source: ObjectId, controller: PlayerId) -> crate::costs::PaymentReason;
+
     fn could_add_mana(
         &self,
         game: &crate::game_state::GameState,
@@ -67,6 +69,10 @@ pub trait ActivatedAbilityRuntimeExt {
 }
 
 impl ActivatedAbilityRuntimeExt for ActivatedAbility {
+    fn payment_reason(&self, game: &crate::game_state::GameState, source: ObjectId, controller: PlayerId) -> crate::costs::PaymentReason {
+        crate::costs::PaymentReason::activation(self.keyword, self.is_runtime_mana_ability(game, source, controller))
+    }
+
     fn could_add_mana(
         &self,
         _game: &crate::game_state::GameState,

@@ -742,6 +742,7 @@ fn exile_cycling_card_to_graveyard_replacement_matches_battlefield_zone_change()
     let source = game.create_object_from_definition(&source_card, alice, Zone::Battlefield);
     let cycling_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: crate::cost::TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![
                     crate::mana::ManaSymbol::Generic(2),

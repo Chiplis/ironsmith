@@ -20,6 +20,7 @@ pub fn junk_token_definition() -> CardDefinition {
     let exile_tag = crate::tag::TagKey::from("junk_exiled_card");
     let exile_and_play_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::new(

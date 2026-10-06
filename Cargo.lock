@@ -1374,6 +1374,8 @@ dependencies = [
  "ironsmith-compiler-syntax",
  "ironsmith-core",
  "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

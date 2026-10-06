@@ -52,7 +52,7 @@ impl EffectExecutor for ExileTaggedWhenSourceLeavesEffect {
                 )],
                 true,
                 controller_id,
-            );
+            ).with_linked_exile_owner(ctx.linked_exile_owner.clone());
             scheduled += queue_delayed_from_template(
                 game,
                 DelayedWatcherIdentity::combined(vec![ctx.source]),

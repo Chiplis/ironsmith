@@ -817,6 +817,7 @@ impl CardDefinitionBuilder {
         ));
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
                 choices: Vec::new(),
@@ -848,6 +849,7 @@ impl CardDefinitionBuilder {
             crate::effect::Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![saddle]),
                 choices: Vec::new(),
@@ -945,6 +947,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     crate::effect::Effect::put_counters(
@@ -997,6 +1000,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     create_embalmed_copy,
@@ -1078,6 +1082,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     create_eternalized_copy,

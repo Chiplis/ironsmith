@@ -182,6 +182,7 @@ mod tests {
         ctx.set_tagged_objects(
             "__chosen_name__",
             vec![ObjectSnapshot {
+                ability_origins: None,
                 chosen_subtype: None,
                 secret_chosen_subtype: None,
                 noted_life_total: None,

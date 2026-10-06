@@ -5883,6 +5883,7 @@ fn lower_compiler_activated_ability_core(
         mana_usage_restrictions.push(lowered);
     }
     Ok(crate::ability::ActivatedAbility {
+        keyword: activated.keyword,
         mana_cost: crate::lowering::cost_materialization::materialize_compiler_activation_total_cost(
             &activated.mana_cost,
         )?,

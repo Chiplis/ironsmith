@@ -54,6 +54,7 @@ fn queued_upkeep_trigger(
         presentation_label: None,
     };
     TriggeredAbilityEntry {
+        linked_exile_owner: None,
         source,
         controller,
         x_value: None,
@@ -74,6 +75,7 @@ fn queued_upkeep_trigger(
 
 fn delayed_upkeep_trigger(source: ObjectId, controller: PlayerId) -> DelayedTrigger {
     DelayedTrigger {
+        linked_exile_owner: None,
         trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
         effects: ResolutionProgram::from_effects(vec![Effect::gain_life(1)]),
         one_shot: true,

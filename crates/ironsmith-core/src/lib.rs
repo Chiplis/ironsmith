@@ -52,8 +52,8 @@ pub mod zone;
 pub struct WorkspaceSplitMarker;
 
 pub use ability_model::{
-    Ability, AbilityKind, ActivatedAbility, ActivatedPresentationLabel, ActivationTiming,
-    LevelAbility, ManaPaymentPredicate, ManaPaymentPurpose, ManaSpendAbilityGrantDuration,
+    Ability, AbilityKind, ActivatedAbility, ActivatedAbilityKeyword, ActivatedPresentationLabel, ActivationTiming,
+    LevelAbility, ManaPaymentPredicate, ManaPaymentPurpose, ManaTurnFaceUpMethod, ManaSpendAbilityGrantDuration,
     ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaSpendPayload, ManaUsageRestriction,
     ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel, ProtectionFrom,
     RestrictedManaUnit, TriggeredAbility,
@@ -213,7 +213,7 @@ pub use ids::{
 pub use interned::{InternedI32Slice, InternedStr};
 pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
-pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
+pub use resolution_model::{LinkedExileDefinition, LinkedExilePair, ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;

@@ -47,6 +47,7 @@ pub fn parse_transfigure(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbilit
         ability: Ability {
             kind: AbilityKind::Activated(
                 crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                    keyword: None,
                     mana_cost,
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: Vec::new(),

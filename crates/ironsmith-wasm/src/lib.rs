@@ -1011,10 +1011,7 @@ fn mana_activation_views_from_inventory(
     options
         .iter()
         .filter(|option| {
-            if matches!(
-                request.reason,
-                ironsmith::costs::PaymentReason::ActivateManaAbility
-            ) && option.source == request.source
+            if request.reason.is_mana_ability() && option.source == request.source
             {
                 return false;
             }

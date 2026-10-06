@@ -490,7 +490,8 @@ pub fn lower_normalized_card_ast_with_facts(
     }
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
-    let definition = builder.build();
+    let mut definition = builder.build();
+    super::linked_exile::bind_scalar_linked_exile(&mut definition);
     drop(_document_references);
     Ok(LoweredCardDocument {
         symbols: symbols.into_inner(),

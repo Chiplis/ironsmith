@@ -984,6 +984,7 @@ pub(crate) fn parse_nonstatic_keyword_action_as_object_ability(
                 ability: Ability {
                     kind: AbilityKind::Activated(
                         crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                            keyword: None,
                             mana_cost: cost,
                             effects: ironsmith_core::ResolutionProgram::from_effects(vec![animate]),
                             choices: Vec::new(),

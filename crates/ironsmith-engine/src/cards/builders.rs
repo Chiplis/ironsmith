@@ -1957,6 +1957,7 @@ impl CardDefinitionBuilder {
                 ));
                 self.with_ability(Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        keyword: None,
                         mana_cost: cost,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
                         choices: Vec::new(),
@@ -1982,6 +1983,7 @@ impl CardDefinitionBuilder {
                 let saddle = Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
                 self.with_ability(Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        keyword: None,
                         mana_cost: cost,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![saddle]),
                         choices: Vec::new(),
@@ -2830,6 +2832,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::plus_one_counters(1, ChooseSpec::Source),
@@ -2857,6 +2860,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::UnearthEffect::new(),
@@ -2892,6 +2896,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: ResolutionProgram::from_effects(vec![create_embalmed_copy]),
                 choices: vec![],
@@ -2926,6 +2931,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: ResolutionProgram::from_effects(vec![create_eternalized_copy]),
                 choices: vec![],
@@ -2976,6 +2982,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::put_counters(
@@ -3009,6 +3016,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::NinjutsuEffect::new(),
@@ -4718,6 +4726,7 @@ impl CardDefinitionBuilder {
 
         let ability = Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::mana(cost),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::put_counters_on_source(CounterType::Level, 1),

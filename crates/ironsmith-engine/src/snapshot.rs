@@ -383,6 +383,10 @@ pub struct ObjectSnapshot {
     /// Abilities the object had. Not encoded (see the type docs).
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
+    /// Exact historical acquisitions paired with abilities. Public claims
+    /// intentionally omit this; a linked reader then requires native replay.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub ability_origins: Option<Arc<Vec<crate::continuous::AbilityOrigin>>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// Frozen layer-1 copiable values at the instant this snapshot was made.
@@ -532,6 +536,7 @@ impl ObjectSnapshot {
             loyalty: None,
             defense: None,
             abilities: Arc::new(Vec::new()),
+            ability_origins: None,
             aura_attach_filter: None,
             copiable_values: CopiableValues::default(),
             x_value: None,
@@ -575,6 +580,7 @@ impl ObjectSnapshot {
         self.card.is_none()
             && self.other_face.is_none()
             && self.abilities.is_empty()
+            && self.ability_origins.is_none()
             && self.copiable_values.abilities.is_empty()
             && self.secret_chosen_subtype.is_none()
             && self
@@ -598,6 +604,7 @@ impl ObjectSnapshot {
         self.card = None;
         self.other_face = None;
         self.abilities = Arc::new(Vec::new());
+        self.ability_origins = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
         self.secret_chosen_subtype = None;
     }
@@ -668,6 +675,8 @@ impl ObjectSnapshot {
             loyalty: obj.loyalty(),
             defense: obj.base_defense,
             abilities: obj.abilities.clone(),
+            ability_origins: Some(Arc::new((0..obj.abilities.len())
+                .map(crate::continuous::AbilityOrigin::Printed).collect())),
             aura_attach_filter: obj.aura_attach_filter_owned(),
             chosen_subtype: game.chosen_subtype(obj.id),
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
@@ -874,6 +883,8 @@ impl ObjectSnapshot {
             snapshot.supertypes = calculated.supertypes.to_vec();
             snapshot.colors = calculated.colors;
             snapshot.abilities = Arc::new(calculated.abilities.to_vec());
+            snapshot.ability_origins = Some(Arc::new((0..calculated.abilities.len())
+                .map(|slot| calculated.abilities.origin(slot).expect("calculated origin").clone()).collect()));
         }
     }
 
@@ -1082,6 +1093,7 @@ impl ObjectSnapshot {
             loyalty: None,
             defense: None,
             abilities: Arc::new(vec![]),
+            ability_origins: None,
             aura_attach_filter: None,
             copiable_values: CopiableValues {
                 name: name.to_string(),

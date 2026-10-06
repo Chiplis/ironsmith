@@ -505,7 +505,7 @@ fn useful_manual_mana_abilities_with_resolved(
     let before = game.covered_mana_payment_pips(request);
     let mut result = Vec::new();
     let mut unconstrained = request.clone();
-    if request.reason != crate::costs::PaymentReason::ActivateManaAbility {
+    if !request.reason.is_mana_ability() {
         unconstrained.preferences.excluded_sources.clear();
     }
     let analysis = super::sources::ManaSourceAnalysis::new(game);

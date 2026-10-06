@@ -1584,6 +1584,7 @@ where
             FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(ActivatedAbility {
+                keyword: activated.keyword,
                 mana_cost: map_total_cost(activated.mana_cost, map_cost)?,
                 effects: activated.effects.try_map_effects(&mut *map_effect)?,
                 choices: activated.choices,

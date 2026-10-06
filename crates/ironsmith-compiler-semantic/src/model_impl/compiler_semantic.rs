@@ -228,6 +228,7 @@ pub struct ParsedConditionalModeChange {
 
 #[derive(Debug, Clone)]
 pub struct ParsedModalActivatedHeader {
+    pub keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
     pub mana_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
     pub functional_zones: Vec<Zone>,
     pub timing: ActivationTiming,

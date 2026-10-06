@@ -1,5 +1,6 @@
 //! Announcement-time public identities needed to determine costs or targets.
 //! This does not pay costs, reveal hidden cards, or manufacture unknown tags.
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::{Cost, CostPaymentError, TotalCost};
 use crate::effect::Effect;
 use crate::effects::{ChooseObjectsEffect, ExecutionContext};
@@ -376,7 +377,7 @@ pub(crate) fn activation_reference_preflight(
             };
             let view = crate::derived_view::DerivedGameView::new(game)
                 .with_target_reference_bindings(context.clone());
-            let reason = crate::costs::PaymentReason::ActivateAbility;
+            let reason = activated.payment_reason(game, source, payer);
             let mut nonmana = Vec::new();
             let mut combined_mana = crate::mana::ManaCost::new();
             for component in components {
@@ -485,6 +486,8 @@ pub(crate) fn activation_branch_preflight_checked(
         Ok(
             crate::decision::activation_total_cost_branch_is_payable_with_view(
                 checked, payer, source, branch, &view,
+                activated.map(|ability| ability.payment_reason(checked, source, payer))
+                    .unwrap_or(crate::costs::PaymentReason::ActivateAbility),
             ),
         )
     })

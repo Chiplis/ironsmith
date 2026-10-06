@@ -130,6 +130,13 @@ pub enum ActivatedPresentationKind {
 }
 
 impl ActivatedPresentationKind {
+    pub fn keyword(self) -> Option<ironsmith_core::ActivatedAbilityKeyword> {
+        match self {
+            Self::PowerUp => Some(ironsmith_core::ActivatedAbilityKeyword::PowerUp),
+            _ => None,
+        }
+    }
+
     pub fn display(self) -> &'static str {
         match self {
             Self::Throw => "Throw",

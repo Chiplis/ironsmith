@@ -3471,6 +3471,7 @@ fn equipment_token_compactor_requires_pump_clause() {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
     let equip = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: crate::cost::TotalCost::free(),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 crate::effect::Effect::attach_to(target.clone()),

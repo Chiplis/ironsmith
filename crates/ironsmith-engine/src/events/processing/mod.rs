@@ -2150,6 +2150,7 @@ fn queue_madness_trigger(
     let triggering_event =
         crate::triggers::TriggerEvent::new_with_provenance(discarded, provenance);
     game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
+        linked_exile_owner: None,
         source: exiled_id,
         controller: owner,
         x_value: None,

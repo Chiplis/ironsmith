@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 5 requires canonical text and ability labels on every executable
-// definition, including nested templates. Older artifacts dropped that
-// metadata and must be rebuilt rather than silently inventing empty values.
-pub const FORMAT_VERSION: u32 = 5;
+// Version 6 requires compiler-preserved activated keyword identity. Old
+// executable Equip/Power-up bodies must be rebuilt, never guessed from labels
+// or attachment effects. Canonical text/ability metadata remains required.
+pub const FORMAT_VERSION: u32 = 6;
 pub const ENGINE_SCHEMA_HASH: &str =
     "f4872928326e3ea14e25666b90d7eb4ce9add2d18c628c2c1936c96f100e4d96";
 
@@ -450,8 +450,12 @@ mod tests {
     fn previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata() {
         let mut previous = fixture();
         previous.format_version = 4;
-        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 5 })));
+        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 6 })));
         assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v3.json")).is_err());
+        let mut missing_keyword_identity = fixture();
+        missing_keyword_identity.format_version = 5;
+        missing_keyword_identity.refresh_checksum();
+        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 6 })));
     }
 
     #[test]

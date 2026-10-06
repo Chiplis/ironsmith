@@ -802,3 +802,38 @@ fn printed_discard_cost_is_required_by_both_cast_legality_paths() {
         );
     }
 }
+
+
+#[test]
+fn supplied_same_id_and_price_cast_views_do_not_share_root_payment_memo() {
+    use crate::ability::{ManaPaymentPredicate as P, ManaPaymentPurpose, ManaUsageRestriction, RestrictedManaUnit};
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId(0);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Physical creature")
+        .card_types(vec![CardType::Creature]).mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue])).build();
+    let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let card = game.create_object_from_definition(&definition, alice, Zone::Hand);
+    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Blue, 1);
+    game.player_mut(alice).unwrap().restricted_mana.push(RestrictedManaUnit {
+        symbol: ManaSymbol::Blue, source, source_controller: Some(alice), source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(P::All(vec![P::Purpose(ManaPaymentPurpose::CastSpell),
+                P::SourceMatches(ObjectFilter::default().with_type(CardType::Instant))])), on_spend: vec![],
+        }],
+    });
+    let denied = game.object(card).unwrap().clone();
+    let mut admitted = denied.clone();
+    admitted.card_types = vec![CardType::Instant].into();
+    let cost = ManaCost::from_symbols(vec![ManaSymbol::Blue]);
+    let compute = || {
+        let view = DerivedGameView::new(&game);
+        [&admitted, &denied, &admitted].map(|spell| mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            &game, alice, spell, &CastingMethod::Normal, &cost, &view))
+    };
+    assert_eq!(compute(), [true, false, true]);
+    let mut session = ManaAnalysisSession::default();
+    let (result, complete) = session.run_for_game(&game, 1, compute);
+    assert!(complete, "supplied views use the exact synchronous hypothetical route");
+    assert_eq!(result, [true, false, true]);
+    assert_eq!(game.object(card).unwrap().card_types.as_slice(), &[CardType::Creature]);
+}

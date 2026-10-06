@@ -23,6 +23,7 @@ import {
   buildZiffleOpeningProof,
   canonicalJson,
   CURRENT_AUDIT_PROTOCOL_VERSION,
+  CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION,
   decklistHashForCards,
   publicDeckManifest,
   createAuditSessionKey,
@@ -439,6 +440,37 @@ test("canonicalJson sorts object keys recursively", () => {
     canonicalJson({ b: 2, a: { d: 4, c: 3 } }),
     "{\"a\":{\"c\":3,\"d\":4},\"b\":2}",
   );
+});
+
+test("historical signed audits remain signature-only evidence with their original checkpoint bytes", async () => {
+  for (const protocolVersion of [14, 16, 17, 18]) {
+    const checkpoint = { version: 2, players: [], stack: [],
+      objects: [{ id: 7, stableId: 7, manifested: true }] };
+    const checkpointHash = await publicCheckpointHash(checkpoint, webcrypto);
+    const transcript = await buildCurrentProtocolTranscript({
+      matchId: `historical-protocol-${protocolVersion}`, players: [], actions: [],
+      protocolVersion, initialPublicCheckpointHash: checkpointHash,
+    });
+    transcript.finalPublicCheckpoint = checkpoint;
+    const before = cloneTestPayload(transcript);
+    const report = await verifyLiveAuditTranscript(transcript, webcrypto, { requireEngineReplay: false });
+    assert.equal(report.valid, true);
+    assert.equal(report.engineReplay, null);
+    assert.deepEqual(transcript, before);
+    assert.equal(await publicCheckpointHash(transcript.finalPublicCheckpoint, webcrypto), checkpointHash);
+    assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "cloaked"), false);
+    let replayCalls = 0;
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+      requireEngineReplay: false,
+      replayTranscript: async () => { replayCalls++; },
+    }), /requires audit protocol 19/);
+    assert.equal(replayCalls, 0);
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 19/);
+    const tampered = cloneTestPayload(transcript);
+    tampered.finalPublicCheckpoint.objects[0].manifested = false;
+    await assert.rejects(verifyLiveAuditTranscript(tampered, webcrypto, { requireEngineReplay: false }),
+      /final public checkpoint hash mismatch/);
+  }
 });
 
 test("auditStateHash is stable across key insertion order", async () => {
@@ -1642,7 +1674,8 @@ test("final disclosure engine failures and incomplete report coverage cannot bec
 });
 
 test("a terminal checkpoint requires engine disclosure checks even without exported records", async () => {
-  const checkpoint = { players: [{ id: 0, hasWon: true }, { id: 1, hasLost: true }], hiddenZones: [] };
+  const checkpoint = { version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION,
+    players: [{ id: 0, hasWon: true }, { id: 1, hasLost: true }], hiddenZones: [] };
   const hash = await publicCheckpointHash(checkpoint, webcrypto);
   const h = await finalDisclosureFixture({ initialPublicCheckpointHash: hash });
   const transcript = { ...h.transcript, endOfMatchDisclosures: [],

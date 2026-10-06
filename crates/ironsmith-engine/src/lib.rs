@@ -43,6 +43,7 @@
 #[cfg(test)]
 extern crate self as ironsmith;
 
+pub mod linked_exile;
 pub mod ability;
 pub mod alternative_cast;
 #[cfg(feature = "bench-support")]

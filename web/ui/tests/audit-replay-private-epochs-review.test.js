@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startAuditTranscriptReplayWithGame, applyAuditReplayActionWithGame } from '../src/lib/audit-replay.js';
 import { buildZiffleInputDeck } from '../src/lib/ziffle-private-epochs.js';
+import { CURRENT_AUDIT_PROTOCOL_VERSION, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION } from '../src/lib/multiplayer-audit.js';
 
 // Review reproductions: these deliberately assert the required rejection.
 // The mocked engine isolates replay authorization, not cryptographic validity.
@@ -19,7 +20,7 @@ async function fixture({ omitAllProofs = false } = {}) {
   const game = {
     startMatch: async () => {},
     getHiddenCardState: async () => ({ objects: [] }),
-    exportPublicAuditCheckpoint: async () => ({}),
+    exportPublicAuditCheckpoint: async () => ({ version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION }),
     previewCryptoRequirements: async () => [firstRequirement,
       ...(queued ? [{ type: 'public_open', owner: 0, publicSlot: 1,
         publicCommitment: 'ziffle:first:1', timing: 'pre' }] : []),
@@ -29,7 +30,8 @@ async function fixture({ omitAllProofs = false } = {}) {
     dispatch: async () => { dispatched = true; },
   };
   await startAuditTranscriptReplayWithGame({ game, transcript: {
-    match: { protocolVersion: 15, players: [{ index: 0 }, { index: 1 }], ziffleCeremonies: [root] },
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, players: [{ index: 0 }, { index: 1 }], ziffleCeremonies: [root] },
   } });
   const action = { seq: 1, command: { type: 'priority_action', action_ref: { kind: 'pass_priority' } },
     audit: { seq: 1, shuffleProofs: omitAllProofs ? [] : [proof], openings: omitAllProofs ? [] : [{
@@ -40,13 +42,13 @@ async function fixture({ omitAllProofs = false } = {}) {
   return { game, action, dispatched: () => dispatched };
 }
 
-test('review: v15 replay must reject a required epoch when all shuffle proofs are omitted', async () => {
+test('review: current replay must reject a required epoch when all shuffle proofs are omitted', async () => {
   const h = await fixture({ omitAllProofs: true });
   await assert.rejects(applyAuditReplayActionWithGame(h), /missing|shuffle|proof/i);
   assert.equal(h.dispatched(), false);
 });
 
-test('review: v15 replay must reject an omitted epoch discovered after opening the first epoch', async () => {
+test('review: current replay must reject an omitted epoch discovered after opening the first epoch', async () => {
   const h = await fixture();
   await assert.rejects(applyAuditReplayActionWithGame(h), /missing|shuffle|proof/i);
   assert.equal(h.dispatched(), false);

@@ -1892,6 +1892,7 @@ mod tests {
             .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::default(),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![]),
                     choices: vec![],

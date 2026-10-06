@@ -106,6 +106,7 @@ pub use control_flow_handlers::{
     with_preserved_lowering_context,
 };
 pub use effect_dispatch::compile_effect;
+pub(crate) use effect_dispatch::visit_direct_nested_effect_values;
 pub(crate) use effect_dispatch::link_unproduced_result_references_in_program;
 pub use effect_handlers::compile_delayed_trigger_spec;
 #[cfg(test)]
@@ -2187,6 +2188,7 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
     };
     Some(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
             mana_cost: total_cost,
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::attach_to(
                 target.clone(),
@@ -2226,6 +2228,7 @@ fn equipment_granted_damage_ability(
     let target = ChooseSpec::AnyTarget;
     Some(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(costs),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::deal_damage(
                 Value::Fixed(shape.damage_amount),
@@ -2593,6 +2596,7 @@ fn apply_embedded_token_rules(
                 ]);
                 builder.with_ability(Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost: costs,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::add_mana_of_any_color(1),
@@ -2628,6 +2632,7 @@ fn apply_embedded_token_rules(
                 ]);
                 builder.with_ability(Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost: costs,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::add_mana_of_any_color_restricted(1, colors),
@@ -2723,6 +2728,7 @@ pub fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability 
 pub fn token_red_pump_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::pump(
                 1,
@@ -2747,6 +2753,7 @@ pub fn token_white_tap_target_creature_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
                 crate::costs::Cost::tap(),
@@ -2780,6 +2787,7 @@ pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) ->
         .ok()?;
     Some(Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
             effects: crate::resolution::ResolutionProgram::default(),
             choices: Vec::new(),
@@ -2944,6 +2952,7 @@ pub fn token_sacrifice_return_named_from_graveyard_ability(
     );
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs({
                 let mut total_costs = vec![crate::costs::Cost::mana(mana_cost)];
                 total_costs.extend(costs);
@@ -3378,6 +3387,7 @@ fn build_creature_token_definition(
         let ability =
             Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::pump(1, 0, target.clone(), Until::EndOfTurn),
@@ -3415,6 +3425,7 @@ fn build_creature_token_definition(
         ));
         let counter_ability = Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_costs(vec![
                     crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
                         1,

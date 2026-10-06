@@ -760,6 +760,7 @@ fn execute_resolution_program_inner(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
+    crate::linked_exile::validate_program_owner(program.linked_exile_pair, ctx.linked_exile_owner.as_ref())?;
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
     // for this resolution so player filters, object filters, values, and nested
@@ -1107,6 +1108,13 @@ fn resolve_stack_entry_full_inner(
     let mut entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
+    // A historically paired producer with missing acquisition evidence must
+    // fail before exiling anything. Otherwise a later complete reader would
+    // mistake that lost producer record for a known empty pair.
+    crate::linked_exile::validate_program_owner(
+        entry.ability_effects.as_ref().and_then(|program| program.linked_exile_pair),
+        entry.linked_exile_owner.as_ref(),
+    ).map_err(GameLoopError::ExecutionFailed)?;
     // Spells use their current controller (CR 109.5, 112.2); abilities keep
     // the controller captured when they were put on the stack (CR 113.8).
     if !entry.is_ability {
@@ -1139,6 +1147,7 @@ fn resolve_stack_entry_full_inner(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    ctx.linked_exile_owner = entry.linked_exile_owner.clone();
     ctx.iteration = entry.iteration;
     // CR 400.7j: only objects this resolution moves are new objects its
     // instructions may still find.
@@ -2071,6 +2080,7 @@ fn resolve_stack_entry_full_inner(
                     game.effect_store
                         .delayed_triggers
                         .push(crate::triggers::DelayedTrigger {
+                            linked_exile_owner: None,
                             trigger: crate::triggers::Trigger::beginning_of_upkeep(
                                 crate::target::PlayerFilter::Specific(entry.controller),
                             ),

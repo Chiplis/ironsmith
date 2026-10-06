@@ -500,6 +500,8 @@ struct BattlefieldFlags {
     face_down: HashSet<ObjectId>,
     /// Face-down permanents created via manifest.
     manifested: HashSet<ObjectId>,
+    /// Exact cloak origin, distinct from manifest.
+    cloaked: HashSet<ObjectId>,
     /// Split Room permanents whose linked locked door has been unlocked.
     fully_unlocked_rooms: HashSet<ObjectId>,
     /// Rooms that entered without either half cast, so neither door has an
@@ -603,6 +605,9 @@ struct ExileTracking {
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    linked_exile_pairs: HashMap<crate::linked_exile::LinkedExileOwner, Vec<ObjectId>>,
+    /// True after a source-only import, which cannot establish pair absence.
+    linked_exile_pairs_incomplete: bool,
     /// Monotonic count of successful exile events attributed to each source
     /// object. Unlike the live link collection, this does not decrease when an
     /// exiled card changes zones.
@@ -3654,6 +3659,7 @@ pub struct StackEntry {
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// Spending restrictions for mana produced while resolving this stack entry.
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for restricted mana produced by this entry.
@@ -3759,6 +3765,7 @@ impl StackEntry {
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: None,
+            linked_exile_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: false,
@@ -3808,6 +3815,7 @@ impl StackEntry {
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: Some(effects.into()),
+            linked_exile_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: true,

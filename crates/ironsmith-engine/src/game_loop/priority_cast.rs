@@ -6782,6 +6782,8 @@ pub(super) fn continue_activation(
                 .with_target_distributions(pending.target_distributions.clone())
                 .with_tagged_objects(pending.tagged_objects.clone())
                         .with_effect_outcomes(pending.effect_outcomes.clone());
+            entry.linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                pending.source, pending.effects.linked_exile_pair, pending.ability_origin.as_ref());
             entry.ability_id = Some(ability_id);
             if let Some(x) = pending.x_value { entry = entry.with_x(x as u32); }
             pending.targeting_announcement = Some(capture_announced_targeting(game, entry)?);
@@ -7352,6 +7354,8 @@ pub(super) fn continue_activation(
                         )
                         .with_tagged_objects(pending.tagged_objects.clone())
                         .with_effect_outcomes(pending.effect_outcomes.clone());
+                entry.linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    pending.source, pending.effects.linked_exile_pair, pending.ability_origin.as_ref());
                 entry.targets = pending.chosen_targets.clone();
                 entry.target_assignments = pending.chosen_target_assignments.clone();
 

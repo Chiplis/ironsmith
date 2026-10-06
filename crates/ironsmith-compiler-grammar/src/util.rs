@@ -2504,6 +2504,7 @@ pub fn parse_level_up_line(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: ironsmith_core::TotalCost::<crate::model::CompilerCost>::mana(mana_cost),
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                     crate::cards::builders::EffectAst::subject_verb_put_counters(
@@ -3182,6 +3183,7 @@ pub fn parse_reinforce_line(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),

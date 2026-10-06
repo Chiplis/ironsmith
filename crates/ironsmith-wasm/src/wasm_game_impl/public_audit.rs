@@ -4,7 +4,7 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-const PUBLIC_AUDIT_VERSION: u32 = 2;
+const PUBLIC_AUDIT_VERSION: u32 = 3;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -166,6 +166,7 @@ struct PublicAuditObject {
     flipped: bool,
     face_down: bool,
     manifested: bool,
+    cloaked: bool,
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
@@ -1269,6 +1270,7 @@ impl WasmGame {
                 .collect::<Vec<_>>(),
             "faceDown": self.game.is_face_down(id),
             "manifested": self.game.is_manifested(id),
+            "cloaked": self.game.is_cloaked(id),
             "foretold": self.game.is_foretold(id),
             "foretoldTurn": self.game.foretold_turn(id),
             "suspected": self.game.is_suspected(id),
@@ -1547,6 +1549,7 @@ impl WasmGame {
                     flipped: self.game.is_flipped(id),
                     face_down: self.game.is_face_down(id) || self.game.is_face_down_conspiracy(id),
                     manifested: self.game.is_manifested(id),
+                    cloaked: self.game.is_cloaked(id),
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
@@ -1804,6 +1807,70 @@ impl WasmGame {
 mod public_audit_tests {
     use super::*;
     use ironsmith::game_state::HiddenCardInfo;
+
+    #[test]
+    fn public_audit_v3_commits_exact_manifest_and_cloak_provenance() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(
+            0, "Ornithopter".into(), "battlefield".into(), true,
+        ).unwrap());
+        wasm.game.set_face_down(id);
+        let baseline = wasm.game.clone();
+        let object_evidence = |wasm: &WasmGame| {
+            let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+            assert_eq!(checkpoint["version"], 3);
+            checkpoint["objects"].as_array().unwrap().iter()
+                .find(|object| object["id"] == id.0).unwrap().clone()
+        };
+        let ordinary = object_evidence(&wasm);
+        assert_eq!(ordinary["manifested"], false);
+        assert_eq!(ordinary["cloaked"], false);
+        wasm.game.set_manifested(id);
+        let manifested = object_evidence(&wasm);
+        assert_eq!(manifested["manifested"], true);
+        assert_eq!(manifested["cloaked"], false);
+        wasm.game = baseline;
+        wasm.game.set_cloaked(id);
+        let cloaked = object_evidence(&wasm);
+        assert_eq!(cloaked["manifested"], false);
+        assert_eq!(cloaked["cloaked"], true);
+        assert_ne!(manifested, cloaked);
+        assert_ne!(ordinary, cloaked);
+    }
+
+    #[test]
+    fn known_hidden_object_commitment_distinguishes_manifest_from_cloak() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(
+            0, "Forest".into(), "hand".into(), true,
+        ).unwrap());
+        assert!(wasm.game.hidden_card_info(id).is_none());
+        let baseline = wasm.game.clone();
+        let root = |wasm: &WasmGame| {
+            wasm.build_public_audit_checkpoint().hidden_zones.into_iter()
+                .find(|zone| zone.owner == 0 && zone.zone == "hand")
+                .unwrap().commitment_root.unwrap()
+        };
+        let ordinary = root(&wasm);
+        let entry = wasm.public_audit_hidden_zone_entry(0, id);
+        assert_eq!(entry["manifested"], false);
+        assert_eq!(entry["cloaked"], false);
+        wasm.game.set_manifested(id);
+        let manifested = root(&wasm);
+        wasm.game = baseline;
+        wasm.game.set_cloaked(id);
+        let cloaked = root(&wasm);
+        let entry = wasm.public_audit_hidden_zone_entry(0, id);
+        assert_eq!(entry["manifested"], false);
+        assert_eq!(entry["cloaked"], true);
+        assert_ne!(ordinary, manifested);
+        assert_ne!(ordinary, cloaked);
+        assert_ne!(manifested, cloaked);
+    }
 
     #[test]
     fn public_audit_preserves_mana_spend_program_semantics_without_identity_graphs() {

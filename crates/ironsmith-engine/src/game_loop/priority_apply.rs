@@ -165,6 +165,7 @@ pub(super) fn begin_mana_ability_activation(
                 state.save_checkpoint(game);
                 saved_root_checkpoint = true;
             }
+            let payment_reason = mana_ability.payment_reason(game, *source, player);
             let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
             let effects_to_run = mana_ability.effects.clone();
             let base_cost = mana_ability.mana_cost.clone();
@@ -211,7 +212,7 @@ pub(super) fn begin_mana_ability_activation(
                     && game.player_can_pay_black_with_life_for_reason(
                         player,
                         Some(*source),
-                        crate::costs::PaymentReason::ActivateManaAbility,
+                        payment_reason,
                     );
                 let max_x = crate::decision::compute_potential_mana(game, player)
                     .max_x_for_cost_with_mana_spend_policy_and_black_life(
@@ -248,6 +249,13 @@ pub(super) fn begin_mana_ability_activation(
                 .object(*source)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
 
+            let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                *source, effects_to_run.linked_exile_pair,
+                source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index)));
+            crate::linked_exile::validate_program_owner(effects_to_run.linked_exile_pair, linked_exile_owner.as_ref())
+                .map_err(GameLoopError::ExecutionFailed)?;
+
             let view = crate::derived_view::DerivedGameView::new(game);
             if !crate::decision::exhaust_activation_allows(
                 game,
@@ -273,7 +281,7 @@ pub(super) fn begin_mana_ability_activation(
             if mana_cost.is_none() {
                 // Pay all costs immediately
                 let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
-                    .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
+                    .with_reason(payment_reason)
                     .with_provenance(mana_ability_provenance);
                 cost_ctx.x_value = announced_x;
                 let cost_summary =
@@ -299,6 +307,7 @@ pub(super) fn begin_mana_ability_activation(
                 drain_pending_trigger_events(game, trigger_queue);
 
                 let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                    .with_linked_exile_owner(linked_exile_owner.clone())
                     .with_provenance(mana_ability_provenance)
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                     .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
@@ -328,6 +337,7 @@ pub(super) fn begin_mana_ability_activation(
                 // Execute additional effects (for complex mana abilities)
                 if !effects_to_run.is_empty() {
                     let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                        .with_linked_exile_owner(linked_exile_owner.clone())
                         .with_provenance(mana_ability_provenance)
                         .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                         .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
@@ -377,6 +387,8 @@ pub(super) fn begin_mana_ability_activation(
                 let context = format!("{}'s ability", source_name);
 
                 let pending = PendingManaAbility {
+                    linked_exile_owner,
+                    payment_reason,
                     source: *source,
                     ability_index: *ability_index,
                     activator: player,
@@ -1017,7 +1029,11 @@ fn apply_priority_response_with_dm_inner(
                 .as_one_of()
                 .map(|branches| branches.to_vec())
                 .unwrap_or_default();
-            let payment_reason = crate::costs::PaymentReason::ActivateAbility;
+            let payment_reason = game.current_ability(*source, *ability_index)
+                .and_then(|ability| match &ability.kind {
+                    AbilityKind::Activated(activated) => Some(activated.payment_reason(game, *source, player)),
+                    _ => None,
+                }).ok_or_else(|| GameLoopError::InvalidState("announced activated ability is unavailable".into()))?;
             let activation_provenance =
                 game.provenance_graph_mut()
                     .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -1128,8 +1144,8 @@ fn apply_priority_response_with_dm_inner(
                 let mut pending = PendingActivation::new(
                     *source,
                     *ability_index,
-                    game.current_characteristics(*source)
-                        .and_then(|chars| chars.abilities.origin(*ability_index).cloned()),
+                    source_snapshot.ability_origins.as_ref()
+                        .and_then(|origins| origins.get(*ability_index).cloned()),
                     player,
                     activation_provenance,
                     stage,
@@ -1185,7 +1201,10 @@ fn apply_priority_response_with_dm_inner(
                     game.record_loyalty_ability_activation(*source);
                 }
 
-                let entry = StackEntry::ability(*source, player, effects.to_vec())
+                let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    *source, effects.linked_exile_pair,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
+                let mut entry = StackEntry::ability(*source, player, effects.clone())
                     .with_ability_index(*ability_index)
                     .with_activation_cost_has_x(activation_cost_has_x)
                     .with_activation_cost_has_tap(activation_cost_has_tap)
@@ -1196,6 +1215,7 @@ fn apply_priority_response_with_dm_inner(
                         mana_source_chosen_creature_type,
                     )
                     .with_tagged_objects(granting_source_tags);
+                entry.linked_exile_owner = linked_exile_owner;
                 game.push_to_stack(entry);
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),

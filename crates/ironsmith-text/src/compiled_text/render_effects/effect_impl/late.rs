@@ -5605,6 +5605,7 @@
                 crate::filter::AlternativeCastKind::Madness => "madness",
                 crate::filter::AlternativeCastKind::Miracle => "miracle",
                 crate::filter::AlternativeCastKind::Suspend => "suspend",
+                crate::filter::AlternativeCastKind::Foretell => "foretell",
             }
         }
 

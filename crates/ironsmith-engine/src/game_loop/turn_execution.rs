@@ -171,6 +171,7 @@ fn queue_inherent_radiation_trigger(
     let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
     let source = ObjectId::from_raw(u64::MAX - 2);
     trigger_queue.add(TriggeredAbilityEntry {
+        linked_exile_owner: None,
         source,
         controller,
         x_value: None,

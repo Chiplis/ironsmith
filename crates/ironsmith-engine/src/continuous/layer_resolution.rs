@@ -640,9 +640,14 @@ pub(super) fn calculate_with_layers(
                             continue;
                         }
 
-                        for ability in &candidate_chars.abilities {
+                        for (slot, ability) in candidate_chars.abilities.iter().enumerate() {
                             if matches!(ability.kind, AbilityKind::Triggered(_)) {
-                                chars.abilities.push(ability.clone());
+                                chars.abilities.push_with_origin(ability.clone(), AbilityOrigin::Borrowed {
+                                    effect: effect.into(),
+                                    source: candidate.id,
+                                    origin: Box::new(candidate_chars.abilities.origin(slot)
+                                        .expect("copied trigger retains its donor origin").clone()),
+                                });
                             }
                         }
                     }

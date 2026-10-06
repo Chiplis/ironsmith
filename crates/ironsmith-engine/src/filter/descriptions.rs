@@ -594,6 +594,9 @@ pub(super) fn alternative_cast_matches_kind(
         ) | (
             AlternativeCastKind::Suspend,
             AlternativeCastingMethod::Suspend { .. }
+        ) | (
+            AlternativeCastKind::Foretell,
+            AlternativeCastingMethod::Foretell { .. }
         )
     )
 }
@@ -604,6 +607,9 @@ pub(super) fn object_has_alternative_cast_kind(
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
 ) -> bool {
+    // The physical restore record retains printed alternatives for a later
+    // reveal, not as current capability of a face-down spell/permanent/card.
+    if game.is_face_down(object.id) { return false; }
     if object
         .alternative_casts
         .iter()
@@ -1177,6 +1183,7 @@ pub(super) fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'sta
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 

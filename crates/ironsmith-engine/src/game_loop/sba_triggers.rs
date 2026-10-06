@@ -1062,6 +1062,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
 ) -> Result<(), GameLoopError> {
     // Mirror stack-resolution context as closely as possible, but without using the stack.
     let mut ctx = ExecutionContext::new(entry.object_id, entry.controller, decision_maker)
+        .with_linked_exile_owner(entry.linked_exile_owner.clone())
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller));
     if let Some(x) = entry.x_value {
@@ -2295,6 +2296,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
     .with_triggering_event(trigger.triggering_event.clone())
     .with_trigger_identity(trigger.trigger_identity);
+    entry.linked_exile_owner = trigger.linked_exile_owner.clone();
     if let Some(event_value_amount) = trigger.event_value_amount {
         entry = entry.with_event_value_amount(event_value_amount);
     }

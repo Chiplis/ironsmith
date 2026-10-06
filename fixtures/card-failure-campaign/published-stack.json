@@ -1081,6 +1081,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/843"
+    },
+    {
+      "stage": 78,
+      "branch": "fix/card-failures-78-variable-suspend",
+      "base": "fix/card-failures-77-permanent-prevention",
+      "source_integration_commit": "2e0f2cefda5fc6ed8212cdbe29beec075c53a5ee",
+      "remote_commit": "000fa2000ee0df25aad526618cc47191d3a09c88",
+      "tree": "6a0c5c450a0e30799690d87c048a8a72d7040246",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 844,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/844"
     }
   ]
 }

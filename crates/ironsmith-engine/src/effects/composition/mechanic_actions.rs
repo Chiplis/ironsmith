@@ -769,7 +769,7 @@ fn prepare_manifest_entry(
     let receipt = receipt.ok_or_else(|| ExecutionError::InternalError("manifest entry returned no terminal receipt".into()))?;
     let original = match &receipt.outcome {
         BattlefieldEntryOutcome::Moved(id) => {
-            game.set_manifested(*id);
+            if cloak { game.set_cloaked(*id); } else { game.set_manifested(*id); }
             EffectOutcome::with_objects(vec![*id]).with_event(TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(action, controller, ctx.source, 1), ctx.provenance))
         }
@@ -872,7 +872,7 @@ impl EffectExecutor for ManifestObjectsEffect {
                 let receipt = receipt.ok_or_else(|| ExecutionError::InternalError("sequential manifest entry returned no terminal receipt".into()))?;
                 match &receipt.outcome {
                     BattlefieldEntryOutcome::Moved(new_id) => {
-                        game.set_manifested(*new_id);
+                        if self.cloak { game.set_cloaked(*new_id); } else { game.set_manifested(*new_id); }
                         moved_ids.push(*new_id);
                         affected_memory.push(memory);
                         events.push(TriggerEvent::new_with_provenance(
@@ -945,7 +945,7 @@ impl EffectExecutor for ManifestObjectsEffect {
             match &outcome.outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     entered_count += 1;
-                    game.set_manifested(*new_id);
+                    if self.cloak { game.set_cloaked(*new_id); } else { game.set_manifested(*new_id); }
                     moved_ids.push(*new_id);
                     affected_memory.push(memory);
                 }
@@ -3181,7 +3181,8 @@ mod tests {
             .expect("cloaked permanent should exist");
 
         assert!(game.is_face_down(cloaked_id));
-        assert!(game.is_manifested(cloaked_id));
+        assert!(game.is_cloaked(cloaked_id));
+        assert!(!game.is_manifested(cloaked_id));
         assert_eq!(game.calculated_power(cloaked_id), Some(2));
         assert_eq!(game.calculated_toughness(cloaked_id), Some(2));
         assert!(cloaked.abilities.iter().any(|ability| matches!(
@@ -3265,7 +3266,8 @@ mod tests {
             assert_eq!(game.controller_of(object), alice);
             assert!(game.is_tapped(*object_id));
             assert!(game.is_face_down(*object_id));
-            assert!(game.is_manifested(*object_id));
+            assert!(game.is_cloaked(*object_id));
+            assert!(!game.is_manifested(*object_id));
             assert_eq!(game.calculated_power(*object_id), Some(2));
             assert_eq!(game.calculated_toughness(*object_id), Some(2));
             assert!(object.abilities.iter().any(|ability| matches!(

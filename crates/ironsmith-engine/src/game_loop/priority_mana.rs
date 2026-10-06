@@ -566,7 +566,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         pending.activator,
         pending.source,
-        crate::costs::PaymentReason::ActivateManaAbility,
+        pending.payment_reason,
         pending.mana_cost.clone(),
     )
     .with_spend_policy(spend_policy);
@@ -582,7 +582,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
         && game.player_can_pay_black_with_life_for_reason(
             pending.activator,
             Some(pending.source),
-            crate::costs::PaymentReason::ActivateManaAbility,
+            pending.payment_reason,
         );
     let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
     let plan_result = plan_result.or_else(|failure| {
@@ -2098,6 +2098,8 @@ pub(super) fn execute_pending_mana_ability(
         use crate::costs::CostContext;
         use crate::effects::ExecutionContext;
 
+        crate::linked_exile::validate_program_owner(pending.effects.linked_exile_pair, pending.linked_exile_owner.as_ref())
+            .map_err(GameLoopError::ExecutionFailed)?;
         game.begin_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Activation(
             pending.provenance,
         ));
@@ -2114,7 +2116,7 @@ pub(super) fn execute_pending_mana_ability(
                 Some(pending.source),
                 &pending.mana_cost,
                 0,
-                crate::costs::PaymentReason::ActivateManaAbility,
+                pending.payment_reason,
                 decision_maker,
             )
             .map_err(GameLoopError::ExecutionFailed)?
@@ -2129,7 +2131,7 @@ pub(super) fn execute_pending_mana_ability(
 
         // Pay other costs from TotalCost
         let mut cost_ctx = CostContext::new(pending.source, pending.activator, decision_maker)
-            .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
+            .with_reason(pending.payment_reason)
             .with_provenance(pending.provenance);
         cost_ctx.x_value = pending.x_value;
         for c in &pending.other_costs {
@@ -2152,6 +2154,7 @@ pub(super) fn execute_pending_mana_ability(
 
         let mut mana_ctx =
             ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
+                .with_linked_exile_owner(pending.linked_exile_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
@@ -2181,6 +2184,7 @@ pub(super) fn execute_pending_mana_ability(
         // Execute additional effects (for complex mana abilities)
         if !pending.effects.is_empty() {
             let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
+                .with_linked_exile_owner(pending.linked_exile_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
@@ -5324,6 +5328,8 @@ mod replacement_owner_tests {
                 game,
                 queue,
                 &PendingManaAbility {
+                    linked_exile_owner: None,
+                    payment_reason: crate::costs::PaymentReason::ActivateManaAbility,
                     source,
                     ability_index: 0,
                     activator: alice,

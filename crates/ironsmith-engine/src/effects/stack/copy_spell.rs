@@ -43,6 +43,7 @@ fn target_from_resolved_target(target: &ResolvedTarget) -> Target {
 pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
     let mut entry = StackEntry::new(ctx.source, ctx.controller);
     entry.provenance = ctx.provenance;
+    entry.linked_exile_owner = ctx.linked_exile_owner.clone();
     entry.targets = ctx
         .targets
         .iter()
@@ -207,6 +208,7 @@ pub(crate) fn create_stack_copy_from_object(
     // to activate it either.
     copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
+    copy_entry.linked_exile_owner = original_entry.linked_exile_owner.clone();
     copy_entry.ninjutsu_attack_target = original_entry.ninjutsu_attack_target.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();

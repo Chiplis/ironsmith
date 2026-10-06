@@ -16,6 +16,7 @@ import { startTransition, useContext, useState, useCallback, useRef, useMemo, us
 import { useGameSnapshot } from "@/hooks/useGameSnapshot";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
+import { assertCurrentAuditReplayProtocol } from "@/lib/multiplayer-audit";
 import {
   applyAuditReplayActionWithGame,
   replayAuditTranscriptWithGame,
@@ -2513,6 +2514,7 @@ export function GameProvider({ children }) {
       if (!transcript || typeof transcript !== "object") {
         throw new Error("Missing audit transcript");
       }
+      assertCurrentAuditReplayProtocol(transcript);
       const prepared = {
         transcript: cloneJson(transcript),
         sourceLabel,
@@ -2544,6 +2546,7 @@ export function GameProvider({ children }) {
       if (!prepared?.transcript || typeof prepared.transcript !== "object") {
         throw new Error("Missing audit transcript");
       }
+      assertCurrentAuditReplayProtocol(prepared.transcript);
       setAuditReplayState((current) => ({
         ...current,
         available: true,

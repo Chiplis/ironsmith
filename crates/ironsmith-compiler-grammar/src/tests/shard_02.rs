@@ -3462,6 +3462,17 @@ pub(super) fn rewrite_object_filter_parser_handles_same_name_as_the_spell_refere
 }
 
 #[test]
+pub(super) fn niko_chapter_three_exact_qualifier_keeps_keyword_owner_and_graveyard() {
+    let tokens = lex_line("card with foretell from your graveyard", 0).unwrap();
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false)
+        .expect("the whole chapter-III qualifier must parse");
+    assert_eq!(filter.alternative_cast, Some(crate::filter::AlternativeCastKind::Foretell));
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Graveyard));
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+    assert!(!filter.foretold, "the graveyard card need never have been foretold");
+}
+
+#[test]
 pub(super) fn library_search_resolves_same_name_it_to_the_revealed_card_tag() {
     let text = "Reveal a creature card in your hand. Search your library for a card with the same name as that card, reveal it, put it into your hand, then shuffle.";
     let (compiled, loss) = crate::parse_loss::capture(|| {

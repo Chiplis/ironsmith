@@ -30,6 +30,7 @@ pub(crate) fn tagged_collection_has_object_in_zone(
 pub struct DelayedTriggerConfig {
     pub trigger: Trigger,
     pub effects: ResolutionProgram,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
@@ -62,6 +63,7 @@ impl DelayedTriggerConfig {
         Self {
             trigger,
             effects: effects.into(),
+            linked_exile_owner: None,
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
@@ -117,6 +119,11 @@ impl DelayedTriggerConfig {
 
     pub fn with_ability_source(mut self, ability_source: Option<ObjectId>) -> Self {
         self.ability_source = ability_source;
+        self
+    }
+
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
         self
     }
 
@@ -189,6 +196,7 @@ impl DelayedWatcherIdentity {
 pub(crate) struct DelayedTriggerTemplate {
     pub trigger: Trigger,
     pub effects: ResolutionProgram,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
@@ -217,6 +225,7 @@ impl DelayedTriggerTemplate {
         Self {
             trigger,
             effects: effects.into(),
+            linked_exile_owner: None,
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
@@ -271,6 +280,11 @@ impl DelayedTriggerTemplate {
 
     pub fn with_ability_source(mut self, ability_source: Option<ObjectId>) -> Self {
         self.ability_source = ability_source;
+        self
+    }
+
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
         self
     }
 
@@ -346,6 +360,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
     let tagged_objects = config.tagged_objects;
 
     game.effect_store.delayed_triggers.push(DelayedTrigger {
+        linked_exile_owner: config.linked_exile_owner,
         trigger: config.trigger,
         effects: config.effects,
         one_shot: config.one_shot,
@@ -398,6 +413,7 @@ pub(crate) fn queue_delayed_from_template(
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                 .with_bound_extra_turn_index(template.bound_extra_turn_index)
                 .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
+                .with_linked_exile_owner(template.linked_exile_owner.clone())
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
                 .with_choices(template.choices)
@@ -431,7 +447,8 @@ pub(crate) fn queue_delayed_from_template(
                     .while_any_tagged_object_in_zone_opt(
                         template.while_any_tagged_object_in_zone.clone(),
                     )
-                    .with_ability_source(template.ability_source)
+                    .with_linked_exile_owner(template.linked_exile_owner.clone())
+                .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
                     .with_choices(template.choices.clone())
                     .with_tagged_objects(template.tagged_objects.clone())

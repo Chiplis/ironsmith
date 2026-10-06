@@ -55,7 +55,7 @@ fn activate_mana_during_payment_inner(
     let has_tap = game.current_ability(source, ability_index).is_some_and(|ability| {
         matches!(&ability.kind, crate::ability::AbilityKind::Activated(a) if a.has_tap_cost())
     });
-    let mut exclusions = if request.reason == crate::costs::PaymentReason::ActivateManaAbility {
+    let mut exclusions = if request.reason.is_mana_ability() {
         request.activation_excluded_sources.clone()
     } else {
         Vec::new()

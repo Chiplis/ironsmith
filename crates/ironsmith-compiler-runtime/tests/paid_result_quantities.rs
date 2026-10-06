@@ -252,8 +252,11 @@ fn linked_power_reference_never_consumes_an_unrelated_prior_draw() {
     for _ in 0..8 { creature(&mut game, A, Zone::Library, "Library witness", 1, 1, "Elf"); }
     let mut dm = Choices { target: Some(Target::Object(recipient)), ..Default::default() };
     let event = TriggerEvent::new_with_provenance(ironsmith::events::combat::CreatureAttackedEvent::new(source, AttackEventTarget::Player(B)), Default::default());
-    assert_eq!(queue_event(&mut game, event, &mut dm), 1); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    assert_eq!(game.player(A).unwrap().hand.len(), 7); assert_eq!(game.current_power(recipient), Some(2));
+    assert_eq!(queue_event(&mut game, event, &mut dm), 1);
+    assert!(matches!(resolve_stack_entry_with(&mut game, &mut dm),
+        Err(ironsmith::game_loop::GameLoopError::ExecutionFailed(ironsmith::effects::ExecutionError::IncompleteEvidence(_)))));
+    assert_eq!(game.player(A).unwrap().hand.len(), 0, "unknown pairing rolls back the whole resolution");
+    assert_eq!(game.current_power(recipient), Some(2));
 }
 
 #[test]
@@ -503,4 +506,204 @@ fn voracious_brood_full_body_counts_only_owned_creature_cards_and_captures_each_
         recorded_effect(&mut game, source, Effect::move_to_zone(ChooseSpec::SpecificObject(noncreature), Zone::Graveyard, false), &mut dm);
         assert!(game.stack.is_empty());
     }
+}
+
+// Linked-ability ownership scenarios. Authored source only; never executed in
+// this campaign. Each frozen Bishop body is exercised directly and by artifact.
+fn bishop_waiting_for_entry(game: &mut GameState, definition: &CardDefinition, victim: ObjectId, dm: &mut Choices) -> ObjectId {
+    let source = game.create_object_from_definition(definition, A, Zone::Hand);
+    let stable = game.object(source).unwrap().stable_id;
+    mana(game, ManaSymbol::White, 1); mana(game, ManaSymbol::Colorless, 3);
+    let action = compute_legal_actions(game, A).unwrap().into_iter().find(|action|
+        matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == source)).unwrap();
+    dm.target = Some(Target::Object(victim)); announce(game, action, dm);
+    resolve_stack_entry_with(game, dm).unwrap();
+    let source = game.find_object_by_stable_id(stable).unwrap();
+    let mut queue = TriggerQueue::new(); drain_pending_trigger_events(game, &mut queue);
+    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
+    assert_eq!(game.stack.len(), 1);
+    assert!(game.stack[0].linked_exile_owner.is_some());
+    source
+}
+fn bishop_attack(game: &mut GameState, source: ObjectId, recipient: ObjectId, dm: &mut Choices) -> usize {
+    dm.target = Some(Target::Object(recipient));
+    queue_event(game, TriggerEvent::new_with_provenance(
+        ironsmith::events::combat::CreatureAttackedEvent::new(source, AttackEventTarget::Player(B)),
+        Default::default()), dm)
+}
+fn borrow_bishop_triggers(game: &mut GameState, host: ObjectId, donor: ObjectId) {
+    use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(host, A,
+        EffectTarget::Specific(host), Modification::CopyTriggeredAbilities {
+            filter: ironsmith::target::ObjectFilter::specific(donor),
+            exclude_source_name: false, exclude_source_id: true,
+        }));
+    game.refresh_continuous_state().unwrap();
+}
+
+#[test]
+fn bishop_borrowed_plain_exile_neither_boosts_the_linked_reader_nor_returns_on_departure() {
+    use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+    for definition in definitions("Bishop of Binding") {
+        let mut game = game();
+        let victim = creature(&mut game, B, Zone::Battlefield, "Legitimate victim", 4, 6, "Soldier");
+        let victim_stable = game.object(victim).unwrap().stable_id;
+        let unrelated = creature(&mut game, B, Zone::Battlefield, "Other exile", 9, 9, "Elf");
+        let unrelated_stable = game.object(unrelated).unwrap().stable_id;
+        let recipient = creature(&mut game, A, Zone::Battlefield, "Recipient", 2, 4, "Vampire");
+        let mut dm = Choices::default();
+        let source = bishop_waiting_for_entry(&mut game, &definition, victim, &mut dm);
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let donor = compile_to_runtime_definition("Borrowed plain exile donor",
+            "Type: Creature\nPower/Toughness: 1/1\n{0}: Exile target creature.", false).unwrap();
+        let donor = game.create_object_from_definition(&donor, A, Zone::Exile);
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, A,
+            EffectTarget::Specific(source), Modification::CopyActivatedAbilities {
+                filter: ironsmith::target::ObjectFilter::specific(donor), counter: None,
+                include_mana: true, only_loyalty: false, exclude_source_name: false,
+                exclude_source_id: true, force_once_each_turn: false,
+            }));
+        game.refresh_continuous_state().unwrap();
+        dm.target = Some(Target::Object(unrelated)); activate(&mut game, source, 0, &mut dm);
+        assert!(game.stack.last().unwrap().linked_exile_owner.is_none());
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.get_exiled_with_source_links(source).len(), 2);
+        assert_eq!(bishop_attack(&mut game, source, recipient, &mut dm), 1);
+        game = game.clone(); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.current_power(recipient), Some(6), "the borrowed ability's 9 power is unrelated");
+        apply(&mut game, source, Effect::move_to_zone(ChooseSpec::Source, Zone::Hand, false));
+        assert_eq!(game.object(game.find_object_by_stable_id(victim_stable).unwrap()).unwrap().zone, Zone::Battlefield);
+        assert_eq!(game.object(game.find_object_by_stable_id(unrelated_stable).unwrap()).unwrap().zone, Zone::Exile);
+    }
+}
+
+#[test]
+fn bishop_copied_entry_uses_the_original_pair_and_sums_only_live_victim_incarnations() {
+    for definition in definitions("Bishop of Binding") { for mode in 0..4 {
+        let mut game = game();
+        let first = creature(&mut game, B, Zone::Battlefield, "First victim", 3, 4, "Soldier");
+        let second = creature(&mut game, B, Zone::Battlefield, "Second victim", 5, 6, "Soldier");
+        let first_stable = game.object(first).unwrap().stable_id;
+        let second_stable = game.object(second).unwrap().stable_id;
+        let recipient = creature(&mut game, A, Zone::Battlefield, "Recipient", 2, 4, "Vampire");
+        let mut dm = Choices::default();
+        let source = bishop_waiting_for_entry(&mut game, &definition, first, &mut dm);
+        let source_stable = game.object(source).unwrap().stable_id;
+        let owner = game.stack.last().unwrap().linked_exile_owner.clone().unwrap();
+        let entry_id = game.stack.last().unwrap().target_id();
+        apply(&mut game, source, Effect::copy_spell(ChooseSpec::SpecificObject(entry_id)));
+        assert_eq!(game.stack.len(), 2);
+        assert_eq!(game.stack.last().unwrap().linked_exile_owner.as_ref(), Some(&owner));
+        let copy_id = game.stack.last().unwrap().target_id();
+        apply(&mut game, source, Effect::new(ironsmith::effects::RetargetStackObjectEffect::new(
+            ChooseSpec::SpecificObject(copy_id)).with_mode(ironsmith::effects::RetargetMode::OneToFixed(
+                ChooseSpec::SpecificObject(second)))));
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.linked_exile_pair_members(&owner).unwrap().len(), 2);
+        assert_eq!(bishop_attack(&mut game, source, recipient, &mut dm), 1);
+        let first = game.find_object_by_stable_id(first_stable).unwrap();
+        let second = game.find_object_by_stable_id(second_stable).unwrap();
+        match mode {
+            1 => { // A blink of the victim cannot restore its recorded incarnation.
+                let hand = game.move_object_by_game_rule(first, Zone::Hand).unwrap();
+                game.move_object_by_game_rule(hand, Zone::Exile).unwrap();
+            }
+            2 => { game.set_face_down(second); }
+            3 => { // A pending reader retains the old source while duration returns run.
+                apply(&mut game, source, Effect::move_to_zone(ChooseSpec::Source, Zone::Hand, false));
+                let hand = game.find_object_by_stable_id(source_stable).unwrap();
+                game.move_object_by_game_rule(hand, Zone::Battlefield).unwrap();
+            }
+            _ => {}
+        }
+        game = game.clone(); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.current_power(recipient), Some(match mode { 0 => 10, 1 => 7, 2 => 5, _ => 2 }));
+    }}
+}
+
+#[test]
+fn borrowed_pairs_keep_independent_donor_and_grant_acquisitions_on_one_host() {
+    for definition in definitions("Bishop of Binding") {
+        let mut game = game();
+        let host = creature(&mut game, A, Zone::Battlefield, "Borrowing host", 1, 1, "Vampire");
+        let donor1 = game.create_object_from_definition(&definition, A, Zone::Exile);
+        let donor2 = game.create_object_from_definition(&definition, A, Zone::Exile);
+        borrow_bishop_triggers(&mut game, host, donor1);
+        borrow_bishop_triggers(&mut game, host, donor2);
+        let first = creature(&mut game, B, Zone::Battlefield, "First victim", 3, 4, "Elf");
+        let second = creature(&mut game, B, Zone::Battlefield, "Second victim", 7, 8, "Elf");
+        let recipient = creature(&mut game, A, Zone::Battlefield, "Recipient", 2, 4, "Vampire");
+        let event = TriggerEvent::new_with_provenance(
+            ironsmith::events::EnterBattlefieldEvent::new(host, Zone::Hand), Default::default());
+        let entries = check_triggers(&game, &event); assert_eq!(entries.len(), 2);
+        assert_ne!(entries[0].linked_exile_owner, entries[1].linked_exile_owner);
+        let mut dm = Choices::default();
+        for (entry, victim) in entries.into_iter().zip([first, second]) {
+            let mut queue = TriggerQueue::new(); queue.add(entry);
+            dm.target = Some(Target::Object(victim));
+            put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+            resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        }
+        assert_eq!(bishop_attack(&mut game, host, recipient, &mut dm), 2);
+        let top = game.stack.last().unwrap().linked_exile_owner.clone().unwrap();
+        let members = game.linked_exile_pair_members(&top).unwrap(); assert_eq!(members.len(), 1);
+        let amount = game.current_power(members[0]).unwrap();
+        // Donor departure after admission cannot redirect a pending reader.
+        let donor1 = game.move_object_by_game_rule(donor1, Zone::Hand).unwrap();
+        let donor1 = game.move_object_by_game_rule(donor1, Zone::Exile).unwrap();
+        game = game.clone(); resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.current_power(recipient), Some(2 + amount));
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.current_power(recipient), Some(12));
+        borrow_bishop_triggers(&mut game, host, donor1);
+        assert_eq!(bishop_attack(&mut game, host, recipient, &mut dm), 2);
+        let owners: Vec<_> = game.stack.iter().map(|entry| entry.linked_exile_owner.as_ref().unwrap()).collect();
+        assert_eq!(owners.iter().filter(|owner| game.linked_exile_pair_members(owner).unwrap().is_empty()).count(), 1,
+            "new donor incarnation and acquisition start without the old victim");
+    }
+}
+
+#[test]
+fn paired_producer_missing_admission_evidence_rolls_back_before_exile_and_recovers() {
+    for definition in definitions("Bishop of Binding") {
+        let mut game = game();
+        let victim = creature(&mut game, B, Zone::Battlefield, "Victim", 3, 4, "Elf");
+        let mut dm = Choices::default();
+        let source = bishop_waiting_for_entry(&mut game, &definition, victim, &mut dm);
+        let exact = game.clone();
+        game.stack.last_mut().unwrap().linked_exile_owner = None;
+        assert!(matches!(resolve_stack_entry_with(&mut game, &mut dm),
+            Err(ironsmith::game_loop::GameLoopError::ExecutionFailed(ironsmith::effects::ExecutionError::IncompleteEvidence(_)))));
+        assert_eq!(game.object(victim).unwrap().zone, Zone::Battlefield);
+        assert!(game.get_exiled_with_source_links(source).is_empty());
+        game = exact; resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(game.get_exiled_with_source_links(source).len(), 1);
+    }
+}
+
+#[test]
+fn compiler_linking_rejects_ambiguous_extra_bodies_and_reused_local_card_ids_do_not_bind_definitions() {
+    let bodies = [
+        "When this creature enters, exile target creature an opponent controls until this creature leaves the battlefield.\nWhenever this creature attacks, target Vampire gets +X/+X until end of turn, where X is the power of the exiled card.",
+        "When this creature enters, exile target creature an opponent controls until this creature leaves the battlefield.\nWhenever this creature attacks, target Vampire gets +X/+X until end of turn, where X is the toughness of the exiled card.",
+    ];
+    let mut pairs = Vec::new();
+    for body in bodies {
+        let text = format!("Type: Creature — Vampire\nPower/Toughness: 1/1\n{body}");
+        let definition = compile_to_runtime_definition("Same caller-local identifier", &text, false).unwrap();
+        let member_pairs: Vec<_> = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(ability) => ability.effects.linked_exile_pair,
+            _ => None,
+        }).collect();
+        assert_eq!(member_pairs.len(), 2); assert_eq!(member_pairs[0], member_pairs[1]);
+        pairs.push(member_pairs[0]);
+        let ambiguous = compile_to_runtime_definition("Two printed producer scopes",
+            format!("{text}\nWhenever this creature dies, exile target card from a graveyard."), false).unwrap();
+        assert!(ambiguous.abilities.iter().all(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(ability) => ability.effects.linked_exile_pair.is_none(),
+            _ => true,
+        }));
+    }
+    assert_ne!(pairs[0].definition, pairs[1].definition);
 }

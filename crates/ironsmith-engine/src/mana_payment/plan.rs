@@ -160,7 +160,7 @@ impl ManaPaymentRequest {
             obligation: PaymentObligation::Required,
             preferences: ManaPaymentPreferences::default(),
             assist_completion: None,
-            activation_excluded_sources: if reason == PaymentReason::ActivateManaAbility { vec![source] } else { Vec::new() },
+            activation_excluded_sources: if reason.is_mana_ability() { vec![source] } else { Vec::new() },
         }
     }
 

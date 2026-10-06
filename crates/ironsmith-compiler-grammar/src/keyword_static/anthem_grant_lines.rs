@@ -2604,6 +2604,7 @@ fn granted_scavenge_abilities_from_subject(
     let ability = Ability {
         kind: AbilityKind::Activated(
             crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                keyword: None,
                 mana_cost: ironsmith_core::TotalCost::from_costs(vec![
                     crate::model::CompilerCost::DynamicMana(
                         ironsmith_core::DynamicManaCost::from_source_mana_cost(),

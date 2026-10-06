@@ -50,6 +50,16 @@ pub enum TurnFaceUpMethod {
 }
 
 impl TurnFaceUpMethod {
+    pub(crate) fn payment_reason(self) -> crate::costs::PaymentReason {
+        use ironsmith_core::ManaTurnFaceUpMethod as Method;
+        crate::costs::PaymentReason::TurnFaceUpWithMethod(match self {
+            Self::TurnFaceUpAbility => Method::Morph,
+            Self::MegamorphAbility => Method::Megamorph,
+            Self::DisguiseAbility => Method::Disguise,
+            Self::PrintedManaCost => Method::PrintedManaCost,
+        })
+    }
+
     pub fn description(self) -> &'static str {
         match self {
             Self::TurnFaceUpAbility => "turn-face-up cost",
@@ -75,7 +85,7 @@ fn turn_face_up_specs(
         append_turn_face_up_specs_from_abilities(&mut specs, &characteristics.abilities);
     }
 
-    if game.is_manifested(object.id)
+    if (game.is_manifested(object.id) || game.is_cloaked(object.id))
         && let Some(restore) = object.face_down_cast_state.as_ref()
         && restore.card_types.contains(&CardType::Creature)
         && let Some(cost) = restore.mana_cost.as_ref().map(|cost| cost.to_owned_value())
@@ -357,7 +367,7 @@ fn adjusted_turn_face_up_cost(
         player,
         permanent_id,
         &spec.cost,
-        crate::costs::PaymentReason::TurnFaceUp,
+        spec.method.payment_reason(),
     );
     if !spec.disguise {
         return adjusted;
@@ -1821,7 +1831,7 @@ fn can_pay_turn_face_up_spec(
         &SpecialActionPayment {
             source: permanent_id,
             cost: adjusted_turn_face_up_cost(game, player, permanent_id, spec),
-            reason: crate::costs::PaymentReason::TurnFaceUp,
+            reason: spec.method.payment_reason(),
         },
     )
 }
@@ -2560,7 +2570,7 @@ fn can_activate_mana_ability(
             );
             // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
             let ctx = CostContext::new(permanent_id, player, decision_maker)
-                .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+                .with_reason(mana_ability.payment_reason(game, permanent_id, player));
             for cost in total_cost.costs() {
                 game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
                     .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
@@ -2795,7 +2805,7 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     };
 
     let ctx = CostCheckContext::new(permanent_id, player)
-        .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+        .with_reason(mana_ability.payment_reason(game, permanent_id, player));
     let has_activation_cost_modifiers = perf_ctx
         .map(crate::decision::BattlefieldAbilityContext::has_activation_cost_modifiers)
         .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
@@ -2825,7 +2835,7 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     let components = total_cost.costs();
     for mana in components.iter().filter_map(|cost| cost.mana_cost_ref()).filter(|cost| cost.has_waterbend_obligation() || payment.is_some()) {
         let mut request = crate::mana_payment::ManaPaymentRequest::new(player, permanent_id,
-            crate::costs::PaymentReason::ActivateManaAbility, mana.clone())
+            mana_ability.payment_reason(game, permanent_id, player), mana.clone())
             .with_spend_policy(game.mana_spend_policy(player, Some(permanent_id)));
         if let Some(outer) = payment {
             request.activation_excluded_sources.extend(outer.activation_excluded_sources.iter().copied());
@@ -2937,7 +2947,7 @@ fn mana_ability_cost_component_payable(
                 Some(permanent_id),
                 mana_cost,
                 0,
-                crate::costs::PaymentReason::ActivateManaAbility,
+                ctx.reason,
             ) {
                 return Err(ActionError::CantPayCost);
             }
@@ -3118,6 +3128,11 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             let mana_production_provenance =
                 mana_production_provenance_for_activation_cost(&total_cost);
             let effects = mana_ability.effects.clone();
+            let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                permanent_id, effects.linked_exile_pair,
+                source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index)));
+            crate::linked_exile::validate_program_owner(effects.linked_exile_pair, linked_exile_owner.as_ref())
+                .map_err(|error| ActionError::ExecutionFailure { source: permanent_id, error })?;
             let mana = mana_ability.mana_output.clone().unwrap_or_default();
             let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
             let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
@@ -3147,7 +3162,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             );
             // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
             let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
-                .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
+                .with_reason(mana_ability.payment_reason(game, permanent_id, player));
             cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
             cost_ctx.reserved_tap_sources = reserved_tap_sources;
             let cost_summary =
@@ -3166,6 +3181,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             );
             // Use the same resolved-event owner as mana-producing effects.
             let mut mana_ctx = ExecutionContext::new(permanent_id, player, &mut *decision_maker)
+                .with_linked_exile_owner(linked_exile_owner.clone())
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(source_chosen_creature_type)
@@ -3197,6 +3213,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
             if !effects.is_empty() {
                 let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
+                    .with_linked_exile_owner(linked_exile_owner.clone())
                     .with_mana_color_restriction(mana_color_restriction.clone())
                     .with_mana_usage_restrictions(mana_usage_restrictions)
                     .with_mana_source_chosen_creature_type(source_chosen_creature_type)
@@ -3792,7 +3809,7 @@ fn pay_total_cost_branch_without_execution_context(
                 .enumerate()
                 .filter_map(|(index, branch)| {
                     (if cost_ctx.interactive_mana_exclusions.is_some()
-                        && cost_ctx.reason != crate::costs::PaymentReason::ActivateManaAbility
+                        && !cost_ctx.reason.is_mana_ability()
                     {
                         payment::check_special_action_payment_with_snapshot(
                             game,

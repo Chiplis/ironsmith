@@ -27,7 +27,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
         let next = i + 1 + usize::from(words.get(i + 1) == Some(&"to"));
         if words
             .get(next)
-            .is_some_and(|w| matches!(*w, "cast" | "activate" | "pay" | "turn"))
+            .is_some_and(|w| matches!(*w, "cast" | "activate" | "pay" | "turn" | "foretell"))
         {
             ends.push(i);
             starts.push(next);
@@ -41,7 +41,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
         let next = i + 1;
         if words
             .get(next)
-            .is_some_and(|w| matches!(*w, "cast" | "activate" | "pay" | "turn"))
+            .is_some_and(|w| matches!(*w, "cast" | "activate" | "pay" | "turn" | "foretell"))
         {
             ends.push(i);
             starts.push(next);
@@ -83,6 +83,43 @@ fn parse_arm(words: &[&str]) -> Option<(ManaPaymentPredicate, bool)> {
     use crate::mana::ManaSymbol;
     let purpose = |p| ManaPaymentPredicate::Purpose(p);
     match words {
+        ["activate", "an", "equip", "ability"] | ["activate", "equip", "abilities"] => Some((
+            ManaPaymentPredicate::ActivatedAbilityKeyword(ironsmith_core::ActivatedAbilityKeyword::Equip), true,
+        )),
+        ["activate", "power-up", "abilities"] | ["activate", "power", "up", "abilities"] => Some((
+            ManaPaymentPredicate::ActivatedAbilityKeyword(ironsmith_core::ActivatedAbilityKeyword::PowerUp), true,
+        )),
+        ["cast", "an", "equipment", "spell"] | ["cast", "equipment", "spells"] => Some((
+            cast_spell_payment_predicate(ObjectFilter::default().with_subtype(crate::types::Subtype::Equipment)), false,
+        )),
+        ["pay", "a", "disturb", "cost"] => Some((ManaPaymentPredicate::DisturbCost, true)),
+        ["foretell", "a", "card", "from", "your", "hand"] | ["foretell", "cards"] =>
+            Some((purpose(ManaPaymentPurpose::Foretell), true)),
+        ["cast", "spells", "that", "have", "foretell"] => Some((
+            cast_spell_payment_predicate(ObjectFilter::default()
+                .with_alternative_cast(crate::filter::AlternativeCastKind::Foretell)), true,
+        )),
+        ["cast", "an", "instant", "or", "sorcery", "spell"] => {
+            let mut filter = ObjectFilter::default();
+            filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+            Some((cast_spell_payment_predicate(filter), false))
+        }
+        ["cast", "a", "face", "down", "creature", "spell"]
+        | ["cast", "a", "face-down", "creature", "spell"] => Some((
+            cast_spell_payment_predicate(ObjectFilter::default().face_down().with_type(CardType::Creature)), false,
+        )),
+        ["pay", "a", "mana", "cost", "to", "turn", "a", "manifested", "creature", "face", "up"] => Some((
+            ManaPaymentPredicate::All(vec![
+                ManaPaymentPredicate::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::PrintedManaCost),
+                ManaPaymentPredicate::SourceManifested,
+            ]), true,
+        )),
+        ["pay", "a", "morph", "cost"] => Some((
+            ManaPaymentPredicate::AnyOf(vec![
+                ManaPaymentPredicate::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::Morph),
+                ManaPaymentPredicate::TurnFaceUpMethod(ironsmith_core::ManaTurnFaceUpMethod::Megamorph),
+            ]), true,
+        )),
         ["cast", "a", "colorless", "spell"] => Some((
             cast_spell_payment_predicate(ObjectFilter::default().colorless()),
             false,
@@ -156,6 +193,12 @@ mod tests {
                 2,
             ),
             ("Spend this mana only to turn permanents face up.", 1),
+            ("Spend this mana only to cast an Equipment spell or activate an equip ability.", 2),
+            ("Spend this mana only to activate power-up abilities.", 1),
+            ("Spend this mana only to foretell a card from your hand or cast an instant or sorcery spell.", 2),
+            ("Spend this mana only to cast a face-down creature spell, pay a mana cost to turn a manifested creature face up, or pay a morph cost.", 3),
+            ("Spend this mana only to pay a disturb cost or cast an instant or sorcery spell.", 2),
+            ("Spend this mana only to foretell cards or cast spells that have foretell.", 2),
         ] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
             let Some(ManaUsageRestriction::PaymentTransaction {
@@ -174,6 +217,9 @@ mod tests {
         }
         for text in [
             "Spend this mana only to turn permanents face up or draw a card.",
+            "Spend this mana only to foretell cards or dance.",
+            "Spend this mana only to pay a morph cost and draw a card.",
+            "Spend this mana only to foretell cards or cast spells that were foretold.",
             "Spend this mana only to turn permanents face up and cast spells.",
             "Spend this mana only to cast a colorless spell or pay a cost that contains {C} with no other requirements.",
         ] {

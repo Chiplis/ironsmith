@@ -19,8 +19,24 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 18;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, CURRENT_AUDIT_PROTOCOL_VERSION]);
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 19;
+export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 3;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, CURRENT_AUDIT_PROTOCOL_VERSION]);
+
+// The current rules engine must never reinterpret a historical signed record.
+// Signature-only verification keeps the original version and canonical payload.
+export function assertCurrentAuditReplayProtocol(transcript) {
+  if (transcript?.protocolVersion !== CURRENT_AUDIT_PROTOCOL_VERSION
+    || transcript?.match?.protocolVersion !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+    throw new Error(`Current engine replay requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION} on both transcript and match; historical transcripts support signature-only verification`);
+  }
+}
+
+export function assertCurrentPublicAuditCheckpoint(checkpoint) {
+  if (checkpoint?.version !== CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION) {
+    throw new Error(`Current engine replay requires public audit checkpoint version ${CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION}`);
+  }
+}
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -3972,6 +3988,16 @@ export async function verifyLiveAuditTranscript(
   if (!transcript || typeof transcript !== "object") {
     throw new Error("Missing audit transcript");
   }
+  const replayTranscript = typeof options.replayTranscript === "function"
+    ? options.replayTranscript
+    : null;
+  const requireEngineReplay = options.requireEngineReplay !== false;
+  if (requireEngineReplay || replayTranscript) {
+    assertCurrentAuditReplayProtocol(transcript);
+    if (transcript.finalPublicCheckpoint != null) {
+      assertCurrentPublicAuditCheckpoint(transcript.finalPublicCheckpoint);
+    }
+  }
   if (transcript.kind !== "ironsmith-live-browser-audit-v1") {
     throw new Error("Unsupported live audit transcript kind");
   }
@@ -4325,10 +4351,6 @@ export async function verifyLiveAuditTranscript(
     verifyZiffleOpening: options.verifyZiffleOpening,
     seq: expectedSeq - 1,
   }, cryptoImpl);
-  const replayTranscript = typeof options.replayTranscript === "function"
-    ? options.replayTranscript
-    : null;
-  const requireEngineReplay = options.requireEngineReplay !== false;
   if (requireEngineReplay && !replayTranscript) {
     throw new Error("Live audit transcript verification requires engine replay");
   }

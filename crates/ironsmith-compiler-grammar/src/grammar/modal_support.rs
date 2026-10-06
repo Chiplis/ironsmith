@@ -204,6 +204,8 @@ pub fn parse_modal_header(
                 infer_activated_functional_zones_lexed(cost_tokens, &effect_sentences);
 
             activated = Some(ModalActivatedHeader {
+                keyword: crate::grammar::activated_lowering::parse_activated_presentation_kind_tokens(&info.source_tokens)
+                    .and_then(crate::ir::ActivatedPresentationKind::keyword),
                 mana_cost,
                 functional_zones,
                 timing: if loyalty_shorthand {

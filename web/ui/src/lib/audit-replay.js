@@ -1,5 +1,7 @@
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, ziffleEpochMaterial } from "./ziffle-private-epochs.js";
 import {
+  assertCurrentAuditReplayProtocol,
+  assertCurrentPublicAuditCheckpoint,
   importAuditPublicKey,
   publicCheckpointHash,
   publicDeckManifest,
@@ -451,9 +453,15 @@ async function localReplayCommand(game, command) {
     resolve(id, command.object_stable_ids?.[index], command.object_hidden_refs?.[index])) };
 }
 
-async function currentPublicCheckpointHash(game, cryptoImpl) {
+async function currentPublicCheckpoint(game) {
   const exportPublicAuditCheckpoint = requiredGameMethod(game, "exportPublicAuditCheckpoint");
-  return publicCheckpointHash(await exportPublicAuditCheckpoint(), cryptoImpl);
+  const checkpoint = await exportPublicAuditCheckpoint();
+  assertCurrentPublicAuditCheckpoint(checkpoint);
+  return checkpoint;
+}
+
+async function currentPublicCheckpointHash(game, cryptoImpl) {
+  return publicCheckpointHash(await currentPublicCheckpoint(game), cryptoImpl);
 }
 
 export async function startAuditTranscriptReplayWithGame({
@@ -465,10 +473,13 @@ export async function startAuditTranscriptReplayWithGame({
   if (!transcript || typeof transcript !== "object") {
     throw new Error("Missing audit transcript for engine replay");
   }
+  assertCurrentAuditReplayProtocol(transcript);
+  // A failed restart must not leave a session authorizing later actions.
+  privateReplayHistories.delete(game);
+  await currentPublicCheckpoint(game);
   const match = transcript.match || {};
   const startMatch = requiredGameMethod(game, "startMatch");
   await startMatch(replayMatchConfig(match));
-  privateReplayHistories.set(game, { match, actions: [] });
   const setPerspective = optionalGameMethod(game, "setPerspective");
   if (setPerspective) {
     await setPerspective(normalizedPerspective(perspectiveIndex, match));
@@ -487,9 +498,11 @@ export async function startAuditTranscriptReplayWithGame({
     throw new Error("Engine replay initial public checkpoint hash does not match transcript");
   }
   const uiState = optionalGameMethod(game, "uiState");
+  const state = uiState ? await uiState() : null;
+  privateReplayHistories.set(game, { transcript, match: clonePayload(match), actions: [] });
   return {
     initialPublicCheckpointHash,
-    state: uiState ? await uiState() : null,
+    state,
   };
 }
 
@@ -560,6 +573,21 @@ export async function applyAuditReplayActionWithGame({
   actionIndex = 0,
   cryptoImpl = globalThis.crypto,
 } = {}) {
+  const history = privateReplayHistories.get(game);
+  if (!history) {
+    throw new Error("Engine replay action requires a successfully initialized current-protocol replay session");
+  }
+  try {
+    assertCurrentAuditReplayProtocol(history.transcript);
+    await currentPublicCheckpoint(game);
+    return await applyCurrentAuditReplayAction({ game, action, actionIndex, cryptoImpl });
+  } catch (error) {
+    privateReplayHistories.delete(game);
+    throw error;
+  }
+}
+
+async function applyCurrentAuditReplayAction({ game, action, actionIndex, cryptoImpl }) {
   const seq = actionSeq(action, Number(actionIndex) + 1);
   const audit = action?.audit || {};
   let command = resolveSyncedCommand(action?.command || audit.command);
@@ -751,6 +779,8 @@ export async function verifyEndOfMatchDisclosuresWithGame({
   transcript,
   cryptoImpl = globalThis.crypto,
 } = {}) {
+  assertCurrentAuditReplayProtocol(transcript);
+  await currentPublicCheckpoint(game);
   const entries = Array.isArray(transcript?.endOfMatchDisclosures)
     ? transcript.endOfMatchDisclosures
     : [];
@@ -804,6 +834,8 @@ export async function replayAuditTranscriptWithGame({
   if (!transcript || typeof transcript !== "object") {
     throw new Error("Missing audit transcript for engine replay");
   }
+  assertCurrentAuditReplayProtocol(transcript);
+  await currentPublicCheckpoint(game);
   const match = transcript.match || {};
   const actions = Array.isArray(transcript.actions) ? transcript.actions : [];
   requiredGameMethod(game, "getHiddenCardState");
@@ -873,7 +905,7 @@ export async function replayAuditTranscriptWithGame({
     } catch (restoreErr) {
       restoreError = restoreErr;
     }
-    if (previousPrivateHistory) privateReplayHistories.set(game, previousPrivateHistory);
+    if (previousPrivateHistory && !restoreError) privateReplayHistories.set(game, previousPrivateHistory);
     else privateReplayHistories.delete(game);
   }
 

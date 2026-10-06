@@ -24,6 +24,7 @@ fn enchanted_creature_filter() -> ObjectFilter {
 pub fn treasure_token_definition() -> CardDefinition {
     let mana_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
             effects: vec![Effect::add_mana_of_any_color(1)].into(),
             choices: vec![],
@@ -101,6 +102,7 @@ fn nonartifact_spell_restricted_mana_ability() -> crate::ability::Ability {
     };
     crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap()]),
             effects: Vec::new().into(),
             choices: vec![],
@@ -148,6 +150,7 @@ pub fn map_token_definition() -> CardDefinition {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
     let explore_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
                 Cost::tap(),
@@ -218,6 +221,7 @@ pub fn junk_token_definition() -> CardDefinition {
     let exile_tag = crate::tag::CompilerReferenceTag::JunkExiledCard.bind();
     let impulse_draw_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap(), Cost::sacrifice_self()]),
             effects: vec![
                 Effect::new(
@@ -266,6 +270,7 @@ pub fn junk_token_definition() -> CardDefinition {
 pub fn mutagen_token_definition() -> CardDefinition {
     let ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
                 Cost::tap(),
@@ -299,6 +304,7 @@ pub fn mutagen_token_definition() -> CardDefinition {
 pub fn gold_token_definition() -> CardDefinition {
     let mana_ability = crate::ability::Ability {
         kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::sacrifice_self()]),
             effects: vec![Effect::add_mana_of_any_color(1)].into(),
             choices: vec![],

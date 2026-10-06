@@ -207,6 +207,7 @@ pub(super) fn test_activation_cost_source_lki_uses_state_after_prior_costs() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: costs,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::gain_life(Value::PowerOf(Box::new(ChooseSpec::Source))),
