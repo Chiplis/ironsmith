@@ -1083,6 +1083,48 @@ impl GameState {
             .insert(id, kind);
     }
 
+    /// Identity-free public declarations offered after an exact blind intent.
+    /// Printed kinds are declarations, never a query of the unopened abilities.
+    pub(crate) fn blind_face_down_cast_kinds(&self, player: PlayerId) -> Vec<FaceDownCastKind> {
+        let mut kinds = vec![FaceDownCastKind::Morph, FaceDownCastKind::Megamorph, FaceDownCastKind::Disguise];
+        for permission in self.face_down_cast_permissions() {
+            if self.active_face_down_cast_permission(permission.source, player, Zone::Exile).is_some() {
+                let kind = FaceDownCastKind::Permission { source: permission.source };
+                if !kinds.contains(&kind) { kinds.push(kind); }
+            }
+        }
+        kinds
+    }
+
+    /// The blind intent owner has already checked the exact card, actor and
+    /// unqualified play permission. Tracked cards use the existing public claim
+    /// ledger and authenticated opening obligation; untracked native cards can
+    /// validate the one explicitly declared rule immediately without disclosing
+    /// a face or offering any other private rule.
+    pub(crate) fn declare_blind_face_down_cast(
+        &mut self, id: ObjectId, player: PlayerId, kind: FaceDownCastKind,
+        incarnation: Option<u64>, permission: &crate::alternative_cast::GrantSelection,
+    ) -> bool {
+        let Some(object) = self.object(id).filter(|object| object.zone == Zone::Exile) else { return false; };
+        let tracked = self.hidden_card_info(id).is_some();
+        let permitted = match kind {
+            FaceDownCastKind::Permission { source } => self.active_face_down_cast_permission(source, player, Zone::Exile)
+                .is_some_and(|permission| tracked || permission.filter.matches(object, &permission.filter_context(), self)),
+            _ => tracked || kind.is_allowed_by(&object.abilities),
+        };
+        if !permitted { return false; }
+        let tracking = self.auxiliary_tracking_mut();
+        tracking.hidden_face_down_cast_claims.insert(id, kind);
+        tracking.blind_face_down_declarations.insert(id, crate::alternative_cast::blind_play::BlindFaceDownDeclaration {
+            player, incarnation, permission: permission.clone(), kind,
+        });
+        true
+    }
+
+    pub(crate) fn blind_face_down_declaration(&self, id: ObjectId) -> Option<&crate::alternative_cast::blind_play::BlindFaceDownDeclaration> {
+        self.auxiliary_tracking.blind_face_down_declarations.get(&id)
+    }
+
     /// Hidden face-down cast claims.
     pub fn hidden_face_down_cast_claims(&self) -> Vec<(ObjectId, FaceDownCastKind)> {
         let mut claims: Vec<_> = self
@@ -1161,13 +1203,23 @@ impl GameState {
     /// A permission from the same source for the same player and zone is
     /// replaced.
     pub fn grant_face_down_cast_permission(&mut self, permission: FaceDownCastPermission) {
+        let public_id = self.object(permission.source).map(|source| source.stable_id);
         let tracking = self.auxiliary_tracking_mut();
+        if let Some(public_id) = public_id {
+            tracking.face_down_permission_source_public_ids.insert(permission.source, public_id);
+        }
         tracking.face_down_cast_permissions.retain(|existing| {
             !(existing.source == permission.source
                 && existing.player == permission.player
                 && existing.zone == permission.zone)
         });
         tracking.face_down_cast_permissions.push(permission);
+    }
+
+    /// Exact-keyed public evidence survives source departure and native recovery.
+    /// Absence is incomplete evidence, never a lookup of a later stable card.
+    pub(crate) fn face_down_permission_source_public_id(&self, source: ObjectId) -> Option<StableId> {
+        self.auxiliary_tracking.face_down_permission_source_public_ids.get(&source).copied()
     }
 
     /// Remove every face-down cast permission granted by `source`.
@@ -1282,6 +1334,9 @@ impl GameState {
     }
 
     pub(crate) fn clear_hidden_face_down_cast_claim(&mut self, id: ObjectId) {
+        if self.auxiliary_tracking.blind_face_down_declarations.contains_key(&id) {
+            self.auxiliary_tracking_mut().blind_face_down_declarations.remove(&id);
+        }
         if self
             .auxiliary_tracking
             .hidden_face_down_cast_claims
@@ -1527,6 +1582,7 @@ impl GameState {
             // The card may still sit at the anchored ciphertext (drawn back
             // without a reshuffle): one opening settles both entries.
             let anchor_info = super::HiddenCardInfo {
+                incarnation: None,
                 owner: anchor.owner,
                 zone: Zone::Library,
                 slot: anchor.slot,

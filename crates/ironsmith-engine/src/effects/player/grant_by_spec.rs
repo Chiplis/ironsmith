@@ -56,6 +56,9 @@ impl EffectExecutor for GrantBySpecEffect {
         if !self.spec.cast_mana_spend_mode.is_normal() && !matches!(self.spec.grantable, Grantable::PlayFrom) {
             return Err(ExecutionError::IncompleteEvidence("permission-local mana requires a plain play permission".into()));
         }
+        if self.spec.linked_exile_class_level.is_some() {
+            return Err(ExecutionError::IncompleteEvidence("Class-linked permission requires its live static acquisition".into()));
+        }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         if self.spec.zone == Zone::Battlefield
             && let Grantable::Ability(ability) = &self.spec.grantable

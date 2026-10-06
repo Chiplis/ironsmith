@@ -2708,7 +2708,7 @@ impl GameSnapshot {
         &mut self, game: &GameState, view: &ActiveViewedCards, cache: &SnapshotObjectViewCache,
     ) {
         let Some(player) = self.players.iter_mut().find(|player| player.id == view.subject.0) else { return; };
-        if view.zone == Zone::Battlefield && view.public {
+        if matches!(view.zone, Zone::Battlefield | Zone::Exile) && view.public {
             let mut looks = player.persistent_look_cards.as_ref().clone();
             for id in &view.cards {
                 let Some(object) = game.object(*id) else { continue; };

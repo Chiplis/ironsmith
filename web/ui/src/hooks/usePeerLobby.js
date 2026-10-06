@@ -1,3 +1,4 @@
+import { isOpaqueExilePlayCommand } from "../lib/sync-object-identity.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
 import { openingPreparationProgress } from "../lib/opening-preparation-progress.js";
@@ -779,7 +780,7 @@ export function usePeerLobby({
           }
           const hasHiddenRef = command.object_hidden_ref != null || command.objectHiddenRef != null;
           if (Number.isSafeInteger(objectId) && objectId > 0 && !hasHiddenRef) {
-            const hiddenRef = await currentHiddenRefForObjectId(objectId);
+            const hiddenRef = await currentHiddenRefForObjectId(objectId, { opaqueExile: isOpaqueExilePlayCommand(command) });
             if (hiddenRef) {
               priorityObjectMetadata.object_hidden_ref = hiddenRef;
             }
@@ -1152,6 +1153,7 @@ export function usePeerLobby({
           cryptoRequirements.length > 0
           || commandMayProducePostApplyOpenings(command, preSubmitState, cryptoRequirements);
         await ensureSignedActionIntent();
+        await servicesRef.current.pinBlindExileOpeningIntent(signedActionIntent);
         const initialActionProgress = {
           kind: "local_payload",
           title: "Preparing action payload",

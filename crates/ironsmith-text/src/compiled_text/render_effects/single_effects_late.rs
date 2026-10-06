@@ -5967,6 +5967,7 @@ fn describe_payment_action_predicate(
         P::ActivatedAbilityKeyword(keyword) => Some(match keyword {
             ironsmith_core::ActivatedAbilityKeyword::Equip => "activate an equip ability",
             ironsmith_core::ActivatedAbilityKeyword::PowerUp => "activate power-up abilities",
+            ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level) => return Some(format!("activate a level {level} ability")),
         }.to_string()),
         P::DisturbCost => Some("pay a disturb cost".to_string()),
         P::Purpose(Purpose::Foretell) => Some("foretell cards".to_string()),

@@ -619,6 +619,29 @@ fn apply_priority_response_with_dm_inner(
     }
 
     // Handle casting method selection for a pending spell with multiple methods
+    if let PriorityResponse::ExileFaceDownChoice(choice) = response {
+        return super::exile_face_down::apply_choice(game, trigger_queue, state, *choice, decision_maker);
+    }
+    if let Some(pending) = &state.pending_exile_face_down
+        && let PriorityResponse::PriorityAction(action) = response {
+        if matches!(action, LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission }
+            if *card_id == pending.card_id && *incarnation == pending.incarnation && permission == &pending.permission) {
+            return super::exile_face_down::resume(game, state);
+        }
+        return Err(GameLoopError::InvalidState("Finish the face-down declaration before taking another action".into()));
+    }
+    if let PriorityResponse::ExilePlayChoice(choice) = response {
+        return super::exile_play::apply_exile_play_choice(game, trigger_queue, state, *choice, decision_maker);
+    }
+    if let Some(pending) = &state.pending_exile_play
+        && let PriorityResponse::PriorityAction(action) = response
+    {
+        if matches!(action, LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission }
+            if *card_id == pending.card_id && *incarnation == pending.incarnation && permission == &pending.permission) {
+            return super::exile_play::resume_open_exile_play(game, trigger_queue, state, decision_maker);
+        }
+        return Err(GameLoopError::InvalidState("Finish the opened exile play before taking another action".into()));
+    }
     if let PriorityResponse::CastingMethodChoice(choice_idx) = response {
         return apply_casting_method_choice_response(
             game,
@@ -643,7 +666,20 @@ fn apply_priority_response_with_dm_inner(
         game.turn.priority_player = Some(actor);
     }
 
+    apply_admitted_priority_action(game, trigger_queue, state, action, decision_maker)
+}
+
+/// Shared transaction owner after priority admission or an exact opened-card
+/// choice has established the actor, card and permission.
+pub(super) fn apply_admitted_priority_action(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, state: &mut PriorityLoopState,
+    action: &LegalAction, decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     match action {
+        LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission } =>
+            super::exile_face_down::begin(game, trigger_queue, state, *card_id, *incarnation, permission),
+        LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission } =>
+            super::exile_play::begin_open_exile_play(game, trigger_queue, state, *card_id, *incarnation, permission, decision_maker),
         LegalAction::PassPriority => super::priority_mana::apply_priority_action_with_dm(
             game,
             trigger_queue,
@@ -680,11 +716,19 @@ fn apply_priority_response_with_dm_inner(
                 crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                     .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
+                let opened_permission = state.opened_exile_play.as_ref().map(|opened| {
+                    if opened.card_id != *land_id || opened.player != player {
+                        return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                            "opened land permission and announcement disagree".into()));
+                    }
+                    Ok(&opened.permission)
+                }).transpose()?;
                 crate::special_actions::execute_land_play_with_observer(
                     game,
                     player,
                     *land_id,
                     back_face,
+                    opened_permission,
                     crate::special_actions::LandPlayObservationTiming::BeforeHistory,
                     decision_maker,
                     |game, decision_maker, new_id, kind, event| {

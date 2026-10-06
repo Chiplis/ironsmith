@@ -1294,6 +1294,45 @@ impl GrantRegistry {
         result
     }
 
+    /// An unqualified permission can authorize opening a face-down exiled card
+    /// without consulting its hidden characteristics. Exact target IDs and the
+    /// zone are public authority; a face-name or characteristic filter is not.
+    pub(crate) fn unqualified_exile_play_grants(
+        &self, game: &crate::GameState, card_id: ObjectId, player: PlayerId,
+    ) -> Vec<Grant> {
+        let Some(card) = game.object(card_id).filter(|card| card.zone == Zone::Exile) else { return Vec::new(); };
+        self.grants.iter().filter(|grant| !matches!(grant.source, GrantSource::StaticAbility { .. })).cloned()
+            .chain(self.static_grants(game)).filter(|grant| {
+                if !matches!(grant.grantable, Grantable::PlayFrom) || grant.player != player
+                    || grant.zone != Zone::Exile || !grant.source.is_valid(game)
+                    || !self.shared_usage_is_available(grant.shared_usage_id)
+                    || grant.available_starting_turn.is_some_and(|turn| game.turn.turn_number < turn)
+                    || grant.required_face_name.is_some() || grant.play_from_constraints.top_card_only
+                    || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
+                { return false; }
+                if let Some(filter) = &grant.filter {
+                    let mut unqualified = filter.clone();
+                    if unqualified.zone.take().is_some_and(|zone| zone != Zone::Exile) { return false; }
+                    // The existing unmarked source pool is an object-history
+                    // relation, not a hidden card quality. Preserve that prior
+                    // route without granting it a new definition/acquisition pair.
+                    if !unqualified.tagged_constraints.is_empty() {
+                        if !unqualified.tagged_constraints.iter().all(|constraint|
+                            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject)
+                            || !game.get_exiled_with_source_links(grant.source.source_id()).contains(&card_id)
+                        { return false; }
+                        unqualified.tagged_constraints.clear();
+                    }
+                    if unqualified != ObjectFilter::default() { return false; }
+                }
+                match grant.target_id {
+                    Some(target) => target == card_id || grant.target_stable_id == Some(card.stable_id),
+                    None => grant.filter.is_some(),
+                }
+            }).collect()
+    }
+
     /// Check if a card has a specific granted ability.
     pub fn card_has_granted_ability(
         &self,
@@ -1730,7 +1769,7 @@ impl GrantRegistry {
                     if source_is_battlefield && ability.functions_in(&source.zone)
                         && let AbilityKind::Static(ability) = &ability.kind
                         && (ability.source_exiled_inspection_pair().is_some()
-                            || ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || !spec.cast_mana_spend_mode.is_normal()))
+                            || ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || spec.linked_exile_class_level.is_some() || !spec.cast_mana_spend_mode.is_normal()))
                     {
                         game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
                             "linked static permission omitted its rules-text acquisition; native recovery or replay required".into()));
@@ -1778,7 +1817,7 @@ impl GrantRegistry {
                     continue;
                 }
 
-                if (spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || !spec.cast_mana_spend_mode.is_normal())
+                if (spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || spec.linked_exile_class_level.is_some() || !spec.cast_mana_spend_mode.is_normal())
                     && !ability.functions_in(&source.zone) { continue; }
                 let linked_targets = match static_linked_exile_targets(game, &spec, &permission_identity) {
                     Ok(targets) => targets,
@@ -1934,7 +1973,7 @@ fn static_linked_exile_targets(
     spec: &crate::grant::GrantSpec,
     identity: &GrantPermissionIdentity,
 ) -> Result<Option<Vec<ObjectId>>, crate::effects::ExecutionError> {
-    if !spec.requires_linked_exile_pair && !spec.may_look_at_linked_exile && spec.linked_exile_pair.is_none() { return Ok(None); }
+    if !spec.requires_linked_exile_pair && !spec.may_look_at_linked_exile && spec.linked_exile_pair.is_none() && spec.linked_exile_class_level.is_none() { return Ok(None); }
     if spec.zone != Zone::Exile || !spec.additional_zones.is_empty()
         || !has_linked_exile_pool(&spec.filter)
         || spec.filter.tagged_constraints.iter().filter(|constraint|
@@ -1951,6 +1990,15 @@ fn static_linked_exile_targets(
             return Err(crate::effects::ExecutionError::IncompleteEvidence(
                 "linked private inspection requires a proven complete paired-card pool".into()));
         }
+    }
+    if let Some(level) = spec.linked_exile_class_level {
+        let bridged = match (spec.linked_exile_pair, identity) {
+            (Some(pair), GrantPermissionIdentity::Static { source, origin, .. }) =>
+                crate::linked_exile::has_class_linked_exile_bridge(*source, pair, level, origin),
+            _ => false,
+        };
+        if !bridged { return Err(crate::effects::ExecutionError::IncompleteEvidence(
+            "linked Class permission omitted its exact level acquisition".into())); }
     }
     linked_exile_targets_for_identity(game, spec.linked_exile_pair, identity).map(Some)
 }

@@ -2680,6 +2680,16 @@ enum PriorityActionRef {
         card_id: u64,
         ability_index: usize,
     },
+    OpenExiledCardForPlay {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
+    },
+    CastExiledCardFaceDown {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
+    },
     CastSpell {
         spell_id: u64,
         from_zone: String,
@@ -6031,6 +6041,7 @@ mod native_tests {
         wasm.game.set_hidden_card_info(
             hidden,
             ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner: alice,
                 zone: Zone::Hand,
                 slot: 4,

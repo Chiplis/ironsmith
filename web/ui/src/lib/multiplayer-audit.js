@@ -457,6 +457,27 @@ function normalizePublicCheckpointForHash(checkpoint) {
     return normalized;
   };
 
+  const normalizeOpenedExilePlay = receipt => receipt && ({
+    ...receipt,
+    cardId: receipt.cardStableId ?? stableIdByRuntimeId.get(String(receipt.cardId)) ?? receipt.cardId,
+    permission: { ...receipt.permission,
+      source: receipt.permissionSourceStableId
+        ?? stableIdByRuntimeId.get(String(receipt.permission?.source)) ?? receipt.permission?.source },
+  });
+  const normalizeExileFaceDownKind = kind => {
+    if (!kind) return kind;
+    if (kind.permissionSource == null) return kind;
+    const source = kind.permissionSourceStableId;
+    if (!Number.isSafeInteger(source) || source <= 0) {
+      throw new Error("Face-down declaration has no captured public permission source identity");
+    }
+    return { ...kind, permissionSource: source };
+  };
+  const normalizeExileFaceDown = receipt => receipt && ({
+    ...normalizeOpenedExilePlay(receipt),
+    kinds: receipt.kinds.map(normalizeExileFaceDownKind),
+    declaredKind: normalizeExileFaceDownKind(receipt.declaredKind),
+  });
   const normalized = {
     ...stripped,
     players: (stripped.players || []).map(normalizePlayer),
@@ -471,6 +492,18 @@ function normalizePublicCheckpointForHash(checkpoint) {
         sort: key !== "stack",
       });
     }
+  }
+  for (const key of ["openedExilePlay", "exileFaceDown"]) {
+    if (normalized.priorityRuntime?.[key]) {
+      normalized.priorityRuntime = { ...normalized.priorityRuntime,
+        [key]: (key === "exileFaceDown" ? normalizeExileFaceDown : normalizeOpenedExilePlay)(normalized.priorityRuntime[key]) };
+    }
+  }
+  if (Array.isArray(normalized.grandMelee?.markers)) {
+    normalized.grandMelee = { ...normalized.grandMelee, markers: normalized.grandMelee.markers.map(marker => ({ ...marker,
+      ...(marker.openedExilePlay ? { openedExilePlay: normalizeOpenedExilePlay(marker.openedExilePlay) } : {}),
+      ...(marker.exileFaceDown ? { exileFaceDown: normalizeExileFaceDown(marker.exileFaceDown) } : {}),
+    })) };
   }
   if (Array.isArray(normalized.public_exile) && !Array.isArray(normalized.publicExile)) {
     normalized.publicExile = normalized.public_exile;

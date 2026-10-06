@@ -1,6 +1,7 @@
 use crate::zone::Zone;
 pub(crate) mod price_routes;
 pub mod play_permission;
+pub mod blind_play;
 pub use ironsmith_core::{AlternativeCastRequirements, TrapCondition};
 
 pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<

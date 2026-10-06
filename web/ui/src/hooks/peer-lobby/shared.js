@@ -1121,6 +1121,7 @@ export function collectCommandObjectIds(command, output = new Set(), uiState = n
   // before the command is replayed (CR 708.2; opened later when the rules
   // reveal it, see isFaceDownCastCommand). Foretell likewise exiles a
   // hand card face down without disclosing its identity.
+  if (command?.type === "priority_action" && command.action_ref?.kind === "cast_exiled_card_face_down") return output;
   if (isFaceDownCastCommand(command) || isForetellCommand(command)) return output;
   if (command.type === "priority_action" && command.action_ref) {
     const objectId = actionRefObjectId(command.action_ref);

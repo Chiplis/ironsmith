@@ -54,6 +54,7 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
     primitives::phrase(&["exiled", "with", "this"]).parse_next(input)?;
     let source_kind = alt((
         primitives::kw("enchantment").value("enchantment"),
+        primitives::kw("class").value("Class"),
         primitives::kw("artifact").value("artifact"),
         primitives::kw("creature").value("creature"),
         primitives::kw("permanent").value("permanent"),
@@ -147,4 +148,22 @@ pub fn parse_play_source_exiled_with_mana_tokens(tokens: &[OwnedLexToken])
     let reference = parse_play_lands_and_spells_from_source_exiled_tokens(permission)?;
     let mode = super::super::tagged_surface::parse_cast_this_way_mana_rider_tokens(rider)?;
     Some((reference, mode))
+}
+
+/// A complete same-sentence rider over the same source-linked card pool.
+pub fn parse_play_source_exiled_inline_mana_tokens(tokens: &[OwnedLexToken])
+    -> Option<(SourceExiledReference, ironsmith_core::value_model::ManaSpendMode)> {
+    use super::super::tagged_surface::{parse_allow_any_color_for_cast_suffix_tokens, ManaSpendCastReference};
+    let suffix = parse_allow_any_color_for_cast_suffix_tokens(tokens)?;
+    if suffix.reference != ManaSpendCastReference::ThoseSpells { return None; }
+    let permission = trim_lexed_commas(suffix.body_tokens);
+    let reference = if let Some(reference) = parse_play_lands_and_spells_from_source_exiled_tokens(permission) {
+        reference
+    } else {
+        let (_, rest) = primitives::parse_prefix(permission, primitives::phrase(&["you", "may", "play"]))?;
+        let (reference, tail) = parse_cards_from_source_exiled_tokens(rest)?;
+        primitives::probe_all(tail, primitives::sentence_end(), "complete source-linked card permission")?;
+        reference
+    };
+    Some((reference, suffix.mana_spend_mode))
 }

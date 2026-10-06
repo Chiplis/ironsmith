@@ -1106,9 +1106,9 @@ fn spell_view_for_cost_filter_match(
     casting_method: &CastingMethod,
     cast_from_zone: Option<Zone>,
 ) -> Option<crate::object::Object> {
-    let selected_price_face = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let selected_price_face = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack { game.object(spell.id).cloned() }
-        else { match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+        else { match crate::alternative_cast::play_permission::selected_face(game, caster, spell, casting_method) {
             Ok((face, _, _)) => Some(face),
             Err(error) => { game.record_token_resource_failure(&error); return None; }
         } }
@@ -2427,6 +2427,11 @@ pub fn spell_mana_cost_for_cast(
     casting_method: &CastingMethod,
     from_zone: Zone,
 ) -> Option<crate::mana::ManaCost> {
+    if matches!(casting_method, CastingMethod::ExactPermission { .. })
+        && let Err(error) = crate::alternative_cast::blind_play::admit_pre_stack_method(game, spell.id, player, casting_method) {
+        game.record_token_resource_failure(&error);
+        return None;
+    }
     let base_cost = match casting_method.without_exact_permission() {
         CastingMethod::ExactPermission { .. } => {
             game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence("nested exact permission is not a casting method".into()));
@@ -2556,7 +2561,7 @@ pub(crate) fn alternative_method_for_casting_method(
     casting_method: &CastingMethod,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
     if matches!(casting_method, CastingMethod::ExactPermission { .. }) {
-        return match crate::alternative_cast::play_permission::selected_alternative(game, spell, casting_method) {
+        return match crate::alternative_cast::play_permission::selected_alternative(game, player, spell, casting_method) {
             Ok(method) => method,
             Err(error) => { game.record_token_resource_failure(&error); None }
         };
@@ -3598,11 +3603,11 @@ pub(crate) fn can_cast_spell_with_context(
         }
         _ => cast_view,
     };
-    let cast_view = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let cast_view = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack {
             game.object(spell.id).cloned()
         } else {
-            match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+            match crate::alternative_cast::play_permission::selected_face(game, player, spell, casting_method) {
                 Ok((face, _, _)) => Some(face),
                 Err(error) => { game.record_token_resource_failure(&error); return false; }
             }
@@ -3677,10 +3682,9 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let target_started_at = PerfTimer::start();
-    let program = cast_view
-        .as_ref()
-        .and_then(|view| view.spell_effect.as_deref())
-        .or(spell.spell_effect.as_deref());
+    // An explicit face-down view intentionally has no printed program.
+    // Absence on that face must not recover the secret face's targets.
+    let program = cast_view.as_ref().map_or(spell.spell_effect.as_deref(), |view| view.spell_effect.as_deref());
     // Target legality is a pure function of the analysis snapshot, and this is
     // the dominant fixed cost of a menu pass. Under a sliced analysis the
     // snapshot is frozen, so the answer is memoized across slices; synchronous
@@ -4074,11 +4078,11 @@ pub(crate) fn can_cast_with_cost_with_context(
     } else {
         None
     };
-    let cast_view = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let cast_view = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack {
             game.object(spell.id).cloned()
         } else {
-            match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+            match crate::alternative_cast::play_permission::selected_face(game, player, spell, casting_method) {
                 Ok((face, _, _)) => Some(face),
                 Err(error) => { game.record_token_resource_failure(&error); return false; }
             }

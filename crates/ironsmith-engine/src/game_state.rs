@@ -379,6 +379,10 @@ pub struct UiEffectEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenCardInfo {
+    /// Public zone-change generation within this cryptographic identity.
+    /// None is explicitly unknown historical metadata, never generation zero.
+    /// Hydration preserves it; a new hidden commitment starts at Some(0).
+    pub incarnation: Option<u64>,
     pub owner: PlayerId,
     pub zone: Zone,
     pub slot: u16,
@@ -689,6 +693,9 @@ struct AuxiliaryTrackingState {
     draft_removed_cards: HashMap<(PlayerId, String), HashSet<ObjectId>>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
+    /// Public generation high-water mark, retained even when identities retire.
+    /// New anonymous epochs must not recycle an old commitment/generation pair.
+    hidden_incarnation_high_water: u64,
     /// The shared hidden-claim ledger: filters that cards chosen (or withheld)
     /// while hidden from some peer must satisfy once opened. Identical on
     /// every peer (see `hidden_hand_choices::HiddenIdentityObligation`).
@@ -698,6 +705,8 @@ struct AuxiliaryTrackingState {
     /// those that hold only a placeholder, reads the cast's legality and
     /// disguise's ward from it (see `hidden_hand_choices`).
     hidden_face_down_cast_claims: HashMap<ObjectId, hidden_hand_choices::FaceDownCastKind>,
+    /// Exact admitted unseen-exile declaration; never reconstructed from a kind claim.
+    blind_face_down_declarations: HashMap<ObjectId, crate::alternative_cast::blind_play::BlindFaceDownDeclaration>,
     /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
     /// for the end-of-match disclosure.
     departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
@@ -719,6 +728,9 @@ struct AuxiliaryTrackingState {
     /// Effect permissions to cast cards face down without a printed morph,
     /// megamorph, or disguise (see `hidden_hand_choices`). Public.
     face_down_cast_permissions: Vec<hidden_hand_choices::FaceDownCastPermission>,
+    /// Public display/hash identities captured for exact effect source objects.
+    /// Never used to rebind a permission to another incarnation of that card.
+    face_down_permission_source_public_ids: BTreeMap<ObjectId, StableId>,
     /// Hidden-tracked hand cards whose identity every peer learned through an
     /// owner-answered public reveal (see `hidden_hand_choices`). Symmetric:
     /// it only changes while a decision answer is replayed.
@@ -8311,9 +8323,11 @@ impl GameState {
         let id = self.new_object_id();
         let object = Object::new_hidden_card(id, owner, zone);
         self.add_object(object);
+        let incarnation = Some(self.hidden_incarnation_high_water());
         self.auxiliary_tracking_mut().hidden_cards.insert(
             id,
             HiddenCardInfo {
+                incarnation,
                 owner,
                 zone,
                 slot,
@@ -8325,6 +8339,24 @@ impl GameState {
             },
         );
         id
+    }
+
+    pub fn hidden_incarnation_high_water(&self) -> u64 {
+        self.auxiliary_tracking.hidden_incarnation_high_water
+    }
+
+    pub(crate) fn reserve_hidden_incarnation_epoch(&mut self) -> Result<u64, String> {
+        let next = self.hidden_incarnation_high_water().checked_add(1)
+            .ok_or_else(|| "hidden-card incarnation history is exhausted".to_string())?;
+        self.auxiliary_tracking_mut().hidden_incarnation_high_water = next;
+        Ok(next)
+    }
+
+    pub(crate) fn observe_hidden_incarnation(&mut self, incarnation: Option<u64>) {
+        if let Some(value) = incarnation {
+            let next = self.hidden_incarnation_high_water().max(value);
+            self.auxiliary_tracking_mut().hidden_incarnation_high_water = next;
+        }
     }
 
     pub fn hidden_card_info(&self, id: ObjectId) -> Option<&HiddenCardInfo> {
@@ -8339,16 +8371,19 @@ impl GameState {
         // Hydration and later shuffles update the current identity, never the
         // first commitment that independently authenticates this physical card.
         if let Some(existing) = self.hidden_card_info(id) {
+            info.incarnation = existing.incarnation;
             info.origin_slot = existing.origin_slot.or(Some(existing.slot));
             info.origin_commitment = existing
                 .origin_commitment
                 .clone()
                 .or_else(|| Some(existing.commitment.clone()));
         } else {
+            if info.incarnation == Some(0) { info.incarnation = Some(self.hidden_incarnation_high_water()); }
             info.origin_slot.get_or_insert(info.slot);
             info.origin_commitment
                 .get_or_insert_with(|| info.commitment.clone());
         }
+        self.observe_hidden_incarnation(info.incarnation);
         self.auxiliary_tracking_mut().hidden_cards.insert(id, info);
     }
 

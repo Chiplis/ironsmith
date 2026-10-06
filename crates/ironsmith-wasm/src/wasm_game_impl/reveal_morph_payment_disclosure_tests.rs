@@ -18,6 +18,7 @@ fn reveal_morph_cast_for(wasm: &mut WasmGame, definition: &CardDefinition, alice
     let hand = wasm.game.create_object_from_definition(definition, alice, Zone::Hand);
     if tracked {
         wasm.game.set_hidden_card_info(hand, ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice, zone: Zone::Hand, slot: 20,
             commitment: "tracked-morph-source".into(), origin_slot: None, origin_commitment: None,
             public_slot: None, public_commitment: None,
@@ -190,7 +191,7 @@ fn reveal_morph_source_opening_and_hand_payment_share_the_existing_attempt_owner
         // transport opening construction. It must include the face-down
         // source, before the hand-card payment question even exists.
         let saved = wasm.payment_disclosure.clone();
-        wasm.commit_payment_command_disclosure(&context, &answer);
+        wasm.commit_payment_command_disclosure(&context, &answer).unwrap();
         let classified = wasm.payment_disclosure.as_ref().unwrap();
         assert_eq!(classified.source, source); assert_eq!(classified.payer, PlayerId(0));
         assert_eq!(classified.disclosed_objects.iter().copied().collect::<Vec<_>>(), vec![source]);

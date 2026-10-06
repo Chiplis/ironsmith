@@ -348,7 +348,7 @@ fn payment_disclosure_transaction_savepoints_remove_only_speculative_commitments
         matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source)).unwrap().clone(), _ => unreachable!() };
     let saved = RuntimeSavepoint::capture(&wasm);
     let public_before = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-    wasm.commit_payment_command_disclosure(&context, &ReplayDecisionAnswer::Priority(action));
+    wasm.commit_payment_command_disclosure(&context, &ReplayDecisionAnswer::Priority(action)).unwrap();
     assert!(wasm.payment_disclosure.is_some());
     assert_eq!(
         serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap(),

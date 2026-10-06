@@ -522,9 +522,11 @@ function resolveSyncedCommand(command) {
         syncedCommand.object_stable_id = stableId;
       }
     }
-    const hiddenRef = normalizeSelectObjectHiddenRef(
-      command.object_hidden_ref ?? command.objectHiddenRef
-    );
+    const rawHiddenRef = command.object_hidden_ref ?? command.objectHiddenRef;
+    // Opaque commands must reach the paired-identity checker unchanged. The
+    // legacy normalizer may complete partial fields or discard a supplied pair.
+    const hiddenRef = ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(command.action_ref?.kind)
+      ? rawHiddenRef : normalizeSelectObjectHiddenRef(rawHiddenRef);
     if (hiddenRef) {
       syncedCommand.object_hidden_ref = hiddenRef;
     }

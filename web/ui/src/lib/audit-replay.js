@@ -12,7 +12,7 @@ import {
   assertZiffleOpeningOriginMatchesMetadata,
 } from "./multiplayer-audit.js";
 import { resolveSyncedCommand } from "./sync-commands.js";
-import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "./sync-object-identity.js";
+import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint, isOpaqueExilePlayCommand, localOpaqueExilePlayCommand } from "./sync-object-identity.js";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "./engine-restore-point.js";
 import { findZiffleDisclosureOrigin, ziffleDisclosureDueForPlayer } from "./ziffle-disclosure-origin.js";
 
@@ -423,7 +423,9 @@ async function dispatchReplayCommand(game, command) {
   return dispatch(command);
 }
 
-async function localReplayCommand(game, command) {
+export async function localReplayCommand(game, command) {
+  command = await localOpaqueExilePlayCommand(game, command);
+  if (isOpaqueExilePlayCommand(command)) return command;
   const hasPriorityIdentity = command?.type === "priority_action"
     && actionRefObjectId(command.action_ref) != null
     && (command.object_stable_id != null || command.object_hidden_ref);
@@ -591,8 +593,16 @@ async function applyCurrentAuditReplayAction({ game, action, actionIndex, crypto
   const seq = actionSeq(action, Number(actionIndex) + 1);
   const audit = action?.audit || {};
   let command = resolveSyncedCommand(action?.command || audit.command);
-  // Public replay starts with concealed hands. Reveal authenticated pre-action
-  // cards before asking the engine whether a land or spell can be played.
+  // Reject an indexed opaque action before any supplied opening is hydrated.
+  command = await localOpaqueExilePlayCommand(game, command);
+  // Opaque exile intent already has public, face-independent authority. Bind
+  // its original incarnation before any supplied opening can hydrate a card.
+  if (isOpaqueExilePlayCommand(command)) {
+    command = await localReplayCommand(game, command);
+    await previewCryptoRequirements(game, command);
+  }
+  // Other public replay actions start with concealed hands. Reveal authenticated
+  // cards before asking the engine whether an ordinary land/spell can be played.
   await revealAuditOpenings(game, (audit.openings || []).filter(opening =>
     !futurePrivateOpeningProof(opening, audit.shuffleProofs || [])), "pre");
   command = await localReplayCommand(game, command);

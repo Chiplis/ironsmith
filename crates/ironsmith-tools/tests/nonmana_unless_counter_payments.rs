@@ -93,6 +93,7 @@ impl Board {
     }
     fn track(&mut self, id: ObjectId, slot: u16) {
         self.game.set_hidden_card_info(id, ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: self.game.object(id).unwrap().owner, zone: Zone::Hand, slot,
             commitment: format!("unless-card-{slot}"), origin_slot: None, origin_commitment: None,
             public_slot: None, public_commitment: None,

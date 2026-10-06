@@ -203,6 +203,7 @@ struct PublicAuditHiddenZone {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PublicAuditCheckpoint {
     version: u32,
+    hidden_incarnation_high_water: u64,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -738,6 +739,10 @@ struct SyncGrandMeleeMarker {
     consecutive_priority_passes: usize,
     #[serde(default)]
     priority_players_in_game: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opened_exile_play: Option<SyncOpenedExilePlay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exile_face_down: Option<SyncExileFaceDownDeclaration>,
 }
 
 
@@ -798,8 +803,94 @@ struct SyncPriorityRuntime {
     consecutive_priority_passes: usize,
     #[serde(default)]
     priority_players_in_game: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opened_exile_play: Option<SyncOpenedExilePlay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exile_face_down: Option<SyncExileFaceDownDeclaration>,
 }
 
+
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncOpenedExilePlay {
+    card_id: u64,
+    incarnation: Option<u64>,
+    card_stable_id: Option<u64>,
+    player: u8,
+    permission: GrantSelectionRef,
+    permission_source_stable_id: Option<u64>,
+    choice_pending: bool,
+}
+
+fn sync_opened_exile_play(state: &PriorityLoopState) -> Option<SyncOpenedExilePlay> {
+    let opened = state.opened_exile_play.as_ref()?;
+    Some(SyncOpenedExilePlay {
+        card_id: opened.card_id.0,
+        incarnation: opened.incarnation,
+        card_stable_id: state.checkpoint.as_ref().and_then(|game| game.object(opened.card_id)).map(|card| card.stable_id.0.0),
+        player: opened.player.0,
+        permission: GrantSelectionRef { source: opened.permission.source.0, index: opened.permission.index },
+        permission_source_stable_id: state.checkpoint.as_ref().and_then(|game| game.object(opened.permission.source)).map(|source| source.stable_id.0.0),
+        choice_pending: state.pending_exile_play.is_some(),
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExileFaceDownDeclaration {
+    card_id: u64,
+    incarnation: Option<u64>,
+    card_stable_id: Option<u64>,
+    player: u8,
+    permission: GrantSelectionRef,
+    permission_source_stable_id: Option<u64>,
+    kinds: Vec<SyncExileFaceDownKind>,
+    declared_kind: Option<SyncExileFaceDownKind>,
+    choice_pending: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExileFaceDownKind {
+    kind: String,
+    permission_source: Option<u64>,
+    permission_source_stable_id: Option<u64>,
+}
+
+fn validate_exile_face_down_public_sources(state: &PriorityLoopState) -> Result<(), String> {
+    for declaration in [state.pending_exile_face_down.as_ref(), state.declared_exile_face_down.as_ref()].into_iter().flatten() {
+        for kind in declaration.kinds.iter().copied().chain(declaration.declared_kind) {
+            if kind.permission_source().is_some_and(|source| !declaration.kind_source_public_ids.contains_key(&source)) {
+                return Err("face-down declaration omitted its exact permission source public identity".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn sync_exile_face_down(state: &PriorityLoopState, game: &GameState) -> Option<SyncExileFaceDownDeclaration> {
+    let declaration = state.pending_exile_face_down.as_ref().or(state.declared_exile_face_down.as_ref())?;
+    let origin_game = state.checkpoint.as_ref().unwrap_or(game);
+    let kind = |kind: ironsmith::game_state::FaceDownCastKind| SyncExileFaceDownKind {
+        kind: kind.as_str().to_string(),
+        permission_source: kind.permission_source().map(|source| source.0),
+        permission_source_stable_id: kind.permission_source()
+            .and_then(|source| declaration.kind_source_public_ids.get(&source)).map(|id| id.0.0),
+    };
+    Some(SyncExileFaceDownDeclaration {
+        card_id: declaration.card_id.0, incarnation: declaration.incarnation,
+        card_stable_id: origin_game.object(declaration.card_id).map(|object| object.stable_id.0.0),
+        player: declaration.player.0,
+        permission: GrantSelectionRef { source: declaration.permission.source.0, index: declaration.permission.index },
+        permission_source_stable_id: origin_game.object(declaration.permission.source).map(|object| object.stable_id.0.0),
+        kinds: declaration.kinds.iter().copied().map(&kind).collect(),
+        // Accepted kinds remain public through payment rollback. Failed new
+        // declarations restore their command savepoint and add no kind lock.
+        declared_kind: declaration.declared_kind.map(kind),
+        choice_pending: state.pending_exile_face_down.is_some(),
+    })
+}
 
 fn sync_zone_name(zone: Zone) -> &'static str {
     match zone {
@@ -1064,6 +1155,10 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                     },
                     consecutive_priority_passes,
                     priority_players_in_game,
+                    opened_exile_play: if focused { sync_opened_exile_play(&host.priority_state) }
+                        else { lane.and_then(|lane| sync_opened_exile_play(&lane.priority_state)) },
+                    exile_face_down: if focused { sync_exile_face_down(&host.priority_state, &host.game) }
+                        else { lane.and_then(|lane| sync_exile_face_down(&lane.priority_state, &host.game)) },
                 }
             })
             .collect(),
@@ -1236,6 +1331,7 @@ impl WasmGame {
                 "owner": info.owner.0,
                 "slot": public_slot,
                 "commitment": public_commitment,
+                "incarnation": info.incarnation,
                 "originSlot": info.origin_slot,
                 "originCommitment": info.origin_commitment,
             });
@@ -1465,6 +1561,10 @@ impl WasmGame {
     pub(crate) fn try_build_public_audit_checkpoint(
         &self,
     ) -> Result<PublicAuditCheckpoint, JsValue> {
+        for state in std::iter::once(&self.priority_state)
+            .chain(self.grand_melee_host_lanes.values().map(|lane| &lane.priority_state)) {
+            validate_exile_face_down_public_sources(state).map_err(|error| JsValue::from_str(&error))?;
+        }
         let hidden_claim_ledger_digest = self
             .hidden_claim_ledger_rules_state()
             .and_then(|rules| hidden_claim_ledger_digest(&rules))
@@ -1665,6 +1765,7 @@ impl WasmGame {
 
         Ok(PublicAuditCheckpoint {
             version: PUBLIC_AUDIT_VERSION,
+            hidden_incarnation_high_water: self.game.hidden_incarnation_high_water(),
             format: self.match_format,
             perspective: 0,
             snapshot_serial: 0,
@@ -1691,6 +1792,8 @@ impl WasmGame {
                     .map(|runner| runner.state().sync_name().to_string()),
                 consecutive_priority_passes,
                 priority_players_in_game,
+                opened_exile_play: sync_opened_exile_play(&self.priority_state),
+                exile_face_down: sync_exile_face_down(&self.priority_state, &self.game),
             },
             players,
             objects,
@@ -1838,7 +1941,7 @@ mod public_audit_tests {
     }
 
     #[test]
-    fn public_audit_v6_retains_exact_manifest_and_cloak_provenance() {
+    fn public_audit_v5_retains_exact_manifest_and_cloak_provenance() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
@@ -2327,6 +2430,7 @@ mod public_audit_tests {
         game.game.set_hidden_card_info(
             object_id,
             HiddenCardInfo {
+                incarnation: Some(0),
                 owner: PlayerId::from_index(0),
                 zone: Zone::Hand,
                 slot: 42,

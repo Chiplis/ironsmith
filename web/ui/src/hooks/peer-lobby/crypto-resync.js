@@ -1,3 +1,4 @@
+import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand, opaqueExileOriginReference } from "../../lib/sync-object-identity.js";
 import { createLocalRuntimeRecovery } from '../../lib/local-runtime-recovery.js';
 import { exactSnapshotMatches, validateExactSnapshotHeader } from '../../lib/exact-build-snapshot.js';
 import { assertResyncActionsExtendLocalTranscript } from '../../lib/multiplayer-audit.js';
@@ -506,8 +507,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     return Number.isSafeInteger(stableId) && stableId > 0 ? stableId : null;
   }
 
-  async function currentHiddenRefForObjectId(objectId) {
+  async function currentHiddenRefForObjectId(objectId, { opaqueExile = false } = {}) {
     const hidden = await currentHiddenCardMetadataForObject(objectId);
+    if (opaqueExile) return opaqueExileOriginReference(hidden);
     let exported = null;
     const currentGame = gameRef.current;
     if (currentGame && typeof currentGame.exportHiddenCardOpening === "function") {
@@ -558,6 +560,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (sourceObjectId == null) return command;
 
     const currentGame = gameRef.current;
+    if (isOpaqueExilePlayCommand(command)) {
+      return localOpaqueExilePlayCommand(currentGame, command);
+    }
     if (!currentGame || typeof currentGame.uiState !== "function") return command;
 
     const liveState = await currentGame.uiState();
@@ -1656,7 +1661,8 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     ) {
       throw new Error("Cryptographic material requester is not the active decision player");
     }
-    if (!isDecisionCommandCompatible(decision, command)) {
+    const localCommand = await localOpaqueExilePlayCommand(gameRef.current, command);
+    if (!isDecisionCommandCompatible(decision, localCommand)) {
       throw new Error("Cryptographic material request command is not available locally");
     }
     await timeAuthorization("verify_checkpoint", () => verifyCurrentPublicCheckpointHash(
@@ -1675,6 +1681,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       }));
 
     assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
+    await servicesRef.current.pinBlindExileOpeningIntent(actionIntent);
     if ((message.openings || []).length > 0) {
       // Authenticate and retain a valid disclosure before any speculative
       // payment/requirements execution can fail. The sender hint is not authority.
@@ -1687,7 +1694,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
 	      liveState,
 	      freshCryptoRequirementsForSequence(
 	        seq,
-        await timeAuthorization("preview_requirements", () => previewRequirementsForCommand(command))
+        await timeAuthorization("preview_requirements", () => previewRequirementsForCommand(localCommand))
 	      )
 	    );
     if ((message.shuffleProofs || []).some(isPrivateZiffleEpoch)
@@ -1803,6 +1810,13 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         })
       );
       assertMatchNotDisputed(multiplayerRef.current, "Cryptographic material request");
+      // The responder may be the first seat to publish the face of an unseen
+      // exile card. Pin verified material before the material-bearing response,
+      // using native classification, the actual actor and the accepted head.
+      if (message.command?.action_ref?.kind === "open_exiled_card_for_play") {
+        await servicesRef.current.pinVerifiedPaymentEnvelope(actionIntent, material.openings,
+          { actionIntent, audit: { shuffleProofs: message.shuffleProofs || [] } });
+      }
       recordPeerSyncPerf("crypto_material_request:send_response", {
         ...authorizedPerf,
         material: summarizeCryptoMaterialForPerf(material),
@@ -1901,6 +1915,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     if (materialByOwner.size > 0) {
       setStatus("Waiting for players to generate hidden-card opening payloads");
     }
+    let disclosureRecovery = Promise.resolve();
     const ownerResponses = await Promise.all(
       [...materialByOwner].map(async ([owner, ownerRequirements]) => {
         const player = players.find((entry) => Number(entry.index) === owner);
@@ -1987,6 +2002,17 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
             ...responsePerf,
             material: summarizeCryptoMaterialForPerf(response),
           });
+          // Receiving the public identity also commits the actor. Recovery must
+          // be durable before hydration, further previews, or a local failure.
+          // Native snapshots are serialized even when owners answer in parallel.
+          if (command?.action_ref?.kind === "open_exiled_card_for_play") {
+            const retain = disclosureRecovery.then(() => servicesRef.current.pinVerifiedPaymentEnvelope(
+              actionIntent, response.openings || [],
+              { actionIntent, audit: { shuffleProofs: options.shuffleProofs || [] } },
+            ));
+            disclosureRecovery = retain;
+            await retain;
+          }
           return response;
         } finally {
           outboundCryptoMaterialRequestsRef.current.delete(requestId);

@@ -1157,6 +1157,9 @@ fn apply_mana_payment_plan_response_inner(
         return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
     }
 
+    if matches!(response, ManaPaymentResponse::Cancel) && state.opened_exile_play.is_some() {
+        return Err(GameLoopError::InvalidState("The exile play publicly opened a card; finish its announcement".into()));
+    }
     if matches!(response, ManaPaymentResponse::Cancel) {
         let canceled = state.pending_mana_ability.take();
         let canceled_provenance = canceled.as_ref().map(|pending| pending.provenance);
@@ -1175,7 +1178,15 @@ fn apply_mana_payment_plan_response_inner(
                 return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
             }
         }
+        let blind_queue = if state.declared_exile_face_down.is_some() {
+            Some(state.exile_face_down_root_queue.as_ref().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+                "face-down payment cancellation lost its original trigger queue".into()))?.as_ref().clone())
+        } else { None };
+        if blind_queue.is_some() && state.checkpoint.is_none() {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence("face-down payment cancellation lost its gameplay checkpoint".into()).into());
+        }
         state.rollback_action(game);
+        if let Some(original_queue) = blind_queue { *trigger_queue = original_queue; }
         // Also cover an older/incomplete root checkpoint that already held
         // this frame. Never remove an enclosing cast or a different mana owner.
         if let Some(provenance) = canceled_provenance {
@@ -1185,6 +1196,9 @@ fn apply_mana_payment_plan_response_inner(
         }
         state.pending_mana_ability = None;
         state.pending_mana_parents.clear();
+        if state.pending_exile_face_down.is_some() {
+            return super::exile_face_down::resume(game, state);
+        }
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
     }
 
@@ -3342,6 +3356,13 @@ fn propose_spell_cast_with_origin(
     casting_method: &CastingMethod,
     effect_authorized: bool,
 ) -> Result<ObjectId, GameLoopError> {
+    if !effect_authorized {
+        let checked = game.continuous_query_snapshot().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        if crate::alternative_cast::blind_play::requires_opening(&checked, spell_id, caster)
+            && !crate::alternative_cast::blind_play::declared_method_is_authorized(&checked, spell_id, caster, casting_method)? {
+            return Err(GameLoopError::InvalidState("Open this exiled card before announcing its spell face".into()));
+        }
+    }
     let has_exact_permission = matches!(casting_method, CastingMethod::ExactPermission { .. });
     let exact_grant = if has_exact_permission {
         let object = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("selected-permission spell does not exist".into()))?;
@@ -3375,7 +3396,7 @@ fn propose_spell_cast_with_origin(
         None
     };
     let exact_alternative = if has_exact_permission {
-        crate::alternative_cast::play_permission::selected_alternative(game, game.object(spell_id).expect("validated exact origin"), casting_method)?
+        crate::alternative_cast::play_permission::selected_alternative(game, caster, game.object(spell_id).expect("validated exact origin"), casting_method)?
     } else { None };
     let casting_method = casting_method.origin_method();
     let visibility_boundary = game.capture_library_top_visibility_boundary();
@@ -3481,7 +3502,7 @@ fn propose_spell_cast_with_origin(
         .and_then(|kind| kind.permission_source())
         .and_then(|source| {
             let spell = game.object(spell_id)?;
-            game.active_face_down_cast_permission(source, spell.owner, spell.zone)
+            game.active_face_down_cast_permission(source, caster, spell.zone)
                 .cloned()
         });
     // Capture before the precise exile identity and designation are retired.
@@ -4893,6 +4914,24 @@ fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
         }
         DecisionContext::SelectOptions(options_ctx) => {
             let result = decision_maker.decide_options(game, options_ctx);
+            if options_ctx.exile_face_down_choice {
+                let pending = state.pending_exile_face_down.as_ref().ok_or_else(|| GameLoopError::InvalidState("No face-down declaration owns this prompt".into()))?;
+                if options_ctx.player != pending.player || options_ctx.source != Some(pending.card_id) {
+                    return Err(GameLoopError::InvalidState("Face-down declaration has a different source or player".into()));
+                }
+                if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                if result.len() != 1 { return Err(ResponseError::IllegalChoice("Choose one face-down declaration".into()).into()); }
+                return super::exile_face_down::apply_choice(game, trigger_queue, state, result[0], decision_maker);
+            }
+            if options_ctx.exile_play_choice {
+                let pending = state.pending_exile_play.as_ref().ok_or_else(|| GameLoopError::InvalidState("No opened-card choice owns this prompt".into()))?;
+                if options_ctx.player != pending.player || options_ctx.source != Some(pending.card_id) {
+                    return Err(GameLoopError::InvalidState("Opened-card prompt has a different source or player".into()));
+                }
+                if decision_maker.awaiting_choice() { return Ok(GameProgress::Continue); }
+                if result.len() != 1 { return Err(ResponseError::IllegalChoice("Choose one opened-card play".into()).into()); }
+                return super::exile_play::apply_exile_play_choice(game, trigger_queue, state, result[0], decision_maker);
+            }
             if state
                 .pending_cast
                 .as_ref()

@@ -177,6 +177,7 @@ mod tests {
             }
             game.queue_verified_hidden_library_epoch(alice, "pile-look".into(), 3, 0, None).unwrap();
             let info = crate::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner: alice, zone: Zone::Library, slot: 7, commitment: "manifest:7".into(),
                 origin_slot: Some(2), origin_commitment: Some("ziffle:pile-look:2".into()),
                 public_slot: Some(2), public_commitment: Some("ziffle:pile-look:2".into()),

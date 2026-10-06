@@ -1334,7 +1334,9 @@ impl WasmGame {
     fn manabrew_action_card(&self, action: &LegalAction) -> Option<ObjectId> {
         use ironsmith::special_actions::SpecialAction;
         match action {
-            LegalAction::UsePregameAction { card_id, .. } => Some(*card_id),
+            LegalAction::UsePregameAction { card_id, .. }
+            | LegalAction::OpenExiledCardForPlay { card_id, .. }
+            | LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(*card_id),
             LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
             LegalAction::ActivateAbility { source, .. }
             | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
@@ -1381,6 +1383,22 @@ impl WasmGame {
             | LegalAction::TakeMulligan
             | LegalAction::ContinuePregame
             | LegalAction::BeginGame => None,
+            LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *card_id),
+                    mode: PlayCardMode::StaticAlternative,
+                    label: "Cast exiled card face down".into(),
+                },
+            }),
+            LegalAction::OpenExiledCardForPlay { card_id, .. } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *card_id),
+                    mode: PlayCardMode::StaticAlternative,
+                    label: "Play exiled card".into(),
+                },
+            }),
             LegalAction::CastSpell {
                 spell_id,
                 casting_method,

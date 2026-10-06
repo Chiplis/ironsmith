@@ -215,6 +215,10 @@ impl WasmGame {
             self.finish_payment_disclosure();
         }
         let crypto_before = self.pending_crypto_audit_before.take();
+        if self.priority_state.pending_exile_face_down.is_some()
+            || self.priority_state.declared_exile_face_down.is_some() {
+            return Err(payment_disclosure_error("face-down declaration failed; resume its accepted declaration or cancel"));
+        }
         self.restore_live_action_chain_to_checkpoint(checkpoint)?;
         self.pending_crypto_audit_before = crypto_before;
         self.snapshot()
@@ -1747,7 +1751,7 @@ impl WasmGame {
                     &option_indices,
                     &legal_indices,
                 )?;
-                self.map_select_options_response(option_indices)
+                self.map_select_options_response(options, option_indices)
             }
             (DecisionContext::Modes(modes), UiCommand::SelectOptions { option_indices }) => {
                 let legal: Vec<usize> = modes
@@ -1949,6 +1953,7 @@ impl WasmGame {
 
     fn map_select_options_response(
         &self,
+        options: &ironsmith::decisions::context::SelectOptionsContext,
         option_indices: Vec<usize>,
     ) -> Result<PriorityResponse, JsValue> {
         if self.game.effect_store.pending_replacement_choice.is_some() {
@@ -1956,6 +1961,24 @@ impl WasmGame {
                 JsValue::from_str("replacement effect choice requires one selected option")
             })?;
             return Ok(PriorityResponse::ReplacementChoice(choice));
+        }
+        if options.exile_face_down_choice {
+            if !self.priority_state.pending_exile_face_down.as_ref().is_some_and(|pending|
+                options.source == Some(pending.card_id) && options.player == pending.player) {
+                return Err(payment_disclosure_error("face-down exile option has no matching native owner"));
+            }
+            let choice = option_indices.first().copied().ok_or_else(|| payment_disclosure_error("face-down declaration requires one option"))?;
+            return Ok(PriorityResponse::ExileFaceDownChoice(choice));
+        }
+        if options.exile_play_choice {
+            if !self.priority_state.pending_exile_play.as_ref().is_some_and(|pending|
+                options.source == Some(pending.card_id) && options.player == pending.player) {
+                return Err(payment_disclosure_error("opened exile option has no matching native owner"));
+            }
+            let choice = option_indices.first().copied().ok_or_else(|| {
+                payment_disclosure_error("opened exile play requires one selected option")
+            })?;
+            return Ok(PriorityResponse::ExilePlayChoice(choice));
         }
         if self.priority_state.pending_method_selection.is_some() {
             let choice = option_indices.first().copied().ok_or_else(|| {
@@ -4377,6 +4400,7 @@ mod live_action_rollback_tests {
     include!("payment_disclosure_undo_tests.rs");
     include!("snc_payment_disclosure_undo_tests.rs");
     include!("payment_disclosure_transaction_tests.rs");
+    include!("blind_exile_play_tests.rs");
     include!("reveal_morph_payment_disclosure_tests.rs");
     include!("nonmana_unless_payment_disclosure_tests.rs");
     include!("combat_defending_actor_savepoint_tests.rs");

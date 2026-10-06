@@ -754,6 +754,11 @@ pub struct SelectOptionsContext {
     pub max: usize,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
+    /// Native continuation owner for the choice immediately after an exile
+    /// opening. Nested replacement/options prompts leave this false.
+    pub exile_play_choice: bool,
+    /// Public kind declaration for the opaque, no-reveal exile cast owner.
+    pub exile_face_down_choice: bool,
 }
 
 impl SelectOptionsContext {
@@ -774,6 +779,8 @@ impl SelectOptionsContext {
             min,
             max,
             ui_hints: DecisionUiHints::default(),
+            exile_play_choice: false,
+            exile_face_down_choice: false,
         }
     }
 

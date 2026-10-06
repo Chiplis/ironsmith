@@ -95,6 +95,22 @@ pub enum LegalAction {
 
     /// Special action (suspend, foretell, etc.).
     SpecialAction(SpecialAction),
+
+    /// Open one unseen exiled card under an exact, unqualified permission.
+    /// Its face, type, cost and method are chosen only after public opening.
+    OpenExiledCardForPlay {
+        card_id: ObjectId,
+        incarnation: Option<u64>,
+        permission: crate::alternative_cast::GrantSelection,
+    },
+    /// Declare a face-down casting rule without opening the unseen card.
+    /// Offered uniformly; the kind is a later public claim, never a face probe.
+    CastExiledCardFaceDown {
+        card_id: ObjectId,
+        incarnation: Option<u64>,
+        permission: crate::alternative_cast::GrantSelection,
+    },
+
 }
 
 /// An option for declaring an attacker.

@@ -22,10 +22,12 @@ pub(crate) enum LandPlayObservationKind {
     Played,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum LandPlayAuthorization {
     SelectedPermission {
         back_face: bool,
+        /// An already opened exile action must retain its exact unqualified grant.
+        opened_permission: Option<crate::alternative_cast::GrantSelection>,
     },
     /// The resolving instruction supplies permission to play this exact object.
     /// It does not supply another land allowance or permission on another turn.
@@ -165,8 +167,8 @@ pub(crate) fn execute_land_play_program<'a>(
         if root {
             game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
         }
-        if let LandPlayAuthorization::SelectedPermission { back_face } = authorization {
-            crate::special_actions::apply_land_play_face(game, card, back_face);
+        if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
+            crate::special_actions::apply_land_play_face(game, card, *back_face);
         }
         let checked = game
             .continuous_query_snapshot()
@@ -185,7 +187,9 @@ pub(crate) fn execute_land_play_program<'a>(
                 Ok(EffectOutcome::impossible())
             };
         }
-        let permission = if root {
+        let permission = if let LandPlayAuthorization::SelectedPermission { opened_permission: Some(permission), .. } = &authorization {
+            crate::special_actions::opened_land_play_permission(game, player, card, permission)?
+        } else if root {
             crate::special_actions::choose_land_play_permission(
                 game,
                 player,

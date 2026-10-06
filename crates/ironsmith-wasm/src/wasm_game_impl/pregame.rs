@@ -467,6 +467,7 @@ impl WasmGame {
                         self.game.set_hidden_card_info(
                             object_id,
                             ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                                 owner: player_id,
                                 zone: ironsmith::zone::Zone::Library,
                                 slot: slot.slot,
@@ -531,6 +532,7 @@ impl WasmGame {
                     self.game.set_hidden_card_info(
                         object_id,
                         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                             owner: player_id,
                             zone: ironsmith::zone::Zone::OutsideGame,
                             slot: slot.slot,

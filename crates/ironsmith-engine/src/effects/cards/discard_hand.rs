@@ -558,6 +558,7 @@ mod direct_cost_opening_transaction_tests {
             let stable = game.object(chosen).unwrap().stable_id;
             let source = game.create_object_from_card(&card, bob, Zone::Battlefield);
             game.set_hidden_card_info(chosen, crate::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner: alice, zone: Zone::Hand, slot: 0, commitment: "direct-discard-payment".into(),
                 origin_slot: None, origin_commitment: None, public_slot: None, public_commitment: None,
             });

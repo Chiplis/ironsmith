@@ -983,6 +983,14 @@ impl GameState {
         if self.token_cannot_change_zones(old_id, new_zone) {
             return None;
         }
+        // A hidden identity can leave and re-enter the same zone with the same
+        // commitment. Bind that new object to a distinct public generation.
+        // Exhaustion rejects this move before any state, queue or ID mutation;
+        // unknown historical generations stay unknown, never restart at zero.
+        let next_hidden_incarnation = match self.hidden_card_info(old_id).and_then(|info| info.incarnation) {
+            Some(current) => Some(current.checked_add(1)?),
+            None => None,
+        };
         // Use the object's current typed abilities while it is still in the
         // origin zone. This honors ability-loss effects on the battlefield and
         // still lets an all-zone retention ability operate from other zones.
@@ -1495,6 +1503,8 @@ impl GameState {
             let entering_library = (new_zone == Zone::Library && old_zone != Zone::Library)
                 .then(|| audit_info.clone());
             info.zone = new_zone;
+            info.incarnation = next_hidden_incarnation;
+            self.observe_hidden_incarnation(info.incarnation);
             self.auxiliary_tracking_mut()
                 .hidden_cards
                 .insert(new_id, info);

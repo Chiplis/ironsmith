@@ -114,6 +114,30 @@ pub struct PendingMethodSelection {
     pub available_methods: Vec<crate::decision::CastingMethodOption>,
 }
 
+/// One publicly opened exile card awaiting an ordinary play choice. Native
+/// savepoints retain the immutable grant identity and completed opening.
+#[derive(Debug, Clone)]
+pub struct PendingExilePlay {
+    pub card_id: ObjectId,
+    pub incarnation: Option<u64>,
+    pub player: PlayerId,
+    pub permission: crate::alternative_cast::GrantSelection,
+    pub actions: Vec<crate::decision::LegalAction>,
+}
+
+/// Public declaration owner for an unseen face-down cast. No face is opened.
+#[derive(Debug, Clone)]
+pub struct PendingExileFaceDownCast {
+    pub card_id: ObjectId,
+    pub incarnation: Option<u64>,
+    pub player: PlayerId,
+    pub permission: crate::alternative_cast::GrantSelection,
+    pub kinds: Vec<crate::game_state::FaceDownCastKind>,
+    /// Exact source keys with captured public hash/display IDs, not gameplay authority.
+    pub kind_source_public_ids: std::collections::BTreeMap<ObjectId, crate::ids::StableId>,
+    pub declared_kind: Option<crate::game_state::FaceDownCastKind>,
+}
+
 /// A spell or ability being cast/activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingCast {
@@ -1134,6 +1158,16 @@ pub struct PriorityLoopState {
     pub pending_activation: Option<PendingActivation>,
     /// A pending casting method selection for spells with multiple available methods.
     pub pending_method_selection: Option<PendingMethodSelection>,
+    pub pending_exile_play: Option<PendingExilePlay>,
+    pub pending_exile_face_down: Option<PendingExileFaceDownCast>,
+    pub declared_exile_face_down: Option<PendingExileFaceDownCast>,
+    /// Exact queue before this no-reveal attempt; manual mana activations may
+    /// add ordinary triggers that must rewind with their tapped sources/mana.
+    pub(crate) exile_face_down_root_queue: Option<Box<TriggerQueue>>,
+    /// Completed public opening retained through the ordinary play transaction.
+    pub opened_exile_play: Option<PendingExilePlay>,
+    /// Physical rules state/queues before opening, distinct from learned identity.
+    pub(crate) exile_play_before_opening: Option<Box<(GameState, TriggerQueue)>>,
     /// A pending mana ability activation waiting for mana payment.
     pub pending_mana_ability: Option<PendingManaAbility>,
     /// Enclosing mana activations, oldest first. The active child owns the live payment.
@@ -1154,6 +1188,12 @@ impl PriorityLoopState {
             pending_cast: None,
             pending_activation: None,
             pending_method_selection: None,
+            pending_exile_play: None,
+            pending_exile_face_down: None,
+            declared_exile_face_down: None,
+            exile_face_down_root_queue: None,
+            opened_exile_play: None,
+            exile_play_before_opening: None,
             pending_mana_ability: None,
             pending_mana_parents: Vec::new(),
             pending_continuation: None,
@@ -1170,6 +1210,11 @@ impl PriorityLoopState {
     /// Clear the checkpoint (called when action completes successfully or after restore).
     pub fn clear_checkpoint(&mut self) {
         self.checkpoint = None;
+        self.opened_exile_play = None;
+        self.pending_exile_face_down = None;
+        self.declared_exile_face_down = None;
+        self.exile_face_down_root_queue = None;
+        self.exile_play_before_opening = None;
     }
 
     /// Restore the pre-action snapshot and discard every suspended part of the
@@ -1182,6 +1227,9 @@ impl PriorityLoopState {
         self.pending_cast = None;
         self.pending_activation = None;
         self.pending_method_selection = None;
+        self.pending_exile_play = self.opened_exile_play.clone();
+        self.pending_exile_face_down = self.declared_exile_face_down.clone();
+        if self.opened_exile_play.is_some() { self.checkpoint = Some(game.clone()); }
         self.pending_mana_ability = None;
         self.pending_mana_parents.clear();
         self.pending_continuation = None;
@@ -1197,11 +1245,21 @@ impl PriorityLoopState {
                 pending.targeting_announcement.is_some() && !pending.chosen_targets.is_empty())
     }
 
+    /// Public/wire snapshots cannot reconstruct this native opening authority.
+    pub fn has_opened_exile_play_receipt(&self) -> bool {
+        self.opened_exile_play.is_some() || self.pending_exile_play.is_some() || self.exile_play_before_opening.is_some()
+            || self.pending_exile_face_down.is_some() || self.declared_exile_face_down.is_some() || self.exile_face_down_root_queue.is_some()
+    }
+
     /// Check if there's an active action chain (pending cast or activation).
     pub fn has_pending_action(&self) -> bool {
         self.pending_cast.is_some()
             || self.pending_activation.is_some()
             || self.pending_method_selection.is_some()
+            || self.pending_exile_play.is_some()
+            || self.pending_exile_face_down.is_some()
+            || self.declared_exile_face_down.is_some()
+            || self.opened_exile_play.is_some()
             || self.pending_mana_ability.is_some()
             || !self.pending_mana_parents.is_empty()
             || self.pending_continuation.is_some()

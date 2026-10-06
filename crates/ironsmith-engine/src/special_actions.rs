@@ -1291,6 +1291,10 @@ fn can_play_land(
                 error: crate::effects::ExecutionError::ContinuousDiscovery(error),
             })?;
     let game = &checked;
+    if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) {
+        return Err(ActionError::ExecutionFailure { source: card_id, error: crate::effects::ExecutionError::Impossible(
+            "Open this exiled card before announcing a land play".into()) });
+    }
     // Must be the active player
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1422,6 +1426,20 @@ impl LandPlayPermissionReceipt {
         }
     }
 }
+pub(crate) fn opened_land_play_permission(
+    game: &GameState, player: PlayerId, card: ObjectId,
+    permission: &crate::alternative_cast::GrantSelection,
+) -> Result<LandPlayPermissionReceipt, crate::effects::ExecutionError> {
+    let grant = crate::alternative_cast::blind_play::resolve(game, card, player, permission)?;
+    Ok(LandPlayPermissionReceipt {
+        shared: grant.shared_usage_id, identity: grant.permission_identity,
+        completion: crate::grant_registry::GrantUseCompletion::capture(game,
+            grant.source.source_id(), player, grant.on_use_effects),
+        permanent_grants: grant.permanent_this_way_grants, original_land: Some(card),
+        enters_tapped: grant.play_from_constraints.lands_enter_tapped,
+    })
+}
+
 pub(crate) fn choose_land_play_permission(
     game: &GameState,
     player: PlayerId,
@@ -1550,6 +1568,7 @@ pub(crate) fn execute_land_play_with_observer(
     player: PlayerId,
     card_id: ObjectId,
     back_face: bool,
+    opened_permission: Option<&crate::alternative_cast::GrantSelection>,
     timing: LandPlayObservationTiming,
     decision_maker: &mut impl crate::decision::DecisionMaker,
     mut observe: impl FnMut(
@@ -1567,7 +1586,7 @@ pub(crate) fn execute_land_play_with_observer(
         &mut execution,
         card_id,
         player,
-        crate::effects::zones::LandPlayAuthorization::SelectedPermission { back_face },
+        crate::effects::zones::LandPlayAuthorization::SelectedPermission { back_face, opened_permission: opened_permission.cloned() },
         timing,
         |game, execution, object, kind, event| {
             observe(game, execution.decision_maker, object, kind, event)
@@ -1591,6 +1610,7 @@ fn perform_play_land(
         player,
         card_id,
         back_face,
+        None,
         LandPlayObservationTiming::AfterHistory,
         decision_maker,
         |game, _, _, _, event| {

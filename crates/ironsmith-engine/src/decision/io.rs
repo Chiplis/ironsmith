@@ -2511,6 +2511,8 @@ fn zone_label(zone: Zone) -> &'static str {
 pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass".to_string(),
+        LegalAction::CastExiledCardFaceDown { .. } => "Cast exiled card face down".to_string(),
+        LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
         LegalAction::TakeMulligan => "Mulligan".to_string(),
         LegalAction::ContinuePregame | LegalAction::BeginGame => "Pregame".to_string(),

@@ -17,6 +17,7 @@ include!("priority_analysis.rs");
 
 include!("runtime_savepoint.rs");
 include!("payment_disclosure_transaction.rs");
+include!("blind_exile_play.rs");
 
 #[cfg(test)]
 mod runtime_audit_devourer;
