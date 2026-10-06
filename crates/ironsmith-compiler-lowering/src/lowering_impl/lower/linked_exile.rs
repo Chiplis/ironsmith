@@ -157,6 +157,14 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
             AbilityKind::Static(ability) => match &ability.payload {
                 StaticAbilityPayload::None
                     if matches!(ability.id, Some(StaticAbilityId::Flying | StaticAbilityId::Menace)) => {}
+                // These independent player rules contain no producer,
+                // executable program, or source-exiled reference. Their own
+                // typed runtime owners retain draw/cast behavior unchanged.
+                StaticAbilityPayload::PlayerSkipsDrawStep { player: crate::target::PlayerFilter::You } => {}
+                StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::CastMoreThanOneSpellEachTurn(crate::target::PlayerFilter::You, filter),
+                    additional_restrictions, ..
+                } if filter == &crate::target::ObjectFilter::default() && additional_restrictions.is_empty() => {}
                 StaticAbilityPayload::Grants(spec)
                     if spec.requires_linked_exile_pair
                         && matches!(spec.grantable, Grantable::PlayFrom)

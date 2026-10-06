@@ -218,6 +218,23 @@ fn normalize_restriction_for_resolution(
     game: &GameState,
 ) -> Restriction {
     match restriction {
+        Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            // A resolving ability's choice belongs to this resolution. A
+            // later activation may choose another color on the same source,
+            // but must not rewrite this restriction. Keep ordinary blocker
+            // characteristics live: creatures that enter later, or change
+            // power/color, must still be checked when blocks are declared.
+            let blockers = crate::static_abilities::bind_chosen_filter_qualities(
+                blockers,
+                game,
+                ctx.source,
+            )
+            .unwrap_or_else(|| blockers.clone());
+            Restriction::block_specific_attacker(
+                blockers,
+                collapse_tagged_filter_to_specific_objects(attacker, ctx, game),
+            )
+        }
         Restriction::BeBlocked(filter) => Restriction::be_blocked(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
@@ -572,6 +589,119 @@ mod tests {
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn resolved_evasion_freezes_choice_but_keeps_blocker_characteristics_live() {
+        use crate::color::{Color, ColorSet};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = |game: &mut GameState, owner, color| {
+            let card = CardBuilder::new(CardId::new(), "Evasion participant")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .color_indicator(color).build();
+            game.create_object_from_card(&card, owner, Zone::Battlefield)
+        };
+        let source = creature(&mut game, alice, ColorSet::WHITE);
+        let red = creature(&mut game, bob, ColorSet::RED);
+        let blue = creature(&mut game, bob, ColorSet::BLUE);
+        let green = creature(&mut game, bob, ColorSet::GREEN);
+        let can_block = |game: &GameState, attacker, blocker| {
+            crate::rules::combat::can_block(
+                game.object(attacker).unwrap(), game.object(blocker).unwrap(), game,
+            )
+        };
+        let effect = CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+            ObjectFilter::creature().of_chosen_color(), ObjectFilter::source(),
+        ));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        game.set_chosen_color(source, Color::Red);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        game.set_chosen_color(source, Color::Blue);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(!can_block(&game, source, red));
+        assert!(!can_block(&game, source, blue));
+        assert!(can_block(&game, source, green));
+        let late_red = creature(&mut game, bob, ColorSet::RED);
+        game.refresh_continuous_state().unwrap();
+        assert!(!can_block(&game, source, late_red));
+        game.object_mut(green).unwrap().color_override = Some(ColorSet::RED);
+        game.refresh_continuous_state().unwrap();
+        assert!(!can_block(&game, source, green));
+        game.object_mut(red).unwrap().color_override = Some(ColorSet::GREEN);
+        game.refresh_continuous_state().unwrap();
+        assert!(can_block(&game, source, red));
+        game.cleanup_restrictions_end_of_turn();
+        game.refresh_continuous_state().unwrap();
+        assert!(can_block(&game, source, blue));
+        assert!(can_block(&game, source, green));
+    }
+
+    #[test]
+    fn absent_color_cannot_be_supplied_by_a_later_choice() {
+        use crate::color::{Color, ColorSet};
+        for blocker_colors in [ColorSet::RED, ColorSet::RED.with(Color::Blue)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let card = CardBuilder::new(CardId::new(), "Color witness")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .color_indicator(blocker_colors).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let blocker = game.create_object_from_card(&card, bob, Zone::Battlefield);
+            let effect = CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+                ObjectFilter::creature().with_colors(ColorSet::RED).of_chosen_color(),
+                ObjectFilter::source(),
+            ));
+            effect.execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+            game.set_chosen_color(source, Color::Red);
+            game.refresh_continuous_state().unwrap();
+            assert!(crate::rules::combat::can_block(
+                game.object(source).unwrap(), game.object(blocker).unwrap(), &game,
+            ));
+        }
+    }
+
+    #[test]
+    fn fixed_and_chosen_colors_remain_conjunctive_after_resolution() {
+        use crate::color::{Color, ColorSet};
+        for require_green in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let creature = |game: &mut GameState, owner, colors| {
+                let card = CardBuilder::new(CardId::new(), "Conjunctive color witness")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2))
+                    .color_indicator(colors).build();
+                game.create_object_from_card(&card, owner, Zone::Battlefield)
+            };
+            let source = creature(&mut game, alice, ColorSet::WHITE);
+            let red = creature(&mut game, bob, ColorSet::RED);
+            let blue = creature(&mut game, bob, ColorSet::BLUE);
+            let red_blue = creature(&mut game, bob, ColorSet::RED.with(Color::Blue));
+            let red_blue_green = creature(&mut game, bob, ColorSet::RED.with(Color::Blue).with(Color::Green));
+            let mut blockers = ObjectFilter::creature().with_colors(ColorSet::RED).of_chosen_color();
+            if require_green { blockers.required_colors = Some(ColorSet::GREEN); }
+            game.set_chosen_color(source, Color::Blue);
+            CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+                blockers, ObjectFilter::source(),
+            )).execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+            for next_choice in [Color::Blue, Color::Red, Color::Green] {
+                game.set_chosen_color(source, next_choice);
+                game.refresh_continuous_state().unwrap();
+                let can_block = |blocker| crate::rules::combat::can_block(
+                    game.object(source).unwrap(), game.object(blocker).unwrap(), &game,
+                );
+                assert!(can_block(red));
+                assert!(can_block(blue));
+                assert_eq!(can_block(red_blue), require_green);
+                assert!(!can_block(red_blue_green));
+            }
+        }
+    }
 
     #[test]
     fn added_combat_restriction_waits_through_other_combats_and_expires() {

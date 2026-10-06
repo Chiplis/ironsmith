@@ -1193,6 +1193,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/851"
+    },
+    {
+      "stage": 86,
+      "branch": "fix/card-failures-86-first-draw-and-private-exile",
+      "base": "fix/card-failures-85-linked-and-suspended-permissions",
+      "source_integration_commit": "b8b0a5e18c52d3a277e60170d009c83acde37f9f",
+      "remote_commit": "ca39b0c5d202b5fba6f8c93b2fc53194b0dece72",
+      "tree": "5579294340a81c819ea5f5b7a1bc6ec8ab1e056d",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 852,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/852"
     }
   ]
 }

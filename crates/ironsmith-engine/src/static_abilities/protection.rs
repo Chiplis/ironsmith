@@ -777,23 +777,25 @@ pub(crate) fn bind_chosen_filter_qualities(
         }
         changed = true;
     }
-    if bound.chosen_color
-        && let Some(color) = game.chosen_color(chooser_source)
-    {
-        let chosen = crate::color::ColorSet::from(color);
-        match bound.colors {
-            None => {
-                bound.colors = Some(chosen);
-                bound.chosen_color = false;
-                changed = true;
+    if bound.chosen_color {
+        match game.chosen_color(chooser_source) {
+            Some(color) if bound.colors.is_none_or(|existing| existing.contains(color)) => {
+                bound.colors = Some(crate::color::ColorSet::from(color));
             }
-            Some(existing) if existing.contains(color) => {
-                bound.colors = Some(chosen);
-                bound.chosen_color = false;
-                changed = true;
+            Some(color) => {
+                // `colors` requires any overlap, while `chosen_color`
+                // additionally requires this particular color. Red plus a
+                // blue choice matches red-blue objects. Preserve that
+                // conjunction and any already required colors.
+                bound.required_colors = Some(bound.required_colors
+                    .unwrap_or(crate::color::ColorSet::COLORLESS).with(color));
             }
-            Some(_) => {}
+            // No color was chosen at this resolution. A later choice must
+            // not retroactively supply this grant/restriction's meaning.
+            None => bound.mana_value = Some(crate::filter::Comparison::OneOf(Vec::new())),
         }
+        bound.chosen_color = false;
+        changed = true;
     }
     for (index, branch) in filter.any_of.iter().enumerate() {
         if let Some(bound_branch) = bind_chosen_filter_qualities(branch, game, chooser_source) {

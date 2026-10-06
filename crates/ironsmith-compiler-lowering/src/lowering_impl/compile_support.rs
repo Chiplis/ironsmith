@@ -2395,6 +2395,11 @@ fn apply_embedded_token_rules(
 ) -> CardDefinitionBuilder {
     for rule in &rules.embedded_rules {
         builder = match rule {
+            token_grammar::TokenEmbeddedRuleShape::MaximumBlockers { maximum } => {
+                builder.with_ability(Ability::static_ability(
+                    StaticAbility::cant_be_blocked_by_more_than(*maximum),
+                ))
+            }
             token_grammar::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
                 subtype,
             } => {

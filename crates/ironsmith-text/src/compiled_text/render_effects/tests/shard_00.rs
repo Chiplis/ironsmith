@@ -5949,6 +5949,21 @@ pub(super) fn block_specific_attacker_renders_cant_be_blocked_by_filter() {
 }
 
 #[test]
+fn source_filtered_evasion_retains_its_subject_threshold_choice_and_duration() {
+    for (blockers, expected) in [
+        (ObjectFilter::creature().with_power(crate::target::Comparison::LessThanOrEqual(2)),
+            "This creature can't be blocked by creatures with power 2 or less this turn"),
+        (ObjectFilter::creature().of_chosen_color(),
+            "This creature can't be blocked by creatures of the chosen color this turn"),
+    ] {
+        let effect = Effect::new(crate::effects::CantEffect::until_end_of_turn(
+            crate::effect::Restriction::block_specific_attacker(blockers, ObjectFilter::source()),
+        ));
+        assert_eq!(describe_effect_list(&[effect]), expected);
+    }
+}
+
+#[test]
 pub(super) fn multi_target_block_restriction_keeps_later_typed_subset_membership() {
     let target_tag = TagKey::from("restricted_target_set");
     let target = Effect::new(crate::effects::TargetOnlyEffect::new(

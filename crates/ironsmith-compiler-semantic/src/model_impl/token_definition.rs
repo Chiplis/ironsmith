@@ -137,6 +137,9 @@ pub struct TokenSacrificeReturnShape {
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum TokenEmbeddedRuleShape {
+    MaximumBlockers {
+        maximum: usize,
+    },
     CantBlockOrBeBlockedByNonSubtypeCreatures {
         subtype: Subtype,
     },

@@ -5355,6 +5355,18 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{subject} can't block")
         }
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            if (ObjectFilter { source_surface: None, ..attacker.clone() })
+                == ObjectFilter::source()
+            {
+                let subject = attacker.source_surface.as_ref()
+                    .map(|surface| surface.display_text().to_string())
+                    .unwrap_or_else(|| "This creature".to_string());
+                return format!(
+                    "{} can't be blocked by {}",
+                    capitalize_first(&subject),
+                    crate::compiled_text::pluralize_noun_phrase(&blockers.description())
+                );
+            }
             // "It can't be blocked by creatures of that color this turn"
             // (Skrelv, Defector Mite): a back-referenced attacker is the
             // subject, not an object of the blockers.

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "6c688c87fb3ec1f336f07530dc7cd09c2b835dee",
+  "source_implementation_commit": "2e281a3cc92cc846de5955dd0a9f5c12d9e28afc",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1175,
-    "additional_proposed_compile_entries": 1180,
+    "additional_proposed_unique_cards": 1181,
+    "additional_proposed_compile_entries": 1186,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1175,
+    "source_proposals_excluding_identified_runtime_gaps": 1181,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4701,10 +4701,6 @@
           "remaining_blocker": "Each-opponent scoped membership and complete duration return."
         },
         {
-          "card_name": "Colfenor's Plans",
-          "remaining_blocker": "Persistent private inspection, spell limit and draw-step body."
-        },
-        {
           "card_name": "Rogue Class",
           "remaining_blocker": "Level acquisition, persistent private inspection and complete level bodies."
         },
@@ -4728,7 +4724,8 @@
       "legacy_scope_limit": "Unmarked legacy readers retain their pre-existing source-wide union behavior. The producer adds no new legacy union entries relative to the prior ExileTop owner. This packet makes no correctness claim for those unmodified readers.",
       "report": "architecture/card-failure-linked-exile-static-permissions.md",
       "completed_by_later_family": {
-        "Kheru Mind-Eater": "linked-exile-private-inspection"
+        "Kheru Mind-Eater": "linked-exile-private-inspection",
+        "Colfenor's Plans": "linked-exile-colfenor-complete-body"
       }
     },
     {
@@ -4809,6 +4806,82 @@
       "rules_source": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.pdf",
       "rules_scope": "CR406.3, page74: continued inspection permission and the shuffled face-down pile exception.",
       "report": "architecture/card-failure-linked-exile-private-inspection.md"
+    },
+    {
+      "id": "linked-exile-colfenor-complete-body",
+      "stage": 87,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Colfenor's Plans"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "a266965c02a93131be463f96d1dcc9f14745c5ef",
+      "integrated_source_commit": "15ee273268e803479062881154b6cffca6e02552",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete body review and byte-identical three-file integration check alongside the two-file text-value prerequisite.",
+      "semantic_scope": [
+        "Only the exact independent draw-step and whole-spell-pool cast-limit restrictions are admitted around the proved private library producer/reader pair.",
+        "Plans itself counts as the turn's spell after cast entry. Current control drives skipped draws and active limits; the ETB captures its original controller's library, while private entitlements and live permission remain separate.",
+        "Seven/short/empty libraries, actual cast/noncast entry, real turn reset, hand/exile spell limits, land play, source removal and member/view/ID rollback are covered by authored direct/artifact scenarios."
+      ],
+      "report": "architecture/card-failure-linked-exile-colfenor-plans.md"
+    },
+    {
+      "id": "checked-text-word-values",
+      "stage": 87,
+      "status": "source_prerequisite_only_no_card_coverage",
+      "baseline_entries": [],
+      "partial_entries": [],
+      "candidate_entries": [
+        "Alter Reality",
+        "Artificial Evolution",
+        "Balduvian Shaman",
+        "Crystal Spray",
+        "Glamerdye",
+        "Magical Hack",
+        "Mind Bend",
+        "New Blood",
+        "Sleight of Mind",
+        "Spectral Shift",
+        "Trait Doctoring",
+        "Whim of Volrath"
+      ],
+      "implementation_commit": "0d6c1c6eb2e879bcf048a382e809be84e10be66a",
+      "integrated_source_commit": "15ee273268e803479062881154b6cffca6e02552",
+      "tests": "authored_not_run",
+      "source_review": "Independent two-file checked-value review; no text-changing execution or full-body clearance.",
+      "semantic_scope": [
+        "Checked color-word, basic-land-type-word and creature-type-word pairs reject invalid families and identical substitutions at construction/deserialization. No-occurrence choices remain allowed."
+      ],
+      "remaining_blockers": [
+        "Real layer-3 and dependency application, current/captured spell and ability programs, authored-word roles, complete legal target domains and all twelve secondary bodies."
+      ],
+      "source_coverage_count": 0
+    },
+    {
+      "id": "filtered-evasion-complete-bodies",
+      "stage": 87,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/filtered_evasion_bodies.json.fixture",
+      "baseline_entries": [
+        "Cavern Stomper",
+        "Harvesttide Sentry",
+        "Sungold Sentinel",
+        "Verdant Outrider",
+        "White Tiger, Ava Ayala"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "b929f32864c6230ae976beabc1dfde6c4478bee9",
+      "integrated_source_commit": "2e281a3cc92cc846de5955dd0a9f5c12d9e28afc",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete-body review, coordinator-discovered multicolor conjunction correction, final corrected helper recheck and byte-identical ten-file integration.",
+      "semantic_scope": [
+        "Resolved color choices and exact attacker identity remain fixed, while blocker power/color characteristics remain live. Fixed/chosen color conjunctions retain valid multicolor matches and existing required colors; later choices cannot rewrite prior restrictions.",
+        "Source-left and blinked-source outcomes remain harmless without transferring prior protection/evasion. Source-subject canonical rendering retains the complete blocking predicate.",
+        "Full scry, Coven trigger-versus-activation timing, optional graveyard exile, chosen-color hexproof, paid abilities, Power-up discounts/cancellation/once limit and the complete token maximum-blocker body are covered by independent direct/artifact/native scenarios."
+      ],
+      "report": "architecture/card-failure-filtered-evasion-bodies.md"
     }
   ],
   "cards": [
@@ -9079,8 +9152,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-evasion-complete-bodies"
+      ]
     },
     {
       "card_name": "Cavernous Maw",
@@ -10023,10 +10098,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "linked-exile-static-play-permissions"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-exile-static-play-permissions",
+        "linked-exile-private-inspection",
+        "linked-exile-colfenor-complete-body"
       ]
     },
     {
@@ -17868,8 +17944,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-evasion-complete-bodies"
+      ]
     },
     {
       "card_name": "Hatchery Sliver",
@@ -33542,8 +33620,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-evasion-complete-bodies"
+      ]
     },
     {
       "card_name": "Super-Adaptoid",
@@ -37600,8 +37680,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-evasion-complete-bodies"
+      ]
     },
     {
       "card_name": "Verity Circle",
@@ -39246,8 +39328,10 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "filtered-evasion-complete-bodies"
+      ]
     },
     {
       "card_name": "Wick, the Whorled Mind",
@@ -40842,7 +40926,8 @@
       "id": "face-down-exile-pile-shuffle-inspection-reset",
       "status": "unsupported_mechanic_not_counted",
       "affected_current_source_proposals": [
-        "Kheru Mind-Eater"
+        "Kheru Mind-Eater",
+        "Colfenor's Plans"
       ],
       "required_owner": "A future face-down exile-pile shuffle must end prior per-card viewer entitlements under CR406.3; no current engine owner was found in the bounded review.",
       "completion_gate": "Implement and review this transition when closing the still-unsupported shuffled-pile card family; do not infer shuffle support from private inspection support."

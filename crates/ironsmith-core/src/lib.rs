@@ -42,6 +42,8 @@ pub mod suspend;
 pub use suspend::SuspendTime;
 pub mod tag;
 pub mod target_model;
+pub mod text_change;
+pub use text_change::{TextChange, TextChangeError, TextWord};
 pub mod trigger_model;
 pub mod types;
 pub mod value_model;
