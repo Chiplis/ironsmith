@@ -32,9 +32,15 @@ mod register_enter_with_counters;
 pub use register_enter_with_counters::RegisterEnterWithCountersReplacementEffect;
 
 mod execute_payload;
-pub(crate) use execute_payload::{execute_replacement_payload, execute_replacement_payload_with_object_tags, execute_event_expansion, execute_event_expansion_with_targets, execute_deferred_replacement_programs, execute_deferred_replacement_programs_with_targets};
+pub(crate) use execute_payload::{execute_replacement_payload, execute_replacement_payload_with_object_tags, execute_event_expansion, execute_event_expansion_with_targets, execute_deferred_replacement_programs};
 
-pub(crate) use execute_payload::{ReplacementProgramBindings, execute_event_expansion_with_bindings, execute_deferred_replacement_programs_with_bindings};
+pub(crate) use execute_payload::{
+    CompletedReplacementPrograms, ReplacementProgramBindings,
+    complete_deferred_replacement_programs, complete_deferred_replacement_programs_with_bindings,
+    complete_deferred_replacement_programs_with_targets,
+    execute_deferred_replacement_programs_with_bindings,
+    execute_event_expansion_with_outputs, execute_replacement_payload_with_outputs,
+};
 
 mod register_damage_multiplier;
 mod register_damage_addition;
@@ -42,12 +48,14 @@ pub use register_damage_multiplier::RegisterDamageMultiplierEffect;
 pub use register_damage_addition::RegisterDamageAdditionEffect;
 
 mod draw_continuation;
-pub(crate) use draw_continuation::prepare_draw_continuation;
+pub(crate) use draw_continuation::prepare_draw_continuation_with_outputs;
 
-pub(crate) use draw_continuation::{PreparedReplacementChild, ReplacementResume, prepare_replacement_child, replacement_effect_contains_draw};
+pub(crate) use draw_continuation::{
+    PreparedReplacementChild, ReplacementResume, prepare_replacement_child,
+    replacement_effect_contains_draw, resume_replacement_child_with_outputs,
+};
 
-pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings;
+pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings_and_outputs;
 
-pub(crate) use execute_payload::execute_replacement_payload_with_snapshot;
 
 pub(crate) use execute_payload::with_replacement_child;

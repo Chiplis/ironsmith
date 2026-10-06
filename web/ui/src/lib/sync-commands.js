@@ -6,14 +6,6 @@ export function sameActionRef(left, right) {
   return canonicalWireJson(left) === canonicalWireJson(right);
 }
 
-// Forfeits that may target any seat, not only the one owing the decision.
-// A witness forfeit is checked against its witness certificate instead.
-const DISCONNECT_TIMEOUT_POLICY_REASONS = new Set([
-  "disconnect_timeout_policy",
-  "peer_claimed_disconnect_timeout",
-  WITNESS_FORFEIT_REASON,
-]);
-
 export function findPriorityActionForCommand(decision, command) {
   if (!decision || decision.kind !== "priority" || command?.type !== "priority_action") {
     return null;
@@ -88,12 +80,9 @@ export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
-    if (DISCONNECT_TIMEOUT_POLICY_REASONS.has(String(command.reason || ""))) {
-      return command.player !== null && command.player !== undefined;
-    }
-    return decision?.player !== null
-      && decision?.player !== undefined
-      && Number(decision.player) === Number(command.player);
+    // Forfeiting a seat is independent of the current engine decision.
+    // The multiplayer receive gates validate the signer and target player.
+    return command.player !== null && command.player !== undefined;
   }
   if (!decision) return false;
 

@@ -69,12 +69,12 @@ export default function InspectorStackTimeline({
   const effectOrderingKey = buildEffectOrderingKey(decision);
   const hasStackEntries = stackObjects.length > 0 || stackPreview.length > 0;
   const stackIds = useMemo(
-    () => stackEntryRenderKeys(stackObjects).map((key) => `live-${key}`),
+    () => stackEntryRenderKeys(stackObjects).map((key, index) => stackObjects[index].__timeline_key ?? `live-${key}`),
     [stackObjects]
   );
   const { newIds } = useNewCards(stackIds);
   const activeStackInspectId = useMemo(
-    () => resolveActiveStackInspectId(stackObjects, selectedObjectId),
+    () => resolveActiveStackInspectId(stackObjects.filter(entry => !entry.__leaving), selectedObjectId),
     [selectedObjectId, stackObjects]
   );
   // Pending choices share the same cards and arrows. Replacements are kept
@@ -91,7 +91,7 @@ export default function InspectorStackTimeline({
     () => stackObjects.map((entry, index) => ({
       ...entry,
       __timeline_key: stackIds[index],
-      __leaving: false,
+      __leaving: Boolean(entry.__leaving),
     })),
     [stackObjects, stackIds]
   );
@@ -99,7 +99,8 @@ export default function InspectorStackTimeline({
     () => [...pendingOrderingEntries, ...liveTimelineEntries],
     [pendingOrderingEntries, liveTimelineEntries]
   );
-  const itemCount = timelineEntries.length || stackPreview.length;
+  const liveEntryCount = timelineEntries.filter(entry => !entry.__leaving).length;
+  const itemCount = liveEntryCount || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
@@ -118,11 +119,13 @@ export default function InspectorStackTimeline({
     : 380;
 
   const positionLabelForIndex = (index) => {
+    if (timelineEntries[index].__leaving) return "";
+    index = timelineEntries.slice(0, index).filter(entry => !entry.__leaving).length;
     if (replacementOrderingActive) {
       if (index < pendingOrderingEntries.length) return index === 0 ? "Apply first" : `#${index + 1}`;
-      return index === pendingOrderingEntries.length ? "Resolving" : `#${timelineEntries.length - index}`;
+      return index === pendingOrderingEntries.length ? "Resolving" : `#${liveEntryCount - index}`;
     }
-    if (index !== 0) return `#${timelineEntries.length - index}`;
+    if (index !== 0) return `#${liveEntryCount - index}`;
     if (focusedDecision && !effectOrderingActive) return "Resolving";
     return "Top";
   };
@@ -136,6 +139,9 @@ export default function InspectorStackTimeline({
       <div
         key={entry.__timeline_key}
         className="stack-timeline-entry pointer-events-auto relative"
+        data-leaving={entry.__leaving ? "true" : undefined}
+        inert={entry.__leaving || undefined}
+        aria-hidden={entry.__leaving || undefined}
       >
         {replacementOrderingActive && index === pendingOrderingEntries.length && (
           <div className="stack-panel-header">

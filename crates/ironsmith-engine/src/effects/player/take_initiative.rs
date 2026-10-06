@@ -8,7 +8,6 @@ use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::triggers::TriggerEvent;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TakeInitiativeEffect {
@@ -31,23 +30,22 @@ impl EffectExecutor for TakeInitiativeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        game.set_initiative(Some(player_id));
-        // CR 725.2: "Whenever a player takes the initiative, that player
-        // ventures into Undercity" is an inherent triggered ability, so the
-        // venture waits for the stack instead of happening mid-resolution.
-        // Retaking the initiative triggers it again (CR 725.5).
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let player_id = resolve_player_filter(game, &self.player, ctx)?;
+            game.set_initiative(Some(player_id));
+            // Initiative's inherent venture trigger waits for the stack.
+            // Retaking the initiative still completes this action.
+            crate::effects::composition::complete_keyword_action(
+                game,
+                ctx,
                 KeywordActionEvent::new(
                     KeywordActionKind::TakeInitiative,
                     player_id,
                     ctx.source,
                     1,
                 ),
-                ctx.provenance,
-            )),
-        )
+            )
+        })
     }
 }
 

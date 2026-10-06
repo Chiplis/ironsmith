@@ -1,7 +1,25 @@
 import { isRelayId, relayBaseUrl } from './formats.js';
 const journalKey = lobbyId => key(lobbyId, isRelayId(lobbyId) ? relayBaseUrl() : 'peerjs');
 const prefix = 'ironsmith-relay-session-v1:';
+const peerPrefix = 'ironsmith-peerjs-resume-v1:';
 const key = (room, url = relayBaseUrl()) => `${prefix}${url}:${room}`;
+function pruneOtherLobbyRecords(currentKey) {
+  const obsolete = [];
+  for (let index = 0; index < localStorage.length; index++) {
+    const storedKey = localStorage.key(index);
+    if (storedKey !== currentKey && (storedKey?.startsWith(prefix) || storedKey?.startsWith(peerPrefix))) {
+      obsolete.push(storedKey);
+    }
+  }
+  for (const storedKey of obsolete) localStorage.removeItem(storedKey);
+}
+function saveReconnectRecord(currentKey, value) {
+  const serialized = JSON.stringify(value);
+  // Free older lobby records before writing so their accumulated size cannot
+  // prevent saving the latest identity. Keep the current record if writing fails.
+  pruneOtherLobbyRecords(currentKey);
+  localStorage.setItem(currentKey, serialized);
+}
 export function readRelaySession(room, url) {
   try {
     const value = JSON.parse(localStorage.getItem(key(room, url)));
@@ -11,7 +29,7 @@ export function readRelaySession(room, url) {
 }
 export function saveRelayIdentity(room, url, identity) {
   // A failed write must be visible: otherwise closing this tab would lose the seat.
-  localStorage.setItem(key(room, url), JSON.stringify({ ...readRelaySession(room, url), ...identity }));
+  saveReconnectRecord(key(room, url), { ...readRelaySession(room, url), ...identity });
 }
 const durableFields = ['role', 'lobbyId', 'hostPeerId', 'localPeerId', 'localName',
   'localPlayerIndex', 'desiredPlayers', 'startingLife', 'format', 'securityMode',
@@ -24,7 +42,7 @@ export function durableRelaySession(session) {
 // Verified resume also restores client-owned private snapshot/identity state.
 export function readPeerSession(lobbyId) {
   try {
-    const value = JSON.parse(localStorage.getItem(`ironsmith-peerjs-resume-v1:${lobbyId}`));
+    const value = JSON.parse(localStorage.getItem(`${peerPrefix}${lobbyId}`));
     return value?.session?.lobbyId === lobbyId && value.peerId === value.session.localPeerId
       && ['trusted', 'verified'].includes(value.session.securityMode) ? value : null;
   } catch { return null; }
@@ -47,17 +65,24 @@ export function writeRelayOnlyPreference(enabled) {
 export function saveRelayLobby(session, previous) {
   if (!isRelayId(session.lobbyId)) {
     if (!canPersistMatch(session) || !session.localPeerId) return;
-    if (previous && durableFields.every(field => previous[field] === session[field])) return;
-    localStorage.setItem(`ironsmith-peerjs-resume-v1:${session.lobbyId}`, JSON.stringify({
+    const currentKey = `${peerPrefix}${session.lobbyId}`;
+    if (previous && durableFields.every(field => previous[field] === session[field])) {
+      pruneOtherLobbyRecords(currentKey);
+      return;
+    }
+    saveReconnectRecord(currentKey, {
       peerId: session.localPeerId, session: durableRelaySession(session),
-    }));
+    });
     return;
   }
   if (!isRelayId(session.lobbyId) || !session.localPeerId) return;
-  if (previous && durableFields.every(field => previous[field] === session[field])) return;
   const room = session.lobbyId.split('-')[1];
   const saved = readRelaySession(room);
   if (saved?.peerId !== session.localPeerId) return;
+  if (previous && durableFields.every(field => previous[field] === session[field])) {
+    pruneOtherLobbyRecords(key(room));
+    return;
+  }
   saveRelayIdentity(room, undefined, { session: durableRelaySession(session) });
 }
 let connection;
@@ -81,6 +106,13 @@ function database() {
   return connection;
 }
 export const relayMatchId = match => String(match?.auditMatchId || `${match?.lobbyId}:${match?.seed}`);
+// Rematches reuse auditMatchId/lobbyId, but start a new signed genesis and
+// action sequence. Recovery of the same genesis must preserve its journal.
+function sameJournalMatch(a, b) {
+  return relayMatchId(a) === relayMatchId(b)
+    && a?.seed === b?.seed
+    && a?.genesis?.payloadHash === b?.genesis?.payloadHash;
+}
 function transaction(db, stores, mode, run) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(stores, mode);
@@ -104,7 +136,8 @@ export async function initializeRelayMatch(lobbyId, value) {
     request.onsuccess = () => {
       try {
         const previous = request.result;
-        if (previous?.storageVersion === 2 && previous.matchId === matchId) { done(previous.lastSequence); return; }
+        if (previous?.storageVersion === 2 && previous.matchId === matchId
+            && sameJournalMatch(previous.match, value.match)) { done(previous.lastSequence); return; }
         // Clear only this room's old journal; other rooms retain their recovery.
         actions.delete(IDBKeyRange.bound([roomKey], [roomKey, []]));
         const entries = value.actions || [];
@@ -130,7 +163,8 @@ export async function appendRelayAction(lobbyId, match, session, entry) {
     request.onsuccess = () => {
       try {
         const header = request.result;
-        if (!header || header.storageVersion !== 2 || header.matchId !== matchId) throw new Error('Match journal is not initialized');
+        if (!header || header.storageVersion !== 2 || header.matchId !== matchId
+            || !sameJournalMatch(header.match, match)) throw new Error('Match journal is not initialized');
         if (Number(entry.seq) !== header.lastSequence + 1) throw new Error('Accepted action does not extend durable transcript');
         actions.add(entry, [roomKey, matchId, Number(entry.seq)]);
         headers.put({ ...header, session: durableRelaySession(session), lastSequence: Number(entry.seq) }, roomKey);

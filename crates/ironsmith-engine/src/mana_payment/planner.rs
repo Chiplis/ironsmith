@@ -135,6 +135,28 @@ pub fn plan_first_mana_payment(
     .first_plan(game, request)
 }
 
+/// Browser announcements open the manual window immediately; optional planning
+/// continues in a disposable worker. Explicit edits and confirmations use the
+/// ordinary planner so the displayed proposal remains executable by peers.
+pub fn plan_prompt_mana_payment(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    initial: bool,
+) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
+    if initial && crate::game_loop::priority_analysis_deferred() {
+        // Open immediately, safely within the 500 ms search allowance. The
+        // disposable background worker can propose a funded plan afterward.
+        return Ok(unfunded_mana_payment_plan(game, request));
+    }
+    let result = plan_first_mana_payment(game, request);
+    match result {
+        Err(ManaPaymentFailure::NoLegalPlan | ManaPaymentFailure::SearchLimitReached | ManaPaymentFailure::ConflictingPreferences) => {
+            Ok(unfunded_mana_payment_plan(game, request))
+        }
+        other => other,
+    }
+}
+
 /// Check for one valid payment without ranking plans for display or execution.
 /// Existence checks first try projected sources without simulating siblings,
 /// then follow one lazy search line. Both stop at the first legal completion.
@@ -370,43 +392,42 @@ fn activation_inventory_observing<D: crate::decision::DecisionMaker>(
     collect_raw_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
         .into_iter()
         .filter_map(|choice| {
-            let (expected_mana, max_activations) = if let Some(projected) =
-                analysis.project(&choice)
-            {
-                if ready_only && projected.needs_choice {
-                    return None;
-                }
-                (projected.output, 1)
-            } else {
-                let mut staged = game.clone();
-                let before = staged.player(unconstrained.payer)?.mana_pool.clone();
-                let mut decision_maker = chooser();
-                activate_with_mana_triggers(
-                    &mut staged,
-                    unconstrained.payer,
-                    choice.source,
-                    choice.ability_index,
-                    choice.color_restriction.clone(),
-                    &mut decision_maker,
-                )
-                .ok()?;
-                if decision_maker.awaiting_choice() {
-                    return None;
-                }
-                let after = staged.player(unconstrained.payer)?.mana_pool.clone();
-                resolved(&choice, &staged);
-                // Probe the ordinary legality/cost path, including per-turn
-                // limits, life, counters, sacrifices and state-based actions.
-                // A successful second activation does not imply unlimited uses.
-                let probe_limit = expanded_pip_count(request)
-                    .saturating_add(MAX_EXTRA_ACTIVATIONS)
-                    .max(request.preferences.required_activations.len())
-                    .max(2);
-                let mut max_activations = 1;
-                while max_activations < probe_limit {
-                    let legal = {
-                        let view = DerivedGameView::new(&staged);
-                        view.abilities_rc(choice.source)
+            let (expected_mana, max_activations) =
+                if let Some(projected) = analysis.project(&choice) {
+                    if ready_only && projected.needs_choice {
+                        return None;
+                    }
+                    (projected.output, 1)
+                } else {
+                    let mut staged = game.clone();
+                    let before = staged.player(unconstrained.payer)?.mana_pool.clone();
+                    let mut decision_maker = chooser();
+                    activate_with_mana_triggers(
+                        &mut staged,
+                        unconstrained.payer,
+                        choice.source,
+                        choice.ability_index,
+                        choice.color_restriction.clone(),
+                        &mut decision_maker,
+                    )
+                    .ok()?;
+                    if decision_maker.awaiting_choice() {
+                        return None;
+                    }
+                    let after = staged.player(unconstrained.payer)?.mana_pool.clone();
+                    resolved(&choice, &staged);
+                    // Probe the ordinary legality/cost path, including per-turn
+                    // limits, life, counters, sacrifices and state-based actions.
+                    // A successful second activation does not imply unlimited uses.
+                    let probe_limit = expanded_pip_count(request)
+                        .saturating_add(MAX_EXTRA_ACTIVATIONS)
+                        .max(request.preferences.required_activations.len())
+                        .max(2);
+                    let mut max_activations = 1;
+                    while max_activations < probe_limit {
+                        let legal = {
+                            let view = DerivedGameView::new(&staged);
+                            view.abilities_rc(choice.source)
                             .and_then(|abilities| abilities.get(choice.ability_index).cloned())
                             .is_some_and(|ability| {
                                 crate::special_actions::can_activate_mana_ability_check_with_view(
@@ -420,32 +441,32 @@ fn activation_inventory_observing<D: crate::decision::DecisionMaker>(
                                 )
                                 .is_ok()
                             })
-                    };
-                    if !legal {
-                        break;
+                        };
+                        if !legal {
+                            break;
+                        }
+                        let previous_pool = staged.player(unconstrained.payer)?.mana_pool.clone();
+                        let mut repeat_decision_maker = chooser();
+                        if activate_with_mana_triggers(
+                            &mut staged,
+                            unconstrained.payer,
+                            choice.source,
+                            choice.ability_index,
+                            choice.color_restriction.clone(),
+                            &mut repeat_decision_maker,
+                        )
+                        .is_err()
+                            || repeat_decision_maker.awaiting_choice()
+                            || staged
+                                .player(unconstrained.payer)
+                                .is_none_or(|player| player.mana_pool == previous_pool)
+                        {
+                            break;
+                        }
+                        max_activations += 1;
                     }
-                    let previous_pool = staged.player(unconstrained.payer)?.mana_pool.clone();
-                    let mut repeat_decision_maker = chooser();
-                    if activate_with_mana_triggers(
-                        &mut staged,
-                        unconstrained.payer,
-                        choice.source,
-                        choice.ability_index,
-                        choice.color_restriction.clone(),
-                        &mut repeat_decision_maker,
-                    )
-                    .is_err()
-                        || repeat_decision_maker.awaiting_choice()
-                        || staged
-                            .player(unconstrained.payer)
-                            .is_none_or(|player| player.mana_pool == previous_pool)
-                    {
-                        break;
-                    }
-                    max_activations += 1;
-                }
-                (positive_pool_delta(&before, &after), max_activations)
-            };
+                    (positive_pool_delta(&before, &after), max_activations)
+                };
             (expected_mana.total() > 0).then(|| ManaPaymentActivationOption {
                 source: choice.source,
                 ability_index: choice.ability_index,
@@ -643,58 +664,59 @@ pub(crate) fn execute_mana_payment_plan_in_context(
             return Err(ManaPaymentFailure::ExecutionFailed);
         }
     }
-    let before = crate::events::other::before_tap_state_snapshots(game);
-    let mut tapped_events = Vec::new();
-    for allocation in &current.allocations {
-        let success = match allocation.payment {
-            super::PlannedPipPayment::Convoke(source)
-            | super::PlannedPipPayment::Improvise(source) => {
-                if game.object(source).is_none() || game.is_tapped(source) {
-                    false
-                } else {
-                    game.tap(source);
-                    tapped_events.push(crate::triggers::TriggerEvent::new(
-                        crate::events::PermanentTappedEvent::capture(
-                            game,
-                            source,
-                            Some(request.payer),
-                        ),
-                        crate::provenance::ProvNodeId::default(),
-                    ));
-                    true
-                }
-            }
-            super::PlannedPipPayment::Delve(source) => {
-                if !delve_cards(game, request).contains(&source) {
-                    false
-                } else {
-                    let mut context = crate::costs::CostContext::new(
-                        request.source,
-                        request.payer,
-                        decision_maker,
-                    )
-                    .with_reason(request.reason)
-                    .with_pre_chosen_cards(vec![source]);
-                    match crate::costs::Cost::exile_from_graveyard(1, None).pay(game, &mut context)
-                    {
-                        Ok(crate::costs::CostPaymentResult::Paid) => true,
-                        Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => {
-                            *game = checkpoint;
-                            return Err(ManaPaymentFailure::EffectExecutionFailed(error));
+    let (tap_receipt, payment_execution) = {
+        let mut allocation_execution =
+            crate::effects::ExecutionContext::new(request.source, request.payer, decision_maker);
+        if let Some(execution) = execution {
+            execution.restore_ref(&mut allocation_execution);
+        }
+        let mut cost_context = crate::costs::CostContext::from_execution_context(
+            request.source,
+            request.payer,
+            request.reason,
+            &mut allocation_execution,
+        );
+        let mut taps = crate::effects::permanents::TapAction::new(
+            game,
+            request.payer,
+            cost_context.provenance,
+        );
+        for allocation in &current.allocations {
+            let success = match allocation.payment {
+                super::PlannedPipPayment::Convoke(source)
+                | super::PlannedPipPayment::Improvise(source) => taps.tap(game, source),
+                super::PlannedPipPayment::Delve(source) => {
+                    if !delve_cards(game, request).contains(&source) {
+                        false
+                    } else {
+                        cost_context.pre_chosen_cards = vec![source];
+                        match crate::costs::Cost::exile_from_graveyard(1, None)
+                            .pay(game, &mut cost_context)
+                        {
+                            Ok(crate::costs::CostPaymentResult::Paid) => true,
+                            Err(crate::cost::CostPaymentError::ExecutionFailed(error))
+                                if !cost_context.decision_maker.awaiting_choice() =>
+                            {
+                                *game = checkpoint;
+                                return Err(ManaPaymentFailure::EffectExecutionFailed(error));
+                            }
+                            _ => false,
                         }
-                        _ => false,
                     }
                 }
+                _ => true,
+            };
+            if cost_context.decision_maker.awaiting_choice() {
+                game.restore_execution_checkpoint(checkpoint, true);
+                return Ok(super::ManaPaymentExecution::PendingDecision);
             }
-            _ => true,
-        };
-        if !success {
-            *game = checkpoint;
-            return Err(ManaPaymentFailure::ExecutionFailed);
+            if !success {
+                *game = checkpoint;
+                return Err(ManaPaymentFailure::ExecutionFailed);
+            }
         }
-    }
-    crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
-    crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
+        (taps.finish(game), cost_context.capture_execution_context())
+    };
     let paid = game
         .try_pay_mana_cost_with_payment_options_in_context(
             request.payer,
@@ -707,7 +729,7 @@ pub(crate) fn execute_mana_payment_plan_in_context(
             request.allow_black_life,
             request.preferences.prefer_life,
             decision_maker,
-            execution,
+            Some(&payment_execution),
         )
         .map_err(|error| {
             *game = checkpoint.clone();
@@ -721,7 +743,7 @@ pub(crate) fn execute_mana_payment_plan_in_context(
         *game = checkpoint;
         return Err(ManaPaymentFailure::ExecutionFailed);
     }
-    for event in tapped_events {
+    for event in tap_receipt.events {
         game.queue_trigger_event(event.provenance(), event);
     }
     for allocation in &current.allocations {
@@ -755,13 +777,23 @@ pub(crate) fn execute_mana_payment_plan_in_context(
         let provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::KeywordAction);
-        game.queue_trigger_event(
-            provenance,
+        let completion = crate::effects::composition::observe_keyword_action_completion(
+            game,
             crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::KeywordActionEvent::new(action, request.payer, request.source, 1),
                 provenance,
             ),
         );
+        let completion = match completion {
+            Ok(completion) => completion,
+            Err(_) => {
+                *game = checkpoint;
+                return Err(ManaPaymentFailure::ExecutionFailed);
+            }
+        };
+        for event in completion.events {
+            game.queue_trigger_event(event.provenance(), event);
+        }
     }
     Ok(super::ManaPaymentExecution::Paid)
 }

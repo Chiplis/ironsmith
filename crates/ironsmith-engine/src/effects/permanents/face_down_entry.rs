@@ -7,7 +7,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
-use crate::triggers::TriggerEvent;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ManifestPreparation {
@@ -77,7 +76,6 @@ pub(crate) fn prepare_manifest_entry(
     card_id: ObjectId,
     controller: PlayerId,
     cloak: bool,
-    action: KeywordActionKind,
 ) -> Result<
     (
         EffectOutcome,
@@ -103,10 +101,7 @@ pub(crate) fn prepare_manifest_entry(
     let original = match &receipt.outcome {
         BattlefieldEntryOutcome::Moved(id) => {
             game.set_manifested(*id);
-            EffectOutcome::with_objects(vec![*id]).with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(action, controller, ctx.source, 1),
-                ctx.provenance,
-            ))
+            EffectOutcome::with_objects(vec![*id])
         }
         BattlefieldEntryOutcome::Redirected(change) => {
             EffectOutcome::with_objects(change.new_object_ids.clone())
@@ -133,10 +128,21 @@ pub(crate) fn manifest_card(
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
     let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let (original, receipt) =
-            prepare_manifest_entry(game, ctx, card_id, controller, cloak, action)?;
+        let (mut original, receipt) =
+            prepare_manifest_entry(game, ctx, card_id, controller, cloak)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
+        }
+        if receipt
+            .as_ref()
+            .is_some_and(|receipt| matches!(receipt.outcome, BattlefieldEntryOutcome::Moved(_)))
+        {
+            original = crate::effects::composition::complete_keyword_action_with_result(
+                game,
+                ctx,
+                original,
+                KeywordActionEvent::new(action, controller, ctx.source, 1),
+            )?;
         }
         crate::effects::zones::finish_battlefield_entry_receipts(
             game,

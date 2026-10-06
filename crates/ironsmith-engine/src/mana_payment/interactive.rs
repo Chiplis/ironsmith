@@ -126,7 +126,7 @@ pub(crate) fn pay_mana_interactively_in_context(
     loop {
         // Foreground prompts need one executable proposal. Source selection
         // remains available through constrained replanning below.
-        let plan = match plan_first_mana_payment(game, &request) {
+        let plan = match plan_prompt_mana_payment(game, &request, false) {
             Ok(plan) => plan,
             Err(ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(CostPaymentError::ExecutionFailed(error)),
             Err(_) => unfunded_mana_payment_plan(game, &request),

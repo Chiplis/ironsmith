@@ -2,11 +2,13 @@
 //! production snapshots, retention deadlines and exact spending restrictions.
 use crate::ability::RestrictedManaUnit;
 use crate::effect::EffectOutcome;
-use crate::effects::{ExecutionContext, ExecutionError, SimultaneousEffectCommit,
-    SimultaneousEffectCompletion, SimultaneousEffectProposal};
-use crate::events::{Event, ManaLostEvent};
+use crate::effects::{
+    ExecutionContext, ExecutionError, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+    SimultaneousEffectProposal,
+};
 use crate::events::mana::POOL_SYMBOLS;
-use crate::events::processing::{TraitEventResult, PreparedReplacementProgram};
+use crate::events::processing::{PreparedReplacementProgram, TraitEventResult};
+use crate::events::{Event, ManaLostEvent};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::ManaSymbol;
@@ -37,171 +39,321 @@ pub(crate) struct ManaLossProposal {
 fn add_checked(pool: &mut ManaPool, symbol: ManaSymbol, amount: u32) -> Result<(), ExecutionError> {
     let total = u128::from(pool.amount(symbol)) + u128::from(amount);
     if total > u128::from(u32::MAX) {
-        return Err(ExecutionError::ResourceLimitExceeded { resource: "mana pool units of one type",
-            requested: total, maximum: u128::from(u32::MAX) });
+        return Err(ExecutionError::ResourceLimitExceeded {
+            resource: "mana pool units of one type",
+            requested: total,
+            maximum: u128::from(u32::MAX),
+        });
     }
     pool.add(symbol, amount);
     Ok(())
 }
-fn nonempty(pool: &ManaPool) -> bool { POOL_SYMBOLS.iter().any(|symbol| pool.amount(*symbol) != 0) }
+fn nonempty(pool: &ManaPool) -> bool {
+    POOL_SYMBOLS.iter().any(|symbol| pool.amount(*symbol) != 0)
+}
 
 impl ManaLossProposal {
-    pub(crate) fn new(game: &GameState, player: PlayerId, boundary: bool) -> Result<Self, ExecutionError> {
-        let data = game.player(player).ok_or(ExecutionError::PlayerNotFound(player))?;
+    pub(crate) fn new(
+        game: &GameState,
+        player: PlayerId,
+        boundary: bool,
+    ) -> Result<Self, ExecutionError> {
+        let data = game
+            .player(player)
+            .ok_or(ExecutionError::PlayerNotFound(player))?;
         let ending_combat = game.turn.phase == crate::game_state::Phase::Combat
             && game.turn.step == Some(crate::game_state::Step::EndCombat);
         let ending_turn = game.turn.phase == crate::game_state::Phase::Ending
             && game.turn.step == Some(crate::game_state::Step::Cleanup);
         let scopes = game.effect_store.cant_effects.retained_mana_scopes(player);
-        let globally_retained = |symbol| boundary && scopes.is_some_and(|scopes| {
-            scopes.contains(&None) || match symbol {
-                ManaSymbol::White => scopes.contains(&Some(crate::Color::White)),
-                ManaSymbol::Blue => scopes.contains(&Some(crate::Color::Blue)),
-                ManaSymbol::Black => scopes.contains(&Some(crate::Color::Black)),
-                ManaSymbol::Red => scopes.contains(&Some(crate::Color::Red)),
-                ManaSymbol::Green => scopes.contains(&Some(crate::Color::Green)),
-                _ => false,
-            }
-        });
+        let globally_retained = |symbol| {
+            boundary
+                && scopes.is_some_and(|scopes| {
+                    scopes.contains(&None)
+                        || match symbol {
+                            ManaSymbol::White => scopes.contains(&Some(crate::Color::White)),
+                            ManaSymbol::Blue => scopes.contains(&Some(crate::Color::Blue)),
+                            ManaSymbol::Black => scopes.contains(&Some(crate::Color::Black)),
+                            ManaSymbol::Red => scopes.contains(&Some(crate::Color::Red)),
+                            ManaSymbol::Green => scopes.contains(&Some(crate::Color::Green)),
+                            _ => false,
+                        }
+                })
+        };
         let mut remaining = data.mana_pool.clone();
         let mut used_restricted = std::collections::HashSet::new();
         let mut units = Vec::new();
         let mut lost = ManaPool::default();
         for provenance in &data.mana_source_provenance {
-            if !POOL_SYMBOLS.contains(&provenance.symbol) || !remaining.remove(provenance.symbol, 1) {
-                return Err(ExecutionError::InternalError("mana loss found a detached production unit".into()));
+            if !POOL_SYMBOLS.contains(&provenance.symbol) || !remaining.remove(provenance.symbol, 1)
+            {
+                return Err(ExecutionError::InternalError(
+                    "mana loss found a detached production unit".into(),
+                ));
             }
             // Pair before recoloring, while the original type distinguishes
             // units from a producer that supplied multiple colors. Rebuild the
             // restricted vector in this same order on commit, so later exact
             // payable-unit selection cannot cross-wire two converted units.
             let restriction = if provenance.restricted {
-                let (index, unit) = data.restricted_mana.iter().enumerate().find(|(index, unit)|
-                    !used_restricted.contains(index) && unit.source == provenance.source
-                        && unit.symbol == provenance.symbol).ok_or_else(||
-                    ExecutionError::InternalError("mana loss found unpaired restricted provenance".into()))?;
+                let (index, unit) = data
+                    .restricted_mana
+                    .iter()
+                    .enumerate()
+                    .find(|(index, unit)| {
+                        !used_restricted.contains(index)
+                            && unit.source == provenance.source
+                            && unit.symbol == provenance.symbol
+                    })
+                    .ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "mana loss found unpaired restricted provenance".into(),
+                        )
+                    })?;
                 used_restricted.insert(index);
                 Some(unit.clone())
-            } else { None };
+            } else {
+                None
+            };
             let mut provenance = provenance.clone();
-            if boundary && ((ending_combat && provenance.retention == Some(ironsmith_core::ManaRetentionDuration::EndOfCombat))
-                || (ending_turn && provenance.retention == Some(ironsmith_core::ManaRetentionDuration::EndOfTurn))) {
+            if boundary
+                && ((ending_combat
+                    && provenance.retention
+                        == Some(ironsmith_core::ManaRetentionDuration::EndOfCombat))
+                    || (ending_turn
+                        && provenance.retention
+                            == Some(ironsmith_core::ManaRetentionDuration::EndOfTurn)))
+            {
                 provenance.retention = None;
             }
-            let retained = globally_retained(provenance.symbol) || (boundary && match provenance.retention {
-                Some(ironsmith_core::ManaRetentionDuration::EndOfCombat) => !ending_combat,
-                Some(ironsmith_core::ManaRetentionDuration::EndOfTurn) => !ending_turn,
-                None => false,
+            let retained = globally_retained(provenance.symbol)
+                || (boundary
+                    && match provenance.retention {
+                        Some(ironsmith_core::ManaRetentionDuration::EndOfCombat) => !ending_combat,
+                        Some(ironsmith_core::ManaRetentionDuration::EndOfTurn) => !ending_turn,
+                        None => false,
+                    });
+            if !retained {
+                add_checked(&mut lost, provenance.symbol, 1)?;
+            }
+            units.push(Unit {
+                provenance,
+                restriction,
+                loses: !retained,
             });
-            if !retained { add_checked(&mut lost, provenance.symbol, 1)?; }
-            units.push(Unit { provenance, restriction, loses: !retained });
         }
         if used_restricted.len() != data.restricted_mana.len() {
-            return Err(ExecutionError::InternalError("mana loss found a restriction without its production unit".into()));
+            return Err(ExecutionError::InternalError(
+                "mana loss found a restriction without its production unit".into(),
+            ));
         }
         let mut untracked_retained = ManaPool::default();
         let mut untracked_lost = ManaPool::default();
         for symbol in POOL_SYMBOLS {
             let amount = remaining.amount(symbol);
-            if globally_retained(symbol) { untracked_retained.add(symbol, amount); }
-            else { untracked_lost.add(symbol, amount); add_checked(&mut lost, symbol, amount)?; }
+            if globally_retained(symbol) {
+                untracked_retained.add(symbol, amount);
+            } else {
+                untracked_lost.add(symbol, amount);
+                add_checked(&mut lost, symbol, amount)?;
+            }
         }
-        Ok(Self { player, original_pool: data.mana_pool.clone(),
-            original_provenance: data.mana_source_provenance.clone(), original_restricted: data.restricted_mana.clone(),
-            units, untracked_retained, untracked_lost,
-            event: ManaLostEvent { player, mana: lost, converted_to: None }, prepared: None })
+        Ok(Self {
+            player,
+            original_pool: data.mana_pool.clone(),
+            original_provenance: data.mana_source_provenance.clone(),
+            original_restricted: data.restricted_mana.clone(),
+            units,
+            untracked_retained,
+            untracked_lost,
+            event: ManaLostEvent {
+                player,
+                mana: lost,
+                converted_to: None,
+            },
+            prepared: None,
+        })
     }
 
-    fn commit_resolved(self, game: &mut GameState, ctx: &mut ExecutionContext, result: TraitEventResult)
-        -> Result<SimultaneousEffectCommit, ExecutionError>
-    {
+    fn commit_resolved(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: TraitEventResult,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
         let (original, programs) = result.into_expansion();
         let outcome = match original {
             TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-                let loss = crate::events::downcast_event::<ManaLostEvent>(event.inner()).ok_or_else(||
-                    ExecutionError::InternalError("mana loss returned an incompatible event".into()))?;
+                let loss = crate::events::downcast_event::<ManaLostEvent>(event.inner())
+                    .ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "mana loss returned an incompatible event".into(),
+                        )
+                    })?;
                 if loss.player != self.player || loss.mana != self.event.mana {
-                    return Err(ExecutionError::InternalError("mana loss changed an unsupported unit identity".into()));
+                    return Err(ExecutionError::InternalError(
+                        "mana loss changed an unsupported unit identity".into(),
+                    ));
                 }
-                let player = game.player_mut(self.player).ok_or(ExecutionError::PlayerNotFound(self.player))?;
-                if player.mana_pool != self.original_pool || player.mana_source_provenance != self.original_provenance
-                    || player.restricted_mana != self.original_restricted {
-                    return Err(ExecutionError::InternalError("mana loss proposal became stale before original commit".into()));
+                let player = game
+                    .player_mut(self.player)
+                    .ok_or(ExecutionError::PlayerNotFound(self.player))?;
+                if player.mana_pool != self.original_pool
+                    || player.mana_source_provenance != self.original_provenance
+                    || player.restricted_mana != self.original_restricted
+                {
+                    return Err(ExecutionError::InternalError(
+                        "mana loss proposal became stale before original commit".into(),
+                    ));
                 }
                 let mut pool = self.untracked_retained;
                 if let Some(symbol) = loss.converted_to {
-                    for old in POOL_SYMBOLS { add_checked(&mut pool, symbol, self.untracked_lost.amount(old))?; }
+                    for old in POOL_SYMBOLS {
+                        add_checked(&mut pool, symbol, self.untracked_lost.amount(old))?;
+                    }
                 }
                 let mut provenance = Vec::new();
                 let mut restricted = Vec::new();
                 for mut unit in self.units {
                     if unit.loses {
-                        let Some(symbol) = loss.converted_to else { continue; };
+                        let Some(symbol) = loss.converted_to else {
+                            continue;
+                        };
                         unit.provenance.symbol = symbol;
-                        if let Some(restriction) = &mut unit.restriction { restriction.symbol = symbol; }
+                        if let Some(restriction) = &mut unit.restriction {
+                            restriction.symbol = symbol;
+                        }
                     }
                     add_checked(&mut pool, unit.provenance.symbol, 1)?;
-                    if let Some(restriction) = unit.restriction { restricted.push(restriction); }
+                    if let Some(restriction) = unit.restriction {
+                        restricted.push(restriction);
+                    }
                     provenance.push(unit.provenance);
                 }
                 player.mana_pool = pool;
                 player.mana_source_provenance = provenance;
                 player.restricted_mana = restricted;
-                let amount = if loss.converted_to.is_some() { 0 } else {
-                    crate::events::damage::checked_damage_count(POOL_SYMBOLS.iter().map(|symbol|
-                        u128::from(loss.mana.amount(*symbol))).sum(), "lost mana receipt")?
+                let amount = if loss.converted_to.is_some() {
+                    0
+                } else {
+                    crate::events::damage::checked_damage_count(
+                        POOL_SYMBOLS
+                            .iter()
+                            .map(|symbol| u128::from(loss.mana.amount(*symbol)))
+                            .sum(),
+                        "lost mana receipt",
+                    )?
                 };
                 game.mark_continuous_state_dirty();
                 let mut outcome = EffectOutcome::count(amount);
                 if amount > 0 {
-                    let observed = game.alloc_child_event_provenance(event.provenance(), crate::events::EventKind::ManaLost);
-                    let mut notification = crate::triggers::TriggerEvent::new_with_provenance(loss.clone(), observed);
-                    if let Some(batch) = game.simultaneous_action_batch() { notification = notification.with_simultaneous_batch(batch); }
+                    let observed = game.alloc_child_event_provenance(
+                        event.provenance(),
+                        crate::events::EventKind::ManaLost,
+                    );
+                    let mut notification =
+                        crate::triggers::TriggerEvent::new_with_provenance(loss.clone(), observed);
+                    if let Some(batch) = game.simultaneous_action_batch() {
+                        notification = notification.with_simultaneous_batch(batch);
+                    }
                     outcome.events.push(notification);
                 }
                 outcome
             }
             TraitEventResult::Prevented => {
-                let player = game.player_mut(self.player).ok_or(ExecutionError::PlayerNotFound(self.player))?;
-                if player.mana_pool != self.original_pool || player.mana_source_provenance != self.original_provenance
-                    || player.restricted_mana != self.original_restricted {
-                    return Err(ExecutionError::InternalError("prevented mana-loss proposal became stale".into()));
+                let player = game
+                    .player_mut(self.player)
+                    .ok_or(ExecutionError::PlayerNotFound(self.player))?;
+                if player.mana_pool != self.original_pool
+                    || player.mana_source_provenance != self.original_provenance
+                    || player.restricted_mana != self.original_restricted
+                {
+                    return Err(ExecutionError::InternalError(
+                        "prevented mana-loss proposal became stale".into(),
+                    ));
                 }
                 // A prevented loss preserves the mana, but it cannot prolong
                 // a duration that expired before this boundary's event.
-                player.mana_source_provenance = self.units.into_iter().map(|unit| unit.provenance).collect();
+                player.mana_source_provenance =
+                    self.units.into_iter().map(|unit| unit.provenance).collect();
                 EffectOutcome::prevented()
-            },
+            }
             TraitEventResult::Replaced { .. } => return Err(ExecutionError::InternalError(
-                "mana-loss replacement program has no simultaneous original/completion contract".into())),
-            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } if ctx.decision_maker.awaiting_choice() => EffectOutcome::count(0),
-            _ => return Err(ExecutionError::InternalError("mana loss has an unresolved replacement".into())),
+                "mana-loss replacement program has no simultaneous original/completion contract"
+                    .into(),
+            )),
+            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. }
+                if ctx.decision_maker.awaiting_choice() =>
+            {
+                EffectOutcome::count(0)
+            }
+            _ => {
+                return Err(ExecutionError::InternalError(
+                    "mana loss has an unresolved replacement".into(),
+                ));
+            }
         };
-        Ok(SimultaneousEffectCommit { outcome,
-            completion: if programs.is_empty() { None }
-                else { Some(Box::new(ManaLossCompletion { programs })) } })
+        Ok(SimultaneousEffectCommit {
+            outcome,
+            completion: if programs.is_empty() {
+                None
+            } else {
+                Some(Box::new(ManaLossCompletion { programs }))
+            },
+        })
     }
 }
 impl SimultaneousEffectProposal for ManaLossProposal {
-    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
-        let event = Event::new_with_provenance(self.event.clone(), ctx.provenance);
-        self.prepared = Some(if nonempty(&self.event.mana) {
-            crate::events::processing::process_trait_event_with_execution_context(game, event, ctx)?
-        } else { TraitEventResult::Proceed(event) });
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if !self
+            .prepared
+            .as_ref()
+            .is_some_and(|original| !original.requires_replacement_input())
+        {
+            let event = Event::new_with_provenance(self.event.clone(), ctx.provenance);
+            self.prepared = Some(if nonempty(&self.event.mana) {
+                crate::events::processing::process_trait_event_with_execution_context(
+                    game, event, ctx,
+                )?
+            } else {
+                TraitEventResult::Proceed(event)
+            });
+        }
         let mut original = self.prepared.as_ref().expect("prepared loss result");
-        while let TraitEventResult::Expanded { original: nested, .. } = original { original = nested; }
+        while let TraitEventResult::Expanded {
+            original: nested, ..
+        } = original
+        {
+            original = nested;
+        }
         if matches!(original, TraitEventResult::Replaced { .. }) {
             return Err(ExecutionError::InternalError(
-                "mana-loss replacement program has no simultaneous original/completion contract".into()));
+                "mana-loss replacement program has no simultaneous original/completion contract"
+                    .into(),
+            ));
         }
         Ok(())
     }
-    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<SimultaneousEffectCommit, ExecutionError> {
-        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
+    fn commit_original(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        if self.prepared.is_none() {
+            self.prepare_original(game, ctx)?;
+        }
         let prepared = self.prepared.take().expect("prepared mana loss");
         (*self).commit_resolved(game, ctx, prepared)
     }
-    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
         let receipt = self.commit_original(game, ctx)?;
         complete_loss(game, ctx, receipt)
     }
@@ -210,53 +362,114 @@ struct ManaLossCompletion {
     programs: Vec<PreparedReplacementProgram>,
 }
 impl SimultaneousEffectCompletion for ManaLossCompletion {
-    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> { Ok(()) }
-    fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext, original: EffectOutcome) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        crate::effects::replacement::execute_deferred_replacement_programs(game, ctx, original, self.programs)
+    fn freeze(&mut self, _game: &mut GameState) -> Result<(), ExecutionError> {
+        Ok(())
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let outputs = crate::effects::CompletedEffectOutputs::aggregate_only(original);
+        let completed = crate::effects::replacement::complete_deferred_replacement_programs(
+            game,
+            ctx,
+            outputs.outcome.clone(),
+            self.programs,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        Ok(outputs.append_batch_program_outputs(completed))
     }
 }
-fn complete_loss(game: &mut GameState, ctx: &mut ExecutionContext, mut receipt: SimultaneousEffectCommit) -> Result<EffectOutcome, ExecutionError> {
-    if let Some(mut completion) = receipt.completion {
-        completion.freeze(game)?;
-        crate::effects::runtime::capture_triggers_before_added_program(game, ctx, None, receipt.outcome.events.iter_mut())?;
-        completion.complete(game, ctx, receipt.outcome)
-    } else { Ok(receipt.outcome) }
+fn complete_loss(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipt: SimultaneousEffectCommit,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut outcomes =
+        crate::effects::composition::execute_simultaneous_originals(game, ctx, false, |_, _| {
+            Ok(vec![receipt])
+        })?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+    outcomes
+        .pop()
+        .ok_or_else(|| ExecutionError::InternalError("mana loss lost its original receipt".into()))
 }
 
-pub(crate) fn execute_mana_losses(game: &mut GameState, ctx: &mut ExecutionContext, mut players: Vec<PlayerId>, boundary: bool)
-    -> Result<EffectOutcome, ExecutionError>
-{
+pub(crate) fn execute_mana_losses(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut players: Vec<PlayerId>,
+    boundary: bool,
+) -> Result<EffectOutcome, ExecutionError> {
     crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+        game.refresh_continuous_state()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
         let order = game.team_apnap_player_order();
-        players.sort_by_key(|player| order.iter().position(|id| id == player).unwrap_or(usize::MAX));
+        players.sort_by_key(|player| {
+            order
+                .iter()
+                .position(|id| id == player)
+                .unwrap_or(usize::MAX)
+        });
         players.dedup();
-        let mut proposals = players.into_iter().map(|player| ManaLossProposal::new(game, player, boundary)).collect::<Result<Vec<_>, _>>()?;
+        let mut proposals = players
+            .into_iter()
+            .map(|player| ManaLossProposal::new(game, player, boundary))
+            .collect::<Result<Vec<_>, _>>()?;
         for proposal in &mut proposals {
             proposal.prepare_original(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
         }
-        let opened_batch = game.open_simultaneous_action();
-        let mut receipts = Vec::new();
-        for proposal in proposals {
-            receipts.push(Box::new(proposal).commit_original(game, ctx)?);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let outcomes = crate::effects::composition::execute_simultaneous_originals(
+            game,
+            ctx,
+            true,
+            |game, ctx| {
+                let mut receipts = Vec::with_capacity(proposals.len());
+                for proposal in proposals {
+                    receipts.push(Box::new(proposal).commit_original(game, ctx)?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(Vec::new());
+                    }
+                }
+                Ok(receipts)
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
-        game.close_simultaneous_action(opened_batch);
-        for receipt in &mut receipts {
-            if let Some(completion) = &mut receipt.completion { completion.freeze(game)?; }
-        }
-        if receipts.iter().any(|receipt| receipt.completion.is_some()) {
-            crate::effects::runtime::capture_triggers_before_added_program(game, ctx, None, receipts.iter_mut().flat_map(|receipt| receipt.outcome.events.iter_mut()))?;
-        }
-        let mut outcomes = Vec::new();
-        for receipt in receipts {
-            outcomes.push(if let Some(completion) = receipt.completion { completion.complete(game, ctx, receipt.outcome)? } else { receipt.outcome });
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        }
-        crate::events::damage::checked_damage_count(outcomes.iter().filter_map(|outcome| outcome.as_count())
-            .map(|count| count.max(0) as u128).sum(), "simultaneous lost mana receipt")?;
+        crate::events::damage::checked_damage_count(
+            outcomes
+                .iter()
+                .filter_map(|outcome| outcome.instruction_result().as_count())
+                .map(|count| count.max(0) as u128)
+                .sum(),
+            "simultaneous lost mana receipt",
+        )?;
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     })
 }

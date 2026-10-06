@@ -32,7 +32,7 @@ impl EffectExecutor for RegisterDamageAdditionEffect {
             effect,
             mode: self.mode,
         }
-        .execute(game, ctx)
+        .execute_child(game, ctx)
     }
     fn primary_execution_category(&self) -> crate::effects::EffectExecutionCategory {
         crate::effects::EffectExecutionCategory::ReplacementRegistration

@@ -28,6 +28,37 @@ const decks = Array.from({length: 6}, (_, index) => ({
 }));
 const index = {schemaVersion: 1, format: 'modern', generatedAt: '2026-09-18T00:00:00Z', decks};
 
+test('Commander lobbies offer all 500 decks and apply partners separately', async () => {
+  const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
+  await server.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport: {width: 1000, height: 800}});
+    const commanderDecks = Array.from({length: 500}, (_, i) => ({ ...decks[0], id: `commander-${i}`, format: 'commander', name: `Partners ${i}`, detail: `details/commander-${i}.json` }));
+    await page.route('**/catalog/commander/index.json', (route) => route.fulfill({json: { ...index, format: 'commander', decks: commanderDecks }}));
+    await page.route('**/catalog/commander/search-index.json', (route) => route.fulfill({status: 404, body: ''}));
+    await page.route('**/catalog/commander/details/*.json', (route) => route.fulfill({json: {
+      id: 'commander-0', format: 'commander', name: 'Partners', mainboard: [{name: 'Island', count: 98}],
+      commander: [{name: "Kraum, Ludevic's Opus", count: 1}, {name: 'Tymna the Weaver', count: 1}], sideboard: [],
+    }}));
+    await page.route('**/cards/*.json', (route) => route.fulfill({status: 404, body: ''}));
+    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/lobby-deck-picker.html?format=commander`, {waitUntil: 'domcontentloaded'});
+    await page.locator('[data-deck-row]').first().waitFor();
+    assert.equal(await page.locator('[data-deck-row]').count(), 500);
+    const formats = await page.locator('select option').evaluateAll((options) => options.map((option) => option.value));
+    for (const format of ['commander', 'standard', 'vintage', 'legacy', 'pauper', 'pioneer', 'modern']) assert.ok(formats.includes(format));
+    await page.locator('[data-deck-row]').first().getByRole('button', {name: 'Use'}).click();
+    await page.waitForFunction(() => Boolean(window.__applied));
+    const applied = await page.evaluate(() => window.__applied);
+    assert.match(applied.deckText, /98 Island/);
+    assert.match(applied.commanderText, /1 Tymna the Weaver/);
+    assert.match(applied.commanderText, /1 Kraum, Ludevic's Opus/);
+  } finally {
+    await browser.close();
+    await server.close();
+  }
+});
+
 test('the lobby picker shows catalog decks with art and applies one flatly', async () => {
   const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
   await server.listen();

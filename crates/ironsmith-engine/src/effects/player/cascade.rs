@@ -4,10 +4,11 @@
 //! mana value is exiled, lets you cast it without paying its mana cost, then
 //! puts all other exiled cards on the bottom of your library in random order.
 
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
 };
 use crate::effects::zones::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
@@ -86,7 +87,7 @@ fn maybe_put_cascade_land_onto_battlefield(
     ctx: &mut ExecutionContext,
     all_tag: &TagKey,
     source_name: &str,
-) -> Result<Option<EffectOutcome>, ExecutionError> {
+) -> Result<Option<CompletedEffectOutputs>, ExecutionError> {
     if !controller_has_cascade_land_drop(game, ctx.controller) {
         return Ok(None);
     }
@@ -123,23 +124,39 @@ fn maybe_put_cascade_land_onto_battlefield(
     };
 
     let entry = move_to_battlefield_with_options(
-        game, ctx, chosen_id, BattlefieldEntryOptions::specific(ctx.controller, true),
+        game,
+        ctx,
+        chosen_id,
+        BattlefieldEntryOptions::specific(ctx.controller, true),
     )?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(None); }
-    let entry = entry.ok_or_else(|| ExecutionError::InternalError(
-        "cascade land entry lost its receipt without pending input".into()
-    ))?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+    let entry = entry.ok_or_else(|| {
+        ExecutionError::InternalError(
+            "cascade land entry lost its receipt without pending input".into(),
+        )
+    })?;
     let original = match &entry.outcome {
         BattlefieldEntryOutcome::Moved(new_id) => EffectOutcome::with_objects(vec![*new_id]),
-        BattlefieldEntryOutcome::Redirected(change) => EffectOutcome::with_objects(change.new_object_ids.clone()),
+        BattlefieldEntryOutcome::Redirected(change) => {
+            EffectOutcome::with_objects(change.new_object_ids.clone())
+        }
         BattlefieldEntryOutcome::Prevented => EffectOutcome::count(0),
     };
     // Remove precisely the departed incarnation before the added program runs.
     if !matches!(&entry.outcome, BattlefieldEntryOutcome::Prevented)
         && let Some(tagged) = ctx.tagged_objects.get_mut(all_tag)
-    { tagged.retain(|snapshot| snapshot.object_id != chosen_id); }
-    crate::effects::zones::finish_battlefield_entry_receipts(game, ctx, original, vec![entry]).map(Some)
-
+    {
+        tagged.retain(|snapshot| snapshot.object_id != chosen_id);
+    }
+    crate::effects::zones::finish_battlefield_entry_receipts_with_outputs(
+        game,
+        ctx,
+        original,
+        vec![entry],
+    )
+    .map(Some)
 }
 
 impl EffectExecutor for CascadeEffect {
@@ -148,123 +165,208 @@ impl EffectExecutor for CascadeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let (source_mana_value, source_name) = if let Some(source_obj) = game.object(ctx.source) {
-            (
-                mana_value_on_stack(
-                    source_obj.mana_cost.as_deref(),
-                    ctx.x_value.or(source_obj.x_value),
-                ),
-                source_obj.name.to_string(),
-            )
-        } else if let Some(snapshot) = ctx.source_snapshot.as_ref() {
-            (
-                mana_value_on_stack(
-                    snapshot.mana_cost.as_ref(),
-                    ctx.x_value.or(snapshot.x_value),
-                ),
-                snapshot.name.to_string(),
-            )
-        } else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        let all_tag = TagKey::from("__cascade_all");
-        let match_tag = TagKey::from("__cascade_match");
-        let consult = execute_library_consult(
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let instruction = crate::effects::composition::execute_transaction(
             game,
             ctx,
-            ctx.controller,
-            LibraryConsultMode::Exile,
-            LibraryConsultStopRule::FirstMatch,
-            Some(&all_tag),
-            Some(&match_tag),
-            |card, _| {
-                if card.is_land() {
-                    return false;
-                }
-                // CR 709.4: a split card's mana value is both halves' total.
-                (crate::filter::object_mana_value_for_filter(card).max(0) as u32)
-                    < source_mana_value
-            },
-        )?;
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let (source_mana_value, source_name) =
+                    if let Some(source_obj) = game.object(ctx.source) {
+                        (
+                            mana_value_on_stack(
+                                source_obj.mana_cost.as_deref(),
+                                ctx.x_value.or(source_obj.x_value),
+                            ),
+                            source_obj.name.to_string(),
+                        )
+                    } else if let Some(snapshot) = ctx.source_snapshot.as_ref() {
+                        (
+                            mana_value_on_stack(
+                                snapshot.mana_cost.as_ref(),
+                                ctx.x_value.or(snapshot.x_value),
+                            ),
+                            snapshot.name.to_string(),
+                        )
+                    } else {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::target_invalid(),
+                        ));
+                    };
+                let all_tag = TagKey::from("__cascade_all");
+                let match_tag = TagKey::from("__cascade_match");
+                let consult = execute_library_consult_with_outputs(
+                    game,
+                    ctx,
+                    ctx.controller,
+                    LibraryConsultMode::Exile,
+                    LibraryConsultStopRule::FirstMatch,
+                    Some(&all_tag),
+                    Some(&match_tag),
+                    |card, _| {
+                        if card.is_land() {
+                            return false;
+                        }
+                        // CR 709.4: a split card's mana value is both halves' total.
+                        (crate::filter::object_mana_value_for_filter(card).max(0) as u32)
+                            < source_mana_value
+                    },
+                )?;
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let mut observations = vec![consult.attach_to_outcome(EffectOutcome::resolved())];
-        let cascade_land = maybe_put_cascade_land_onto_battlefield(game, ctx, &all_tag, &source_name)?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let cascade_land_ids = cascade_land.as_ref().and_then(|outcome| outcome.explicit_objects()).unwrap_or(&[]).to_vec();
-        if let Some(outcome) = cascade_land { observations.push(outcome); }
-
-        let mut casted_card = None;
-        let mut cast_outcome = None;
-        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
-            && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
-            && candidate_obj.zone == Zone::Exile
-        {
-            let candidate_id = candidate_snapshot.object_id;
-            let candidate_name = candidate_obj.name.to_string();
-            let choice_ctx = crate::decisions::context::BooleanContext::new(
-                ctx.controller, Some(candidate_id), format!("Cast {candidate_name} without paying its mana cost?"),
-            ).with_source_name(&source_name);
-            let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            if should_cast {
-                let filter = crate::target::ObjectFilter::nonland().with_mana_value(
-                    crate::filter::Comparison::LessThan(source_mana_value as i32),
-                );
-                let options = effect_driven_cast_options_for_card(
-                    game, ctx.controller, ctx.source, candidate_id, Zone::Exile, &filter,
-                );
-                let option = if options.len() == 1 { Some(options[0].clone()) }
-                    else if options.len() > 1 {
-                        let choices = options.iter().cloned().map(|option| (option.label.clone(), option)).collect::<Vec<_>>();
-                        crate::decisions::ask_choose_one(game, ctx.decision_maker, ctx.controller, ctx.source, &choices)
-                    } else { None };
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                if let Some(option) = option
-                    && let Some(result) = cast_effect_driven_spell_without_paying(game, ctx, ctx.controller, &option)?
-                {
-                    casted_card = Some((candidate_id, result.new_id, result.from_zone));
-                    // Capture cast observations before remainder movement can change the stack object.
-                    cast_outcome = Some(with_spell_cast_event(
-                        EffectOutcome::with_objects(vec![result.new_id]), game, result.new_id,
-                        ctx.controller, result.from_zone, ctx.provenance,
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
                     ));
                 }
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
-        }
-        let keep_tagged = casted_card.as_ref().map(|_| match_tag.clone());
-        let cleanup = crate::effects::execute_effect(
-            game,
-            &Effect::put_tagged_remainder_on_library_bottom(
-                all_tag,
-                keep_tagged,
-                LibraryBottomOrder::Random,
-                PlayerFilter::You,
-            ),
-            ctx,
-        )?;
+                let mut observations = vec![consult.attach_to_outputs(EffectOutcome::resolved())];
+                let cascade_land =
+                    maybe_put_cascade_land_onto_battlefield(game, ctx, &all_tag, &source_name)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let cascade_land_ids = cascade_land
+                    .as_ref()
+                    .and_then(|outcome| outcome.outcome.explicit_objects())
+                    .unwrap_or(&[])
+                    .to_vec();
+                if let Some(outcome) = cascade_land {
+                    observations.push(outcome);
+                }
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let primary = if let Some(outcome) = cast_outcome {
-            let primary = EffectOutcome::with_objects(outcome.explicit_objects().unwrap_or(&[]).to_vec());
-            observations.push(outcome);
-            primary
-        } else if !cascade_land_ids.is_empty() { EffectOutcome::with_objects(cascade_land_ids) }
-        else { EffectOutcome::count(0) };
-        observations.push(cleanup);
-        let mut outcome = EffectOutcome::aggregate(observations);
-        outcome.status = primary.status;
-        outcome.value = primary.value;
-        Ok(outcome)
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
+                let mut casted_card = None;
+                let mut cast_outcome = None;
+                if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
+                    && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
+                    && candidate_obj.zone == Zone::Exile
+                {
+                    let candidate_id = candidate_snapshot.object_id;
+                    let candidate_name = candidate_obj.name.to_string();
+                    let choice_ctx = crate::decisions::context::BooleanContext::new(
+                        ctx.controller,
+                        Some(candidate_id),
+                        format!("Cast {candidate_name} without paying its mana cost?"),
+                    )
+                    .with_source_name(&source_name);
+                    let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    if should_cast {
+                        let filter = crate::target::ObjectFilter::nonland().with_mana_value(
+                            crate::filter::Comparison::LessThan(source_mana_value as i32),
+                        );
+                        let options = effect_driven_cast_options_for_card(
+                            game,
+                            ctx.controller,
+                            ctx.source,
+                            candidate_id,
+                            Zone::Exile,
+                            &filter,
+                        );
+                        let option = if options.len() == 1 {
+                            Some(options[0].clone())
+                        } else if options.len() > 1 {
+                            let choices = options
+                                .iter()
+                                .cloned()
+                                .map(|option| (option.label.clone(), option))
+                                .collect::<Vec<_>>();
+                            crate::decisions::ask_choose_one(
+                                game,
+                                ctx.decision_maker,
+                                ctx.controller,
+                                ctx.source,
+                                &choices,
+                            )
+                        } else {
+                            None
+                        };
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        if let Some(option) = option
+                            && let Some(result) = cast_effect_driven_spell_without_paying(
+                                game,
+                                ctx,
+                                ctx.controller,
+                                &option,
+                            )?
+                        {
+                            casted_card = Some((candidate_id, result.new_id, result.from_zone));
+                            // Capture cast observations before remainder movement can change the stack object.
+                            cast_outcome = Some(with_spell_cast_event(
+                                EffectOutcome::with_objects(vec![result.new_id]),
+                                game,
+                                result.new_id,
+                                ctx.controller,
+                                result.from_zone,
+                                ctx.provenance,
+                            ));
+                        }
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                    }
+                }
+                let keep_tagged = casted_card.as_ref().map(|_| match_tag.clone());
+                let cleanup = crate::effects::execute_effect_with_outputs(
+                    game,
+                    &Effect::put_tagged_remainder_on_library_bottom(
+                        all_tag,
+                        keep_tagged,
+                        LibraryBottomOrder::Random,
+                        PlayerFilter::You,
+                    ),
+                    ctx,
+                )?;
+
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let primary = if let Some(outcome) = cast_outcome {
+                    let primary = EffectOutcome::with_objects(
+                        outcome.explicit_objects().unwrap_or(&[]).to_vec(),
+                    );
+                    observations.push(CompletedEffectOutputs::aggregate_only(outcome));
+                    primary
+                } else if !cascade_land_ids.is_empty() {
+                    EffectOutcome::with_objects(cascade_land_ids)
+                } else {
+                    EffectOutcome::count(0)
+                };
+                observations.push(cleanup);
+                let mut outcome = EffectOutcome::aggregate(
+                    observations.iter().map(|outputs| outputs.outcome.clone()),
+                );
+                outcome.status = primary.status;
+                outcome.value = primary.value;
+                let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
+                outputs.retain_batch_children(observations);
+                Ok(outputs)
+            },
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return instruction
+                .map(|_| CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        }
         instruction
     }
 }

@@ -95,7 +95,8 @@ pub use traits::{
 
 // Re-export event types
 pub use cards::{DiscardEvent, DrawEvent};
-pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
+pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent, RemovePlayerCountersEvent};
+pub(crate) use counters::CounterRemovalEvent;
 pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
 pub use life::{LifeGainEvent, LifeLossEvent, LifePaidEvent};
 pub use mana::{ManaAddedEvent, ManaLostEvent, ManaUnitSpentEvent};
@@ -423,11 +424,7 @@ impl Event {
     /// Create a remove counters event.
     pub fn remove_counters(target: ObjectId, counter_type: CounterType, count: u32) -> Self {
         Self::new_with_provenance(
-            RemoveCountersEvent {
-                target,
-                counter_type,
-                count,
-            },
+            RemoveCountersEvent::new(target, counter_type, count),
             ProvNodeId::default(),
         )
     }

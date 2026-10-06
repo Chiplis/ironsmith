@@ -2,7 +2,6 @@ use crate::alternative_cast::CastingMethod;
 use crate::effect::EffectOutcome;
 use crate::effects::ExecutionContext;
 use crate::effects::ExecutionError;
-use crate::events::other::LandPlayedEvent;
 use crate::events::spells::SpellCastEvent;
 use crate::filter::AlternativeCastKind;
 use crate::filter::ObjectFilterExt as _;
@@ -39,30 +38,6 @@ pub(super) fn register_effect_driven_spell_cast(
         SpellCastEvent::new(new_id, caster, from_zone)
     };
     TriggerEvent::new_with_provenance(event, provenance)
-}
-
-pub(super) fn queue_effect_driven_land_play(
-    game: &mut GameState,
-    ctx: &ExecutionContext,
-    land_id: ObjectId,
-    player: PlayerId,
-    from_zone: Zone,
-) {
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(
-            LandPlayedEvent::new(land_id, player, from_zone),
-            ctx.provenance,
-        ),
-    );
-
-    // Entry counters, including Saga lore, are committed by the central entry
-    // pipeline. A zero-counter result may be a completed prevention or Instead
-    // replacement and must not be repaired by this notification helper.
-
-    if let Some(player_data) = game.player_mut(player) {
-        player_data.record_land_play();
-    }
 }
 
 pub(super) fn with_spell_cast_event(

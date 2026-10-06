@@ -45,7 +45,6 @@ import {
   selectObjectCandidateForId,
   selectObjectCandidateRevealPolicy,
   isSelfForfeitCommand,
-  isSorcerySpeedForfeitState,
   isSupportedZiffleDeckCount,
   isTrustedMultiplayerSecurityMode,
   isUnauthorizedAddCardCommand,
@@ -555,9 +554,6 @@ export function usePeerLobbyValidation(base, servicesRef) {
       const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(message.command);
       const isWitnessForfeit = isWitnessForfeitCommand(message.command);
       const isSelfForfeit = isSelfForfeitCommand(message.command, message.actorIndex);
-      if (isSelfForfeit && !isSorcerySpeedForfeitState(liveStateForClock, message.actorIndex)) {
-        throw new Error("Surrender is only available at sorcery speed");
-      }
       if (
         isForfeitCommand(message.command)
         && !isTimeoutForfeit
@@ -586,7 +582,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
           actorIndex: message.actorIndex,
         });
       } else if (
-        expectedActor !== null
+        !isSelfForfeit
+        && expectedActor !== null
         && expectedActor !== undefined
         && Number(expectedActor) !== Number(message.actorIndex)
       ) {
@@ -735,7 +732,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
         : liveStateForClock;
       const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
       if (
-        expectedActorBeforeApply !== null
+        !isSelfForfeit
+        && expectedActorBeforeApply !== null
         && expectedActorBeforeApply !== undefined
         && Number(expectedActorBeforeApply) !== Number(message.actorIndex)
       ) {
@@ -3987,6 +3985,26 @@ export function usePeerLobbyValidation(base, servicesRef) {
   async function preserveViewedCardsFromHint(nextState, stateHint = null, currentGame = null) {
     if (!nextState) {
       return nextState;
+    }
+    const hint = stateHint?.viewed_cards;
+    const current = nextState.viewed_cards;
+    const cardIds = view => (view?.card_ids || view?.cards?.map(card => card.id) || []).map(String).sort();
+    // Reopening proof material may replace an actual reveal with its passive
+    // stack-inspection view. Publish the original reveal of this same group
+    // so the opponent can acknowledge the hand revealed to pay the spell.
+    const preservePublicReveal = isInspectorOnlyViewedCards(current)
+      && current.visibility === "public"
+      && hint?.visibility === "public"
+      && !isInspectorOnlyViewedCards(hint)
+      && String(hint.source) === String(current.source)
+      && hint.zone === current.zone
+      && Number(hint.subject) === Number(current.subject)
+      && JSON.stringify(cardIds(hint)) === JSON.stringify(cardIds(current));
+    if (preservePublicReveal) {
+      return {
+        ...nextState,
+        viewed_cards: await hydrateViewedCardsFromLiveObjects(hint, currentGame),
+      };
     }
     if (nextState.viewed_cards) {
       const viewedCards = await hydrateViewedCardsFromLiveObjects(

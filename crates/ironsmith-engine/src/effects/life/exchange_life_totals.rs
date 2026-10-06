@@ -136,11 +136,13 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         for (player, gains) in [(player1_id, life2 > life1), (player2_id, life1 > life2)] {
             proposals.push(if gains {
                 crate::events::Event::new_with_provenance(
-                    crate::events::LifeGainEvent::new(player, difference).with_source(ctx.source), ctx.provenance,
+                    crate::events::LifeGainEvent::new(player, difference).with_source(ctx.source),
+                    ctx.provenance,
                 )
             } else {
                 crate::events::Event::new_with_provenance(
-                    crate::events::LifeLossEvent::from_effect(player, difference), ctx.provenance,
+                    crate::events::LifeLossEvent::from_effect(player, difference),
+                    ctx.provenance,
                 )
             });
         }
@@ -149,7 +151,7 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
             return Ok(outcome);
         }
         // An exchange has no single "life changed this way" count.
-        outcome.value = crate::effect::OutcomeValue::None;
+        outcome.set_value(crate::effect::OutcomeValue::None);
 
         game.record_ui_effect_event(
             "life_exchange",

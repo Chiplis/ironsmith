@@ -854,8 +854,11 @@ fn tap_prepared_attackers(
     // CR 508.1f taps every chosen attacker before attack costs are paid. Use
     // the pre-cost vigilance result prepared from the same derived state as
     // attack legality; paying a cost can remove the source of that ability.
-    let before = crate::events::other::before_tap_state_snapshots(game);
-    let mut tapped_events = Vec::new();
+    let mut taps = crate::effects::permanents::TapAction::new(
+        game,
+        game.turn.active_player,
+        Default::default(),
+    );
     for prepared_decl in &prepared.declarations {
         let creature = prepared_decl.declaration.creature;
         if prepared_decl.has_vigilance
@@ -865,18 +868,13 @@ fn tap_prepared_attackers(
             continue;
         }
 
-        game.tap(creature);
         let event_provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PermanentTapped);
-        tapped_events.push(TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::capture(game, creature, Some(game.turn.active_player)),
-            event_provenance,
-        ));
+        taps.tap_with_event_provenance(game, creature, event_provenance);
     }
 
-    crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
-    crate::events::other::group_tap_state_events(game, &mut tapped_events, Default::default());
+    let tapped_events = taps.finish(game).events;
 
     // If costs can change the battlefield or other trigger-relevant state,
     // match the simultaneous tap events against the pre-cost state. Otherwise
@@ -925,6 +923,10 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     use crate::combat_state::AttackerInfo;
     use crate::triggers::AttackEventTarget;
 
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+
     let attacking_creatures = prepared
         .declarations
         .iter()
@@ -945,15 +947,18 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         }
         for (ability_index, _) in &prepared_decl.optional_attack_cost_prompts {
             let ability = &prepared_decl.abilities[*ability_index];
-            if let Some(result) = ability.pay_optional_attack_cost(
+            let result = ability.pay_optional_attack_cost(
                 game,
                 creature_source,
                 creature_controller,
                 &attacking_creatures,
                 trigger_queue,
                 decision_maker,
-            ) && let Err(msg) = result
-            {
+            );
+            if decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+            if let Some(Err(msg)) = result {
                 return Err(ResponseError::InvalidAttackers(msg).into());
             }
         }
@@ -985,45 +990,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             });
         }
     }
-    for locked in order_locked_combat_costs(game, locked_costs, decision_maker, true)? {
-        let ordered = ordered_locked_combat_cost(game, &locked, decision_maker, true)?;
-        let result = if let Some(source) = locked.source {
-            crate::special_actions::pay_total_cost_with_choice(
-                game,
-                locked.payer,
-                source,
-                &ordered,
-                crate::costs::PaymentReason::Other,
-                decision_maker,
-            )
-        } else {
-            // Legacy generic taxes have no single source; retain that mana
-            // spend context while allowing their order among imposed costs.
-            let ironsmith_core::TotalCostKind::All(components) = ordered.kind() else {
-                return Err(GameLoopError::InvalidState(
-                    "Generic attack cost must be mana".into(),
-                ));
-            };
-            components.iter().try_for_each(|component| {
-                let mana = component.mana_cost_ref().ok_or_else(|| {
-                    crate::cost::CostPaymentError::Other("Generic attack cost must be mana".into())
-                })?;
-                crate::costs::pay_mana_cost_with_choices(
-                    game,
-                    locked.payer,
-                    None,
-                    mana,
-                    0,
-                    crate::costs::PaymentReason::Other,
-                    decision_maker,
-                )
-            })
-        };
-        result.map_err(|error| match error {
-            crate::cost::CostPaymentError::ExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
-            error => ResponseError::InvalidAttackers(format!(
-                "Cannot pay required attack cost ({}): {error}", locked.display)).into(),
-        })?;
+    if !pay_locked_combat_costs(game, locked_costs, decision_maker, true)? {
+        return Ok(());
     }
 
     // Costs may have removed or changed control of chosen creatures. Build the
@@ -1239,12 +1207,19 @@ pub(crate) fn finish_attack_declaration_transaction(
         queued_tapped_events_before_costs,
         decision_maker,
     );
-    if result.is_err() {
-        *game = *game_checkpoint;
-        *combat = combat_checkpoint;
-        *trigger_queue = trigger_queue_checkpoint;
-    }
-    result
+    settle_combat_declaration(
+        game,
+        combat,
+        trigger_queue,
+        (
+            *game_checkpoint,
+            combat_checkpoint,
+            trigger_queue_checkpoint,
+        ),
+        decision_maker.awaiting_choice(),
+        result,
+        || (),
+    )
 }
 
 /// Apply attacker declarations to the combat state.
@@ -1272,6 +1247,9 @@ pub fn apply_attacker_declarations_with_dm(
     declarations: &[AttackerDeclaration],
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     let prepared = prepare_attacker_declarations(game, combat, declarations)?;
 
     // Once preparation succeeds, a declaration without attack costs has no
@@ -1304,12 +1282,15 @@ pub fn apply_attacker_declarations_with_dm(
         prepared,
         decision_maker,
     );
-    if result.is_err() {
-        *game = game_checkpoint;
-        *combat = combat_checkpoint;
-        *trigger_queue = trigger_queue_checkpoint;
-    }
-    result
+    settle_combat_declaration(
+        game,
+        combat,
+        trigger_queue,
+        (game_checkpoint, combat_checkpoint, trigger_queue_checkpoint),
+        decision_maker.awaiting_choice(),
+        result,
+        || (),
+    )
 }
 
 /// Get a decision context for declaring blockers.
@@ -1632,6 +1613,122 @@ fn order_locked_combat_costs(
     Ok(ordered)
 }
 
+
+/// Pay the locked declaration program through the existing cost owners.
+/// A false result is suspension, never a completed declaration or a rejected
+/// placeholder answer. Attack and block adapters retain their own state views.
+fn pay_locked_combat_costs(
+    game: &mut GameState,
+    locked_costs: Vec<LockedCombatCost>,
+    decision_maker: &mut dyn DecisionMaker,
+    attack: bool,
+) -> Result<bool, GameLoopError> {
+    if decision_maker.awaiting_choice() {
+        return Ok(false);
+    }
+    let ordered_costs = if attack {
+        order_locked_combat_costs(game, locked_costs, decision_maker, true)
+    } else {
+        order_locked_block_costs(game, locked_costs, decision_maker)
+    };
+    if decision_maker.awaiting_choice() {
+        return Ok(false);
+    }
+    for locked in ordered_costs? {
+        let ordered = if attack {
+            ordered_locked_combat_cost(game, &locked, decision_maker, true)
+        } else {
+            ordered_locked_block_cost(game, &locked, decision_maker)
+        };
+        if decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        let ordered = ordered?;
+        let result = if let Some(source) = locked.source {
+            crate::special_actions::pay_total_cost_with_choice(
+                game,
+                locked.payer,
+                source,
+                &ordered,
+                crate::costs::PaymentReason::Other,
+                decision_maker,
+            )
+        } else {
+            // Generic attack taxes have no instruction source. Keep the
+            // source-free mana spend context instead of inventing an object.
+            if !attack {
+                return Err(GameLoopError::InvalidState(
+                    "Blocking cost has no instruction source".into(),
+                ));
+            }
+            let ironsmith_core::TotalCostKind::All(components) = ordered.kind() else {
+                return Err(GameLoopError::InvalidState(
+                    "Generic attack cost must be mana".into(),
+                ));
+            };
+            let mut result = Ok(());
+            for component in components {
+                let mana = component.mana_cost_ref().ok_or_else(|| {
+                    crate::cost::CostPaymentError::Other("Generic attack cost must be mana".into())
+                });
+                result = match mana {
+                    Ok(mana) => crate::costs::pay_mana_cost_with_choices(
+                        game,
+                        locked.payer,
+                        None,
+                        mana,
+                        0,
+                        crate::costs::PaymentReason::Other,
+                        decision_maker,
+                    ),
+                    Err(error) => Err(error),
+                };
+                if result.is_err() || decision_maker.awaiting_choice() {
+                    break;
+                }
+            }
+            result
+        };
+        if decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        result.map_err(|error| match error {
+            crate::cost::CostPaymentError::ExecutionFailed(error) => {
+                GameLoopError::ExecutionFailed(error)
+            }
+            error => combat_cost_choice_error(
+                attack,
+                format!(
+                    "Cannot pay required {} cost ({}): {error}",
+                    if attack { "attack" } else { "blocking" },
+                    locked.display,
+                ),
+            ),
+        })?;
+    }
+    Ok(true)
+}
+
+/// Root declaration adapters share one rollback contract. Their checkpoints
+/// can precede a staged mana window, and their completion outputs can be unit
+/// or deferred blocker pairs. Pending decisions never expose those outputs.
+fn settle_combat_declaration<T>(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    trigger_queue: &mut TriggerQueue,
+    checkpoint: (GameState, CombatState, TriggerQueue),
+    pending: bool,
+    result: Result<T, GameLoopError>,
+    pending_value: impl FnOnce() -> T,
+) -> Result<T, GameLoopError> {
+    if result.is_err() || pending {
+        game.restore_execution_checkpoint(checkpoint.0, pending);
+        *combat = checkpoint.1;
+        *trigger_queue = checkpoint.2;
+    }
+    if pending { Ok(pending_value()) } else { result }
+}
+
 #[derive(Debug, Clone)]
 pub struct BlockDeclarationTransaction {
     game_checkpoint: GameState,
@@ -1739,12 +1836,15 @@ pub fn finish_blocker_declaration_transaction(
     } = transaction;
     let result =
         apply_prepared_blocker_declarations(game, combat, trigger_queue, prepared, decision_maker);
-    if result.is_err() {
-        *game = game_checkpoint;
-        *combat = combat_checkpoint;
-        *trigger_queue = trigger_queue_checkpoint;
-    }
-    result
+    settle_combat_declaration(
+        game,
+        combat,
+        trigger_queue,
+        (game_checkpoint, combat_checkpoint, trigger_queue_checkpoint),
+        decision_maker.awaiting_choice(),
+        result,
+        || (),
+    )
 }
 
 /// Like [`finish_blocker_declaration_transaction`], but leaves the block
@@ -1770,12 +1870,15 @@ pub fn finish_blocker_declaration_transaction_deferring_triggers(
     } = transaction;
     let pairs = prepared.pairs.clone();
     let result = apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker);
-    if result.is_err() {
-        *game = game_checkpoint;
-        *combat = combat_checkpoint;
-        *trigger_queue = trigger_queue_checkpoint;
-    }
-    result.map(|()| pairs)
+    settle_combat_declaration(
+        game,
+        combat,
+        trigger_queue,
+        (game_checkpoint, combat_checkpoint, trigger_queue_checkpoint),
+        decision_maker.awaiting_choice(),
+        result.map(|()| pairs),
+        Vec::new,
+    )
 }
 
 fn apply_blocker_declarations_with_dm(
@@ -1786,6 +1889,10 @@ fn apply_blocker_declarations_with_dm(
     expected_defending_player: Option<PlayerId>,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+
     let game_checkpoint = game.clone();
     let combat_checkpoint = combat.clone();
     let trigger_queue_checkpoint = trigger_queue.clone();
@@ -1797,12 +1904,15 @@ fn apply_blocker_declarations_with_dm(
         expected_defending_player,
         decision_maker,
     );
-    if result.is_err() {
-        *game = game_checkpoint;
-        *combat = combat_checkpoint;
-        *trigger_queue = trigger_queue_checkpoint;
-    }
-    result
+    settle_combat_declaration(
+        game,
+        combat,
+        trigger_queue,
+        (game_checkpoint, combat_checkpoint, trigger_queue_checkpoint),
+        decision_maker.awaiting_choice(),
+        result,
+        || (),
+    )
 }
 
 fn apply_blocker_declarations_internal(
@@ -1960,6 +2070,9 @@ fn apply_prepared_blocker_declarations(
     let pairs = prepared.pairs.clone();
     let defending_player = prepared.defending_player;
     apply_prepared_blocker_declaration_state(game, combat, prepared, decision_maker)?;
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
     if defending_player.is_none() {
         combat.block_declaration_complete = true;
         game.combat = Some(combat.clone());
@@ -1977,6 +2090,10 @@ fn apply_prepared_blocker_declaration_state(
     prepared: PreparedBlockerDeclarations,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    if decision_maker.awaiting_choice() {
+        return Ok(());
+    }
+
     let PreparedBlockerDeclarations {
         pairs: _,
         next_combat,
@@ -1986,22 +2103,8 @@ fn apply_prepared_blocker_declaration_state(
     game.combat = Some(next_combat.clone());
     game.mark_continuous_state_dirty();
     game.refresh_continuous_state();
-    for locked in order_locked_block_costs(game, locked_costs, decision_maker)? {
-        let ordered = ordered_locked_block_cost(game, &locked, decision_maker)?;
-        crate::special_actions::pay_total_cost_with_choice(
-            game,
-            locked.payer,
-            locked.source.expect("blocking cost retains its source"),
-            &ordered,
-            crate::costs::PaymentReason::Other,
-            decision_maker,
-        )
-        .map_err(|error| {
-            ResponseError::InvalidBlockers(format!(
-                "Cannot pay required blocking cost ({}): {error}",
-                locked.display
-            ))
-        })?;
+    if !pay_locked_combat_costs(game, locked_costs, decision_maker, false)? {
+        return Ok(());
     }
 
     // Block triggers can depend on the complete set of blockers declared together.

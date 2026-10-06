@@ -17,12 +17,26 @@ pub(crate) fn pay_mana_cost_with_choices(
     reason: crate::costs::PaymentReason,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CostPaymentError> {
-    pay_mana_cost_with_choices_in_context(game, payer, source, cost, x_value, reason, decision_maker, None)
+    pay_mana_cost_with_choices_in_context(
+        game,
+        payer,
+        source,
+        cost,
+        x_value,
+        reason,
+        decision_maker,
+        None,
+    )
 }
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pay_mana_cost_with_choices_in_context(
-    game: &mut GameState, payer: crate::ids::PlayerId, source: Option<crate::ids::ObjectId>, cost: &ManaCost,
-    x_value: u32, reason: crate::costs::PaymentReason, decision_maker: &mut dyn crate::decision::DecisionMaker,
+    game: &mut GameState,
+    payer: crate::ids::PlayerId,
+    source: Option<crate::ids::ObjectId>,
+    cost: &ManaCost,
+    x_value: u32,
+    reason: crate::costs::PaymentReason,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
     execution: Option<&crate::effects::ExecutionContextCheckpoint>,
 ) -> Result<(), CostPaymentError> {
     use crate::mana::ManaSymbol;
@@ -106,19 +120,22 @@ pub(crate) fn pay_mana_cost_with_choices_in_context(
         };
         pips[index] = vec![chosen];
     }
-    if game.try_pay_mana_cost_with_payment_options_in_context(
-        payer,
-        source,
-        &cost.with_pips(pips),
-        x_value,
-        reason,
-        &policy,
-        true,
-        false,
-        false,
-        decision_maker,
-        execution,
-    ).map_err(CostPaymentError::ExecutionFailed)? {
+    if game
+        .try_pay_mana_cost_with_payment_options_in_context(
+            payer,
+            source,
+            &cost.with_pips(pips),
+            x_value,
+            reason,
+            &policy,
+            true,
+            false,
+            false,
+            decision_maker,
+            execution,
+        )
+        .map_err(CostPaymentError::ExecutionFailed)?
+    {
         Ok(())
     } else {
         Err(CostPaymentError::InsufficientMana)
@@ -172,10 +189,22 @@ impl CostPayer for ManaPaymentCost {
         game: &GameState,
         ctx: &CostContext,
     ) -> Result<(), CostPaymentError> {
-        let x_value = ctx.x_value.unwrap_or(0);
-
         let view = crate::derived_view::DerivedGameView::new(game);
-        if !view.can_potentially_pay_with_reason(
+        self.can_potentially_pay_with_query(
+            game,
+            ctx,
+            &crate::costs::PotentialManaQuery::new(&view),
+        )
+    }
+
+    fn can_potentially_pay_with_query(
+        &self,
+        _game: &GameState,
+        ctx: &CostContext,
+        query: &crate::costs::PotentialManaQuery<'_, '_>,
+    ) -> Result<(), CostPaymentError> {
+        let x_value = ctx.x_value.unwrap_or(0);
+        if !query.view.can_potentially_pay_with_reason(
             ctx.payer,
             Some(ctx.source),
             &self.cost,
@@ -184,7 +213,6 @@ impl CostPayer for ManaPaymentCost {
         ) {
             return Err(CostPaymentError::InsufficientMana);
         }
-
         Ok(())
     }
 

@@ -4,6 +4,7 @@ import { useI18n } from "@/i18n/I18nContext";
 import useUiText from "@/i18n/useUiText";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import AddCardSheet from "./AddCardSheet";
+import SurrenderButton from "./SurrenderButton";
 
 const triggerPill = "stone-pill table-zone-action-button inline-flex items-center justify-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
@@ -17,6 +18,10 @@ export default function CardCreationControls({ onAddCardNotice, shortLabels = fa
   const players = state?.players || [];
   const selectedPlayer = playerIndex ?? state?.perspective ?? 0;
   const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
+
+  if (multiplayer.matchStarted || multiplayer.mode === "in_match") {
+    return <SurrenderButton className={triggerPill} />;
+  }
 
   return (
     <>

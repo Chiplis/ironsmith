@@ -20,16 +20,18 @@ test(
     try {
       await server.listen();
       browser = await chromium.launch();
-      const page = await browser.newPage({ viewport: { width: 1365, height: 594 } });
+      const page = await browser.newPage({ viewport: { width: 1365, height: 594 }, reducedMotion: 'reduce' });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      await page.route('https://**/*', route => /scryfall\.io|\.(jpg|png|webp)/.test(route.request().url())
+        ? route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=', 'base64') }) : route.abort());
       const base = "http://127.0.0.1:" + server.httpServer.address().port;
       await page.goto(base + "/tests/diagnostics-layout.html?kind=select_options");
       const popup = page.locator(".battlefield-human-decision-panel").first();
       await popup.locator(".battlefield-decision-disclosure-toggle").waitFor({ timeout: 30000 });
 
       const bounds = await popup.boundingBox();
-      assert.ok(bounds.width >= 400 && bounds.width <= 480, "the instruction fits in a compact popup");
+      assert.ok(bounds.width >= 260 && bounds.width <= 340, "the instruction fits in the reserved dock lane");
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 1365, "the popup stays within the viewport");
       assert.equal(await popup.locator(".action-strip-decision-stack").getAttribute("data-details-expanded"), "true");
       assert.ok(await popup.locator(".action-strip-decision-inline-summary").isVisible());
@@ -56,7 +58,7 @@ test(
       assert.ok(listBounds.y + listBounds.height <= bounds.y + bounds.height, "the choices list stays inside the popup");
       assert.ok(listMetrics.scrollHeight > listMetrics.clientHeight, "long choice lists scroll vertically");
       assert.ok(listMetrics.scrollWidth <= listMetrics.clientWidth + 1, "the choices list has no horizontal overflow");
-      const submitSlot = page.locator(".battlefield-human-decision-panel .battlefield-human-step-submit-row .table-decision-submit-slot").first();
+      const submitSlot = page.locator(".battlefield-human-decision-panel .decision-stack-footer .action-strip-submit-button").first();
       const submitBounds = await submitSlot.boundingBox();
       assert.ok(submitBounds, "the expanded decision keeps Submit visible");
       assert.ok(submitBounds.x >= bounds.x && submitBounds.x + submitBounds.width <= bounds.x + bounds.width, "Submit stays inside the popup width");
@@ -64,14 +66,14 @@ test(
 
       await popup.getByRole("button", { name: "Hide options", exact: true }).click();
       assert.equal(await popup.locator(".action-strip-decision-stack").getAttribute("data-details-expanded"), "false");
-      assert.ok(await popup.locator(".action-strip-decision-inline-summary").isVisible());
+      assert.ok(await popup.locator(".decision-main-button").isVisible(), "the collapsed main action labels the decision");
       assert.equal(await popup.locator(".action-strip-decision-content").isVisible(), false);
       const compactBounds = await popup.boundingBox();
-      assert.ok(compactBounds.width <= 390, "collapsed actions use a compact width based on their summary");
-      assert.ok(compactBounds.height >= 60, "the select action header remains visible while options are hidden");
-      assert.ok(compactBounds.height < 120, `collapsed actions do not retain an empty options area (height=${compactBounds.height})`);
+      assert.ok(compactBounds.width <= 480, "collapsed actions keep their heading and controls in a bounded row");
+      assert.ok(compactBounds.height >= 36, "the select action header remains visible while options are hidden");
+      assert.ok(compactBounds.height <= 72, `collapsed actions occupy a single row (height=${compactBounds.height})`);
       assert.ok(await popup.locator(".decision-stage-chip").isVisible(), "the Select stage remains visible while collapsed");
-      assert.ok(await popup.locator(".action-strip-decision-title").isVisible(), "the decision name remains visible while collapsed");
+      assert.equal(await popup.locator(".action-strip-decision-title").isVisible(), false, "the compact row omits the redundant long heading");
       assert.ok(await popup.getByRole("button", { name: "Show options", exact: true }).isVisible(), "the options can be reopened while collapsed");
       const dockRect = await page.locator("[data-human-action-dock]").boundingBox();
       const dockBounds = {
@@ -93,8 +95,8 @@ test(
       const collidedZones = zoneBounds.filter((zone) => !(dockBounds.right <= zone.left || dockBounds.left >= zone.right
         || dockBounds.bottom <= zone.top || dockBounds.top >= zone.bottom));
       assert.deepEqual(collidedZones, [], `the collapsed action sheet avoids deck, graveyard, and exile piles; dock=${JSON.stringify(dockBounds)}`);
-      assert.ok(await submitSlot.count() > 0, "the active decision keeps its submit portal mounted");
-      assert.equal(await submitSlot.isVisible(), false, "Submit hides with the collapsed options");
+      assert.ok(await submitSlot.count() > 0, "the active decision keeps its submit action mounted");
+      assert.equal(await submitSlot.isVisible(), true, "Submit remains available beside the collapsed heading");
 
       await popup.getByRole("button", { name: "Show options", exact: true }).evaluate((button) => button.click());
       assert.equal(await popup.locator(".action-strip-decision-stack").getAttribute("data-details-expanded"), "true");
@@ -106,8 +108,8 @@ test(
       const objectList = objectPopup.locator(".decision-strip-scroll--vertical-object-options");
       await objectList.waitFor({ timeout: 30000 });
       const objectPopupBounds = await objectPopup.boundingBox();
-      assert.ok(objectPopupBounds.width > 420, "long action details expand the popup beyond its compact width");
-      assert.ok(objectPopupBounds.width <= 480, "the popup width remains capped for long labels");
+      assert.ok(objectPopupBounds.width >= 260, "long action details retain a usable dock width");
+      assert.ok(objectPopupBounds.width <= 340, "long labels stay inside the reserved hand lane");
       const objectRows = objectPopup.locator(".decision-option-row--vertical-object-select");
       const firstObjectBounds = await objectRows.first().boundingBox();
       const secondObjectBounds = await objectRows.nth(1).boundingBox();

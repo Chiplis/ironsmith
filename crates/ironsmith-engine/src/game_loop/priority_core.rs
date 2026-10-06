@@ -307,8 +307,15 @@ pub(super) fn priority_actor_for_action(
                 Err(_) => continue,
             }
         }
-        if crate::decision::compute_actions_for_source(game, player,
-            crate::decision::legal_action_source(action))?.contains(action) { return Ok(Some(player)); }
+        let candidates = if matches!(action, LegalAction::CastSpell { .. }
+            | LegalAction::ActivateAbility { .. } | LegalAction::ActivateManaAbility { .. }) {
+            crate::decision::compute_actions_assuming_mana_for_presentation(game, player,
+                crate::decision::legal_action_source(action))?
+        } else {
+            crate::decision::compute_actions_for_source(game, player,
+                crate::decision::legal_action_source(action))?
+        };
+        if candidates.contains(action) { return Ok(Some(player)); }
     }
     Ok(None)
 }

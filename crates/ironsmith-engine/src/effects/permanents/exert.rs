@@ -12,7 +12,6 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub type ExertCostEffect = ironsmith_core::ExertCostEffect;
 
@@ -26,32 +25,32 @@ impl EffectExecutor for ExertCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(source) = game.object(ctx.source) else {
-            return Err(ExecutionError::Impossible(
-                "Only permanents on the battlefield can be exerted".to_string(),
-            ));
-        };
-        if source.zone != Zone::Battlefield {
-            return Err(ExecutionError::Impossible(
-                "Only permanents on the battlefield can be exerted".to_string(),
-            ));
-        }
-
-        game.add_restriction_effect(
-            Restriction::untap(crate::target::ObjectFilter::specific(ctx.source)),
-            Until::ControllersNextUntapStep,
-            ctx.source,
-            ctx.controller,
-            None,
-        );
-        game.update_cant_effects();
-
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let Some(source) = game.object(ctx.source) else {
+                return Err(ExecutionError::Impossible(
+                    "Only permanents on the battlefield can be exerted".to_string(),
+                ));
+            };
+            if source.zone != Zone::Battlefield {
+                return Err(ExecutionError::Impossible(
+                    "Only permanents on the battlefield can be exerted".to_string(),
+                ));
+            }
+            let restriction = crate::effects::CantEffect::new(
+                Restriction::untap(crate::target::ObjectFilter::specific(ctx.source)),
+                Until::ControllersNextUntapStep,
+            )
+            .execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            crate::effects::composition::complete_keyword_action_with_result(
+                game,
+                ctx,
+                restriction,
                 KeywordActionEvent::new(KeywordActionKind::Exert, ctx.controller, ctx.source, 1),
-                ctx.provenance,
-            )),
-        )
+            )
+        })
     }
 
     fn cost_description(&self) -> Option<String> {

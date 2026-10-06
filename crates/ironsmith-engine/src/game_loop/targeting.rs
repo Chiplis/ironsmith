@@ -88,6 +88,9 @@ pub(crate) fn queue_triggers_from_event(
     event: TriggerEvent,
     include_delayed: bool,
 ) {
+    if game.action_observations_suppressed() {
+        return;
+    }
     if event.triggers_captured() {
         return;
     }
@@ -120,6 +123,9 @@ pub(crate) fn queue_triggers_from_reported_events(
     events: Vec<TriggerEvent>,
     include_delayed: bool,
 ) {
+    if game.action_observations_suppressed() {
+        return;
+    }
     let groups_by_batch = |event: &TriggerEvent| event.simultaneous_batch();
     let mut events = events
         .into_iter()
@@ -612,31 +618,6 @@ pub(super) fn activated_ability_has_tap_cost(
         })
 }
 
-pub(super) fn tap_permanent_with_trigger(
-    game: &mut GameState,
-    permanent: ObjectId,
-    actor: PlayerId,
-) -> Option<TriggerEvent> {
-    if game.object(permanent).is_some() && !game.is_tapped(permanent) {
-        let before = game.object(permanent).map(|object| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-        });
-        game.tap(permanent);
-        let event_provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::PermanentTapped);
-        let mut notification =
-            crate::events::PermanentTappedEvent::capture(game, permanent, Some(actor));
-        notification.before_snapshot = before;
-        Some(TriggerEvent::new_with_provenance(
-            notification,
-            event_provenance,
-        ))
-    } else {
-        None
-    }
-}
-
 pub(super) fn keyword_action_from_alternative_effect(
     effect: AlternativePaymentEffect,
 ) -> KeywordActionKind {
@@ -842,6 +823,9 @@ fn drain_pending_trigger_events_inner<E>(
     trigger_queue: &mut TriggerQueue,
     mut execute_duration_returns: impl FnMut(&mut GameState) -> Result<bool, E>,
 ) -> Result<(), E> {
+    if game.action_observations_suppressed() {
+        return Ok(());
+    }
     for entry in game.take_pending_trigger_entries() {
         trigger_queue.add(entry);
     }
@@ -889,7 +873,11 @@ fn drain_pending_trigger_events_inner<E>(
                 }
                 crate::events::other::bind_die_roll_batch_results(&mut simultaneous);
                 crate::events::damage::bind_received_damage_amounts(&mut simultaneous);
-                queue_triggers_for_simultaneous_events(game, trigger_queue, simultaneous.clone());
+                queue_triggers_for_simultaneous_events(
+                    game,
+                    trigger_queue,
+                    simultaneous.clone(),
+                );
                 // CR 603.7b: a one-shot delayed trigger sees the whole group.
                 for trigger in crate::triggers::check_delayed_triggers_for_simultaneous_events(
                     game,
@@ -944,8 +932,8 @@ fn drain_pending_trigger_events_inner<E>(
                 }
                 let Some(entry_zone_change) = entry
                     .triggering_event
-                    .downcast::<crate::events::zones::ZoneChangeEvent>()
-                else {
+                    .downcast::<crate::events::zones::ZoneChangeEvent>(
+                ) else {
                     return true;
                 };
                 entry_zone_change.from != zone_change.from

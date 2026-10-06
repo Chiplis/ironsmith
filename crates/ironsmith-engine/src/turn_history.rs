@@ -84,6 +84,62 @@ impl TurnEventRecords {
     pub(crate) fn last_shared(&self) -> Option<Arc<TurnEventRecord>> {
         self.0.back().cloned()
     }
+    pub(crate) fn push_shared(&mut self, record: Arc<TurnEventRecord>) {
+        self.0.push_back(record);
+    }
+    /// Preserve the original position while replacing an immutable receipt.
+    pub(crate) fn replace_shared(&mut self, record: Arc<TurnEventRecord>) -> bool {
+        let Some(index) = self
+            .iter()
+            .position(|previous| previous.event.ptr_eq(&record.event))
+        else {
+            return false;
+        };
+        self.0.set(index, record);
+        true
+    }
+    /// Enrich an already ingested occurrence without incrementing its counters
+    /// or appending another observation. Collection replacement is branch-local.
+    pub(crate) fn refresh_completed_action_record(
+        &mut self,
+        event: &TriggerEvent,
+        object_snapshot: Option<ObjectSnapshot>,
+        source_snapshot: Option<ObjectSnapshot>,
+    ) -> Option<Arc<TurnEventRecord>> {
+        if event.completed_action_provenance().is_none() {
+            return None;
+        }
+        let Some(index) = self.iter().position(|record| record.event.ptr_eq(event)) else {
+            return None;
+        };
+        let previous = &self[index];
+        let record = if previous.event.completed_action_provenance().is_some() {
+            // A later wrapper may add trigger proof and contextual bindings,
+            // but cannot recapture the completed action's characteristics.
+            Arc::new(TurnEventRecord {
+                event: event.with_completed_action_receipt(&previous.event),
+                object_snapshot: previous.object_snapshot.clone(),
+                source_snapshot: previous.source_snapshot.clone(),
+            })
+        } else {
+            Arc::new(TurnEventRecord {
+                event: event.clone(),
+                object_snapshot: event
+                    .snapshot()
+                    .cloned()
+                    .or_else(|| previous.object_snapshot.clone())
+                    .or(object_snapshot),
+                source_snapshot: event
+                    .source_snapshot()
+                    .cloned()
+                    .or_else(|| previous.source_snapshot.clone())
+                    .or(source_snapshot),
+            })
+        };
+        self.0.set(index, record.clone());
+        Some(record)
+    }
+
     pub fn push(&mut self, record: TurnEventRecord) {
         self.0.push_back(Arc::new(record));
     }
@@ -265,6 +321,17 @@ impl TurnHistory {
             .chain(self.staged_event_records.iter())
     }
 
+    /// Compose the immutable collection's receipt enrichment without recounting.
+    pub(crate) fn refresh_completed_action_record(
+        &mut self,
+        event: &TriggerEvent,
+        object_snapshot: Option<ObjectSnapshot>,
+        source_snapshot: Option<ObjectSnapshot>,
+    ) -> Option<Arc<TurnEventRecord>> {
+        self.event_records
+            .refresh_completed_action_record(event, object_snapshot, source_snapshot)
+    }
+
     /// The power of creatures this player actually declared as attackers in
     /// one combat, using the immutable event snapshots. Later power changes,
     /// control changes, leaving the battlefield, or token disappearance do
@@ -307,6 +374,21 @@ impl TurnHistory {
         {
             return;
         }
+        let completed = self
+            .staged_event_records
+            .iter()
+            .find(|record| {
+                record.event.ptr_eq(event) && record.event.completed_action_provenance().is_some()
+            })
+            .cloned();
+        let (event, object_snapshot, source_snapshot) = match completed {
+            Some(record) => (
+                event.with_completed_action_receipt(&record.event),
+                record.object_snapshot,
+                record.source_snapshot,
+            ),
+            None => (event.clone(), object_snapshot, source_snapshot),
+        };
         self.staged_event_records
             .retain(|record| record.event.occurrence_key() != event.occurrence_key());
         self.remove_staged_event(event.provenance());
@@ -323,6 +405,23 @@ impl TurnHistory {
         object_snapshot: Option<ObjectSnapshot>,
         source_snapshot: Option<ObjectSnapshot>,
     ) {
+        // Publication may receive an alias created before completion. Retain
+        // the staged owner's frozen payload instead of downgrading its receipt.
+        let completed = self
+            .staged_event_records
+            .iter()
+            .find(|record| {
+                record.event.ptr_eq(event) && record.event.completed_action_provenance().is_some()
+            })
+            .cloned();
+        let (event, object_snapshot, source_snapshot) = match completed {
+            Some(record) => (
+                event.with_completed_action_receipt(&record.event),
+                record.object_snapshot,
+                record.source_snapshot,
+            ),
+            None => (event.clone(), object_snapshot, source_snapshot),
+        };
         self.staged_event_records
             .retain(|record| record.event.occurrence_key() != event.occurrence_key());
         self.remove_staged_event(event.provenance());
@@ -2262,7 +2361,6 @@ pub(crate) fn resolve_turn_history_count(
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

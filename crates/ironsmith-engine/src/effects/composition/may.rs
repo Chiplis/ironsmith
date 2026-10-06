@@ -1,11 +1,12 @@
 //! May effect implementation.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::ask_may_choice;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact, OutcomeValue};
+#[cfg(test)]
+use crate::effects::execute_effect;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
@@ -15,45 +16,73 @@ use crate::target::PlayerFilter;
 // permanents were sacrificed). Keep all choice facts and retain a standalone
 // choice's result when the optional program contains only choices.
 pub(crate) fn is_object_selection(effect: &Effect) -> bool {
-    effect
-        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        .is_some()
-        || effect
-            .0
-            .transparent_child_effect()
-            .is_some_and(is_object_selection)
+    effect.0.is_object_selection_prelude()
 }
 
-fn execute_optional_effects(
+struct OptionalBranchProjection {
+    has_action: bool,
+}
+impl super::branch_program::SelectedBranchProjection for OptionalBranchProjection {
+    fn empty_outcome(&self) -> EffectOutcome {
+        EffectOutcome::aggregate(Vec::<EffectOutcome>::new())
+    }
+    fn project_child(&self, effect: &Effect, mut outcome: EffectOutcome) -> EffectOutcome {
+        if self.has_action && is_object_selection(effect) {
+            outcome.set_value(OutcomeValue::None);
+        }
+        outcome
+    }
+    fn complete_outcome(&self, outcome: EffectOutcome) -> EffectOutcome {
+        outcome.with_execution_fact(ExecutionFact::Accepted)
+    }
+    fn completion_facts(&self) -> Vec<ExecutionFact> {
+        vec![ExecutionFact::Accepted]
+    }
+}
+
+fn optional_branch_cursor(
+    effects: &[Effect],
+    player: Option<Option<PlayerId>>,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    super::branch_program::selected_branch_cursor_with_projection(
+        vec![super::branch_program::SelectedProgramBranch {
+            effects: effects.to_vec(),
+            identity: vec![0],
+            repetitions: 1,
+            scope: crate::effects::ProgramActionScope {
+                iterated_player: player,
+                // Selection consumes the offer guard. An enclosing first-child
+                // scope must not reintroduce it for nested offers in the body.
+                optional_identity_guard: Some(None),
+                ..Default::default()
+            },
+            // Optionality applies to child actions. Boundary matching runs in
+            // the enclosing optionality and the selected participant scope.
+            child_scope: Some(crate::effects::ProgramActionScope {
+                optional_action: Some(true),
+                ..Default::default()
+            }),
+            first_scope: None,
+            match_before_first: false,
+        }],
+        Some(Box::new(OptionalBranchProjection {
+            has_action: effects.iter().any(|effect| !is_object_selection(effect)),
+        })),
+    )
+}
+
+fn execute_optional_effects_with_outputs(
     effects: &[Effect],
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    let has_action = effects.iter().any(|effect| !is_object_selection(effect));
-    let mut outcomes = Vec::new();
-    for (index, effect) in effects.iter().enumerate() {
-        let was_optional = ctx.optional_action;
-        ctx.optional_action = true;
-        let result = execute_effect(game, effect, ctx);
-        ctx.optional_action = was_optional;
-        let mut outcome = result?;
-        if has_action && is_object_selection(effect) {
-            outcome.set_value(OutcomeValue::None);
-        }
-        outcomes.push(outcome);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if let Some(next) = effects.get(index + 1) {
-            crate::effects::match_triggers_at_instruction_boundary(
-                game,
-                ctx,
-                Some(next),
-                outcomes.iter().flat_map(|outcome| outcome.events.iter()),
-            );
-        }
-    }
-    Ok(EffectOutcome::aggregate(outcomes).with_execution_fact(ExecutionFact::Accepted))
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::action_program::execute_action_program_with_outputs(
+        optional_branch_cursor(effects, None),
+        game,
+        ctx,
+        purpose,
+    )
 }
 
 /// Effect that offers an optional choice to the player.
@@ -99,6 +128,33 @@ pub(crate) struct PreparedOptionalExecution {
     pub(crate) previous_iterated_player: Option<PlayerId>,
 }
 
+#[derive(Debug, Clone)]
+struct AcceptedOptionalAction {
+    identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
+    limit: Option<crate::effects::DoThisLimit>,
+    player: Option<PlayerId>,
+}
+
+pub(super) fn record_optional_limit(game: &mut GameState, limit: crate::effects::DoThisLimit) {
+    game.record_do_this_action(limit.source, limit.trigger_identity);
+}
+
+impl AcceptedOptionalAction {
+    fn record(&self, game: &mut GameState) {
+        if let Some(guard) = &self.identity_guard {
+            game.record_hidden_identity_obligations(
+                &[guard.object],
+                &guard.filter,
+                &guard.filter_ctx,
+                "accepted conditional reveal",
+            );
+        }
+        if let Some(limit) = self.limit {
+            record_optional_limit(game, limit);
+        }
+    }
+}
+
 impl MayEffect {
     /// Create a new May effect with default Decline fallback.
     pub fn new(effects: Vec<Effect>) -> Self {
@@ -133,52 +189,23 @@ impl MayEffect {
     /// owners retain this answer while scheduling the children's action units.
     pub(super) fn prepare_optional_choice(
         &self,
-        game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<bool, ExecutionError> {
-        if self.should_auto_decline_without_prompt(game, ctx)? {
-            return Ok(false);
-        }
-        let description = self
-            .effects
-            .first()
-            .and_then(|effect| {
-                let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-                if !choose.is_search {
-                    return None;
-                }
-                let max = choose.count.max.unwrap_or(choose.count.min);
-                super::choose_objects_runtime::friendly_same_name_search_prompt(
-                    game,
-                    ctx,
-                    &choose.filter,
-                    choose.count.min,
-                    max,
-                )
-            })
-            .unwrap_or_else(|| self.prompt_description(game, ctx));
-        let deciding_player = if let Some(decider) = &self.decider {
-            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
-        } else {
-            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
-        };
-        Ok(ask_may_choice(
-            game,
-            &mut ctx.decision_maker,
-            deciding_player,
-            ctx.source,
-            description,
-            self.fallback,
-        ))
-    }
-
-    /// Prepare exactly the same optional branch as live execution, retaining
-    /// accepted choice/identity/limit bookkeeping before a continuation pauses.
-    pub(crate) fn prepare_optional_execution(
-        &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<Option<PreparedOptionalExecution>, ExecutionError> {
+    ) -> Result<bool, ExecutionError> {
+        let Some(accepted) = self.prepare_optional_decision(game, ctx)? else {
+            return Ok(false);
+        };
+        accepted.record(game);
+        Ok(true)
+    }
+
+    /// Capture the acceptance claim without mutating the original world. The
+    /// same decision owner is used by live, prepared and scheduled programs.
+    fn prepare_optional_decision(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<AcceptedOptionalAction>, ExecutionError> {
         let identity_guard = ctx.optional_identity_guard.take();
         // "Do this only once each turn" governs the ability's first optional
         // instruction. Once it has been performed the limit's number of times
@@ -233,35 +260,42 @@ impl MayEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
-        if should_do {
-            if let Some(guard) = identity_guard {
-                if !guard.can_accept {
-                    return Err(ExecutionError::InvalidTarget);
-                }
-                // This is a positive claim only. Declining a reveal makes
-                // no assertion about a private card's characteristics.
-                game.record_hidden_identity_obligations(
-                    &[guard.object],
-                    &guard.filter,
-                    &guard.filter_ctx,
-                    "accepted conditional reveal",
-                );
-            }
-            if let Some(limit) = do_this_limit
-                && !ctx.decision_maker.awaiting_choice()
-            {
-                game.record_do_this_action(limit.source, limit.trigger_identity);
-            }
-            let previous_iterated_player = ctx.iteration.iterated_player;
-            if self.decider_binds_iterated_player(ctx) {
-                ctx.iteration.iterated_player = Some(deciding_player);
-            }
-            Ok(Some(PreparedOptionalExecution {
-                previous_iterated_player,
-            }))
-        } else {
-            Ok(None)
+        if !should_do {
+            return Ok(None);
         }
+        if identity_guard
+            .as_ref()
+            .is_some_and(|guard| !guard.can_accept)
+        {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        let player = if self.decider_binds_iterated_player(ctx) {
+            Some(deciding_player)
+        } else {
+            ctx.iteration.iterated_player
+        };
+        Ok(Some(AcceptedOptionalAction {
+            identity_guard,
+            limit: do_this_limit,
+            player,
+        }))
+    }
+
+    /// Live execution records accepted claims before its first child action.
+    pub(crate) fn prepare_optional_execution(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<PreparedOptionalExecution>, ExecutionError> {
+        let Some(accepted) = self.prepare_optional_decision(game, ctx)? else {
+            return Ok(None);
+        };
+        accepted.record(game);
+        let previous_iterated_player = ctx.iteration.iterated_player;
+        ctx.iteration.iterated_player = accepted.player;
+        Ok(Some(PreparedOptionalExecution {
+            previous_iterated_player,
+        }))
     }
 
     /// Outside any per-player iteration, an explicit non-controller decider
@@ -303,6 +337,45 @@ impl MayEffect {
 }
 
 impl EffectExecutor for MayEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effects
+            .iter()
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let accepted = self.prepare_optional_decision(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let Some(accepted) = accepted else {
+            return Ok(Some(
+                super::action_program::finished_program_completion_cursor(
+                    crate::effects::ProgramCompletion {
+                        outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::declined(),
+                        ),
+                        facts: vec![ExecutionFact::Declined],
+                    },
+                ),
+            ));
+        };
+        let cursor = optional_branch_cursor(&self.effects, Some(accepted.player));
+        Ok(Some(super::action_program::prepared_program_cursor(
+            cursor,
+            crate::effects::ProgramPreparation::new(move |game| {
+                accepted.record(game);
+                Ok(())
+            }),
+        )))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -322,28 +395,21 @@ impl EffectExecutor for MayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // The complete optional instruction owns all of its child actions.
-        // Pending answers cannot become a decline or publish earlier partial
-        // actions; retry must retain the original context and one-shot state.
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let Some(prepared) = self.prepare_optional_execution(game, ctx)? else {
-                return Ok(EffectOutcome::declined());
-            };
-            let result = execute_optional_effects(&self.effects, game, ctx);
-            ctx.iteration.iterated_player = prepared.previous_iterated_player;
-            result
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if result.is_err() || pending {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return result.map(|_| EffectOutcome::count(0));
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_may_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -355,39 +421,30 @@ impl EffectExecutor for MayEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // The yes/no choice is made against the pre-action state in APNAP
-        // order; the accepted effects execute during the batched commit.
-        if self.should_auto_decline_without_prompt(game, ctx)? {
-            return Ok(Box::new(MayProposal {
-                effects: Vec::new(),
-                iterated_player: ctx.iteration.iterated_player,
-            }));
-        }
-        let description = self.prompt_description(game, ctx);
-        let deciding_player = if let Some(decider) = &self.decider {
-            crate::effects::helpers::resolve_player_filter_as_chooser(game, decider, ctx)?
+        let acceptance = self.prepare_optional_decision(game, ctx)?;
+        let effects = if acceptance.is_some() {
+            self.effects.clone()
         } else {
-            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+            Vec::new()
         };
-        let should_do = ask_may_choice(
+        let iterated_player = acceptance
+            .as_ref()
+            .map(|accepted| accepted.player)
+            .unwrap_or(ctx.iteration.iterated_player);
+        let prepared = super::prepared_branch::prepare_action_branch(
+            &effects,
             game,
-            &mut ctx.decision_maker,
-            deciding_player,
-            ctx.source,
-            description,
-            self.fallback,
-        );
+            ctx,
+            iterated_player,
+            true,
+            true,
+        )?;
         Ok(Box::new(MayProposal {
-            effects: if should_do {
-                self.effects.clone()
-            } else {
-                Vec::new()
-            },
-            iterated_player: if self.decider_binds_iterated_player(ctx) {
-                Some(deciding_player)
-            } else {
-                ctx.iteration.iterated_player
-            },
+            accepted: acceptance.is_some(),
+            effects,
+            prepared,
+            iterated_player,
+            acceptance,
         }))
     }
 
@@ -413,27 +470,216 @@ impl EffectExecutor for MayEffect {
 /// effects run in the batched commit.
 #[derive(Debug)]
 struct MayProposal {
+    accepted: bool,
+    acceptance: Option<AcceptedOptionalAction>,
+    prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
     effects: Vec<crate::effect::Effect>,
     iterated_player: Option<PlayerId>,
 }
 
 impl crate::effects::SimultaneousEffectProposal for MayProposal {
+    fn has_simultaneous_originals(&self) -> bool {
+        self.prepared
+            .as_ref()
+            .is_some_and(|inner| inner.has_simultaneous_originals())
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.prepared
+            .as_ref()
+            .and_then(|inner| inner.nominal_payment_quantity())
+    }
+
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        if self.acceptance.is_some() {
+            return None;
+        }
+        if self.effects.is_empty() {
+            Some(crate::effects::damage::DamageActionInputs::default())
+        } else {
+            self.prepared.as_ref()?.damage_action_inputs()
+        }
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        if self.acceptance.is_some() {
+            return Err(ExecutionError::InternalError(
+                "optional damage bound before acceptance preparation".into(),
+            ));
+        }
+        if self.effects.is_empty() {
+            return Ok(crate::effects::DamageActionBinding::from_outcome(
+                if self.accepted {
+                    EffectOutcome::resolved().with_execution_fact(ExecutionFact::Accepted)
+                } else {
+                    EffectOutcome::declined()
+                },
+            ));
+        }
+        let inner = self.prepared.ok_or_else(|| {
+            ExecutionError::InternalError("optional damage lost its selected branch".into())
+        })?;
+        inner.bind_damage_action(game, ctx, owner)
+    }
+
+    fn declared_life_payment(&self) -> Option<(PlayerId, u32)> {
+        self.prepared
+            .as_ref()
+            .and_then(|inner| inner.declared_life_payment())
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_payment_resources())
+            .unwrap_or_default()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(PlayerId, u32)> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_life_payments())
+            .unwrap_or_default()
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if let Some(accepted) = self.acceptance.take() {
+            accepted.record(game);
+        }
+        if let Some(inner) = &mut self.prepared {
+            inner.prepare_original(game, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if let Some(inner) = &mut self.prepared {
+            inner.seal_original(game, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if let Some(inner) = self.prepared.take() {
+            return inner.commit_original_with_outputs(game, ctx);
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let outcome = if !self.accepted {
+            Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::declined(),
+            ))
+        } else {
+            ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+                execute_optional_effects_with_outputs(
+                    &self.effects,
+                    game,
+                    ctx,
+                    crate::effects::EffectExecutionPurpose::Action,
+                )
+            })
+        };
+        outcome.map(crate::effects::SimultaneousEffectCommit::finished)
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.effects.is_empty() {
-            return Ok(EffectOutcome::declined());
-        }
-        let effects = self.effects;
-        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
-            execute_optional_effects(&effects, game, ctx)
-        })
+        super::complete_prepared_original(self, game, ctx)
     }
 }
 
+fn execute_may_with_outputs(
+    effect: &MayEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    // The complete optional instruction owns all of its child actions.
+    // Pending answers cannot become a decline or publish earlier partial
+    // actions; retry must retain the original context and one-shot state.
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(prepared) = effect.prepare_optional_execution(game, ctx)? else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::declined(),
+                ));
+            };
+            let result = execute_optional_effects_with_outputs(&effect.effects, game, ctx, purpose);
+            ctx.iteration.iterated_player = prepared.previous_iterated_player;
+            result
+        },
+    )
+}
+
 impl CostExecutableEffect for MayEffect {
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_may_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let effects = crate::effects::canonical_cost_children(&self.effects)?;
+        let mut replacement = self.clone();
+        replacement.effects = effects;
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         _game: &GameState,

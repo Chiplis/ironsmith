@@ -86,15 +86,16 @@ function CardDetailsDisclosure({ name, rulesView, onActivate, highlighted, flavo
       </p>}
       {rulesView.lines.map((line, index) => {
         const actions = rulesView.actions.get(index) || [];
-        const action = actions.find(action => !action.payment_pending && action.mana_payment_available !== false);
-        const available = Boolean(action && onActivate);
+        const action = actions.find(action => !action.payment_pending && action.mana_payment_available !== false) || actions[0];
+        const clickable = Boolean(action && onActivate);
+        const available = clickable && !action.payment_pending && action.mana_payment_available !== false;
         return <div key={index} className="inspector-ability-section" data-stack-highlighted={highlighted.has(index) ? 'true' : undefined}>
           {rulesView.manaGroups.has(index) ? <GroupedManaAbility group={rulesView.manaGroups.get(index)} name={name} onActivate={onActivate} />
             : actions.length || /[:：]/u.test(line) ? <button type="button" className="inspector-oracle-line-action"
-              data-available={available ? 'true' : 'false'} aria-disabled={available ? undefined : 'true'}
+              data-available={available ? 'true' : 'false'} aria-disabled={clickable ? undefined : 'true'}
               aria-label={ui("{0}: {1}", { 0: name || 'Card', 1: line })}
               onPointerDown={event => event.stopPropagation()}
-              onClick={event => { event.stopPropagation(); if (available) onActivate(action); }}>
+              onClick={event => { event.stopPropagation(); if (clickable) onActivate(action); }}>
               <SymbolText text={line} />
             </button> : <SymbolText text={line} />}
         </div>;

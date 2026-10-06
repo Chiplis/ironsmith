@@ -1,5 +1,6 @@
 //! Look at hand effect implementation.
 
+#[cfg(test)]
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -106,10 +107,19 @@ impl EffectExecutor for LookAtHandEffect {
                         );
                     }
                 }
-                let view_ctx =
-                    ViewCardsContext::look_at_hand(ctx.controller, player_id, Some(ctx.source));
-                ctx.decision_maker
-                    .view_cards(game, ctx.controller, &cards, &view_ctx);
+                let look = super::look_at_cards(
+                    game,
+                    ctx,
+                    ctx.controller,
+                    player_id,
+                    crate::zone::Zone::Hand,
+                    &cards,
+                    "Look at that player's hand",
+                );
+                outcome = EffectOutcome::aggregate([outcome, look]);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
             }
         }
 

@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import RollingPanel from "@/components/board/RollingPanel";
+import useStackPresence from "@/hooks/useStackPresence";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -30,6 +31,7 @@ export default function StackTimelineRail({
   const decision = state?.decision || null;
   const canAct = !!decision && samePlayerId(decision.player, state?.perspective);
   const stackObjects = getVisibleStackObjects(state);
+  const displayedStackObjects = useStackPresence(stackObjects);
   const stackPreview = state?.stack_preview || [];
   const rawStackEntryCount = Math.max(stackObjects.length, stackPreview.length);
   const orderingEntryCount = useMemo(
@@ -45,7 +47,7 @@ export default function StackTimelineRail({
   const inlineAnchorRef = useRef(null);
   const flowRailRef = useRef(null);
   const [inlineRect, setInlineRect] = useState(null);
-  const shouldShowRail = orderingEntryCount > 0;
+  const shouldShowRail = orderingEntryCount > 0 || displayedStackObjects.length > 0;
 
   useLayoutEffect(() => {
     if (inlineFlow) return undefined;
@@ -159,7 +161,7 @@ export default function StackTimelineRail({
 
   if (inlineFlow) {
     return (
-      <RollingPanel open={shouldShowRail} className="stack-flow-reveal">
+      <RollingPanel open={shouldShowRail} retainContent={false} className="stack-flow-reveal">
       <aside
         ref={flowRailRef}
         className={cn(
@@ -173,7 +175,7 @@ export default function StackTimelineRail({
           title={ui("Stack")}
           decision={decision}
           canAct={canAct}
-          stackObjects={stackObjects}
+          stackObjects={displayedStackObjects}
           stackPreview={stackPreview}
           selectedObjectId={selectedObjectId}
           onInspectObject={onInspectObject}
@@ -236,7 +238,7 @@ export default function StackTimelineRail({
                   title={ui("Stack")}
                   decision={decision}
                   canAct={canAct}
-                  stackObjects={stackObjects}
+                  stackObjects={displayedStackObjects}
                   stackPreview={stackPreview}
                   selectedObjectId={selectedObjectId}
                   onInspectObject={onInspectObject}

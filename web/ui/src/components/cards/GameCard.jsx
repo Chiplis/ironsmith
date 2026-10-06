@@ -639,6 +639,7 @@ export default function GameCard({
   card,
   compact = false,
   isPlayable = false,
+  paymentProven = true,
   hasAvailableAction = isPlayable,
   isInspected = false,
   glowKind: requestedGlowKind = null,
@@ -1287,6 +1288,7 @@ export default function GameCard({
       className={cn(
         "game-card grid content-start",
         showActionBorder && "card-action-available",
+        showActionBorder && !paymentProven && "card-payment-unproven",
         targetingMode && "card-targeting-mode",
         useTokenBattlefield ? "p-0.5" : "p-1.5",
         variant === "battlefield" && "field-card",

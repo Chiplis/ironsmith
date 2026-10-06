@@ -1345,6 +1345,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
+      await servicesRef.current.persistRelayCheckpoint();
       sendMatchStartToClients(payload);
       await revealLocalZiffleHand(payload);
     } catch (err) {
@@ -1645,6 +1646,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
+      await servicesRef.current.persistRelayCheckpoint();
       sendMatchStartToClients(payload);
       await revealLocalZiffleHand(payload);
     } catch (err) {

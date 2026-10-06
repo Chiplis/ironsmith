@@ -2,7 +2,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { I18nProvider } from '../src/i18n/I18nContext';
-import CompetitiveDeckPicker from '../src/components/layout/CompetitiveDeckPicker';
+import { LobbyDeckCatalogPicker } from '../src/components/layout/LobbyDeckEditor';
 import '../src/index.css';
 
 function Fixture() {
@@ -11,7 +11,7 @@ function Fixture() {
   // against it.
   return (
     <div data-slot="sheet-content" style={{ padding: 24, width: 720 }}>
-      <CompetitiveDeckPicker format="modern" onApply={(applied) => { window.__applied = applied; }} />
+      <LobbyDeckCatalogPicker format={new URLSearchParams(window.location.search).get('format') || 'modern'} onChange={(applied) => { window.__applied = applied; }} />
     </div>
   );
 }

@@ -163,7 +163,7 @@ fn payment_disclosure_exact_discard_cost_cards_disable_completed_action_undo() {
             assert!(matches!(
                 wasm.pending_decision,
                 Some(DecisionContext::Priority(_))
-            ));
+            ), "{name} with {candidate_count} payment cards: {:?}", wasm.pending_decision);
             assert_eq!(wasm.game.stack.len(), before_stack + 1);
             assert_eq!(
                 wasm.game.player(alice).unwrap().library,

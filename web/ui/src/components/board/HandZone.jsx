@@ -972,6 +972,11 @@ export default function HandZone({
 
     const dismissPinnedHandCard = (event) => {
       const target = event.target;
+      // The floating inspector owns its ability clicks. Dismissing the hand
+      // broadcasts hand-inspection and closes that frame during pointer-down,
+      // before the ability's click handler can submit anything (even with an
+      // empty mobile fan).
+      if (target instanceof Element && target.closest(".floating-card-preview")) return;
       if (isMobileFan) {
         const surface = handListRef.current?.closest(".mobile-mtga-hand-fan")
           || handListRef.current?.closest(".hand-zone-surface");
@@ -1671,6 +1676,7 @@ export default function HandZone({
             card={card}
             variant="hand"
             isPlayable={isPlayable}
+            paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
             isNew={isNew}
             isBumped={isBumped}
@@ -1731,6 +1737,7 @@ export default function HandZone({
           card={card}
           variant="hand"
           isPlayable={isPlayable}
+          paymentProven={plays.some(action => action.payment_proven !== false)}
           glowKind={glowKind}
           handCircuitMode="full"
           suppressTooltip={isMobileFan}
@@ -1821,6 +1828,7 @@ export default function HandZone({
               card={card}
               variant="hand"
               isPlayable={isPlayable}
+              paymentProven={plays.some(action => action.payment_proven !== false)}
               glowKind={glowKind}
               isNew={isNew}
               handCircuitMode={isExpanded ? "full" : "top"}
@@ -1894,6 +1902,7 @@ export default function HandZone({
             card={card}
             variant="hand"
             isPlayable={isPlayable}
+            paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
             isNew={isPrimaryCycle}
             handCircuitMode={isExpanded ? "full" : "top"}

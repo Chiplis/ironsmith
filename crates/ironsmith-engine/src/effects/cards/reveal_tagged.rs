@@ -14,6 +14,10 @@ use crate::tag::TagKey;
 pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
 impl EffectExecutor for RevealTaggedEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::requiring(self.tag.clone())
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Revealed)
     }
@@ -35,7 +39,6 @@ impl EffectExecutor for RevealTaggedEffect {
             .cloned()
             .unwrap_or_default();
         super::reveal_objects(game, ctx, tagged, None, "Reveal cards", None)
-
     }
 }
 

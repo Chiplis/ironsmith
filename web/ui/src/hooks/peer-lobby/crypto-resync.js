@@ -66,7 +66,6 @@ import {
   isRejectedActionCheatReason,
   cheatOffenderForError,
   isSelfForfeitCommand,
-  isSorcerySpeedForfeitState,
   isTrustedMultiplayerSecurityMode,
   isUnauthorizedAddCardCommand,
   isVerifiedMultiplayerSecurityMode,
@@ -3690,9 +3689,6 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
     const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(command);
     const isSelfForfeit = isSelfForfeitCommand(command, normalizedActor);
-    if (isSelfForfeit && !isSorcerySpeedForfeitState(liveState, normalizedActor)) {
-      throw new Error("Surrender is only available at sorcery speed");
-    }
     if (
       isForfeitCommand(command)
       && !isTimeoutForfeit
@@ -3718,7 +3714,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         actorIndex: normalizedActor,
         skipCertificate: true,
       });
-    } else {
+    } else if (!isSelfForfeit) {
       if (!isDecisionCommandCompatible(liveState?.decision, command)) {
         recordDiagnosticEvent("trusted_action:mismatch", {
           sequence: seq, actor: normalizedActor,

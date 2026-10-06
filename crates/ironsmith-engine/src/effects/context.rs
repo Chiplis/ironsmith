@@ -506,6 +506,24 @@ macro_rules! execution_context_checkpoint {
     };
 }
 
+impl ExecutionContextCheckpoint {
+    pub(crate) fn replacement_scope(&self) -> &ReplacementExecutionContext {
+        &self.replacement
+    }
+    pub(crate) fn controller(&self) -> PlayerId {
+        self.controller
+    }
+    pub(crate) fn provenance(&self) -> ProvNodeId {
+        self.provenance
+    }
+    /// Reborrow a decision maker with every captured owned field restored.
+    pub(crate) fn reborrow<'a>(&self, dm: &'a mut dyn DecisionMaker) -> ExecutionContext<'a> {
+        let mut ctx = ExecutionContext::new(self.source, self.controller, dm);
+        self.restore_ref(&mut ctx);
+        ctx
+    }
+}
+
 execution_context_checkpoint! {
     source: ObjectId,
     controller: PlayerId,
@@ -551,6 +569,63 @@ execution_context_checkpoint! {
     public_search_reveal_tag: Option<TagKey>,
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
     created_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
+}
+
+// Payment frames inherit value-resolution inputs, but bind their own payer,
+// cause, cost objects and instruction control state. This exhaustive capture
+// forces every new context field to be classified instead of silently dropped.
+macro_rules! payment_execution_inputs {
+    (inherited { $($field:ident: $field_type:ty,)* } local { $($local:ident,)* }) => {
+        #[derive(Clone)]
+        pub(crate) struct PaymentExecutionInputs {
+            $($field: $field_type,)*
+        }
+        impl PaymentExecutionInputs {
+            pub(crate) fn capture(ctx: &ExecutionContext<'_>) -> Self {
+                let ExecutionContext { $($field,)* $($local: _,)* decision_maker: _ } = ctx;
+                Self { $($field: $field.clone(),)* }
+            }
+            pub(crate) fn restore_ref(&self, ctx: &mut ExecutionContext<'_>) {
+                let reason = ctx.mana.payment_reason;
+                $(ctx.$field = self.$field.clone();)*
+                // A receiving frame owns why its own payment is being made.
+                ctx.mana.payment_reason = reason;
+            }
+        }
+    };
+}
+
+payment_execution_inputs! {
+    inherited {
+        all_targets_legal: bool,
+        announced_target_assignments: Vec<TargetAssignment>,
+        vote_results: HashMap<ObjectId, VoteResult>,
+        secret_choice_results: HashMap<ObjectId, SecretChoiceResult>,
+        iteration: IterationContext,
+        optional_costs_paid: OptionalCostsPaid,
+        casting_method: crate::alternative_cast::CastingMethod,
+        combat: CombatExecutionContext,
+        ninjutsu_attack_target: Option<crate::combat_state::AttackTarget>,
+        target_snapshots: HashMap<ObjectId, ObjectSnapshot>,
+        tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+        face_down_exile_viewers: HashMap<ObjectId, HashSet<PlayerId>>,
+        triggering_event: Option<crate::triggers::TriggerEvent>,
+        event_value_amount: Option<i32>,
+        last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
+        trigger_identity: Option<crate::triggers::TriggerIdentity>,
+        ability_index: Option<usize>,
+        mana: ManaExecutionContext,
+        resolution_object_id_floor: Option<ObjectId>,
+    }
+    local {
+        source, controller, targets, announced_targets, targets_are_cost_choices,
+        target_assignments, target_distributions, x_value, effect_outcomes,
+        optional_action, source_snapshot, tagged_objects, optional_identity_guard,
+        do_this_limit, chosen_modes, cause, provenance, replacement,
+        executing_effect, shared_team_structure_operations, created_extra_turn_index,
+        restarted_game, public_search_reveal_tag, pending_entry_attachment,
+        created_continuous_effects,
+    }
 }
 
 impl std::fmt::Debug for ExecutionContext<'_> {
@@ -603,6 +678,16 @@ impl std::fmt::Debug for ExecutionContext<'_> {
 }
 
 impl<'a> ExecutionContext<'a> {
+    /// A speculative query may construct temporary bindings, but it cannot
+    /// publish them into the instruction that asked the question. Restore on
+    /// every return, including failed candidates and early query errors.
+    pub(crate) fn with_query_scope<T>(&mut self, query: impl FnOnce(&mut Self) -> T) -> T {
+        let checkpoint = ExecutionContextCheckpoint::capture(self);
+        let result = query(self);
+        checkpoint.restore(self);
+        result
+    }
+
     /// Create a new execution context with a decision maker.
     pub fn new(
         source: ObjectId,

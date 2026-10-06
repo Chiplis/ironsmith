@@ -39,6 +39,17 @@ impl TapAction {
     }
 
     pub(crate) fn tap(&mut self, game: &mut GameState, id: crate::ids::ObjectId) -> bool {
+        self.tap_with_event_provenance(game, id, self.provenance)
+    }
+
+    /// Payment adapters may retain distinct causal rows for each contribution
+    /// while the owner still freezes the complete instruction as one batch.
+    pub(crate) fn tap_with_event_provenance(
+        &mut self,
+        game: &mut GameState,
+        id: crate::ids::ObjectId,
+        event_provenance: crate::provenance::ProvNodeId,
+    ) -> bool {
         if game.object(id).is_none() || game.is_tapped(id) {
             return false;
         }
@@ -55,7 +66,7 @@ impl TapAction {
         self.memory.extend(memory);
         self.events.push(TriggerEvent::new_with_provenance(
             PermanentTappedEvent::capture(game, id, Some(self.actor)),
-            self.provenance,
+            event_provenance,
         ));
         true
     }
@@ -75,9 +86,40 @@ impl TapAction {
     }
 }
 
-/// Commit an already validated cost set, with no fallback selection or partial
-/// payment. Snapshot/event handling is the same action used by TapEffect.
-pub(crate) fn tap_cost_objects(
+/// Retain the same recorded tap payment under the same rollback boundary.
+pub(crate) fn tap_cost_objects_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    objects: &[crate::ids::ObjectId],
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| TapCostObjects(objects.to_vec()).execute_child_with_outputs(game, ctx),
+    )
+}
+
+/// Validated cost sets use the same recorded child boundary as ordinary taps.
+/// The complete payment's observations must be staged before any caller builds
+/// its Crew, Saddle or Conspire completion from post-payment characteristics.
+#[derive(Debug, Clone)]
+struct TapCostObjects(Vec<crate::ids::ObjectId>);
+
+impl EffectExecutor for TapCostObjects {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        commit_tap_cost_objects(game, ctx, &self.0)
+    }
+}
+
+fn commit_tap_cost_objects(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     objects: &[crate::ids::ObjectId],
@@ -118,6 +160,10 @@ pub(crate) fn tap_cost_objects(
 /// let effect = TapEffect::all(ObjectFilter::creature());
 /// ```
 impl EffectExecutor for TapEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.target)
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Tapped)
     }
@@ -190,6 +236,10 @@ impl EffectExecutor for TapEffect {
 }
 
 impl CostExecutableEffect for TapEffect {
+    fn cost_choice_tap_state(&self) -> Option<bool> {
+        Some(true)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,

@@ -2,7 +2,7 @@
 
 use crate::effect::{EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact};
 use crate::effects::EffectExecutor;
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::{ObjectFilterExt, player_filter_matches_game};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -175,8 +175,12 @@ fn result_memories_share_characteristic(
                 .any(|name| {
                     memories
                         .iter()
-                        .filter(|memory| crate::filter::names_match(name, &memory.name)
-                            || memory.split_other_half_name().is_some_and(|other| crate::filter::names_match(name, other)))
+                        .filter(|memory| {
+                            crate::filter::names_match(name, &memory.name)
+                                || memory
+                                    .split_other_half_name()
+                                    .is_some_and(|other| crate::filter::names_match(name, other))
+                        })
                         .count()
                         >= required_count
                 })
@@ -222,7 +226,8 @@ pub(super) fn predicate_matches_with_context(
     }
     if surface.action == crate::effect::PriorEffectAction::Died {
         let filter_ctx = ctx.filter_context(game);
-        let recorded = crate::effects::outcome_recording::action_objects(outcome, surface.action, None);
+        let recorded =
+            crate::effects::outcome_recording::action_objects(outcome, surface.action, None);
         let known = recorded.is_some();
         let matching = recorded.as_deref().or_else(|| outcome.affected_object_memory()).unwrap_or_default().iter()
             .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
@@ -424,6 +429,7 @@ pub(crate) struct PreparedIfBranch {
     pub(crate) player: Option<crate::ids::PlayerId>,
     pub(crate) effects: Vec<crate::effect::Effect>,
     pub(crate) repetitions: usize,
+    pub(crate) branch: usize,
 }
 
 /// Freeze contextual result predicates and participant partitions once.
@@ -492,6 +498,7 @@ pub(crate) fn prepare_if_branches(
                 player: Some(player_id),
                 effects: branch.clone(),
                 repetitions: 1,
+                branch: if predicate_matches { 0 } else { 1 },
             });
         }
         return branches;
@@ -519,16 +526,16 @@ pub(crate) fn prepare_if_branches(
         None
     };
 
-    let (branch, repetitions) = if let Some(matches) = match_repetitions {
+    let (branch, repetitions, branch_identity) = if let Some(matches) = match_repetitions {
         if matches > 0 {
-            (&effect.then, matches)
+            (&effect.then, matches, 0)
         } else {
-            (&effect.else_, 1)
+            (&effect.else_, 1, 1)
         }
     } else if predicate_matches_with_context(&effect.predicate, outcome, game, ctx) {
-        (&effect.then, 1)
+        (&effect.then, 1, 0)
     } else {
-        (&effect.else_, 1)
+        (&effect.else_, 1, 1)
     };
 
     if branch.is_empty() {
@@ -538,54 +545,66 @@ pub(crate) fn prepare_if_branches(
             player: None,
             effects: branch.clone(),
             repetitions,
+            branch: branch_identity,
         }]
     }
 }
 
-pub(crate) fn execute_if_branches(
+fn if_branch_cursor(branches: &[PreparedIfBranch]) -> Box<dyn crate::effects::ActionProgramCursor> {
+    super::branch_program::selected_branch_cursor(
+        branches
+            .iter()
+            .enumerate()
+            .map(
+                |(index, branch)| super::branch_program::SelectedProgramBranch {
+                    effects: branch.effects.clone(),
+                    identity: vec![branch.branch, index],
+                    repetitions: branch.repetitions,
+                    scope: crate::effects::ProgramActionScope {
+                        iterated_player: branch.player.map(Some),
+                        ..Default::default()
+                    },
+                    child_scope: None,
+                    first_scope: None,
+                    match_before_first: true,
+                },
+            )
+            .collect(),
+    )
+}
+
+pub(crate) fn execute_if_branches_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     branches: &[PreparedIfBranch],
-) -> Result<EffectOutcome, ExecutionError> {
-    let mut outcomes = Vec::new();
-    for branch in branches {
-        let previous = ctx.iteration.iterated_player;
-        if let Some(player) = branch.player {
-            ctx.iteration.iterated_player = Some(player);
-        }
-        let result = (|| {
-            for _ in 0..branch.repetitions {
-                for effect in &branch.effects {
-                    crate::effects::match_triggers_at_instruction_boundary(
-                        game,
-                        ctx,
-                        Some(effect),
-                        outcomes
-                            .iter()
-                            .flat_map(|outcome: &EffectOutcome| outcome.events.iter()),
-                    );
-                    outcomes.push(execute_effect(game, effect, ctx)?);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok::<_, ExecutionError>(());
-                    }
-                }
-            }
-            Ok(())
-        })();
-        ctx.iteration.iterated_player = previous;
-        result?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-    }
-    if outcomes.is_empty() {
-        Ok(EffectOutcome::count(0))
-    } else {
-        Ok(EffectOutcome::aggregate(outcomes))
-    }
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::action_program::execute_action_program_with_outputs(
+        if_branch_cursor(branches),
+        game,
+        ctx,
+        crate::effects::EffectExecutionPurpose::Action,
+    )
 }
 
 impl EffectExecutor for IfEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.then
+            .iter()
+            .chain(&self.else_)
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let branches = prepare_if_branches(self, game, ctx);
+        Ok(Some(if_branch_cursor(&branches)))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -604,11 +623,20 @@ impl EffectExecutor for IfEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         // A prior instruction that never ran (a declined optional, an
         // untaken branch, an antecedent skipped because its object is gone)
         // left no result: it didn't happen (CR 608.2c).
         let branches = prepare_if_branches(self, game, ctx);
-        execute_if_branches(game, ctx, &branches)
+        execute_if_branches_with_outputs(game, ctx, &branches)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

@@ -47,24 +47,64 @@ struct SetLifeTotalProposal {
 }
 
 impl SimultaneousEffectProposal for SetLifeTotalProposal {
-    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<(), ExecutionError> {
-        if self.amount == self.current || !self.can_change { return Ok(()); }
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.amount == self.current || !self.can_change {
+            return Ok(());
+        }
         let amount = self.amount.abs_diff(self.current);
         let event = if self.amount > self.current {
-            crate::events::Event::new_with_provenance(crate::events::LifeGainEvent::new(self.player, amount).with_source(ctx.source), self.provenance)
+            crate::events::Event::new_with_provenance(
+                crate::events::LifeGainEvent::new(self.player, amount).with_source(ctx.source),
+                self.provenance,
+            )
         } else {
-            crate::events::Event::new_with_provenance(crate::events::LifeLossEvent::from_effect(self.player, amount), self.provenance)
+            crate::events::Event::new_with_provenance(
+                crate::events::LifeLossEvent::from_effect(self.player, amount),
+                self.provenance,
+            )
         };
         self.prepared = Some(super::life_change::prepare_life_change(game, ctx, event)?);
         Ok(())
     }
-    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>
-    {
-        if self.amount == self.current { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::resolved())); }
-        if !self.can_change { return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::prevented())); }
-        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
-        super::life_change::commit_prepared_life_original(game, ctx, self.prepared.take().expect("life proposal prepared"))
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if self.amount == self.current {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+            ));
+        }
+        if !self.can_change {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::prevented()),
+            ));
+        }
+        if self.prepared.is_none() {
+            self.prepare_original(game, ctx)?;
+        }
+        super::life_change::commit_prepared_life_original_with_outputs(
+            game,
+            ctx,
+            self.prepared.take().expect("life proposal prepared"),
+        )
     }
 
     fn commit(

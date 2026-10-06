@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 
-test("inspector activation follows current payment availability in both layouts", async () => {
+test("inspector keeps affordability styling while unfunded and pending abilities remain clickable in both layouts", async () => {
   const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
   await vite.listen();
   const browser = await chromium.launch();
@@ -18,12 +18,13 @@ test("inspector activation follows current payment availability in both layouts"
       await ability.waitFor();
       await page.waitForFunction(count => window.paymentRequests.length === count, 1 + layout * 2);
       await page.evaluate(() => window.resolveNextPayment());
-      assert.equal(await ability.isDisabled(), true);
+      await page.waitForFunction(() => document.querySelector("button[data-available]")?.getAttribute("data-available") === "false");
+      assert.equal(await ability.isEnabled(), true);
       assert.equal(await ability.getAttribute("data-available"), "false");
       await ability.evaluate(button => button.click());
-      assert.equal(await page.locator("output").textContent(), String(layout));
+      assert.equal(await page.locator("output").textContent(), String(layout * 2 + 1));
       await page.getByRole("button", { name: "Toggle payment" }).click();
-      assert.equal(await ability.isDisabled(), true, "loading a new snapshot must not reuse a stale result");
+      assert.equal(await ability.isEnabled(), true, "pending affordability does not block activation");
       await page.waitForFunction(count => window.paymentRequests.length === count, 2 + layout * 2);
       await page.evaluate(() => window.resolveNextPayment());
       await page.waitForFunction(() => document.querySelector("button[data-available]")?.disabled === false);
@@ -34,9 +35,9 @@ test("inspector activation follows current payment availability in both layouts"
       assert.equal(await ability.isEnabled(), true, "reopening uses the completed result immediately");
       assert.equal(await page.evaluate(() => window.paymentRequests.length), requestsBeforeReopen);
       await ability.click();
-      assert.equal(await page.locator("output").textContent(), String(layout + 1));
+      assert.equal(await page.locator("output").textContent(), String((layout + 1) * 2));
       await page.getByRole("button", { name: "Toggle payment" }).click();
-      assert.equal(await ability.isDisabled(), true);
+      assert.equal(await ability.isEnabled(), true);
       if (layout === 0) await page.getByRole("button", { name: "Toggle layout" }).click();
     }
     await page.evaluate(() => window.resolveNextPayment());
@@ -45,7 +46,7 @@ test("inspector activation follows current payment availability in both layouts"
     await page.getByRole("button", { name: "Toggle payment" }).click();
     await page.waitForFunction(() => window.paymentRequests.length === 7);
     await page.evaluate(() => window.resolveNextPayment());
-    assert.equal(await page.locator("button[data-available]").isDisabled(), true, "late payable results from old snapshots are ignored");
+    assert.equal(await page.locator("button[data-available]").isEnabled(), true, "late analysis never disables the click");
     await page.getByRole("button", { name: "Toggle inspector" }).click();
     const count = await page.evaluate(() => window.paymentRequests.length);
     await page.getByRole("button", { name: "Toggle payment" }).click();
@@ -59,13 +60,13 @@ test("inspector activation follows current payment availability in both layouts"
     const second = page.locator("button[data-available]").nth(1);
     await page.waitForFunction(() => document.querySelector("button[data-available]")?.disabled === false);
     assert.equal(await first.isEnabled(), true, "first ability does not wait for the second ability's planner");
-    assert.equal(await second.isDisabled(), true);
+    assert.equal(await second.isEnabled(), true);
     await page.getByRole("button", { name: "Toggle inspector" }).click();
     await page.getByRole("button", { name: "Toggle inspector" }).click();
     assert.equal(await first.isEnabled(), true);
     assert.equal(await page.evaluate(() => window.paymentRequests.length), 2, "pending requests are also shared across reopenings");
     await page.evaluate(() => window.resolveNextPayment());
-    assert.equal(await second.isDisabled(), true);
+    assert.equal(await second.isEnabled(), true);
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/inspector-payment.html?dual=1`);
     await page.getByRole("button", { name: "Toggle inspector" }).click();
     await page.waitForFunction(() => window.paymentRequests.length === 2);

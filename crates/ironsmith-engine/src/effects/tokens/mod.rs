@@ -5,26 +5,29 @@
 //! - `CreateTokenCopyEffect` - Create token copies of permanents
 
 mod amass;
-mod empower_jace;
 mod create_token;
 mod create_token_copy;
+mod empower_jace;
 mod incubate;
 mod investigate;
 mod lifecycle;
 
 pub use amass::AmassEffect;
-pub use empower_jace::EmpowerJaceEffect;
 pub use create_token::CreateTokenEffect;
 pub(crate) use create_token::materialize_named_creator_source_in_token;
 pub use create_token_copy::{
     CopyAttackTargetMode, CreateTokenCopyEffect, TokenCopyReferenceSurface,
 };
+pub use empower_jace::EmpowerJaceEffect;
 pub use incubate::IncubateEffect;
 pub use investigate::InvestigateEffect;
 
 pub(crate) mod resources;
 pub use resources::TokenCreationLimits;
 
-pub(crate) use lifecycle::{execute_token_instruction_atomically, execute_resource_transaction_atomically};
+pub(crate) use lifecycle::execute_resource_transaction_with_pending_value;
+pub(crate) use lifecycle::{
+    execute_resource_transaction_atomically, execute_token_instruction_atomically,
+};
 
-pub(crate) use create_token::create_tokens_with_entry_counters;
+pub(crate) use create_token::{create_tokens_with_entry_counters, multiplied_token_instruction};

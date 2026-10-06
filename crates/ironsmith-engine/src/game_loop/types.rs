@@ -29,6 +29,36 @@ pub enum GameLoopError {
     ActionError(crate::special_actions::ActionError),
 }
 
+/// Ordinary inability to pay reverses an announcement. Execution faults keep
+/// their typed error so the session can retry without substituting choices.
+pub(super) fn cost_payment_failure(
+    description: String,
+    error: crate::cost::CostPaymentError,
+) -> GameLoopError {
+    use crate::cost::CostPaymentError;
+    match error {
+        CostPaymentError::Cancelled
+        | CostPaymentError::InsufficientMana
+        | CostPaymentError::AlreadyTapped
+        | CostPaymentError::SummoningSickness
+        | CostPaymentError::AlreadyUntapped
+        | CostPaymentError::InsufficientLife
+        | CostPaymentError::SourceNotOnBattlefield
+        | CostPaymentError::NoValidSacrificeTarget
+        | CostPaymentError::InsufficientCardsInHand
+        | CostPaymentError::InsufficientCounters
+        | CostPaymentError::InsufficientEnergy
+        | CostPaymentError::InsufficientCardsToExile
+        | CostPaymentError::InsufficientCardsInGraveyard
+        | CostPaymentError::NoValidReturnTarget
+        | CostPaymentError::InsufficientCardsToReveal => GameLoopError::ActionCancelled(description),
+        CostPaymentError::ExecutionFailed(error) => GameLoopError::ExecutionFailed(error),
+        CostPaymentError::SourceNotFound
+        | CostPaymentError::PlayerNotFound
+        | CostPaymentError::Other(_) => GameLoopError::InvalidState(description),
+    }
+}
+
 /// Response payload for externally driving a pending priority decision.
 ///
 /// This is intentionally limited to decisions that can occur during the

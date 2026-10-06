@@ -1759,14 +1759,14 @@ pub fn compile_vote_sequence(
         return Ok(Some((compiled, choices, consumed)));
     }
 
-    let mut vote_options = named_options
+    let vote_options = named_options
         .as_ref()
         .expect("named vote start should exist")
         .iter()
         .map(|option| VoteOption::new(option.clone(), Vec::new()))
         .collect::<Vec<_>>();
     let mut choices = Vec::new();
-    let mut post_vote_effects = Vec::new();
+    let mut payloads = Vec::new();
     for annotated in effects.iter().take(consumed).skip(1) {
         apply_local_reference_env(ctx, &annotated.in_env);
         ctx.auto_tag_object_targets =
@@ -1785,18 +1785,10 @@ pub fn compile_vote_sequence(
                     let (mut per_vote_effects, per_vote_choices) =
                         compile_effects_in_iterated_player_context(&option_effects_ast, ctx, None)?;
                     preserve_annotated_effect_result_id(annotated, &mut per_vote_effects)?;
-                    let mut matching_vote_option = None;
-                    for (index, vote_option) in vote_options.iter().enumerate() {
-                        if vote_option.name.eq_ignore_ascii_case(option) {
-                            matching_vote_option = Some(index);
-                            break;
-                        }
-                    }
-                    if let Some(vote_option_idx) = matching_vote_option {
-                        vote_options[vote_option_idx]
-                            .effects_per_vote
-                            .extend(per_vote_effects);
-                    }
+                    payloads.push(ironsmith_core::VotePayload::ForEachVote {
+                        option: option.clone(),
+                        effects: per_vote_effects,
+                    });
                     for choice in per_vote_choices {
                         push_choice(&mut choices, choice);
                     }
@@ -1806,7 +1798,7 @@ pub fn compile_vote_sequence(
                         repeat_effects,
                     )];
                     preserve_annotated_effect_result_id(annotated, &mut repeated)?;
-                    post_vote_effects.extend(repeated);
+                    payloads.push(ironsmith_core::VotePayload::Effects(repeated));
                     for choice in repeat_choices {
                         push_choice(&mut choices, choice);
                     }
@@ -1815,7 +1807,7 @@ pub fn compile_vote_sequence(
             _ => {
                 let (mut followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
                 preserve_annotated_effect_result_id(annotated, &mut followups)?;
-                post_vote_effects.extend(followups);
+                payloads.push(ironsmith_core::VotePayload::Effects(followups));
                 for choice in followup_choices {
                     push_choice(&mut choices, choice);
                 }
@@ -1829,12 +1821,12 @@ pub fn compile_vote_sequence(
     } else {
         crate::effects::VoteEffect::new(vote_options, extra_mandatory)
     }
+    .with_payloads(payloads)
     .with_secret(secret)
     .starting_with_controller(starting_with_controller);
     let effect = Effect::new(vote);
     let mut compiled = vec![effect];
     preserve_annotated_effect_result_id(first, &mut compiled)?;
-    compiled.extend(post_vote_effects);
 
     Ok(Some((compiled, choices, consumed)))
 }

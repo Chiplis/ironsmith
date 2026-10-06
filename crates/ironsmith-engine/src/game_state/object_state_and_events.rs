@@ -1243,35 +1243,50 @@ impl GameState {
         }
         let checkpoint = self.clone();
         let result = (|| {
-            let mut completed = Vec::new();
-            while let Some(id) = self
-                .turn_store
-                .pending_day_night_as_transforms
-                .first()
-                .copied()
-            {
-                if let Some(controller) = self
-                    .object(id)
-                    .filter(|object| object.zone == Zone::Battlefield)
-                    .and_then(|_| self.current_controller(id))
-                {
-                    self.execute_as_transforms_effect_programs(id, controller, decision_maker)?;
-                    if decision_maker.awaiting_choice() {
-                        return Ok(());
+            let (mut completed, observations) =
+                crate::effects::with_action_observations(self, |game| {
+                    let mut completed = Vec::new();
+                    while let Some(id) = game
+                        .turn_store
+                        .pending_day_night_as_transforms
+                        .first()
+                        .copied()
+                    {
+                        if let Some(controller) = game
+                            .object(id)
+                            .filter(|object| object.zone == Zone::Battlefield)
+                            .and_then(|_| game.current_controller(id))
+                        {
+                            game.execute_as_transforms_effect_programs(
+                                id,
+                                controller,
+                                decision_maker,
+                            )?;
+                            if decision_maker.awaiting_choice() {
+                                return Ok(completed);
+                            }
+                        }
+                        game.turn_store.pending_day_night_as_transforms.remove(0);
+                        let provenance = game
+                            .provenance_graph_mut()
+                            .alloc_root_event(crate::events::EventKind::Transformed);
+                        completed.push(crate::triggers::TriggerEvent::new_with_provenance(
+                            crate::events::other::TransformedEvent::new(id),
+                            provenance,
+                        ));
                     }
-                }
-                self.turn_store.pending_day_night_as_transforms.remove(0);
-                let provenance = self
-                    .provenance_graph_mut()
-                    .alloc_root_event(crate::events::EventKind::Transformed);
-                completed.push(crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::other::TransformedEvent::new(id),
-                    provenance,
-                ));
+                    Ok(completed)
+                })?;
+            if decision_maker.awaiting_choice() {
+                return Ok(());
             }
             // All day/night changes and "as transforms" choices belong to
             // one completed operation. Never freeze intermediate faces.
-            crate::events::other::freeze_completed_lifecycle_events(self, &mut completed)?;
+            crate::effects::observe_lifecycle_completions_with_observations(
+                self,
+                &mut completed,
+                &observations,
+            )?;
             for event in completed {
                 self.queue_trigger_event(event.provenance(), event);
             }
@@ -3372,26 +3387,134 @@ impl GameState {
         (object_snapshot, source_snapshot)
     }
 
-    pub(crate) fn stage_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
-        // Captured receipts were already committed by their original-operation
-        // owner. Projection must not count them again while an effect returns.
+    /// Execute state construction through ordinary mutation/replacement owners
+    /// while suppressing action history and trigger publication. Local receipt
+    /// journals still serve child programs; enclosing journals/queues are kept
+    /// outside the scope. The caller owns world rollback and pending choices.
+    pub fn with_suppressed_action_observations<T>(
+        &mut self,
+        body: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let previous = self.effect_store.action_observations_suppressed;
+        let events = std::mem::take(&mut self.effect_store.pending_trigger_events);
+        let entries = std::mem::take(&mut self.effect_store.pending_trigger_entries);
+        let reflexive = std::mem::take(&mut self.effect_store.pending_reflexive_triggers);
+        let observers = std::mem::take(&mut self.effect_store.action_observation_records);
+        let results = std::mem::take(&mut self.effect_store.instruction_result_records);
+        let matched = std::mem::take(&mut self.effect_store.matched_outcome_events);
+        self.effect_store.action_observations_suppressed = true;
+        let result = body(self);
+        self.effect_store.action_observations_suppressed = previous;
+        self.effect_store.pending_trigger_events = events;
+        self.effect_store.pending_trigger_entries = entries;
+        self.effect_store.pending_reflexive_triggers = reflexive;
+        self.effect_store.action_observation_records = observers;
+        self.effect_store.instruction_result_records = results;
+        self.effect_store.matched_outcome_events = matched;
+        result
+    }
+
+    pub(crate) fn action_observations_suppressed(&self) -> bool {
+        self.effect_store.action_observations_suppressed
+    }
+
+    pub(crate) fn retain_action_observation(&mut self, event: &crate::triggers::TriggerEvent) {
+        if self.effect_store.action_observation_records.is_empty() {
+            return;
+        }
+        for observations in &mut self.effect_store.action_observation_records {
+            if let Some(previous) = observations
+                .iter_mut()
+                .find(|previous| previous.occurrence_key() == event.occurrence_key())
+            {
+                *previous = if previous.completed_action_provenance().is_some() {
+                    event.with_completed_action_receipt(previous)
+                } else {
+                    event.clone()
+                };
+            } else {
+                observations.push(event.clone());
+            }
+        }
+    }
+
+    pub(crate) fn stage_turn_history_event(&mut self, incoming: &crate::triggers::TriggerEvent) {
+        if self.action_observations_suppressed() {
+            self.retain_action_observation(incoming);
+            return;
+        }
+        // An older alias cannot replace an archived completion's frozen payload.
+        let event = self
+            .turn_store
+            .action_history
+            .iter()
+            .find(|record| {
+                record.event.ptr_eq(incoming)
+                    && record.event.completed_action_provenance().is_some()
+            })
+            .map(|record| incoming.with_completed_action_receipt(&record.event))
+            .unwrap_or_else(|| incoming.clone());
+        self.retain_action_observation(&event);
+        if event.completed_action_provenance().is_some() {
+            let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(&event);
+            let record = self
+                .turn_store
+                .turn_history
+                .refresh_completed_action_record(
+                    &event,
+                    object_snapshot.clone(),
+                    source_snapshot.clone(),
+                )
+                .or_else(|| {
+                    self.turn_store
+                        .action_history
+                        .refresh_completed_action_record(&event, object_snapshot, source_snapshot)
+                });
+            if let Some(record) = record {
+                // Both views share one immutable receipt; replacing it retains
+                // chronology and never appends a past action into the new turn.
+                self.turn_store.action_history.replace_shared(record);
+                self.invalidate_continuous_history_modifiers();
+                return;
+            }
+        }
+        // Captured or archived occurrences have already been counted. This
+        // applies even after turn rollover clears the local alias map/history.
         if event.triggers_captured()
             || self
                 .effect_store
                 .matched_outcome_events
                 .contains_key(&event.occurrence_key())
+            || self
+                .turn_store
+                .action_history
+                .iter()
+                .any(|record| record.event.ptr_eq(&event))
         {
             return;
         }
-        let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
+        let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(&event);
         self.turn_store
             .turn_history
-            .stage_event(event, object_snapshot, source_snapshot);
+            .stage_event(&event, object_snapshot, source_snapshot);
         self.invalidate_continuous_history_modifiers();
     }
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
-        if event.triggers_captured() {
+        if self.action_observations_suppressed()
+            || event.triggers_captured()
+            || self
+                .turn_store
+                .turn_history
+                .event_records
+                .iter()
+                .any(|record| record.event.ptr_eq(event))
+            || self
+                .turn_store
+                .action_history
+                .iter()
+                .any(|record| record.event.ptr_eq(event))
+        {
             return;
         }
         if let Some(mutated) = event.downcast::<crate::events::other::MutatedEvent>() {
@@ -3441,19 +3564,19 @@ impl GameState {
         let Some(record) = self.turn_store.turn_history.event_records.last_shared() else {
             return;
         };
-        let involved_players = self
-            .players
-            .iter()
-            .map(|player| player.id)
-            .filter(|player| record.involves_player(*player))
-            .collect::<Vec<_>>();
-        for player in involved_players {
-            self.turn_store
-                .action_history_by_player
-                .entry(player)
-                .or_default()
-                .push_back(record.clone());
-        }
+        self.turn_store.action_history.push_shared(record);
+    }
+
+    /// Current projections and retained full-game observations are the receipt
+    /// authority, including aliases created before a later turn boundary.
+    pub(crate) fn retained_action_observations(
+        &self,
+    ) -> impl Iterator<Item = &crate::triggers::TriggerEvent> {
+        self.turn_store
+            .turn_history
+            .projected_records()
+            .chain(self.turn_store.action_history.iter())
+            .map(|record| &record.event)
     }
 
     /// Freeze public milling characteristics at the outer instruction boundary,
@@ -3497,7 +3620,7 @@ impl GameState {
     /// Freeze actual entry characteristics at the completed original-operation
     /// boundary. Both reported and queued events use this owner. Simultaneous
     /// callers supply the entire batch after timestamps, before added programs.
-    pub(crate) fn freeze_completed_entry_events<'a>(
+    pub fn freeze_completed_entry_events<'a>(
         &mut self,
         events: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
     ) -> Result<(), crate::effects::ExecutionError> {
@@ -3514,59 +3637,50 @@ impl GameState {
                 .map(|event| &mut **event)
                 .chain(pending.iter_mut())
                 .collect::<Vec<_>>();
-            let mut entries = all
-                .iter_mut()
-                .map(|event| &mut **event)
-                .filter(|event| {
-                    event
-                        .downcast::<crate::events::EnterBattlefieldEvent>()
-                        .is_some_and(|entry| {
-                            entry.completed_snapshot.is_none()
-                                && self
-                                    .object(entry.object)
-                                    .is_some_and(|object| object.zone == Zone::Battlefield)
-                        })
+            let retained = self
+                .retained_action_observations()
+                .filter(|receipt| receipt.completed_action_provenance().is_some())
+                .map(|receipt| receipt.occurrence_key())
+                .collect::<std::collections::HashSet<_>>();
+            let entries = all
+                .iter()
+                .enumerate()
+                .filter_map(|(index, event)| {
+                    let entry = event.downcast::<crate::events::EnterBattlefieldEvent>()?;
+                    // Unobserved departures still need their own retained original
+                    // boundary; do not follow a returned card or invent its arrival.
+                    (entry.completed_snapshot.is_some()
+                        || event.completed_action_provenance().is_some()
+                        || retained.contains(&event.occurrence_key())
+                        || self
+                            .object(entry.object)
+                            .is_some_and(|object| object.zone == Zone::Battlefield))
+                    .then_some(index)
                 })
                 .collect::<Vec<_>>();
             if entries.is_empty() {
                 return Ok(());
             }
-            // Reported token events may still share their effect's provenance.
-            // Give every actual entry a row, then stage the whole batch before
-            // calculating any completed characteristics (including entry counts).
-            for event in &mut entries {
-                let parent = event.provenance();
-                let provenance = if self.provenance_graph().node(parent).is_some() {
-                    self.alloc_child_event_provenance(parent, event.kind())
-                } else {
-                    self.provenance_graph_mut().alloc_root_event(event.kind())
-                };
-                self.turn_store.turn_history.remove_staged_event(parent);
-                event.set_provenance(provenance);
-                self.stage_turn_history_event(event);
+            let completions = entries
+                .iter()
+                .map(|&index| {
+                    let event = &*all[index];
+                    let parent = self
+                        .provenance_graph()
+                        .node(event.provenance())
+                        .map(|_| event.provenance());
+                    (event.clone(), parent)
+                })
+                .collect();
+            let completed =
+                crate::effects::observe_action_completions_retaining_groups(self, completions)?;
+            let destinations = completed
+                .iter()
+                .filter_map(|event| event.snapshot().cloned())
+                .collect::<Vec<_>>();
+            for (index, event) in entries.into_iter().zip(completed) {
+                *all[index] = event;
             }
-            let observed = self
-                .continuous_query_snapshot()
-                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-            let effects = observed
-                .try_all_continuous_effects_arc()
-                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-            let snapshots = entries.iter().map(|event| {
-                let entry = event.downcast::<crate::events::EnterBattlefieldEvent>().unwrap();
-                observed.object(entry.object).map(|object|
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(object, &observed, &effects))
-            }).collect::<Vec<_>>();
-            let destinations = snapshots.iter().flatten().cloned().collect::<Vec<_>>();
-            for (event, snapshot) in entries.iter_mut().zip(snapshots) {
-                let mut entry = event
-                    .downcast::<crate::events::EnterBattlefieldEvent>()
-                    .unwrap()
-                    .clone();
-                entry.completed_snapshot = snapshot;
-                **event = event.with_inner_event(entry);
-                self.stage_turn_history_event(event);
-            }
-            drop(entries);
             // Preserve origin LKI and attach the same exact destination receipt
             // to zone notifications, including reported and queued token events.
             for event in &mut all {
@@ -3721,7 +3835,11 @@ impl GameState {
         let queued = self
             .provenance_graph_mut()
             .alloc_child(event.provenance(), ProvenanceNodeKind::TriggerQueued);
-        event.set_provenance(queued);
+        // Queueing is a scheduling observation. A completed action already has
+        // its own immutable causal row; do not replace it with the queue node.
+        if event.completed_action_provenance().is_none() {
+            event.set_provenance(queued);
+        }
         // CR 603.2c: zone changes performed together (one instruction's
         // objects, one state-based-action check) are one simultaneous event.
         if event.simultaneous_batch().is_none()
@@ -3821,6 +3939,9 @@ impl GameState {
         &mut self,
         entries: impl IntoIterator<Item = crate::triggers::TriggeredAbilityEntry>,
     ) {
+        if self.action_observations_suppressed() {
+            return;
+        }
         self.effect_store.pending_trigger_entries.extend(entries);
     }
 

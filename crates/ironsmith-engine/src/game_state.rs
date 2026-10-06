@@ -34,7 +34,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::{AnthemCountExpression, StaticAbility};
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
-use crate::turn_history::{TurnEventRecord, TurnHistory};
+use crate::turn_history::{TurnEventRecord, TurnEventRecords, TurnHistory};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -721,11 +721,11 @@ struct AuxiliaryTrackingState {
     hidden_splice_players: BTreeSet<PlayerId>,
     /// Hidden cards just drawn whose owner has not yet answered the draw
     /// reveal window, in draw order.
-    pending_hidden_draw_reveals: Vec<(PlayerId, ObjectId)>,
+    pending_hidden_draw_reveals: Vec<hidden_hand_choices::PendingDrawReveal>,
     /// "Reveal the first card you draw each turn" reveals of private hidden
     /// cards, deferred until the owner opens the card publicly so every peer
     /// reads the same characteristics (see `hidden_hand_choices`).
-    pending_hidden_automatic_draw_reveals: Vec<hidden_hand_choices::PendingAutomaticDrawReveal>,
+    pending_hidden_automatic_draw_reveals: Vec<hidden_hand_choices::DeferredAutomaticDrawReveal>,
     /// Noncopiable alpha/beta/gamma designations on battlefield permanents.
     sector_designations: HashMap<ObjectId, crate::marker::SectorDesignation>,
     /// Partially collected asynchronous CR 704.5u choices for the priority driver.
@@ -950,11 +950,10 @@ pub struct TurnStore {
     /// Most recently completed turn for each player rather than merely the
     /// immediately previous table turn.
     last_turn_history_by_player: HashMap<PlayerId, TurnHistory>,
-    /// Committed event/action records retained for the full game and indexed
-    /// by every player whose action or result the record describes.
-    // Simulations branch the game frequently. Persistent sequences share the
-    // full immutable history; appending must not clone every prior snapshot.
-    action_history_by_player: HashMap<PlayerId, im::Vector<Arc<TurnEventRecord>>>,
+    /// One chronological full-game log, including observations without player
+    /// attribution. Player queries derive membership from its frozen receipts.
+    /// Persistent sequences share immutable history across simulation branches.
+    action_history: TurnEventRecords,
     /// Persistent combat-history timestamps used by "since your last upkeep"
     /// predicates. Stable identity survives ordinary zone/object-id churn.
     creature_last_attacked_turn: HashMap<StableId, u32>,
@@ -1036,6 +1035,9 @@ pub struct EffectStore {
     pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
     /// Scoped committed-action evidence, independent of trigger queue draining.
     pub(crate) instruction_result_records: Vec<Vec<crate::effect::ExecutionFact>>,
+    /// Scoped observations retained for deferred action completion, independent
+    /// of trigger queue consumption. Nested observers each retain their receipts.
+    pub(crate) action_observation_records: Vec<Vec<crate::triggers::TriggerEvent>>,
     /// Trigger matches produced inside a nested rules transaction, such as a
     /// spell cast while another spell or ability is resolving. They wait here
     /// until the outer resolution boundary can put them into its trigger queue.
@@ -1056,6 +1058,9 @@ pub struct EffectStore {
     /// queued (coalescing token or damage-prevention events, tagging a zone
     /// change) hold matching off until they are done.
     pub(crate) trigger_matching_holds: u32,
+    /// State construction can execute entry programs without publishing game
+    /// actions. The scoped owner isolates queues and restores this policy.
+    pub(crate) action_observations_suppressed: bool,
     /// Events an effect reported in its result that a nested instruction
     /// boundary already matched, by occurrence. They still travel up in the
     /// enclosing instructions' results, and are skipped when those finish.
@@ -1111,12 +1116,14 @@ impl Default for EffectStore {
             delayed_triggers: Vec::new(),
             pending_trigger_events: Vec::new(),
             instruction_result_records: Vec::new(),
+            action_observation_records: Vec::new(),
             pending_trigger_entries: Vec::new(),
             pending_reflexive_triggers: Vec::new(),
             next_reflexive_trigger_id: 0,
             next_stack_ability_id: STACK_ABILITY_ID_BASE,
             per_event_trigger_matching: false,
             trigger_matching_holds: 0,
+            action_observations_suppressed: false,
             matched_outcome_events: HashMap::new(),
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,

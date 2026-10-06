@@ -457,9 +457,13 @@ fn collect_available_casting_methods_checked(
     game: &GameState, player: PlayerId, spell_id: ObjectId, from_zone: Zone,
 ) -> Result<Vec<crate::decision::CastingMethodOption>, crate::effects::ExecutionError> {
     use crate::decision::{
-        CastingMethodOption, can_cast_spell, can_cast_with_alternative_from_hand,
+        CastingMethodOption,
     };
 
+    let candidates = crate::decision::compute_actions_assuming_mana_for_presentation(game, player, Some(spell_id))?;
+    let can_announce = |method: &CastingMethod| candidates.iter().any(|action| matches!(action,
+        LegalAction::CastSpell { spell_id: id, from_zone: zone, casting_method }
+            if *id == spell_id && *zone == from_zone && casting_method == method));
     let mut methods = Vec::new();
 
     let Some(spell) = game.object(spell_id) else {
@@ -467,7 +471,7 @@ fn collect_available_casting_methods_checked(
     };
 
     // Check normal casting method
-    if from_zone == Zone::Hand && can_cast_spell(game, player, spell, &CastingMethod::Normal) {
+    if from_zone == Zone::Hand && can_announce(&CastingMethod::Normal) {
         let cost_desc = spell
             .mana_cost
             .as_ref()
@@ -487,7 +491,7 @@ fn collect_available_casting_methods_checked(
 
     // Check alternative casting methods from hand
     if from_zone == Zone::Hand {
-        if can_cast_spell(game, player, spell, &CastingMethod::FaceDown) {
+        if can_announce(&CastingMethod::FaceDown) {
             methods.push(CastingMethodOption {
                 method: CastingMethod::FaceDown,
                 name: "Face down".to_string(),
@@ -498,7 +502,7 @@ fn collect_available_casting_methods_checked(
         let has_linked_other_half =
             crate::decision::spell_has_castable_linked_other_half(game, spell);
         if has_linked_other_half {
-            if can_cast_spell(game, player, spell, &CastingMethod::SplitOtherHalf)
+            if can_announce(&CastingMethod::SplitOtherHalf)
                 && let Some(other_def) = game.linked_face_definition_by_name_or_id(
                     spell.other_face_name.as_deref(),
                     spell.other_face,
@@ -519,7 +523,7 @@ fn collect_available_casting_methods_checked(
 
             if spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
                 && spell.has_fuse
-                && can_cast_spell(game, player, spell, &CastingMethod::Fuse)
+                && can_announce(&CastingMethod::Fuse)
             {
                 let cost_desc = crate::decision::spell_mana_cost_for_cast(
                     game,
@@ -541,7 +545,7 @@ fn collect_available_casting_methods_checked(
 
         for (idx, alt_cast) in spell.alternative_casts.iter().enumerate() {
             if alt_cast.cast_from_zone() == Zone::Hand
-                && can_cast_with_alternative_from_hand(game, player, spell, spell_id, alt_cast)
+                && can_announce(&CastingMethod::Alternative(idx))
             {
                 let (name, cost_desc) = format_alternative_method(alt_cast, spell);
                 methods.push(CastingMethodOption {
@@ -559,13 +563,10 @@ fn collect_available_casting_methods_checked(
         let base_alt_idx = spell.alternative_casts.len();
         for (offset, grant) in granted.iter().enumerate() {
             if grant.method.cast_from_zone() != Zone::Hand
-                || !can_cast_with_alternative_from_hand(
-                    game,
-                    player,
-                    spell,
-                    spell_id,
-                    &grant.method,
-                )
+                || !can_announce(&CastingMethod::PlayFrom {
+                    source: grant.source_id, zone: Zone::Hand,
+                    use_alternative: Some(base_alt_idx + offset),
+                })
             {
                 continue;
             }
@@ -584,7 +585,7 @@ fn collect_available_casting_methods_checked(
     }
 
     for method in crate::alternative_cast::price_routes::candidates(game, player, spell)? {
-        if can_cast_spell(game, player, spell, &method) {
+        if can_announce(&method) {
             let receipt = crate::alternative_cast::price_routes::price_receipt(game, player, spell, &method)?;
             if let Some(receipt) = receipt {
                 let provider = game.object(receipt.source).map(|object| object.name.to_string()).unwrap_or_else(|| "Alternative price".into());
@@ -3296,33 +3297,8 @@ pub(super) fn continue_to_targets_or_mana_payment(
         ));
     }
 
-    // Validate that we can still pay the cost after hybrid choices
-    // This is necessary because max_x was calculated assuming life payment for Phyrexian pips,
-    // but the player may have chosen mana payment instead
-    if let Some(ref cost) = pending.mana_cost_to_pay {
-        let x_value = pending.x_value.unwrap_or(0);
-        let expanded_pips =
-            expand_mana_cost_to_pips(cost, x_value as usize, &pending.hybrid_choices);
-        let potential = compute_potential_mana(game, pending.caster);
-
-        // Check if we can pay all the expanded pips (excluding life payments)
-        let total_mana_needed: usize = expanded_pips
-            .iter()
-            .filter(|pip| {
-                !pip.iter()
-                    .any(|s| matches!(s, crate::mana::ManaSymbol::Life(_)))
-            })
-            .count();
-
-        if potential.total() < total_mana_needed as u32 {
-            return Err(GameLoopError::InvalidState(format!(
-                "Cannot afford spell: need {} mana but only have {} available. \
-                Consider paying life for Phyrexian mana or choosing a lower X value.",
-                total_mana_needed,
-                potential.total()
-            )));
-        }
-    }
+    // Announce even without a proven funding path. The payment prompt validates
+    // the chosen pips against actual resources before committing the action.
 
     if pending.remaining_requirements.is_empty() {
         // No targets needed, go to mana payment
@@ -3868,7 +3844,7 @@ pub(super) fn prompt_spell_assist_payment_plan(
     if let Some(existing) = pending.pending_mana_payment.as_ref() {
         request.preferences = existing.request.preferences.clone();
     }
-    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
+    let plan_result = crate::mana_payment::plan_prompt_mana_payment(game, &request, !refining_existing_plan);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -4076,7 +4052,7 @@ pub(super) fn prompt_spell_mana_ability_window(
 ) -> Result<GameProgress, GameLoopError> {
     let refining_existing_plan = pending.pending_mana_payment.is_some();
     let request = spell_mana_payment_request(game, &pending)?;
-    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
+    let plan_result = crate::mana_payment::plan_prompt_mana_payment(game, &request, !refining_existing_plan);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -4142,7 +4118,7 @@ pub(super) fn prompt_activation_mana_ability_window(
     let cost = pending.mana_cost_to_pay.as_ref().ok_or_else(|| {
         GameLoopError::InvalidState("activation payment prompt has no mana cost".to_string())
     })?;
-    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
+    let plan_result = crate::mana_payment::plan_prompt_mana_payment(game, &request, !refining_existing_plan);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(
@@ -4328,36 +4304,7 @@ pub(super) fn continue_spell_cost_payment(
                         "Failed to pay deferred spell cost {}: {err:?}",
                         describe_cost_component(&cost)
                     );
-                    return Err(match err {
-                        // Ordinary inability to pay cancels the proposed cast.
-                        // Effect-driven casting can then execute its authored
-                        // fallback, with the whole cast already reversed.
-                        crate::cost::CostPaymentError::Cancelled
-                        | crate::cost::CostPaymentError::InsufficientMana
-                        | crate::cost::CostPaymentError::AlreadyTapped
-                        | crate::cost::CostPaymentError::SummoningSickness
-                        | crate::cost::CostPaymentError::AlreadyUntapped
-                        | crate::cost::CostPaymentError::InsufficientLife
-                        | crate::cost::CostPaymentError::SourceNotOnBattlefield
-                        | crate::cost::CostPaymentError::NoValidSacrificeTarget
-                        | crate::cost::CostPaymentError::InsufficientCardsInHand
-                        | crate::cost::CostPaymentError::InsufficientCounters
-                        | crate::cost::CostPaymentError::InsufficientEnergy
-                        | crate::cost::CostPaymentError::InsufficientCardsToExile
-                        | crate::cost::CostPaymentError::InsufficientCardsInGraveyard
-                        | crate::cost::CostPaymentError::NoValidReturnTarget
-                        | crate::cost::CostPaymentError::InsufficientCardsToReveal =>
-                            GameLoopError::ActionCancelled(description),
-                        // Replacement/program execution is a different failure;
-                        // preserve the typed error instead of treating it as a
-                        // declined or unpayable cast.
-                        crate::cost::CostPaymentError::ExecutionFailed(error) =>
-                            GameLoopError::ExecutionFailed(error),
-                        crate::cost::CostPaymentError::SourceNotFound
-                        | crate::cost::CostPaymentError::PlayerNotFound
-                        | crate::cost::CostPaymentError::Other(_) =>
-                            GameLoopError::InvalidState(description),
-                    });
+                    return Err(cost_payment_failure(description, err));
                 }
             };
             if cost_ctx.decision_maker.awaiting_choice() {
@@ -6129,12 +6076,17 @@ fn staged_remove_counters_among_allocations(
         std::collections::HashMap::new();
     for (target, amount) in distribution {
         if let Target::Object(object_id) = target {
-            *allocations.entry(object_id).or_insert(0) += amount;
+            let allocated = allocations.entry(object_id).or_insert(0);
+            *allocated = allocated.checked_add(amount).ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "counter distribution exceeds the supported quantity range".into(),
+                )
+            })?;
         }
     }
 
-    let distributed_total: u32 = allocations.values().copied().sum();
-    if distributed_total != cost.count {
+    let distributed_total: u64 = allocations.values().map(|amount| u64::from(*amount)).sum();
+    if distributed_total != u64::from(cost.count) {
         return Err(GameLoopError::InvalidState(format!(
             "counter distribution must assign exactly {} counters (got {})",
             cost.count, distributed_total
@@ -6147,6 +6099,16 @@ fn staged_remove_counters_among_allocations(
         if amount > 0 {
             ordered.push_back((object_id, amount));
         }
+    }
+    if allocations.values().any(|amount| *amount != 0) {
+        return Err(GameLoopError::InvalidState(
+            "counter distribution includes an ineligible object".into(),
+        ));
+    }
+    if cost.single_object && ordered.len() > 1 {
+        return Err(GameLoopError::InvalidState(
+            "counter cost requires a single selected object".into(),
+        ));
     }
     Ok(ordered)
 }
@@ -6185,24 +6147,14 @@ pub(super) fn continue_activation_remove_counters_among_payment(
     };
 
     let requested_count = if cost.dynamic_count {
-        let total_available = crate::effects::remove_any_counters_among_valid_targets_with_tags(
+        let total_available = crate::effects::counters::total_available_with_tags(
             &cost,
             game,
             pending.source,
             pending.activator,
             &pending.tagged_objects,
-        )
-        .into_iter()
-        .filter_map(|id| game.object(id))
-        .map(|object| {
-            if let Some(counter_type) = cost.counter_type {
-                object.counters.get(&counter_type).copied().unwrap_or(0)
-            } else {
-                object.counters.values().copied().sum::<u32>()
-            }
-        })
-        .sum::<u32>();
-        let max_count = cost.count.min(total_available);
+        );
+        let max_count = u64::from(cost.count).min(total_available) as u32;
         if pending.x_value.is_none() {
             if max_count < cost.min_count {
                 return Err(GameLoopError::InvalidState(format!(
@@ -6224,11 +6176,20 @@ pub(super) fn continue_activation_remove_counters_among_payment(
                 crate::decisions::context::DecisionContext::Number(ctx),
             ));
         }
-        pending
+        let announced = pending
             .x_value
             .and_then(|value| u32::try_from(value).ok())
-            .unwrap_or(cost.min_count)
-            .clamp(cost.min_count, max_count)
+            .ok_or_else(|| {
+                GameLoopError::InvalidState(
+                    "announced counter-cost quantity exceeds the supported range".into(),
+                )
+            })?;
+        if announced < cost.min_count || announced > max_count {
+            return Err(GameLoopError::InvalidState(
+                "announced counter-cost quantity is not payable".into(),
+            ));
+        }
+        announced
     } else {
         cost.count
     };
@@ -6241,7 +6202,8 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             cost: cost.clone(),
             distribution_ready: false,
             allocations: std::collections::VecDeque::new(),
-            removed_total: 0,
+            selected_removals: Vec::new(),
+            selected_total: 0,
         });
 
     if !staged.distribution_ready {
@@ -6302,13 +6264,76 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             break;
         };
         let Some((object_id, amount_for_target)) = staged.allocations.front().copied() else {
-            let removed_total = staged.removed_total;
-            pending.pending_remove_counters_among = None;
-            if removed_total != cost.count {
+            if staged.selected_total != cost.count {
                 return Err(GameLoopError::InvalidState(
-                    "staged counter payment removed the wrong number of counters".to_string(),
+                    "staged counter payment selected the wrong number of counters".into(),
                 ));
             }
+            let events = staged
+                .selected_removals
+                .iter()
+                .map(|(object, kind, count)| {
+                    crate::events::Event::remove_counters(*object, *kind, *count)
+                        .with_provenance(pending.provenance)
+                })
+                .collect();
+            let source_snapshot = game
+                .object(pending.source)
+                .map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+                .unwrap_or_else(|| pending.source_snapshot.clone());
+            let mut exec = crate::effects::ExecutionContext::new(
+                pending.source,
+                pending.activator,
+                &mut *decision_maker,
+            )
+            .with_cause(crate::events::cause::EventCause::from_cost(
+                pending.source,
+                pending.activator,
+            ))
+            .with_provenance(pending.provenance);
+            exec.source_snapshot = Some(source_snapshot.clone());
+            exec.tagged_objects = pending.tagged_objects.clone();
+            exec.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
+            let payment = crate::effects::counters::execute_counter_removal_cost_batch(
+                game, &mut exec, events,
+            );
+            if exec.decision_maker.awaiting_choice() && payment.is_ok() {
+                state.pending_activation = Some(pending);
+                return Ok(GameProgress::Continue);
+            }
+            let payment = match payment {
+                Ok(payment)
+                    if payment.instruction_result().count_or_zero() == i64::from(cost.count)
+                        && !payment.status.is_failure() =>
+                {
+                    payment
+                }
+                Ok(_) => {
+                    state.rollback_action(game);
+                    return Err(GameLoopError::InvalidState(
+                        "counter selections no longer form a payable cost".into(),
+                    ));
+                }
+                Err(error) => {
+                    state.rollback_action(game);
+                    return Err(GameLoopError::InvalidState(format!(
+                        "counter payment failed: {error}"
+                    )));
+                }
+            };
+            pending.tagged_objects = exec.tagged_objects;
+            pending.source_snapshot = game
+                .object(pending.source)
+                .map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
+                .unwrap_or(source_snapshot);
+            for event in payment.events {
+                game.queue_trigger_event(event.provenance(), event);
+            }
+            pending.pending_remove_counters_among = None;
             let paid_cost = crate::costs::Cost::effect(cost.clone());
             record_immediate_cost_payment(&mut pending.payment_trace, &paid_cost, pending.source);
             pending.remaining_cost_steps.remove(0);
@@ -6318,25 +6343,10 @@ pub(super) fn continue_activation_remove_counters_among_payment(
         };
 
         if let Some(counter_type) = cost.counter_type {
-            let removed = game
-                .remove_counters(
-                    object_id,
-                    counter_type,
-                    amount_for_target,
-                    Some(pending.source),
-                    Some(pending.activator),
-                )
-                .map(|(removed, event)| {
-                    game.queue_trigger_event(pending.provenance, event);
-                    removed
-                })
-                .unwrap_or(0);
-            if removed != amount_for_target {
-                return Err(GameLoopError::InvalidState(
-                    "failed to remove the allocated counters".to_string(),
-                ));
-            }
-            staged.removed_total += removed;
+            staged
+                .selected_removals
+                .push((object_id, counter_type, amount_for_target));
+            staged.selected_total += amount_for_target;
             staged.allocations.pop_front();
             continue;
         }
@@ -6351,8 +6361,11 @@ pub(super) fn continue_activation_remove_counters_among_payment(
                     .collect()
             })
             .unwrap_or_default();
-        let available_total: u32 = available_counters.iter().map(|(_, count)| *count).sum();
-        if available_total < amount_for_target {
+        let available_total: u64 = available_counters
+            .iter()
+            .map(|(_, count)| u64::from(*count))
+            .sum();
+        if available_total < u64::from(amount_for_target) {
             return Err(GameLoopError::InvalidState(
                 "allocated target no longer has enough counters".to_string(),
             ));
@@ -6396,33 +6409,33 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             return Ok(GameProgress::Continue);
         }
 
-        let mut removed_from_target = 0u32;
+        let mut selected_from_target = 0u32;
+        let mut remaining_by_kind = available_counters
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
         for (counter_type, requested) in selections {
-            if removed_from_target >= amount_for_target {
+            if selected_from_target >= amount_for_target {
                 break;
             }
-            let remaining = amount_for_target - removed_from_target;
-            let to_remove = requested.min(remaining);
+            let available = remaining_by_kind.entry(counter_type).or_default();
+            let to_remove = requested
+                .min(amount_for_target - selected_from_target)
+                .min(*available);
             if to_remove == 0 {
                 continue;
             }
-            if let Some((removed, event)) = game.remove_counters(
-                object_id,
-                counter_type,
-                to_remove,
-                Some(pending.source),
-                Some(pending.activator),
-            ) {
-                game.queue_trigger_event(pending.provenance, event);
-                removed_from_target += removed;
-            }
+            *available -= to_remove;
+            staged
+                .selected_removals
+                .push((object_id, counter_type, to_remove));
+            selected_from_target += to_remove;
         }
-        if removed_from_target != amount_for_target {
+        if selected_from_target != amount_for_target {
             return Err(GameLoopError::InvalidState(
-                "failed to remove the requested counters".to_string(),
+                "failed to select the requested counters".into(),
             ));
         }
-        staged.removed_total += removed_from_target;
+        staged.selected_total += selected_from_target;
         staged.allocations.pop_front();
     }
 
@@ -6483,10 +6496,13 @@ pub(super) fn continue_activation_cost_payment(
                 Err(err) => {
                     // CR 602.2b: an unpayable cost reverses the activation.
                     state.rollback_action(game);
-                    return Err(GameLoopError::InvalidState(format!(
-                        "Failed to pay deferred activation cost {}: {err:?}",
-                        cost.display()
-                    )));
+                    return Err(cost_payment_failure(
+                        format!(
+                            "Failed to pay deferred activation cost {}: {err:?}",
+                            cost.display()
+                        ),
+                        err,
+                    ));
                 }
             };
             if cost_ctx.decision_maker.awaiting_choice() {
@@ -6968,34 +6984,8 @@ pub(super) fn continue_activation(
             ActivationStage::AnnouncingCost => {
                 // Handle hybrid/Phyrexian mana announcement (per MTG rule 601.2b via 602.2b)
                 if pending.pending_hybrid_pips.is_empty() {
-                    // All hybrid pips announced - validate that we can still pay the cost
-                    // This is necessary because max_x was calculated assuming life payment for Phyrexian pips,
-                    // but the player may have chosen mana payment instead
-                    if let Some(ref cost) = pending.mana_cost_to_pay {
-                        let x_value = pending.x_value.unwrap_or(0);
-                        let expanded_pips =
-                            expand_mana_cost_to_pips(cost, x_value, &pending.hybrid_choices);
-                        let potential = compute_potential_mana(game, pending.activator);
-
-                        // Check if we can pay all the expanded pips
-                        let total_mana_needed: usize = expanded_pips
-                            .iter()
-                            .filter(|pip| {
-                                !pip.iter()
-                                    .any(|s| matches!(s, crate::mana::ManaSymbol::Life(_)))
-                            })
-                            .count();
-
-                        if potential.total() < total_mana_needed as u32 {
-                            return Err(GameLoopError::InvalidState(format!(
-                                "Cannot afford ability: need {} mana but only have {} available. \
-                            Consider paying life for Phyrexian mana or choosing a lower X value.",
-                                total_mana_needed,
-                                potential.total()
-                            )));
-                        }
-                    }
-
+                    // Actual payment, rather than potential-mana estimation,
+                    // validates funding after the player finishes announcing.
                     pending.stage = activation_stage_after_announcements(&pending);
                     continue;
                 }

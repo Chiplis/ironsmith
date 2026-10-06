@@ -74,23 +74,21 @@ impl EffectExecutor for FlipCoinEffect {
         if self.count != 1 {
             let mut single = self.clone();
             single.count = 1;
-            let mut count = 0;
-            let mut events = Vec::new();
-            let mut facts = Vec::new();
+            let mut outcomes = Vec::new();
             for _ in 0..self.count {
-                let outcome = single.execute(game, ctx)?;
+                let outcome = single.execute_child(game, ctx)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(outcome);
                 }
-                count += outcome.as_count().unwrap_or(0);
-                events.extend(outcome.events);
-                facts.extend(outcome.execution_facts);
+                outcomes.push(outcome);
             }
-            return Ok(EffectOutcome::with_details(
-                crate::effect::OutcomeStatus::Succeeded,
-                crate::effect::OutcomeValue::Count(count),
-                events,
-                facts,
+            let count = outcomes
+                .iter()
+                .map(|outcome| outcome.instruction_result().count_or_zero())
+                .sum::<i64>();
+            return Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(count),
+                outcomes,
             ));
         }
         let player = resolve_player_filter(game, &self.player, ctx)?;

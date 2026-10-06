@@ -67,21 +67,38 @@ pub(crate) fn dungeon_room_source_id(player: PlayerId) -> ObjectId {
     ObjectId::from_raw(u64::MAX - 0x1_0000 - u64::from(player.index() as u32))
 }
 
-/// Remove a completed dungeon from the game (CR 309.7) and emit the
-/// completion event.
+/// One owner for dungeon removal and completion history, whether reached by
+/// a venture instruction or the rule-driven finished-dungeon check.
+#[derive(Debug, Clone)]
+struct CompletePlayerDungeon(PlayerId);
+
+impl EffectExecutor for CompletePlayerDungeon {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Some(progress) = game.active_dungeon(self.0).cloned() else {
+            return Ok(EffectOutcome::count(0));
+        };
+        game.clear_active_dungeon(self.0);
+        game.record_completed_dungeon(self.0, progress.dungeon_name);
+        crate::effects::composition::complete_keyword_action(
+            game,
+            ctx,
+            KeywordActionEvent::new(KeywordActionKind::CompleteDungeon, self.0, ctx.source, 1),
+        )
+    }
+}
+
 fn complete_player_dungeon(
     game: &mut GameState,
-    player_id: PlayerId,
-    source: ObjectId,
-    provenance: crate::provenance::ProvNodeId,
-) -> Option<TriggerEvent> {
-    let progress = game.active_dungeon(player_id).cloned()?;
-    game.clear_active_dungeon(player_id);
-    game.record_completed_dungeon(player_id, progress.dungeon_name);
-    Some(TriggerEvent::new_with_provenance(
-        KeywordActionEvent::new(KeywordActionKind::CompleteDungeon, player_id, source, 1),
-        provenance,
-    ))
+    ctx: &mut ExecutionContext,
+    player: PlayerId,
+) -> Result<EffectOutcome, ExecutionError> {
+    crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+        CompletePlayerDungeon(player).execute_child(game, ctx)
+    })
 }
 
 /// CR 704.5t / 309.6: a dungeon whose venture marker is on its bottommost
@@ -90,7 +107,7 @@ fn complete_player_dungeon(
 pub(crate) fn complete_finished_dungeons(
     game: &mut GameState,
     trigger_queue: &crate::triggers::TriggerQueue,
-) -> bool {
+) -> Result<bool, ExecutionError> {
     let finished = game
         .players
         .iter()
@@ -120,12 +137,17 @@ pub(crate) fn complete_finished_dungeons(
         let provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::KeywordAction);
-        if let Some(event) = complete_player_dungeon(game, player, source, provenance) {
+        let mut ctx = ExecutionContext::new_default(source, player);
+        ctx.provenance = provenance;
+        ctx.cause = crate::events::EventCause::from_sba();
+        let outcome = complete_player_dungeon(game, &mut ctx, player)?;
+        for event in outcome.events {
+            let provenance = event.provenance();
             game.queue_trigger_event(provenance, event);
             completed = true;
         }
     }
-    completed
+    Ok(completed)
 }
 
 /// Queue the room ability of the room the venture marker just moved into
@@ -198,80 +220,90 @@ pub(crate) fn advance_player_dungeon(
     player_id: PlayerId,
     undercity_if_no_active: bool,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let mut outcome = EffectOutcome::resolved();
-    let (dungeon_name, room_name) = if let Some(progress) = game.active_dungeon(player_id).cloned()
-    {
-        let next_rooms =
-            next_room_names(&progress.dungeon_name, &progress.room_name).ok_or_else(|| {
-                ExecutionError::Impossible(format!(
-                    "missing next room data for {} -> {}",
-                    progress.dungeon_name, progress.room_name
-                ))
-            })?;
-        if next_rooms.is_empty() {
-            // CR 701.49c: venturing from the bottommost room (its room ability
-            // is still on the stack) completes the dungeon and starts another.
-            if let Some(event) =
-                complete_player_dungeon(game, player_id, ctx.source, ctx.provenance)
-            {
-                outcome = outcome.with_event(event);
-            }
-            let Some(start) =
-                choose_dungeon_to_start(game, ctx, player_id, undercity_if_no_active)?
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
-            start
-        } else {
-            let next_room = if next_rooms.len() == 1 {
-                next_rooms[0].clone()
+    crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+        let mut outcome = EffectOutcome::resolved();
+        let (dungeon_name, room_name) =
+            if let Some(progress) = game.active_dungeon(player_id).cloned() {
+                let next_rooms = next_room_names(&progress.dungeon_name, &progress.room_name)
+                    .ok_or_else(|| {
+                        ExecutionError::Impossible(format!(
+                            "missing next room data for {} -> {}",
+                            progress.dungeon_name, progress.room_name
+                        ))
+                    })?;
+                if next_rooms.is_empty() {
+                    // CR 701.49c: venturing from the bottommost room (its room ability
+                    // is still on the stack) completes the dungeon and starts another.
+                    let completion = complete_player_dungeon(game, ctx, player_id)?;
+                    outcome = EffectOutcome::aggregate_with_primary_result(outcome, [completion]);
+                    let Some(start) =
+                        choose_dungeon_to_start(game, ctx, player_id, undercity_if_no_active)?
+                    else {
+                        return Ok(EffectOutcome::count(0));
+                    };
+                    start
+                } else {
+                    let next_room = if next_rooms.len() == 1 {
+                        next_rooms[0].clone()
+                    } else {
+                        let Some(next_room) = choose_named_option(
+                            ctx,
+                            game,
+                            player_id,
+                            "Choose the next dungeon room",
+                            &next_rooms,
+                        )?
+                        else {
+                            return Ok(EffectOutcome::count(0));
+                        };
+                        next_room
+                    };
+                    (progress.dungeon_name, next_room)
+                }
             } else {
-                let Some(next_room) = choose_named_option(
-                    ctx,
-                    game,
-                    player_id,
-                    "Choose the next dungeon room",
-                    &next_rooms,
-                )?
+                let Some(start) =
+                    choose_dungeon_to_start(game, ctx, player_id, undercity_if_no_active)?
                 else {
                     return Ok(EffectOutcome::count(0));
                 };
-                next_room
+                start
             };
-            (progress.dungeon_name, next_room)
-        }
-    } else {
-        let Some(start) = choose_dungeon_to_start(game, ctx, player_id, undercity_if_no_active)?
-        else {
-            return Ok(EffectOutcome::count(0));
-        };
-        start
-    };
 
-    game.set_active_dungeon(
-        player_id,
-        ActiveDungeonProgress::new(dungeon_name.clone(), room_name.clone()),
-    );
-    let venture_event = TriggerEvent::new_with_provenance(
-        KeywordActionEvent::new(
-            KeywordActionKind::VentureIntoDungeon,
+        game.set_active_dungeon(
             player_id,
-            ctx.source,
-            1,
-        ),
-        ctx.provenance,
-    );
-    // CR 309.4c: moving the venture marker into a room triggers its room
-    // ability. Completing the dungeon waits for that ability (CR 704.5t).
-    queue_room_ability(
-        game,
-        player_id,
-        &dungeon_name,
-        &room_name,
-        venture_event.clone(),
-    );
+            ActiveDungeonProgress::new(dungeon_name.clone(), room_name.clone()),
+        );
+        let completion = crate::effects::composition::complete_keyword_action(
+            game,
+            ctx,
+            KeywordActionEvent::new(
+                KeywordActionKind::VentureIntoDungeon,
+                player_id,
+                ctx.source,
+                1,
+            ),
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let venture_event = completion.events.first().cloned().ok_or_else(|| {
+            ExecutionError::InternalError("venture completed without its action observation".into())
+        })?;
+        // CR 309.4c: moving the venture marker into a room triggers its room
+        // ability. Completing the dungeon waits for that ability (CR 704.5t).
+        queue_room_ability(
+            game,
+            player_id,
+            &dungeon_name,
+            &room_name,
+            venture_event.clone(),
+        );
 
-    Ok(outcome.with_event(venture_event))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            outcome,
+            [completion],
+        ))
+    })
 }
 
 impl EffectExecutor for VentureIntoDungeonEffect {

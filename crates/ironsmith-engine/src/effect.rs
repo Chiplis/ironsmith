@@ -24,9 +24,9 @@ use crate::color::ColorSet;
 use crate::effects::{EffectExecutionCategory, EffectExecutor};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, PlayerId};
 #[cfg(test)]
 use crate::ids::StableId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 pub use crate::snapshot::ObjectSnapshot;
@@ -206,9 +206,16 @@ pub enum ExecutionFact {
     ExcessDamageDealt,
     ExcessDamage(u32),
     /// Actual prevention, retained independently of the trigger queue.
-    PreventedDamageReceipt { receipt: crate::provenance::ProvNodeId, amount: u32 },
+    PreventedDamageReceipt {
+        receipt: crate::provenance::ProvNodeId,
+        amount: u32,
+    },
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
+    /// Quantity selected for the original instruction, before replacements.
+    /// Compound quantity owners append their total after child receipts. This
+    /// is independent of actual action metrics and auxiliary replacement work.
+    RequestedAmount(u64),
     OtherNumber(u32),
     AppliedNameSticker {
         sticker_id: u64,
@@ -621,6 +628,24 @@ impl EffectOutcome {
         self.execution_facts.push(fact);
     }
 
+    /// Record this instruction's planned quantity independently of its result.
+    pub(crate) fn with_requested_amount(self, amount: impl Into<u64>) -> Self {
+        self.with_execution_fact(ExecutionFact::RequestedAmount(amount.into()))
+    }
+
+    /// The enclosing quantity owner's receipt overrides its component receipts.
+    /// Replacement payloads never supply the original instruction's quantity.
+    pub(crate) fn requested_amount(&self) -> Option<u64> {
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .rev()
+            .find_map(|fact| match fact {
+                ExecutionFact::RequestedAmount(amount) => Some(*amount),
+                _ => None,
+            })
+    }
+
     /// Add multiple execution facts to this outcome.
     pub fn with_execution_facts(mut self, facts: impl IntoIterator<Item = ExecutionFact>) -> Self {
         for fact in facts {
@@ -791,6 +816,18 @@ impl EffectOutcome {
         outcome
     }
 
+    /// Keep the authored result frame while the action owner supplies the
+    /// authoritative chronological observations. Routing views must never be
+    /// concatenated into history alongside that owner's shared outputs.
+    pub(crate) fn with_authoritative_observations(mut self, observations: Self) -> Self {
+        if self.instruction_result.is_none() {
+            self.instruction_result = Some(Box::new(self.clone()));
+        }
+        self.events = observations.events;
+        self.execution_facts = observations.execution_facts;
+        self
+    }
+
     /// Copy only an instruction's authored status/value, so its observations
     /// can be supplied exactly once as a child of a composed outcome.
     pub fn summary_projection(&self) -> Self {
@@ -810,13 +847,22 @@ impl EffectOutcome {
         player: Option<PlayerId>,
     ) -> Vec<&ObjectSnapshot> {
         let mut seen = std::collections::HashSet::new();
-        self.instruction_result().execution_facts.iter().filter_map(|fact| {
-            match fact {
-                ExecutionFact::ActionObjects { action: observed, player: actor, objects }
-                    if *observed == action && player.is_none_or(|player| *actor == Some(player)) => Some(objects),
+        self.instruction_result()
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                ExecutionFact::ActionObjects {
+                    action: observed,
+                    player: actor,
+                    objects,
+                } if *observed == action && player.is_none_or(|player| *actor == Some(player)) => {
+                    Some(objects)
+                }
                 _ => None,
-            }
-        }).flatten().filter(|snapshot| seen.insert(snapshot.stable_id)).collect()
+            })
+            .flatten()
+            .filter(|snapshot| seen.insert(snapshot.stable_id))
+            .collect()
     }
 
     /// Aggregate repeated homogeneous outcomes into a single outcome.
@@ -2029,6 +2075,24 @@ impl Effect {
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, crate::effects::ExecutionError>
     {
         let inner = self.0.prepare_simultaneous_player_action(game, ctx)?;
+        Ok(crate::effects::outcome_recording::record_proposal(
+            inner,
+            self.0.result_action(),
+        ))
+    }
+
+    /// Record a cost owner's proposal through the same authored action gateway.
+    /// Payment decorators retain their scopes while preparing payment children.
+    pub fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, crate::effects::ExecutionError>
+    {
+        let cost = self.0.as_cost_executable().ok_or_else(|| {
+            crate::effects::ExecutionError::Impossible("effect has no payment contract".into())
+        })?;
+        let inner = cost.prepare_simultaneous_payment(game, ctx)?;
         Ok(crate::effects::outcome_recording::record_proposal(
             inner,
             self.0.result_action(),

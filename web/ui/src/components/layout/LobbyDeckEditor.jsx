@@ -24,12 +24,12 @@ const lobbyCommanderTextareaClass =
   "fantasy-field lobby-sheet-commander-input min-h-[108px] w-full p-3 text-[14px] text-foreground outline-none font-mono resize-none";
 const lobbyInfoTextClass = "grid gap-1 text-[13px] leading-6 text-muted-foreground";
 
-// Catalog decks are Modern lists, so the picker only serves normal tables.
 export function LobbyDeckCatalogPicker({ format, disabled = false, onChange }) {
-  if (disabled || normalizeMatchFormat(format) !== MATCH_FORMAT_NORMAL) return null;
+  const matchFormat = normalizeMatchFormat(format);
+  if (disabled || matchFormat === MATCH_FORMAT_PLANECHASE) return null;
   return (
     <CompetitiveDeckPicker
-      format="modern"
+      format={matchFormat === MATCH_FORMAT_COMMANDER ? "commander" : matchFormat === MATCH_FORMAT_NORMAL ? "modern" : matchFormat}
       onApply={({ deckText, commanderText }) => {
         onChange({ deckText, commanderText: commanderText || "" });
       }}
@@ -72,7 +72,7 @@ export default function LobbyDeckEditor({
             onChange={(event) => {
               const option = deckOptions.find((entry) => entry.id === event.target.value);
               if (!option) return;
-              onChange({ deckText: option.deckText, commanderText: "" });
+              onChange({ deckText: option.deckText, commanderText: option.commanderText || "" });
             }}
           >
             <option value="">{ui("Custom / edit below")}</option>

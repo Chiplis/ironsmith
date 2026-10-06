@@ -7,4 +7,5 @@ mod remove_counters;
 
 pub use move_counters::MoveCountersEvent;
 pub use put_counters::PutCountersEvent;
-pub use remove_counters::RemoveCountersEvent;
+pub use remove_counters::{RemoveCountersEvent, RemovePlayerCountersEvent};
+pub(crate) use remove_counters::CounterRemovalEvent;

@@ -88,7 +88,7 @@ fn check_and_apply_sbas_with_inner(
             game.refresh_continuous_state();
         }
         // CR 704.5t: remove dungeons whose last room ability has left the stack.
-        crate::effects::player::complete_finished_dungeons(game, trigger_queue);
+        crate::effects::player::complete_finished_dungeons(game, trigger_queue)?;
         // Events since the previous check (the transforms above, sector
         // choices, dungeon completion) are matched before this check's
         // actions are performed (CR 603.2).
@@ -403,10 +403,16 @@ fn resolve_pending_hidden_draw_reveals(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> bool {
+    // Enclosing setup must neither consume existing trigger offers nor finish
+    // deferred disclosures under a different observation policy.
+    if game.action_observations_suppressed() {
+        return false;
+    }
     // "Reveal the first card you draw each turn" reveals deferred from a
     // draw step come first: a card they open publicly no longer needs its own
     // Miracle question below.
-    while let Some(pending) = game.next_pending_hidden_automatic_draw_reveal() {
+    while let Some(deferred) = game.next_pending_hidden_automatic_draw_reveal() {
+        let pending = deferred.reveal;
         let revealed = if game.hidden_identity_is_private(pending.card) {
             let Some(revealed) = game.reveal_private_hidden_cards_publicly(
                 decision_maker,
@@ -429,22 +435,19 @@ fn resolve_pending_hidden_draw_reveals(
         game.refresh_continuous_state();
         let candidate =
             crate::effects::cards::automatic_draw_reveal_candidate_for_pending(game, &pending);
-        let provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::CardRevealed);
         let event = crate::effects::cards::emit_automatic_draw_reveal_event(
             game,
             decision_maker,
             &candidate,
-            provenance,
+            deferred.parent_provenance,
         );
-        game.record_turn_history_event(&event);
-        for trigger in crate::triggers::check_triggers(game, &event) {
-            trigger_queue.add(trigger);
+        if !deferred.observations_suppressed {
+            queue_triggers_from_event(game, trigger_queue, event, true);
         }
     }
 
-    while let Some((player, card)) = game.next_pending_hidden_draw_reveal() {
+    while let Some(pending) = game.next_pending_hidden_draw_reveal() {
+        let (player, card) = (pending.player, pending.card);
         // Already opened publicly by another owner-answered reveal of this
         // draw: re-check its draw triggers without asking again.
         let revealed = if game.hidden_identity_is_private(card) {
@@ -466,15 +469,8 @@ fn resolve_pending_hidden_draw_reveals(
         if !revealed {
             continue;
         }
-        let provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::CardsDrawn);
-        let event = TriggerEvent::new(
-            crate::events::other::CardsDrawnEvent::new(player, vec![card], true),
-            provenance,
-        );
         game.refresh_continuous_state();
-        for trigger in crate::triggers::check_triggers(game, &event) {
+        for trigger in crate::triggers::check_triggers(game, &pending.event) {
             // Every other source already saw the original draw event.
             if trigger.source == card {
                 trigger_queue.add(trigger);

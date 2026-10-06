@@ -12,3 +12,35 @@
 
 @import "./styles/mobile-battle.css";
 @import "./styles/mana-payment.css";
+@import "./styles/priority-stops.css";
+
+.surrender-button,
+.table-shell button.surrender-button.table-zone-action-button,
+.settings-sheet button.surrender-button.stone-pill {
+  color: #ffaaaa !important;
+  -webkit-text-fill-color: #ffaaaa !important;
+  border: 1px solid #b54d57 !important;
+  background: linear-gradient(135deg, #45202b, #22151b) !important;
+  box-shadow: inset 0 0 12px #9e354522, 0 0 8px #9e354522 !important;
+}
+.surrender-button:hover:not(:disabled) {
+  color: #ffd4d4 !important;
+  box-shadow: inset 0 0 14px #9e354544, 0 0 12px #9e354555 !important;
+}
+.surrender-confirm-yes {
+  --decision-main-accent: #ff8585;
+  --decision-main-rgb: 255, 133, 133;
+}
+.surrender-confirm-no {
+  --decision-main-accent: #85efac;
+  --decision-main-rgb: 133, 239, 172;
+}
+
+.surrender-confirmation .surrender-confirm-yes,
+.surrender-confirmation .surrender-confirm-no {
+  color: var(--decision-main-accent) !important;
+  -webkit-text-fill-color: var(--decision-main-accent) !important;
+  border: 1px solid var(--decision-main-accent) !important;
+  background: linear-gradient(180deg, rgba(var(--decision-main-rgb), 0.35), #1c1718) !important;
+  box-shadow: inset 0 1px 0 rgba(var(--decision-main-rgb), 0.2), 0 0 10px rgba(var(--decision-main-rgb), 0.2) !important;
+}

@@ -6,12 +6,12 @@ use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::events::ShuffleLibraryEvent;
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
 
@@ -175,10 +175,17 @@ fn execute_prepared_shuffle_objects_action_inner(
         }
         let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
         let outcome = apply_zone_change_with_context_and_additional_effects(
-            game, object_id, from_zone, Zone::Library, ctx.cause.clone(),
-            ctx, &additional_effects,
+            game,
+            object_id,
+            from_zone,
+            Zone::Library,
+            ctx.cause.clone(),
+            ctx,
+            &additional_effects,
         )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let original = outcome.original.clone();
         receipts.push((object_id, outcome));
         match original {
@@ -191,11 +198,17 @@ fn execute_prepared_shuffle_objects_action_inner(
                 }
                 // A replacement destination is still committed. Only objects
                 // that actually reach the library participate in this shuffle.
-                if result.final_zone != Zone::Library { continue; }
+                if result.final_zone != Zone::Library {
+                    continue;
+                }
                 for &new_id in &result.new_object_ids {
                     if let Some(owner) = game.object(new_id).map(|moved| moved.owner) {
-                        game.move_library_card_to_bottom(
-                            owner, new_id, "card moved into library before shuffle",
+                        crate::effects::cards::position_library_card(
+                            game,
+                            owner,
+                            new_id,
+                            crate::effects::cards::LibraryCardPosition::Bottom,
+                            "card moved into library before shuffle",
                         );
                     }
                 }
@@ -207,21 +220,29 @@ fn execute_prepared_shuffle_objects_action_inner(
 
     // Complete the original zone-change batch before running its additions.
     // The subsequent shuffle is a later action and observes those programs.
-    let original = if moved_ids.is_empty() { EffectOutcome::resolved() }
-        else { EffectOutcome::with_objects(moved_ids) };
-    let mut outcome = super::finish_zone_change_receipts(game, ctx, original, receipts)?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-    let mut shuffle_events = Vec::with_capacity(prepared.players_to_shuffle.len());
-    for player_id in prepared.players_to_shuffle {
-        game.shuffle_player_library(player_id);
-        shuffle_events.push(TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        ));
+    let original = if moved_ids.is_empty() {
+        EffectOutcome::resolved()
+    } else {
+        EffectOutcome::with_objects(moved_ids)
+    };
+    let outcome = super::finish_zone_change_receipts(game, ctx, original, receipts)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
     }
-
-    outcome.events.extend(shuffle_events);
-    Ok(outcome)
+    let mut shuffles = Vec::with_capacity(prepared.players_to_shuffle.len());
+    for player_id in prepared.players_to_shuffle {
+        shuffles.push(crate::effects::cards::shuffle_library(
+            game,
+            ctx,
+            player_id,
+            &[],
+            1,
+            "library shuffled after movement",
+        )?);
+    }
+    Ok(EffectOutcome::aggregate_with_primary_result(
+        outcome, shuffles,
+    ))
 }
 
 #[derive(Debug)]
@@ -275,7 +296,9 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
             let prepared = prepare_shuffle_objects_action(self, game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             execute_prepared_shuffle_objects_action(prepared, game, ctx)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {

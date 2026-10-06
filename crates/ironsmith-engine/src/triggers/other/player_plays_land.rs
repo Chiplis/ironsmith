@@ -50,6 +50,11 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         if filter.zone.take().is_some_and(|zone| zone != e.from_zone) {
             return false;
         }
+        if let Some(snapshot) = &e.snapshot {
+            return super::permanent_lifecycle::matches_completed(&filter, snapshot, ctx);
+        }
+        // Legacy, externally authored observations can still omit a snapshot.
+        // The production land action owner requires a frozen subject.
         ctx.game
             .object(e.land)
             .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
@@ -79,7 +84,6 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         format!("Whenever {player_text} {object_text}")
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

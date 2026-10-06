@@ -90,11 +90,32 @@ pub(crate) fn source_damage_keywords(
     SourceDamageKeywords::default()
 }
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct AppliedDamageAssignment {
+#[derive(Debug, Clone)]
+pub(crate) struct AppliedDamageAssignment<Output = crate::effect::EffectOutcome> {
     pub applied: bool,
     pub life_lost: u32,
-    pub consequence_outcome: Option<crate::effect::EffectOutcome>,
+    pub consequence_outcome: Option<Output>,
+}
+
+impl<Output> Default for AppliedDamageAssignment<Output> {
+    fn default() -> Self {
+        Self {
+            applied: false,
+            life_lost: 0,
+            consequence_outcome: None,
+        }
+    }
+}
+impl AppliedDamageAssignment<crate::effects::CompletedEffectOutputs> {
+    fn into_aggregate(self) -> AppliedDamageAssignment {
+        AppliedDamageAssignment {
+            applied: self.applied,
+            life_lost: self.life_lost,
+            consequence_outcome: self
+                .consequence_outcome
+                .map(crate::effects::CompletedEffectOutputs::into_outcome),
+        }
+    }
 }
 
 pub(crate) fn apply_processed_damage_assignment(
@@ -176,7 +197,7 @@ pub(crate) fn apply_processed_damage_assignment_with_scope(
 
 #[path = "damage_assignment.rs"]
 mod damage_assignment;
-pub(crate) use damage_assignment::{PreparedDamageAssignment,DamageAssignmentReceipt,prepare_processed_damage_assignment,commit_prepared_damage_original,freeze_damage_original,complete_damage_original};
+pub(crate) use damage_assignment::{PreparedDamageAssignment,DamageAssignmentReceipt,prepare_processed_damage_assignment,commit_prepared_damage_original,commit_prepared_damage_original_with_outputs,freeze_damage_original,observe_damage_original,complete_observed_damage_original_with_outputs,complete_damage_original};
 
 fn build_damage_result(
     target: DamageTarget,

@@ -1,6 +1,6 @@
 //! Exile a chosen object, then grant permission to cast or play it from exile.
 
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_single_object_for_effect};
@@ -42,95 +42,124 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-        // A delayed effect tracks the original object, not the card's new
-        // incarnation after a zone change. There is nothing left to exile.
-        let Some(from_zone) = game.object(target_id).map(|obj| obj.zone) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        let expires = match self.duration {
-            GrantDuration::UntilEndOfTurn => game.turn.turn_number,
-            GrantDuration::Forever | GrantDuration::UntilYourNextTurn => u32::MAX,
-            GrantDuration::UntilYourNextTurnEnd => next_turn_number_for_player(game, player),
-        };
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
-    game,
-    target_id,
-    from_zone,
-    Zone::Exile,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let arrived = match &receipt.original {
-            crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-            crate::events::processing::EventOutcome::Replaced => {
-                let ids = game.take_zone_change_results(target_id);
-                if !ids.is_empty() { game.record_zone_change_results(target_id, ids.clone()); }
-                ids
-            }
-            _ => Vec::new(),
-        };
-        // Grant only to this instruction's actual arrivals still in exile;
-        // never follow a later object incarnation by stable identity.
-        let exiled_ids = arrived.into_iter().filter(|id| game.object(*id)
-            .is_some_and(|card| card.zone == Zone::Exile)).collect::<Vec<_>>();
-
-        for &exiled_id in &exiled_ids {
-            let grant_source = match self.duration {
-                GrantDuration::UntilYourNextTurn => GrantSource::until_player_next_turn_start(
-                    ctx.source,
-                    player,
-                    game.turn.turn_number,
-                ),
-                GrantDuration::UntilYourNextTurnEnd => {
-                    GrantSource::until_player_next_turn_end(ctx.source, player, expires)
-                }
-                GrantDuration::UntilEndOfTurn | GrantDuration::Forever => GrantSource::Effect {
-                    source_id: ctx.source,
-                    expires_end_of_turn: expires,
-                },
-            };
-            if self.available_starting_next_turn {
-                game.effect_store
-                    .grant_registry
-                    .grant_to_card_starting_on_turn(
-                        exiled_id,
-                        Zone::Exile,
-                        player,
-                        Grantable::PlayFrom,
-                        game.turn.turn_number.saturating_add(1),
-                        grant_source,
-                    );
-            } else {
-                game.effect_store.grant_registry.grant_to_card(
-                    exiled_id,
-                    Zone::Exile,
-                    player,
-                    Grantable::PlayFrom,
-                    grant_source,
-                );
-            }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+                // A delayed effect tracks the original object, not the card's new
+                // incarnation after a zone change. There is nothing left to exile.
+                let Some(from_zone) = game.object(target_id).map(|obj| obj.zone) else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                let player = resolve_player_filter(game, &self.player, ctx)?;
+                let expires = match self.duration {
+                    GrantDuration::UntilEndOfTurn => game.turn.turn_number,
+                    GrantDuration::Forever | GrantDuration::UntilYourNextTurn => u32::MAX,
+                    GrantDuration::UntilYourNextTurnEnd => {
+                        next_turn_number_for_player(game, player)
+                    }
+                };
+                let request = crate::effects::zones::PreparedZoneMove::capture(
+                    game,
+                    target_id,
+                    from_zone,
+                    Zone::Exile,
+                    ctx.cause.clone(),
+                    None,
+                );
+                crate::effects::zones::execute_zone_moves_with_outputs(
+                    game,
+                    ctx,
+                    vec![request],
+                    |game, ctx, receipts| {
+                        let arrived = crate::effects::zones::movement_arrivals(
+                            game,
+                            target_id,
+                            &receipts[0].1,
+                        );
+                        // Grant only to this instruction's actual arrivals still in exile;
+                        // never follow a later object incarnation by stable identity.
+                        let exiled_ids = arrived
+                            .into_iter()
+                            .filter(|id| {
+                                game.object(*id)
+                                    .is_some_and(|card| card.zone == Zone::Exile)
+                            })
+                            .collect::<Vec<_>>();
 
-        let original = if exiled_ids.is_empty() { EffectOutcome::count(0) }
-            else { EffectOutcome::with_objects(exiled_ids) };
-        // Permissions are part of the original compound instruction.
-        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, vec![(target_id, receipt)])
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
-        instruction
+                        for &exiled_id in &exiled_ids {
+                            let grant_source = match self.duration {
+                                GrantDuration::UntilYourNextTurn => {
+                                    GrantSource::until_player_next_turn_start(
+                                        ctx.source,
+                                        player,
+                                        game.turn.turn_number,
+                                    )
+                                }
+                                GrantDuration::UntilYourNextTurnEnd => {
+                                    GrantSource::until_player_next_turn_end(
+                                        ctx.source, player, expires,
+                                    )
+                                }
+                                GrantDuration::UntilEndOfTurn | GrantDuration::Forever => {
+                                    GrantSource::Effect {
+                                        source_id: ctx.source,
+                                        expires_end_of_turn: expires,
+                                    }
+                                }
+                            };
+                            if self.available_starting_next_turn {
+                                game.effect_store
+                                    .grant_registry
+                                    .grant_to_card_starting_on_turn(
+                                        exiled_id,
+                                        Zone::Exile,
+                                        player,
+                                        Grantable::PlayFrom,
+                                        game.turn.turn_number.saturating_add(1),
+                                        grant_source,
+                                    );
+                            } else {
+                                game.effect_store.grant_registry.grant_to_card(
+                                    exiled_id,
+                                    Zone::Exile,
+                                    player,
+                                    Grantable::PlayFrom,
+                                    grant_source,
+                                );
+                            }
+                        }
+
+                        let original = if exiled_ids.is_empty() {
+                            EffectOutcome::count(0)
+                        } else {
+                            EffectOutcome::with_objects(exiled_ids)
+                        };
+                        // Permissions are part of the original compound instruction.
+                        Ok(original)
+                    },
+                )
+            },
+        );
+        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

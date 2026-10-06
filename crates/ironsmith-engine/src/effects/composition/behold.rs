@@ -70,7 +70,8 @@ fn candidates(
             .iter()
             .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
             .filter(|(id, _)| {
-                game.current_controller(*id) == Some(chooser)
+                !game.is_phased_out(*id)
+                    && game.current_controller(*id) == Some(chooser)
                     && game.current_has_subtype(*id, subtype)
             })
             .map(|(id, _)| id),
@@ -112,6 +113,24 @@ impl EffectExecutor for BeholdEffect {
     }
 
     fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        super::execute_compound(game, ctx, |game, ctx| self.execute_behold(game, ctx))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        let subtype_name = self.subtype.to_string();
+        if self.count == 1 {
+            return Some(format!("Behold a {}", subtype_name));
+        }
+        Some(format!("Behold {} {}s", self.count, subtype_name))
+    }
+}
+
+impl BeholdEffect {
+    fn execute_behold(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -234,18 +253,13 @@ impl EffectExecutor for BeholdEffect {
             "Reveal cards from hand",
             None,
         )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         Ok(EffectOutcome::aggregate_with_primary_result(
             EffectOutcome::with_objects(chosen).with_chosen_object_memory(chosen_memory),
             [reveal],
         ))
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        let subtype_name = self.subtype.to_string();
-        if self.count == 1 {
-            return Some(format!("Behold a {}", subtype_name));
-        }
-        Some(format!("Behold {} {}s", self.count, subtype_name))
     }
 }
 

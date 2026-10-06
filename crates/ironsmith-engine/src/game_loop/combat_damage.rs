@@ -1322,7 +1322,7 @@ type CombatLifelinkReceipt = (
     PlayerId,
     usize,
     Option<crate::snapshot::ObjectSnapshot>,
-    crate::effects::SimultaneousEffectCommit,
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
 );
 
 fn commit_prepared_combat_lifelink(
@@ -1335,10 +1335,11 @@ fn commit_prepared_combat_lifelink(
         let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
         ctx.source_snapshot = snapshot.clone();
         ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
-        let receipt = crate::effects::life::life_change::commit_prepared_life_original(
-            game, &mut ctx, prepared,
-        )
-        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+        let receipt =
+            crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
+                game, &mut ctx, prepared,
+            )
+            .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
@@ -1357,17 +1358,14 @@ fn complete_combat_lifelink(
         let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
         ctx.source_snapshot = snapshot;
         ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
-        let outcome = if let Some(completion) = receipt.completion {
-            completion
-                .complete(game, &mut ctx, receipt.outcome)
-                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?
-        } else {
-            receipt.outcome
-        };
+        let outputs = crate::effects::composition::complete_committed_original_with_outputs(
+            game, &mut ctx, receipt,
+        )
+        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
-        events[index].lifelink_outcome = Some(outcome);
+        events[index].lifelink_outcome = Some(outputs.into_outcome());
     }
     Ok(())
 }

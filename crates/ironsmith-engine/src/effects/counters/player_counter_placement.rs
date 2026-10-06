@@ -2,7 +2,7 @@
 
 use crate::effect::{EffectOutcome, OutcomeValue};
 use crate::effects::{
-    ExecutionContext, ExecutionContextCheckpoint, ExecutionError, ResolvedTarget,
+    CompletedEffectOutputs, ExecutionContext, ExecutionContextCheckpoint, ExecutionError, ResolvedTarget,
 };
 use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, MarkersChangedEvent, PutCountersEvent, downcast_event};
@@ -21,15 +21,28 @@ pub(crate) fn execute_player_counter_placement(
     ctx: &mut ExecutionContext,
     event: Event,
 ) -> Result<EffectOutcome, ExecutionError> {
+    execute_player_counter_placement_with_outputs(game, ctx, event)
+        .map(CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn execute_player_counter_placement_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: Event,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
     }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
     let result = (|| {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let proposed = downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
             ExecutionError::InternalError(
@@ -45,7 +58,9 @@ pub(crate) fn execute_player_counter_placement(
             return Err(ExecutionError::PlayerNotFound(player));
         }
         if proposed.count == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         if game
             .turn_store
@@ -54,13 +69,15 @@ pub(crate) fn execute_player_counter_placement(
             || (proposed.counter_type == CounterType::Poison
                 && !game.can_get_poison_counters(player))
         {
-            return Ok(prevented());
+            return Ok(CompletedEffectOutputs::aggregate_only(prevented()));
         }
         let processed = process_trait_event_with_execution_context(game, event, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        commit_player_counter_placement(game, ctx, processed, &checkpoint)
+        commit_player_counter_placement_with_outputs(game, ctx, processed, &checkpoint)
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(
@@ -69,26 +86,28 @@ pub(crate) fn execute_player_counter_placement(
         );
         context_checkpoint.restore(ctx);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
     }
     result
 }
 
-pub(super) fn commit_player_counter_placement(
+pub(super) fn commit_player_counter_placement_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     processed: TraitEventResult,
     pre_event_game: &GameState,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<CompletedEffectOutputs, ExecutionError> {
     match processed {
         expanded @ TraitEventResult::Expanded { .. } => {
-            crate::effects::replacement::execute_event_expansion_with_targets(
+            crate::effects::replacement::execute_event_expansion_with_outputs(
                 game,
                 ctx,
                 expanded,
                 |game, ctx, result| {
-                    commit_player_counter_placement(game, ctx, result, pre_event_game)
+                    commit_player_counter_placement_with_outputs(game, ctx, result, pre_event_game)
                 },
                 |_game, context, _original_outcome| {
                     let captured = downcast_event::<PutCountersEvent>(context.event.inner())
@@ -102,7 +121,10 @@ pub(super) fn commit_player_counter_placement(
                             "added counter program has an incompatible recipient".into(),
                         ));
                     };
-                    Ok(Some(vec![ResolvedTarget::Player(recipient)]))
+                    Ok(crate::effects::replacement::ReplacementProgramBindings {
+                        targets: Some(vec![ResolvedTarget::Player(recipient)]),
+                        object_tags: Vec::new(),
+                    })
                 },
             )
         }
@@ -126,7 +148,7 @@ pub(super) fn commit_player_counter_placement(
                 || (resolved.counter_type == CounterType::Poison
                     && !game.can_get_poison_counters(player))
             {
-                return Ok(prevented());
+                return Ok(CompletedEffectOutputs::aggregate_only(prevented()));
             }
             let before = game
                 .player(player)
@@ -152,7 +174,7 @@ pub(super) fn commit_player_counter_placement(
                 .counter_count(resolved.counter_type);
             let actual = after.saturating_sub(before);
             if actual == 0 {
-                return Ok(prevented());
+                return Ok(CompletedEffectOutputs::aggregate_only(prevented()));
             }
             let count = i64::from(actual);
             let mut notification = TriggerEvent::new_with_provenance(
@@ -171,7 +193,9 @@ pub(super) fn commit_player_counter_placement(
             {
                 notification = notification.with_source_snapshot(snapshot.clone());
             }
-            Ok(EffectOutcome::count(count).with_event(notification))
+            Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(count).with_event(notification),
+            ))
         }
         TraitEventResult::Replaced {
             effects,
@@ -191,7 +215,7 @@ pub(super) fn commit_player_counter_placement(
                     "player counter replacement lost its player recipient".into(),
                 ));
             };
-            let payload = crate::effects::replacement::execute_replacement_payload(
+            let payload = crate::effects::replacement::execute_replacement_payload_with_outputs(
                 game,
                 ctx,
                 &effects,
@@ -199,15 +223,16 @@ pub(super) fn commit_player_counter_placement(
                 controller,
                 &context,
                 Some(vec![ResolvedTarget::Player(player)]),
+                None,
+                Vec::new(),
             )?;
             let mut original = EffectOutcome::replaced();
             original.set_value(OutcomeValue::Count(0));
-            Ok(EffectOutcome::aggregate_replacement_outcomes(
-                original,
-                [payload],
-            ))
+            let outcome =
+                EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
+            Ok(payload.project_aggregate(outcome))
         }
-        TraitEventResult::Prevented => Ok(prevented()),
+        TraitEventResult::Prevented => Ok(CompletedEffectOutputs::aggregate_only(prevented())),
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
             Err(ExecutionError::InternalError(
                 "player counter replacement suspended without a captured decision".into(),

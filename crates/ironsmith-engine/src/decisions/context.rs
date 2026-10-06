@@ -1396,13 +1396,16 @@ impl<'a> IntoIterator for &'a PreparedPriorityActions {
 #[derive(Debug, Clone)]
 pub struct PriorityContext {
     pub analysis_complete: bool,
+    /// A partial analysis distinguishes current proofs from cached display
+    /// candidates. None means every action in the prepared menu is proven.
+    pub payment_proven_actions: Option<Vec<crate::decision::LegalAction>>,
     pub player: PlayerId,
     pub actions: PreparedPriorityActions,
 }
 impl PriorityContext {
     pub fn new(game: &crate::game_state::GameState, player: PlayerId, actions: Vec<crate::decision::LegalAction>)
         -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
-        Ok(Self { player, actions: PreparedPriorityActions::new(game, actions)?, analysis_complete: true })
+        Ok(Self { player, actions: PreparedPriorityActions::new(game, actions)?, analysis_complete: true, payment_proven_actions: None })
     }
 }
 

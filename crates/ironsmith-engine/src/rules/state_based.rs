@@ -2217,6 +2217,43 @@ fn prepare_and_apply_state_based_actions(
     // source dies in the same check. Apply loss replacements first, while
     // every object is still in place, and commit unreplaced losses after the
     // check's other actions.
+    // Prepare all would-remove events in the original SBA world, while their
+    // replacement sources and the affected incarnations are still present.
+    let mut counter_requests = Vec::new();
+    for action in &other_actions {
+        match action {
+            StateBasedAction::CountersAnnihilate { permanent, count } => {
+                for kind in [CounterType::PlusOnePlusOne, CounterType::MinusOneMinusOne] {
+                    counter_requests.push((*permanent, kind, *count));
+                }
+            }
+            StateBasedAction::CountersExceedMaximum {
+                permanent,
+                counter_type,
+                count,
+            } => {
+                counter_requests.push((*permanent, *counter_type, *count));
+            }
+            _ => {}
+        }
+    }
+    let controller = game.turn.active_player;
+    let mut prepared_counters = Vec::new();
+    {
+        let mut ctx =
+            crate::effects::ExecutionContext::new(ObjectId(0), controller, &mut *decision_maker)
+                .with_cause(crate::events::cause::EventCause::from_sba());
+        for (object, kind, count) in counter_requests {
+            let event = crate::events::Event::remove_counters(object, kind, count)
+                .with_provenance(ctx.provenance);
+            prepared_counters.push(crate::effects::counters::prepare_game_rule_counter_removal(
+                game, &mut ctx, event,
+            )?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(false);
+            }
+        }
+    }
     let mut loss_receipts = Vec::new();
     for action in &player_losses {
         let StateBasedAction::PlayerLoses { player, .. } = action else {
@@ -2274,6 +2311,25 @@ fn prepare_and_apply_state_based_actions(
     if decision_maker.awaiting_choice() {
         return Ok(false);
     }
+    // Counter originals precede departures so simultaneous removals have
+    // receipts even when the affected permanent leaves in this same check.
+    // Dying objects' LKI remains the pre-captured, pre-SBA snapshot above.
+    let mut counter_receipts = Vec::new();
+    {
+        let mut ctx =
+            crate::effects::ExecutionContext::new(ObjectId(0), controller, &mut *decision_maker)
+                .with_cause(crate::events::cause::EventCause::from_sba());
+        for prepared in prepared_counters {
+            counter_receipts.push(
+                crate::effects::counters::commit_prepared_counter_removal_original_with_outputs(
+                    game, &mut ctx, prepared,
+                )?,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(false);
+            }
+        }
+    }
     let mut committed_zones = Vec::new();
     let mut destroy_receipts = Vec::new();
     for (id, _, _) in &legend_plans {
@@ -2318,16 +2374,54 @@ fn prepare_and_apply_state_based_actions(
         any_applied = true;
     }
     crate::events::processing::commit_player_loss_receipts(game, &mut loss_receipts)?;
+    let sibling_additions = committed_zones
+        .iter()
+        .any(|(_, receipt)| !receipt.programs.is_empty())
+        || destroy_receipts
+            .iter()
+            .any(|receipt| receipt.has_deferred_programs())
+        || loss_receipts
+            .iter()
+            .any(|receipt| receipt.has_deferred_programs());
     // Freeze both event families before any addition can move another arrival.
     let frozen_zones = crate::effects::zones::freeze_zone_change_receipts(game, committed_zones);
     let frozen_destroy = crate::events::processing::freeze_destroy_receipts(game, destroy_receipts);
     let controller = game.turn.active_player;
     let mut ctx = crate::effects::ExecutionContext::new(ObjectId(0), controller, decision_maker)
         .with_cause(crate::events::cause::EventCause::from_sba());
+    let counter_outcomes =
+        crate::effects::composition::execute_simultaneous_originals_with_outputs(
+            game,
+            &mut ctx,
+            false,
+            |_, _| Ok(counter_receipts),
+            |game, ctx, receipts| {
+                if !sibling_additions {
+                    return Ok(crate::effects::composition::OriginalTriggerObservation::Capture);
+                }
+                // Counter originals must be observed before any sibling's added
+                // program, even when no counter removal has its own continuation.
+                crate::effects::capture_triggers_before_added_program(
+                    game,
+                    ctx,
+                    None,
+                    receipts
+                        .iter_mut()
+                        .flat_map(|receipt| receipt.outcome.outcome.events.iter_mut()),
+                )?;
+                Ok(crate::effects::composition::OriginalTriggerObservation::OwnerPublished)
+            },
+        )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(false);
+    }
     let outcome = crate::events::processing::finish_destroy_receipts_frozen(
         game,
         &mut ctx,
-        crate::effect::EffectOutcome::resolved(),
+        crate::effect::EffectOutcome::aggregate_with_primary_result(
+            crate::effect::EffectOutcome::resolved(),
+            counter_outcomes.into_iter().map(crate::effects::CompletedEffectOutputs::into_outcome),
+        ),
         frozen_destroy,
     )?;
     if ctx.decision_maker.awaiting_choice() {
@@ -2916,26 +3010,9 @@ fn apply_single_sba_with_snapshots(
             }
         }
 
-        StateBasedAction::CountersAnnihilate { permanent, count } => {
-            for counter_type in [CounterType::PlusOnePlusOne, CounterType::MinusOneMinusOne] {
-                if let Some((_, event)) =
-                    game.remove_counters(permanent, counter_type, count, None, None)
-                {
-                    game.queue_trigger_event(event.provenance(), event);
-                }
-            }
-        }
-
-        StateBasedAction::CountersExceedMaximum {
-            permanent,
-            counter_type,
-            count,
-        } => {
-            if let Some((_, event)) =
-                game.remove_counters(permanent, counter_type, count, None, None)
-            {
-                game.queue_trigger_event(event.provenance(), event);
-            }
+        StateBasedAction::CountersAnnihilate { .. } | StateBasedAction::CountersExceedMaximum { .. } => {
+            // Prepared/committed by the shared removal owner in the enclosing
+            // simultaneous SBA check; deferred programs complete after originals.
         }
 
         // Note: Undying/Persist are handled as triggered abilities,

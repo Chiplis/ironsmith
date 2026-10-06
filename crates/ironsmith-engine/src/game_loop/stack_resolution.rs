@@ -1452,10 +1452,10 @@ fn resolve_stack_entry_full_inner(
 
     // CR 702.122d: "whenever this Vehicle becomes crewed" triggers when a crew
     // ability of it resolves, not when its crew cost is paid.
-    if let Some(ref mut tq) = trigger_queue
-        && let Some(event) = crate::effects::permanents::crew_ability_resolved_event(game, &entry)
-    {
-        queue_triggers_from_event(game, tq, event, false);
+    if let Some(ref mut tq) = trigger_queue {
+        let completion =
+            crate::effects::permanents::complete_crew_ability_resolution(game, &mut ctx, &entry)?;
+        crate::game_loop::queue_triggers_from_reported_events(game, tq, completion.events, false);
     }
 
     if let Some(chapter_resolution) = chapter_resolution {
@@ -1574,7 +1574,7 @@ fn resolve_stack_entry_full_inner(
                         crate::events::other::MutatedEvent::new(target_id, entry.controller),
                         event_provenance,
                     )];
-                    crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)?;
+                    crate::effects::observe_lifecycle_completions(game, &mut completed)?;
                     let event = completed.remove(0);
                     if let Some(ref mut tq) = trigger_queue {
                         queue_triggers_from_event(game, tq, event, false);

@@ -12,29 +12,32 @@ impl EffectExecutor for SetClassLevelEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(source) = game.object(ctx.source) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        if source.zone != Zone::Battlefield {
-            return Ok(EffectOutcome::target_invalid());
-        }
-        let changed = game.set_class_level(ctx.source, self.level);
-        let outcome = EffectOutcome::count(i32::from(changed));
-        if !changed {
-            return Ok(outcome);
-        }
-        // CR 716.2a: "When this Class becomes level N" triggers on the level
-        // change itself.
-        let event = crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::KeywordActionEvent::new(
-                crate::events::KeywordActionKind::GainClassLevel,
-                ctx.controller,
-                ctx.source,
-                self.level,
-            ),
-            ctx.provenance,
-        );
-        Ok(outcome.with_event(event))
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let Some(source) = game.object(ctx.source) else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            if source.zone != Zone::Battlefield {
+                return Ok(EffectOutcome::target_invalid());
+            }
+            let changed = game.set_class_level(ctx.source, self.level);
+            let outcome = EffectOutcome::count(i32::from(changed));
+            if !changed {
+                return Ok(outcome);
+            }
+            // CR 716.2a: "When this Class becomes level N" triggers on the level
+            // change itself.
+            crate::effects::composition::complete_keyword_action_with_result(
+                game,
+                ctx,
+                outcome,
+                crate::events::KeywordActionEvent::new(
+                    crate::events::KeywordActionKind::GainClassLevel,
+                    ctx.controller,
+                    ctx.source,
+                    self.level,
+                ),
+            )
+        })
     }
 }
 
@@ -44,15 +47,17 @@ impl EffectExecutor for SolveCaseEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(source) = game.object(ctx.source) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        if source.zone != Zone::Battlefield {
-            return Ok(EffectOutcome::target_invalid());
-        }
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let Some(source) = game.object(ctx.source) else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            if source.zone != Zone::Battlefield {
+                return Ok(EffectOutcome::target_invalid());
+            }
 
-        let changed = game.solve_case(ctx.source);
-        Ok(EffectOutcome::count(i32::from(changed)))
+            let changed = game.solve_case(ctx.source);
+            Ok(EffectOutcome::count(i32::from(changed)))
+        })
     }
 }
 

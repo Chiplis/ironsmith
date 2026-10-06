@@ -3,7 +3,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
-use crate::triggers::TriggerEvent;
 
 pub(super) fn forage_payments(exclude_source: bool) -> [crate::effect::Effect; 2] {
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
@@ -33,16 +32,30 @@ impl EffectExecutor for KeywordActionProgram {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        commit_keyword_program(game, ctx, self.action, self.amount)
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| commit_keyword_program(game, ctx, self.action, self.amount),
+        )
     }
 }
-pub(super) fn execute_keyword_program(
+pub(super) fn execute_keyword_program_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     action: KeywordActionKind,
     amount: u32,
-) -> Result<EffectOutcome, ExecutionError> {
-    KeywordActionProgram { action, amount }.execute_child(game, ctx)
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    KeywordActionProgram { action, amount }.execute_child_with_outputs(game, ctx)
 }
 
 fn commit_keyword_program(
@@ -50,10 +63,15 @@ fn commit_keyword_program(
     ctx: &mut ExecutionContext,
     action: KeywordActionKind,
     amount: u32,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if action == KeywordActionKind::Forage {
         let mut outcomes = Vec::new();
+        let mut fallback_source_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
+                .or_else(|| ctx.source_snapshot.clone());
         for _ in 0..amount {
+            let source_snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
+                .or_else(|| fallback_source_snapshot.clone());
             let payments = forage_payments(false);
             let options: Vec<_> = payments
                 .iter()
@@ -87,25 +105,38 @@ fn commit_keyword_program(
                 &options,
             );
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             let index = choice.unwrap_or(options[0].1);
-            let outcome = crate::effects::execute_effect(game, &payments[index], ctx)?;
+            let outcome = crate::effects::execute_effect_with_outputs(game, &payments[index], ctx)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(outcome);
             }
-            if outcome.status.is_failure() {
+            if outcome.outcome.status.is_failure() {
                 return Ok(outcome);
             }
             outcomes.push(outcome);
-            outcomes.push(
-                EffectOutcome::count(1).with_event(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(action, ctx.controller, ctx.source, 1),
+            let source_snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
+                .or(source_snapshot);
+            fallback_source_snapshot = source_snapshot.clone();
+            outcomes.push(super::publish_keyword_action_completion_receipt(
+                game,
+                ctx,
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(action, ctx.controller, ctx.source, 1)
+                        .with_snapshot(source_snapshot),
                     ctx.provenance,
-                )),
-            );
+                ),
+            )?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
         }
-        return Ok(EffectOutcome::aggregate_with_primary_result(
+        return Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
             EffectOutcome::count(amount),
             outcomes,
         ));
@@ -130,7 +161,9 @@ fn commit_keyword_program(
             // CR 901.9a: this sourceless ability leaves the plane that was
             // face up when the die was rolled. If that plane has already
             // left the planar zone, the ability does nothing on resolution.
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         // CR 701.31a: a player may planeswalk only during a Planechase
         // game, and only the planar controller may. Otherwise the
@@ -141,7 +174,9 @@ fn commit_keyword_program(
             game.planar_controller_acting_for(ctx.controller).is_some()
         };
         if !may_planeswalk {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let mut outcomes = Vec::with_capacity(amount as usize);
         for _ in 0..amount {
@@ -154,7 +189,7 @@ fn commit_keyword_program(
                 ),
                 ctx.provenance,
             );
-            let outcome = super::execute_keyword_action(
+            let outcome = super::execute_keyword_action_with_outputs(
                 game,
                 ctx,
                 would_event,
@@ -164,15 +199,22 @@ fn commit_keyword_program(
                     let destination = game
                         .planeswalk(action.player, action.source)
                         .map_err(ExecutionError::Impossible)?;
-                    Ok(EffectOutcome::count(1).with_affected_objects(vec![destination]))
+                    Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(1).with_affected_objects(vec![destination]),
+                    ))
                 },
             )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             outcomes.push(outcome);
         }
-        return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+        return Ok(crate::effects::CompletedEffectOutputs::from_children(
+            outcomes,
+            EffectOutcome::aggregate_summing_counts,
+        ));
     }
     if action == KeywordActionKind::SetSchemeInMotion {
         let mut schemes = Vec::with_capacity(amount as usize);
@@ -182,13 +224,17 @@ fn commit_keyword_program(
                     .map_err(ExecutionError::Impossible)?,
             );
         }
-        return Ok(EffectOutcome::resolved().with_affected_objects(schemes));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved().with_affected_objects(schemes),
+        ));
     }
     if action == KeywordActionKind::AbandonScheme {
         let scheme = game
             .abandon_scheme(ctx.source)
             .map_err(ExecutionError::Impossible)?;
-        return Ok(EffectOutcome::resolved().with_affected_objects(vec![scheme]));
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved().with_affected_objects(vec![scheme]),
+        ));
     }
     Err(ExecutionError::InternalError(
         "unknown keyword action program".into(),

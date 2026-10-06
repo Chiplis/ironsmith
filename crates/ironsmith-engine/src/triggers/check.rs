@@ -1401,6 +1401,9 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     // LKI payloads are common on zone-change events even when none of the
     // sources represented by those payloads can trigger for this event kind.
     // Inspect the captured ability lists before constructing a layered view;
@@ -1414,9 +1417,9 @@ pub fn check_triggers(
         trigger_event.kind(),
         crate::events::traits::EventKind::Sacrifice
             | crate::events::traits::EventKind::CardDiscarded
-    ) && trigger_event
-        .snapshot()
-        .is_some_and(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+    ) && trigger_event.snapshot().is_some_and(|snapshot| {
+        snapshot_may_subscribe_to_event(snapshot, trigger_event.kind())
+    });
 
     if !trigger_event_can_have_synthetic_triggers(trigger_event)
         && !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
@@ -1439,6 +1442,9 @@ pub(crate) fn check_triggers_batch(
     game: &GameState,
     trigger_events: &[TriggerEvent],
 ) -> Vec<Vec<TriggeredAbilityEntry>> {
+    if game.action_observations_suppressed() {
+        return trigger_events.iter().map(|_| Vec::new()).collect();
+    }
     if trigger_events.is_empty() {
         return Vec::new();
     }
@@ -1447,10 +1453,13 @@ pub(crate) fn check_triggers_batch(
     let should_check = trigger_events
         .iter()
         .map(|trigger_event| {
-            let lki_may_subscribe = trigger_event
-                .lookback_source_snapshots()
-                .iter()
-                .any(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+            let lki_may_subscribe =
+                trigger_event
+                    .lookback_source_snapshots()
+                    .iter()
+                    .any(|snapshot| {
+                        snapshot_may_subscribe_to_event(snapshot, trigger_event.kind())
+                    });
             let direct_snapshot_may_subscribe = matches!(
                 trigger_event.kind(),
                 crate::events::traits::EventKind::Sacrifice
@@ -1463,7 +1472,9 @@ pub(crate) fn check_triggers_batch(
                     || *kind_may_subscribe
                         .entry(trigger_event.kind())
                         .or_insert_with(|| {
-                            game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
+                            game.may_have_triggered_abilities_for_event_kind(
+                                trigger_event.kind(),
+                            )
                         });
 
             current_state_may_subscribe || lki_may_subscribe || direct_snapshot_may_subscribe
@@ -2835,15 +2846,11 @@ fn lookback_source_filter_context(
     }
 
     let leaving_snapshots = zone_change.snapshots();
-    if source_snapshot.subtypes.contains(&Subtype::Aura) {
+    // Membership in attached_sources proves the source/host relation. Both
+    // authored host aliases must survive copy/type changes and detachment.
+    for tag in ["enchanted", "equipped"] {
         filter_ctx.tagged_objects.insert(
-            crate::tag::TagKey::from("enchanted"),
-            leaving_snapshots.to_vec(),
-        );
-    }
-    if source_snapshot.subtypes.contains(&Subtype::Equipment) {
-        filter_ctx.tagged_objects.insert(
-            crate::tag::TagKey::from("equipped"),
+            crate::tag::TagKey::from(tag),
             leaving_snapshots.to_vec(),
         );
     }
@@ -2865,10 +2872,14 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     if trigger_event.triggers_captured() {
         return Vec::new();
     }
-    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
+    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects()))
+    {
         return Vec::new();
     }
 
@@ -2880,8 +2891,15 @@ fn check_triggers_with_view_and_registry(
         assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry)
     });
 
-    for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
-        check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
+    for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id())
+    {
+        check_battlefield_trigger_subscriber(
+            game,
+            trigger_event,
+            view,
+            subscriber,
+            &mut triggered,
+        );
     }
 
     // A permanent can see itself being sacrificed. The sacrifice event carries
@@ -3099,7 +3117,8 @@ fn check_triggers_with_view_and_registry(
                 abilities
                     .iter()
                     .filter(|static_ability| {
-                        if static_ability.id() == crate::static_abilities::StaticAbilityId::Cascade
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Cascade
                         {
                             return true;
                         }
@@ -3158,7 +3177,9 @@ fn check_triggers_with_view_and_registry(
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
         && let Some(obj) = game.object(cast.spell)
     {
-        for (cost_index, (reference, times)) in entry.optional_costs_paid.costs.iter().enumerate() {
+        for (cost_index, (reference, times)) in
+            entry.optional_costs_paid.costs.iter().enumerate()
+        {
             if *times == 0
                 || !matches!(
                     reference.kind,
@@ -3447,6 +3468,12 @@ pub fn check_state_triggers(
     game: &GameState,
     pending: &[TriggeredAbilityEntry],
 ) -> (Vec<TriggeredAbilityEntry>, HashSet<ActiveStateTriggerKey>) {
+    if game.action_observations_suppressed() {
+        return (
+            Vec::new(),
+            game.effect_store.active_state_trigger_conditions.clone(),
+        );
+    }
     let view = crate::derived_view::DerivedGameView::new(game);
     let mut triggered = Vec::new();
     let mut active = HashSet::new();
@@ -3629,6 +3656,9 @@ pub fn check_delayed_triggers_for_simultaneous_events(
     game: &mut GameState,
     trigger_events: &[TriggerEvent],
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     if game.effect_store.delayed_triggers.is_empty() {
         return Vec::new();
     }
@@ -3740,7 +3770,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
 
                 // Each object of a multi-object zone change is its own event for
                 // a delayed trigger watching one object (CR 603.2c, 603.7c).
-                for instance in trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx)
+                for instance in
+                    trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx)
                 {
                     let trigger_event = &instance;
                     fired = true;
@@ -3793,7 +3824,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         .map(|shield_id| {
                             game.effect_store
                                 .prevention_effects
-                                .prevented_by_shield(shield_id) as i32
+                                .prevented_by_shield(shield_id)
+                                as i32
                         })
                         .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
                     let entry = TriggeredAbilityEntry {

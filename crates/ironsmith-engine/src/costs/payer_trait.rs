@@ -12,8 +12,23 @@ use crate::provenance::ProvNodeId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 
+/// Opaque cached inputs for potential mana affordability. Cost adapters reuse
+/// the supplied query without exposing the engine's internal derived view.
+pub struct PotentialManaQuery<'view, 'game> {
+    pub(crate) view: &'view crate::derived_view::DerivedGameView<'game>,
+}
+
+impl<'view, 'game> PotentialManaQuery<'view, 'game> {
+    pub(crate) fn new(view: &'view crate::derived_view::DerivedGameView<'game>) -> Self {
+        Self { view }
+    }
+}
+
 /// Why a cost is being paid.
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PaymentReason {
     /// Casting a spell.
@@ -67,6 +82,92 @@ pub enum CostPaymentResult {
     NeedsChoice(String),
 }
 
+pub(crate) fn payment_event_cause(
+    source: ObjectId,
+    payer: PlayerId,
+    reason: PaymentReason,
+    requesting: Option<&crate::events::cause::EventCause>,
+) -> crate::events::cause::EventCause {
+    if reason == PaymentReason::Effect
+        && let Some(cause) = requesting
+    {
+        let mut cause = cause.clone();
+        cause.cause_type = crate::events::cause::CauseType::Cost;
+        return cause;
+    }
+    crate::events::cause::EventCause::from_cost(source, payer)
+}
+
+/// Compose dependency-aware cost validation through the total-cost owner.
+/// The checker retains speculative choice bindings between instructions; it
+/// never executes a child action or asks for a payment choice.
+pub(crate) fn check_effect_cost_program(
+    effects: &[crate::effect::Effect],
+    game: &GameState,
+    execution: &mut crate::effects::ExecutionContext,
+    reason: PaymentReason,
+) -> Result<(), crate::effects::CostValidationError> {
+    let components = effects
+        .iter()
+        .cloned()
+        .map(crate::costs::Cost::try_effect)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(crate::effects::CostValidationError::Other)?;
+    let total = crate::cost::TotalCost::from_costs(components);
+    crate::special_actions::can_pay_total_cost_with_reason_in_context(
+        game,
+        execution.controller,
+        execution.source,
+        &total,
+        reason,
+        execution,
+    )
+    .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))
+}
+
+/// Captured inputs shared by cost preflight and live effect execution.
+/// Capturing before borrowing the decision maker keeps both paths on the same
+/// source, payment reason and value-resolution bindings.
+pub(crate) struct CostExecutionBindings {
+    source: ObjectId,
+    payer: PlayerId,
+    cause: crate::events::cause::EventCause,
+    reason: PaymentReason,
+    source_snapshot: Option<ObjectSnapshot>,
+    replacement: crate::effects::ReplacementExecutionContext,
+    x_value: Option<u32>,
+    chosen: Vec<crate::effects::ResolvedTarget>,
+    announced: Vec<crate::effects::ResolvedTarget>,
+    tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    provenance: ProvNodeId,
+    inputs: Option<Box<crate::effects::PaymentExecutionInputs>>,
+}
+
+impl CostExecutionBindings {
+    pub(crate) fn execution_context<'a>(
+        self,
+        decision_maker: &'a mut dyn crate::decision::DecisionMaker,
+    ) -> crate::effects::ExecutionContext<'a> {
+        let mut execution =
+            crate::effects::ExecutionContext::new(self.source, self.payer, decision_maker)
+                .with_cause(self.cause)
+                .with_tagged_objects(self.tags)
+                .with_cost_choice_targets(self.chosen)
+                .with_provenance(self.provenance);
+        if let Some(inputs) = self.inputs {
+            inputs.restore_ref(&mut execution);
+        }
+        execution.source_snapshot = self.source_snapshot;
+        execution.replacement = self.replacement;
+        execution.x_value = self.x_value;
+        execution.effect_outcomes = self.outcomes;
+        execution.announced_targets = Some(self.announced);
+        execution.mana.payment_reason = Some(self.reason);
+        execution
+    }
+}
+
 /// Context for cost payment operations.
 ///
 /// Similar to ExecutionContext for effects, this provides the necessary
@@ -106,6 +207,41 @@ pub struct CostContext<'dm> {
     /// Some during an interactive cost transaction. The entries exclude ancestor
     /// mana abilities from funding themselves; special actions start with no exclusions.
     pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    /// Value inputs inherited by nested payments; instruction control remains local.
+    pub(crate) execution_inputs: Option<Box<crate::effects::PaymentExecutionInputs>>,
+}
+
+// Cost rollback owns every binding except the decision maker's prompt/answers.
+// Exhaustive capture prevents a future input domain from escaping rollback.
+macro_rules! cost_context_checkpoint {
+    ($($field:ident: $field_type:ty,)* ) => {
+        pub(crate) struct CostContextCheckpoint { $($field: $field_type,)* }
+        impl CostContextCheckpoint {
+            pub(crate) fn capture(ctx: &CostContext<'_>) -> Self {
+                let CostContext { $($field,)* decision_maker: _ } = ctx;
+                Self { $($field: $field.clone(),)* }
+            }
+            pub(crate) fn restore(self, ctx: &mut CostContext<'_>) {
+                $(ctx.$field = self.$field;)*
+            }
+        }
+    };
+}
+cost_context_checkpoint! {
+    source: ObjectId,
+    source_snapshot: Option<ObjectSnapshot>,
+    replacement: crate::effects::ReplacementExecutionContext,
+    payer: PlayerId,
+    x_value: Option<u32>,
+    reason: PaymentReason,
+    requesting_effect_cause: Option<crate::events::cause::EventCause>,
+    pre_chosen_cards: Vec<ObjectId>,
+    announced_targets: Vec<crate::game_state::Target>,
+    tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    effect_outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    provenance: ProvNodeId,
+    interactive_mana_exclusions: Option<Vec<ObjectId>>,
+    execution_inputs: Option<Box<crate::effects::PaymentExecutionInputs>>,
 }
 
 impl std::fmt::Debug for CostContext<'_> {
@@ -130,6 +266,10 @@ impl std::fmt::Debug for CostContext<'_> {
 }
 
 impl<'dm> CostContext<'dm> {
+    pub(crate) fn checkpoint(&self) -> CostContextCheckpoint {
+        CostContextCheckpoint::capture(self)
+    }
+
     /// Create a new cost context with a decision maker.
     pub fn new(
         source: ObjectId,
@@ -151,7 +291,112 @@ impl<'dm> CostContext<'dm> {
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
+            execution_inputs: None,
         }
+    }
+
+    /// Transfer the requesting instruction's captured inputs into a payment
+    /// frame before borrowing its decision maker. Announced targets remain
+    /// distinct from any preselected cost objects.
+    pub(crate) fn from_execution_context(
+        source: ObjectId,
+        payer: PlayerId,
+        reason: PaymentReason,
+        execution: &'dm mut crate::effects::ExecutionContext<'_>,
+    ) -> Self {
+        let announced_targets = execution
+            .announced_targets
+            .as_deref()
+            .unwrap_or(&execution.targets)
+            .iter()
+            .map(|target| match target {
+                crate::effects::ResolvedTarget::Object(id) => {
+                    crate::game_state::Target::Object(*id)
+                }
+                crate::effects::ResolvedTarget::Player(player) => {
+                    crate::game_state::Target::Player(*player)
+                }
+            })
+            .collect();
+        let pre_chosen_cards = if execution.targets_are_cost_choices {
+            execution
+                .targets
+                .iter()
+                .filter_map(|target| match target {
+                    crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                    crate::effects::ResolvedTarget::Player(_) => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Self {
+            source,
+            payer,
+            reason,
+            source_snapshot: execution.source_snapshot.clone(),
+            replacement: execution.replacement.clone(),
+            x_value: execution.x_value,
+            requesting_effect_cause: Some(execution.cause.clone()),
+            pre_chosen_cards,
+            announced_targets,
+            tagged_objects: execution.tagged_objects.clone(),
+            effect_outcomes: execution.effect_outcomes.clone(),
+            provenance: execution.provenance,
+            interactive_mana_exclusions: None,
+            execution_inputs: Some(Box::new(crate::effects::PaymentExecutionInputs::capture(
+                execution,
+            ))),
+            decision_maker: &mut *execution.decision_maker,
+        }
+    }
+
+    pub(crate) fn execution_bindings(&self) -> CostExecutionBindings {
+        CostExecutionBindings {
+            source: self.source,
+            payer: self.payer,
+            cause: self.event_cause(),
+            reason: self.reason,
+            source_snapshot: self.source_snapshot.clone(),
+            replacement: self.replacement.clone(),
+            x_value: self.x_value,
+            chosen: self
+                .pre_chosen_cards
+                .iter()
+                .copied()
+                .map(crate::effects::ResolvedTarget::Object)
+                .collect(),
+            announced: self
+                .announced_targets
+                .iter()
+                .map(|target| match target {
+                    crate::game_state::Target::Object(id) => {
+                        crate::effects::ResolvedTarget::Object(*id)
+                    }
+                    crate::game_state::Target::Player(player) => {
+                        crate::effects::ResolvedTarget::Player(*player)
+                    }
+                })
+                .collect(),
+            tags: self.tagged_objects.clone(),
+            outcomes: self.effect_outcomes.clone(),
+            provenance: self.provenance,
+            inputs: self.execution_inputs.clone(),
+        }
+    }
+
+    /// Read-only feasibility has no decision authority. An unannounced X uses
+    /// zero for the initial offer; payment retains the actual announcement.
+    pub(crate) fn with_execution_context<T>(
+        &self,
+        query: impl FnOnce(&mut crate::effects::ExecutionContext) -> T,
+    ) -> T {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut execution = self
+            .execution_bindings()
+            .execution_context(&mut decision_maker);
+        execution.x_value.get_or_insert(0);
+        query(&mut execution)
     }
 
     /// Set the X value.
@@ -169,14 +414,12 @@ impl<'dm> CostContext<'dm> {
     /// Keep the requesting effect's captured source and controller while
     /// preserving the fact that the resulting action pays a cost.
     pub fn event_cause(&self) -> crate::events::cause::EventCause {
-        if self.reason == PaymentReason::Effect
-            && let Some(cause) = &self.requesting_effect_cause
-        {
-            let mut cause = cause.clone();
-            cause.cause_type = crate::events::cause::CauseType::Cost;
-            return cause;
-        }
-        crate::events::cause::EventCause::from_cost(self.source, self.payer)
+        payment_event_cause(
+            self.source,
+            self.payer,
+            self.reason,
+            self.requesting_effect_cause.as_ref(),
+        )
     }
 
     /// Set pre-chosen cards for costs that require card selection.
@@ -259,6 +502,7 @@ impl CostCheckContext {
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
+            execution_inputs: None,
         }
     }
 }
@@ -323,19 +567,11 @@ pub fn can_potentially_pay_with_check_context(
 /// }
 /// ```
 impl CostContext<'_> {
-    pub(crate) fn capture_execution_context(&mut self) -> crate::effects::ExecutionContextCheckpoint {
-        let cause = self.event_cause();
-        let mut execution = crate::effects::ExecutionContext::new(self.source, self.payer, &mut *self.decision_maker)
-            .with_provenance(self.provenance).with_cause(cause).with_tagged_objects(self.tagged_objects.clone());
-        execution.source_snapshot = self.source_snapshot.clone();
-        execution.replacement = self.replacement.clone();
-        execution.effect_outcomes = self.effect_outcomes.clone();
-        execution.x_value = self.x_value;
-        execution.mana.payment_reason = Some(self.reason);
-        execution.announced_targets = Some(self.announced_targets.iter().map(|target| match target {
-            crate::Target::Object(id) => crate::effects::ResolvedTarget::Object(*id),
-            crate::Target::Player(player) => crate::effects::ResolvedTarget::Player(*player),
-        }).collect());
+    pub(crate) fn capture_execution_context(
+        &mut self,
+    ) -> crate::effects::ExecutionContextCheckpoint {
+        let bindings = self.execution_bindings();
+        let execution = bindings.execution_context(&mut *self.decision_maker);
         crate::effects::ExecutionContextCheckpoint::capture(&execution)
     }
 }
@@ -355,6 +591,71 @@ where
 }
 
 pub trait CostPayer: std::fmt::Debug + Send + Sync + CostPayerClone + Any {
+    /// Read-only nominal X exported by this owner for later prepared components.
+    /// Actual publication remains with original payment acknowledgement.
+    fn payment_x_from_prepared_payment(
+        &self,
+        _proposal: &dyn crate::effects::SimultaneousEffectProposal,
+        _execution: &crate::effects::ExecutionContext,
+    ) -> Result<Option<u32>, CostPaymentError> {
+        Ok(None)
+    }
+
+    /// Validate the nominal payment receipt through this cost's semantic owner.
+    /// Ordinary and prepared adapters use the same policy; actual replacement
+    /// actions need not equal the requested payment. Validation only inspects
+    /// the receipt and must not execute another action or publish observations.
+    fn validate_payment_outcome(
+        &self,
+        _outcome: &crate::effect::EffectOutcome,
+    ) -> Result<(), CostPaymentError> {
+        Ok(())
+    }
+
+    /// Export an authored cost X through the same owner in ordinary and
+    /// prepared execution. No value means this payment did not announce X.
+    fn payment_x_from_outcome(
+        &self,
+        _outcome: &crate::effect::EffectOutcome,
+        _execution: &crate::effects::ExecutionContext,
+    ) -> Result<Option<u32>, CostPaymentError> {
+        Ok(None)
+    }
+
+    /// Preserve owner-specific payment outputs before subsequent cost frames.
+    /// Ordinary and prepared adapters invoke this after nominal validation and
+    /// X export; the hook may update bindings but cannot mutate the world.
+    fn finalize_payment_bindings(
+        &self,
+        _game: &GameState,
+        _outcome: &crate::effect::EffectOutcome,
+        _execution: &mut crate::effects::ExecutionContext,
+        _payment_x: Option<u32>,
+    ) -> Result<(), CostPaymentError> {
+        Ok(())
+    }
+
+    /// Whether this payer can separate original payment from deferred additions
+    /// while preserving affordability and nominal acknowledgement. Total-cost
+    /// composition checks every component before preparing any of them.
+    fn supports_prepared_payment(&self) -> bool {
+        false
+    }
+
+    /// Prepare a payment in the total owner's payer/reason/cause scope.
+    /// Returning a proposal must not execute payment or replacement additions;
+    /// its original and completion phases own those actions and receipts.
+    fn prepare_simultaneous_payment(
+        &self,
+        _game: &GameState,
+        _execution: &mut crate::effects::ExecutionContext,
+    ) -> Result<
+        Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+        crate::effects::ExecutionError,
+    > {
+        Ok(None)
+    }
+
     /// Check if this cost can be paid RIGHT NOW.
     ///
     /// For mana costs, this checks if the mana is in the pool.
@@ -376,6 +677,18 @@ pub trait CostPayer: std::fmt::Debug + Send + Sync + CostPayerClone + Any {
     ) -> Result<(), CostPaymentError> {
         // Default implementation: same as can_pay
         self.can_pay(game, ctx)
+    }
+
+    /// Potential affordability using an existing derived view. Non-mana
+    /// owners retain their normal query; mana owners can reuse the caller's
+    /// source-discovery cache without taking over cost traversal.
+    fn can_potentially_pay_with_query(
+        &self,
+        game: &GameState,
+        ctx: &CostContext,
+        _query: &crate::costs::PotentialManaQuery<'_, '_>,
+    ) -> Result<(), CostPaymentError> {
+        self.can_potentially_pay(game, ctx)
     }
 
     /// Actually pay the cost, mutating game state.

@@ -37,3 +37,12 @@
 @media(pointer:coarse) { .mana-payment-source-picker { min-height:44px; flex-basis:44px; } }
 
 .game-card.field-card.payment-source-option-hover { scale:1.2; z-index:50 !important; }
+
+.mana-payment-submit-row:has(.decision-quick-controls) {
+  grid-template-columns: minmax(0, 82px) minmax(0, 132px) auto;
+}
+
+.table-shell[data-focused-hud="true"] .mana-payment-submit-row .mana-payment-pay-button {
+  width: 100% !important;
+  min-width: 0 !important;
+}

@@ -10,6 +10,76 @@ use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::ShuffleLibraryEffect;
 
+#[derive(Debug, Clone)]
+struct ShuffleLibraryAction {
+    player: crate::ids::PlayerId,
+    // Internal insertion order, bottom-to-top. These cards are excluded from
+    // randomization and restored at the original instruction's boundary.
+    retained: Vec<crate::ids::ObjectId>,
+    position_from_top: usize,
+    reason: String,
+}
+
+impl EffectExecutor for ShuffleLibraryAction {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::resolved());
+        }
+        if game.player(self.player).is_none() {
+            return Err(ExecutionError::PlayerNotFound(self.player));
+        }
+        game.shuffle_library_except_then_insert_from_top(
+            self.player,
+            &self.retained,
+            self.position_from_top,
+            &self.reason,
+        );
+        Ok(
+            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                ShuffleLibraryEvent::new(self.player, ctx.cause.clone()),
+                ctx.provenance,
+            )),
+        )
+    }
+}
+
+/// One owner for randomization and its completion observation, including
+/// search instructions that retain selected cards outside the shuffled set.
+pub(crate) fn shuffle_library(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: crate::ids::PlayerId,
+    retained: &[crate::ids::ObjectId],
+    position_from_top: usize,
+    reason: &str,
+) -> Result<EffectOutcome, ExecutionError> {
+    crate::effects::execute_effect(
+        game,
+        &shuffle_library_action(player, retained, position_from_top, reason),
+        ctx,
+    )
+}
+
+/// Compose the existing shuffle owner as an actual child instruction, keeping
+/// the selected player, retained insertion ordering and authored reason.
+pub(crate) fn shuffle_library_action(
+    player: crate::ids::PlayerId,
+    retained: &[crate::ids::ObjectId],
+    position_from_top: usize,
+    reason: &str,
+) -> crate::effect::Effect {
+    crate::effect::Effect::new(ShuffleLibraryAction {
+        player,
+        retained: retained.to_vec(),
+        position_from_top,
+        reason: reason.into(),
+    })
+}
+
 /// Effect that shuffles a player's library.
 ///
 /// # Fields
@@ -30,14 +100,7 @@ impl EffectExecutor for ShuffleLibraryEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        game.shuffle_player_library(player_id);
-
-        Ok(
-            EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-                ctx.provenance,
-            )),
-        )
+        shuffle_library(game, ctx, player_id, &[], 1, "library shuffled")
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

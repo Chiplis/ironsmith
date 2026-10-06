@@ -1428,6 +1428,29 @@ fn modify_token_groups_checked(
 
 include!("damage_result_modification.rs");
 
+/// Shared unsigned quantity policy for count proposals. Specialized damage,
+/// life, mana and token transactions retain their own validation policies.
+fn modified_count(
+    game: &GameState,
+    count: u32,
+    modification: &EventModification,
+    effect: &ReplacementEffect,
+) -> u32 {
+    match modification {
+        EventModification::Multiply(factor) => count.saturating_mul(*factor),
+        EventModification::Add(delta) => count.saturating_add_signed(*delta),
+        EventModification::Subtract(delta) => count.saturating_sub(*delta),
+        EventModification::SetTo(value) => *value,
+        EventModification::SetToAtLeast(value) => {
+            count.max(resolve_value_for_replacement(value, game, effect.source))
+        }
+        EventModification::ReduceToZero => 0,
+        EventModification::AddDynamic(_) => {
+            unreachable!("dynamic modifier normalized before dispatch")
+        }
+    }
+}
+
 fn apply_trait_modification(
     game: &GameState,
     event: &Event,
@@ -1438,21 +1461,14 @@ fn apply_trait_modification(
 
     match event.kind() {
         EventKind::RemoveCounters => {
-            let removal = downcast_event::<crate::events::RemoveCountersEvent>(event.inner())?;
-            let count = match modification {
-                EventModification::Multiply(factor) => removal.count.saturating_mul(*factor),
-                EventModification::Add(delta) => removal.count.saturating_add_signed(*delta),
-                EventModification::Subtract(delta) => removal.count.saturating_sub(*delta),
-                EventModification::SetTo(value) => *value,
-                EventModification::SetToAtLeast(value) => removal
-                    .count
-                    .max(resolve_value_for_replacement(value, game, effect.source)),
-                EventModification::ReduceToZero => 0,
-                EventModification::AddDynamic(_) => {
-                    unreachable!("dynamic modifier normalized before dispatch")
-                }
-            };
-            Some(event.rewrap(removal.with_count(count)))
+            let removal = crate::events::CounterRemovalEvent::from_event(event.inner())?;
+            let count = modified_count(game, removal.count(), modification, effect);
+            Some(removal.with_count(event, count))
+        }
+        EventKind::KeywordAction => {
+            let action = downcast_event::<crate::events::KeywordActionEvent>(event.inner())?;
+            let amount = modified_count(game, action.amount, modification, effect);
+            Some(event.rewrap(action.clone().with_amount(amount)))
         }
         EventKind::ManaAdded => {
             use crate::events::ManaAddedEvent;
@@ -1467,26 +1483,7 @@ fn apply_trait_modification(
         }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
-            let modified = match modification {
-                EventModification::Multiply(factor) => {
-                    draw.with_count(draw.count.saturating_mul(*factor))
-                }
-                EventModification::Add(delta) => {
-                    draw.with_count(draw.count.saturating_add_signed(*delta))
-                }
-                EventModification::Subtract(delta) => {
-                    draw.with_count(draw.count.saturating_sub(*delta))
-                }
-                EventModification::SetTo(value) => draw.with_count(*value),
-                EventModification::SetToAtLeast(value) => {
-                    let floor = resolve_value_for_replacement(value, game, effect.source);
-                    draw.with_count(draw.count.max(floor))
-                }
-                EventModification::ReduceToZero => draw.with_count(0),
-                EventModification::AddDynamic(_) => {
-                    unreachable!("dynamic modifier normalized before dispatch")
-                }
-            };
+            let modified = draw.with_count(modified_count(game, draw.count, modification, effect));
             Some(event.rewrap(modified))
         }
         _ => None,
@@ -2260,7 +2257,6 @@ fn queue_prevention_follow_up(
             damage_source_snapshot,
         );
 }
-
 #[cfg(test)]
 mod quantitative_addition_range_tests {
     use super::*;

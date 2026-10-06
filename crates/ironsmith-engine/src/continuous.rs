@@ -2056,8 +2056,10 @@ pub struct CalculatedCharacteristics {
     pub loyalty: Option<u32>,
     /// Copiable printed defense number; current defense counters are separate.
     pub defense: Option<u32>,
+    /// Abilities the object has after layers, including conditional rules whose
+    /// conditions are currently false. Actual ability-loss effects remove them.
     pub abilities: CalculatedAbilities,
-    /// Static abilities that this object currently has (including from effects)
+    /// Static abilities currently applying (including from effects).
     pub static_abilities: SharedVec<StaticAbility>,
     /// Ability templates that this object is prohibited from having or gaining
     /// while the corresponding layer-6 continuous effects apply.
@@ -2437,20 +2439,23 @@ fn replace_enchant_metadata(
     push_static_ability_once(chars, metadata.enchant_ability());
 }
 
-fn retain_active_static_abilities(
+fn refresh_active_static_abilities(
     chars: &mut CalculatedCharacteristics,
     game: &crate::game_state::GameState,
     source: ObjectId,
 ) {
-    chars.abilities.retain(|ability| match &ability.kind {
-        AbilityKind::Static(static_ability) => static_ability.is_active(game, source),
-        _ => true,
-    });
-    // Rebuild the static cache from this calculation's active ability list.
+    // A false condition disables the effect, not the rule that creates it.
+    // Preserve the layered ability list for rules text and ability identity;
+    // only the active static cache is filtered by the current condition.
+    // Rebuild the static cache from this calculation's surviving ability list.
     // Direct continuous restrictions are installed in both representations
     // by `push_static_ability_once`; retaining a prior cache entry here loses
     // its originating effect duration (for example, EOT unblockability).
-    chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    chars.static_abilities = extract_static_abilities(&chars.abilities)
+        .into_iter()
+        .filter(|ability| ability.is_active(game, source))
+        .collect::<Vec<_>>()
+        .into();
     chars.aura_attach_filter = chars
         .static_abilities
         .iter()
@@ -3431,7 +3436,7 @@ fn calculate_characteristics_layer_batch_with_effects(
         prune_ability_gain_prohibitions(chars);
         guards[idx].update(chars);
 
-        retain_active_static_abilities(chars, game, id);
+        refresh_active_static_abilities(chars, game, id);
         guards[idx].update(chars);
     }
 
@@ -4266,7 +4271,7 @@ fn calculate_with_layers_direct_internal(
     prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
-    retain_active_static_abilities(&mut chars, game, object.id);
+    refresh_active_static_abilities(&mut chars, game, object.id);
     calc_guard.update(&chars);
 
     chars

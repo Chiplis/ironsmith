@@ -66,7 +66,7 @@ pub use surveil::SurveilEffect;
 pub(crate) use draw_cards::{
     AutomaticDrawRevealCandidate, HiddenDrawRevealMode, automatic_draw_reveal_boolean_context,
     automatic_draw_reveal_candidate_for_pending, automatic_reveal_events_for_draw,
-    collect_automatic_draw_reveal_candidates, emit_automatic_draw_reveal_event,
+    collect_automatic_draw_reveal_candidates, draw_observation, emit_automatic_draw_reveal_event,
     execute_scoped_draw_replacement_effects, hidden_automatic_draw_reveal_description,
     pending_hidden_automatic_draw_reveal,
 };
@@ -77,13 +77,17 @@ pub(crate) use discard_hand::discard_hand_cards;
 
 pub(crate) use draw_cards::execute_turn_draw_proposal;
 
-pub(crate) use reveal::reveal_objects;
+pub(crate) use reveal::{public_reveal_observation, public_reveal_view, reveal_objects};
 
 mod library_arrangement;
-pub(crate) use library_arrangement::arrange_library_cards;
+pub(crate) use library_arrangement::{
+    LibraryCardPosition, arrange_library_cards, position_library_card,
+};
 
 mod look;
 pub(crate) use library_arrangement::{
     execute_library_instruction_atomically, order_library_cards_top_to_bottom,
 };
 pub(crate) use look::look_at_cards;
+
+pub(crate) use shuffle_library::{shuffle_library, shuffle_library_action};

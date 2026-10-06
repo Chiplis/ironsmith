@@ -10,7 +10,7 @@ use crate::zone::Zone;
 
 /// A land-play event.
 ///
-/// Triggered when a player plays a land as a special action.
+/// Triggered when a player plays a land as a special action or during resolution.
 #[derive(Debug, Clone)]
 pub struct LandPlayedEvent {
     /// The land permanent/object resulting from the play.
@@ -19,6 +19,8 @@ pub struct LandPlayedEvent {
     pub player: PlayerId,
     /// The zone the land was played from.
     pub from_zone: Zone,
+    /// Characteristics of the committed land at the play observation boundary.
+    pub snapshot: Option<ObjectSnapshot>,
 }
 
 impl LandPlayedEvent {
@@ -28,7 +30,13 @@ impl LandPlayedEvent {
             land,
             player,
             from_zone,
+            snapshot: None,
         }
+    }
+
+    pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        self.snapshot = snapshot;
+        self
     }
 }
 
@@ -66,10 +74,9 @@ impl GameEventType for LandPlayedEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

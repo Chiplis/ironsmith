@@ -594,14 +594,15 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-        commit_token_copy_proposal(*self, game, ctx, true)
+        commit_token_copy_proposal(*self, game, ctx)
     }
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        commit_token_copy_proposal(*self, game, ctx, false).map(|commit| commit.outcome)
+        complete_token_copy_proposal(*self, game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
     }
 }
 
@@ -609,20 +610,23 @@ fn execute_token_instruction(
     effect: &CreateTokenCopyEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    commit_token_copy_proposal(
-        prepare_token_copy_proposal(effect, game, ctx)?,
-        game,
-        ctx,
-        false,
-    )
-    .map(|commit| commit.outcome)
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    complete_token_copy_proposal(prepare_token_copy_proposal(effect, game, ctx)?, game, ctx)
 }
+
+fn complete_token_copy_proposal(
+    proposal: TokenCopyProposal,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let receipt = commit_token_copy_proposal(proposal, game, ctx)?;
+    crate::effects::composition::complete_standalone_original_with_outputs(game, ctx, receipt)
+}
+
 fn commit_token_copy_proposal(
     mut proposal: TokenCopyProposal,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    defer_additions: bool,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
     use crate::effects::SimultaneousEffectProposal;
     use crate::events::processing::PreparedTokenCreation;
@@ -639,7 +643,7 @@ fn commit_token_copy_proposal(
         .as_ref()
         .map(|permit| permit.enter_phase())
         .transpose()?;
-    let mut committed = match proposal.prepared.take().ok_or_else(|| {
+    let committed = match proposal.prepared.take().ok_or_else(|| {
         ExecutionError::InternalError("copy proposal has no prepared creation".into())
     })? {
         PreparedTokenCreation::Finished { outcome, programs } => {
@@ -662,11 +666,6 @@ fn commit_token_copy_proposal(
         }
     };
     drop(phase);
-    if !defer_additions && let Some(mut completion) = committed.completion.take() {
-        game.freeze_completed_entry_events(committed.outcome.events.iter_mut())?;
-        completion.freeze(game)?;
-        committed.outcome = completion.complete(game, ctx, committed.outcome)?;
-    }
     Ok(committed)
 }
 fn commit_token_copy_original(
@@ -690,6 +689,7 @@ fn commit_token_copy_original(
     let mut created_ids = super::resources::buffer(count)?;
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
+    let mut lifecycle_children = Vec::new();
 
     for index in 0..count {
         let id = game.new_object_id();
@@ -728,7 +728,7 @@ fn commit_token_copy_original(
             .is_some_and(|obj| obj.zone == Zone::Battlefield)
         {
             let entered_is_creature = game.current_is_creature(entered_id);
-            apply_token_battlefield_entry(
+            let entry_observation = apply_token_battlefield_entry(
                 game,
                 ctx,
                 entered_id,
@@ -739,6 +739,16 @@ fn commit_token_copy_original(
                 entry_result.enters_tapped,
                 &mut events,
             )?;
+            super::lifecycle::retain_token_child(
+                &mut events,
+                &mut lifecycle_children,
+                entry_observation,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                    EffectOutcome::with_objects(Vec::new()),
+                ));
+            }
             if let Some(Some(target)) = proposal.original_attack_targets.get(index)
                 && crate::effects::combat::can_enter_attacking(game, entered_id)
             {
@@ -766,6 +776,7 @@ fn commit_token_copy_original(
         },
         &mut events,
         &mut entry_receipts,
+        &mut lifecycle_children,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -788,13 +799,18 @@ fn commit_token_copy_original(
                     game.turn.turn_number,
                 ));
             }
-            schedule_token_cleanup(game, ctx, id, controller_id, proposal.cleanup.clone())?;
+            let cleanup =
+                schedule_token_cleanup(game, ctx, id, controller_id, proposal.cleanup.clone())?;
+            super::lifecycle::retain_token_child(&mut events, &mut lifecycle_children, cleanup);
         }
     }
     Ok(crate::effects::SimultaneousEffectCommit {
-        outcome: EffectOutcome::with_objects(created_ids.clone())
-            .with_result_objects(created_ids)
-            .with_events(events),
+        outcome: super::lifecycle::compose_token_original(
+            EffectOutcome::with_objects(created_ids.clone())
+                .with_result_objects(created_ids)
+                .with_events(events),
+            lifecycle_children,
+        ),
         completion: Some(super::lifecycle::token_instruction_completion(
             proposal.instruction.take(),
             entry_receipts,
@@ -829,9 +845,25 @@ impl EffectExecutor for CreateTokenCopyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
-            execute_token_instruction(self, game, ctx)
-        })
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::lifecycle::execute_token_instruction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| execute_token_instruction(self, game, ctx),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -842,7 +874,6 @@ impl EffectExecutor for CreateTokenCopyEffect {
         "permanent to copy"
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

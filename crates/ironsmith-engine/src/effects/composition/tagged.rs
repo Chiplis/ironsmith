@@ -14,6 +14,7 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 pub type TaggedEffect = ironsmith_core::TaggedEffect<crate::effect::Effect>;
 
+use super::OriginalOutcomeAdapter;
 use super::tagging_runtime::{
     TaggedRuntimeState, apply_tagged_runtime_state, capture_all_effect_target_snapshots,
     capture_tagged_runtime_state,
@@ -113,24 +114,180 @@ pub(crate) fn apply_outcome_tags(
 /// live execution.
 #[derive(Debug)]
 struct TaggedProposal {
-    effect: TaggedEffect,
     inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
+    adapter: TagOriginalOutcome,
+}
+
+#[derive(Debug)]
+struct TagOriginalOutcome {
+    effect: TaggedEffect,
     runtime: TaggedRuntimeState,
+    accumulated_declarations: Option<Vec<ObjectSnapshot>>,
+}
+
+impl TagOriginalOutcome {
+    fn capture(effect: &TaggedEffect, game: &GameState, ctx: &ExecutionContext) -> Self {
+        Self {
+            effect: effect.clone(),
+            runtime: capture_tagged_runtime_state(game, &effect.effect, ctx),
+            // Successive target declarations under the same tag accumulate
+            // selected objects. Capture this before either a live or staged body.
+            accumulated_declarations: effect
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+                .then(|| ctx.get_tagged_all(effect.tag.as_str()).cloned())
+                .flatten()
+                .filter(|previous| !previous.is_empty()),
+        }
+    }
+}
+
+impl super::OriginalOutcomeAdapter for TagOriginalOutcome {
+    fn finish(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = result?;
+        if !ctx.decision_maker.awaiting_choice() {
+            apply_outcome_tags(&self.effect, game, ctx, &outcome, self.runtime);
+            if let Some(previous) = self.accumulated_declarations {
+                let mut merged = previous;
+                for snapshot in ctx
+                    .get_tagged_all(self.effect.tag.as_str())
+                    .cloned()
+                    .unwrap_or_default()
+                {
+                    if !merged
+                        .iter()
+                        .any(|existing| existing.object_id == snapshot.object_id)
+                    {
+                        merged.push(snapshot);
+                    }
+                }
+                ctx.set_tagged_objects(self.effect.tag.clone(), merged);
+            }
+        }
+        Ok(outcome)
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for TaggedProposal {
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        self.inner.damage_action_inputs()
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        let TaggedProposal { inner, adapter } = *self;
+        let binding = inner.bind_damage_action(game, ctx, owner)?;
+        binding.project(|outcome| Box::new(adapter).finish(game, ctx, Ok(outcome)))
+    }
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> {
+        self.inner.declared_life_payment()
+    }
+
+    fn has_simultaneous_originals(&self) -> bool {
+        self.inner.has_simultaneous_originals()
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.inner.nominal_payment_quantity()
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.inner.declared_payment_resources()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
+        self.inner.declared_life_payments()
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.inner.prepare_original(game, ctx)
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.inner.seal_original(game, ctx)
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let receipt = self.inner.commit_original_with_outputs(game, ctx)?;
+        super::adapt_original_outcome_with_outputs(receipt, Box::new(self.adapter), game, ctx)
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let outcome = self.inner.commit(game, ctx)?;
-        apply_outcome_tags(&self.effect, game, ctx, &outcome, self.runtime);
-        Ok(outcome)
+        let result = self.inner.commit(game, ctx);
+        Box::new(self.adapter).finish(game, ctx, result)
     }
 }
 
 impl EffectExecutor for TaggedEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effect.0.supports_prepared_action_program()
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let adapter = TagOriginalOutcome::capture(self, game, ctx);
+        Ok(Some(super::action_program::adapted_child_program_cursor(
+            self.effect.as_ref().clone(),
+            Box::new(adapter),
+        )))
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        self.effect.0.supports_damage_action_cohort()
+    }
+    fn visit_prepared_selection_bindings(
+        &self,
+        visitor: &mut dyn FnMut(crate::effects::PreparedSelectionBinding),
+    ) {
+        visitor(crate::effects::PreparedSelectionBinding::ObjectTag(
+            self.tag.clone(),
+        ));
+        self.effect.0.visit_prepared_selection_bindings(visitor);
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect
             .0
@@ -161,39 +318,21 @@ impl EffectExecutor for TaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
-        // "Choose up to one target artifact. Choose up to one target creature.
-        // ... the chosen permanents": successive target declarations under one
-        // tag name accumulate into a single chosen set rather than each
-        // replacing the last.
-        let accumulated_declarations = self
-            .effect
-            .downcast_ref::<crate::effects::TargetOnlyEffect>()
-            .is_some()
-            .then(|| ctx.get_tagged_all(self.tag.as_str()).cloned())
-            .flatten()
-            .filter(|previous| !previous.is_empty());
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-        // Execute the inner effect
-        let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
-        apply_outcome_tags(self, game, ctx, &outcome, runtime);
-        if let Some(previous) = accumulated_declarations {
-            let mut merged = previous;
-            for snapshot in ctx
-                .get_tagged_all(self.tag.as_str())
-                .cloned()
-                .unwrap_or_default()
-            {
-                if !merged
-                    .iter()
-                    .any(|existing| existing.object_id == snapshot.object_id)
-                {
-                    merged.push(snapshot);
-                }
-            }
-            ctx.set_tagged_objects(self.tag.clone(), merged);
-        }
-        Ok(outcome)
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_tagged_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -209,13 +348,9 @@ impl EffectExecutor for TaggedEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
+        let adapter = TagOriginalOutcome::capture(self, game, ctx);
         let inner = self.effect.prepare_simultaneous_player_action(game, ctx)?;
-        Ok(Box::new(TaggedProposal {
-            effect: self.clone(),
-            inner,
-            runtime,
-        }))
+        Ok(Box::new(TaggedProposal { inner, adapter }))
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -259,7 +394,76 @@ impl EffectExecutor for TaggedEffect {
     }
 }
 
+fn execute_tagged_with_outputs(
+    effect: &TaggedEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let adapter: Box<dyn super::OriginalOutcomeAdapter> =
+        Box::new(TagOriginalOutcome::capture(effect, game, ctx));
+    let result = purpose.execute(game, &effect.effect, ctx);
+    adapter.finish_with_outputs(game, ctx, result)
+}
+
 impl CostExecutableEffect for TaggedEffect {
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_tagged_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn supports_prepared_payment(&self) -> bool {
+        self.effect
+            .0
+            .as_cost_executable()
+            .is_some_and(|cost| cost.supports_prepared_payment())
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let adapter = TagOriginalOutcome::capture(self, game, ctx);
+        let inner = self.effect.prepare_simultaneous_payment(game, ctx)?;
+        Ok(Box::new(TaggedProposal { inner, adapter }))
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let cost = self.effect.0.as_cost_executable().ok_or_else(|| {
+            CostValidationError::Other("wrapped effect is not cost-executable".into())
+        })?;
+        cost.can_execute_as_cost_with_context(game, ctx, reason)
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let child = self
+            .effect
+            .0
+            .as_cost_executable()?
+            .canonical_cost_effect()?;
+        let mut replacement = self.clone();
+        replacement.effect = Box::new(child);
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -335,6 +539,15 @@ impl EffectExecutor for TagAllEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let fallback_snapshots = capture_all_effect_target_snapshots(game, &self.effect, ctx);
         let mut runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
         runtime.outcome_only = true;
@@ -342,7 +555,8 @@ impl EffectExecutor for TagAllEffect {
         // Execute the inner effect, then tag the objects the effect actually
         // reports as affected. This keeps "destroyed this way" style tags from
         // including objects protected by replacement/prevention.
-        let outcome = crate::effects::execute_effect(game, &self.effect, ctx)?;
+        let outputs = crate::effects::execute_effect_with_outputs(game, &self.effect, ctx)?;
+        let outcome = &outputs.outcome;
         let has_result_objects = outcome.objects().is_some_and(|objects| !objects.is_empty())
             || outcome
                 .affected_objects()
@@ -357,11 +571,11 @@ impl EffectExecutor for TagAllEffect {
                 .chosen_object_memory()
                 .is_some_and(|memory| !memory.is_empty());
         if has_result_objects {
-            apply_tagged_runtime_state(game, ctx, self.tag.clone(), &outcome, runtime);
+            apply_tagged_runtime_state(game, ctx, self.tag.clone(), outcome, runtime);
         } else if outcome.something_happened() && !fallback_snapshots.is_empty() {
             ctx.tag_objects(self.tag.clone(), fallback_snapshots);
         }
-        Ok(outcome)
+        Ok(outputs)
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -397,6 +611,29 @@ impl EffectExecutor for TagAllEffect {
 }
 
 impl CostExecutableEffect for TagAllEffect {
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let cost = self.effect.0.as_cost_executable().ok_or_else(|| {
+            CostValidationError::Other("wrapped effect is not cost-executable".into())
+        })?;
+        cost.can_execute_as_cost_with_context(game, ctx, reason)
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let child = self
+            .effect
+            .0
+            .as_cost_executable()?
+            .canonical_cost_effect()?;
+        let mut replacement = self.clone();
+        replacement.effect = Box::new(child);
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,

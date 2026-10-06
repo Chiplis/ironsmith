@@ -9,8 +9,7 @@ use std::collections::HashMap;
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
-use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
@@ -69,40 +68,45 @@ impl EffectExecutor for EmitKeywordActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            if matches!(
-                self.action,
-                KeywordActionKind::Forage
-                    | KeywordActionKind::AssembleContraption
-                    | KeywordActionKind::Planeswalk
-                    | KeywordActionKind::SetSchemeInMotion
-                    | KeywordActionKind::AbandonScheme
-            ) {
-                return super::keyword_programs::execute_keyword_program(
-                    game,
-                    ctx,
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                if matches!(
                     self.action,
-                    self.amount,
-                );
-            }
-            if self.action == KeywordActionKind::Harness
-                && !super::keyword_programs::commit_harness(game, ctx.source)
-            {
-                return Ok(EffectOutcome::count(0));
-            }
-            KeywordActionCompletion(self.clone()).execute_child(game, ctx)
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+                    KeywordActionKind::Forage
+                        | KeywordActionKind::AssembleContraption
+                        | KeywordActionKind::Planeswalk
+                        | KeywordActionKind::SetSchemeInMotion
+                        | KeywordActionKind::AbandonScheme
+                ) {
+                    return super::keyword_programs::execute_keyword_program_with_outputs(
+                        game,
+                        ctx,
+                        self.action,
+                        self.amount,
+                    );
+                }
+                if self.action == KeywordActionKind::Harness
+                    && !super::keyword_programs::commit_harness(game, ctx.source)
+                {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                KeywordActionCompletion(self.clone()).execute_child_with_outputs(game, ctx)
+            },
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -125,6 +129,15 @@ impl EffectExecutor for KeywordActionCompletion {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let config = &self.0;
         let object_tags = object_tags_from_config(config, game, ctx)?;
         if config.action == KeywordActionKind::Exploit {
@@ -155,7 +168,7 @@ impl EffectExecutor for KeywordActionCompletion {
                 ctx.provenance,
             )
             .with_lookback_source_snapshots(lookback);
-            return Ok(EffectOutcome::resolved().with_event(event));
+            return PublishKeywordActionCompletion(event).execute_child_with_outputs(game, ctx);
         }
         // CR 702.29: a cycling ability's announced X (paid as part of the
         // cycling cost) is the X of its "when you cycle this card" trigger.
@@ -168,8 +181,147 @@ impl EffectExecutor for KeywordActionCompletion {
                 .with_x_value(x_value),
             ctx.provenance,
         );
-        Ok(EffectOutcome::resolved().with_event(event))
+        PublishKeywordActionCompletion(event).execute_child_with_outputs(game, ctx)
     }
+}
+
+/// Publish an already authored completion without executing the action again or
+/// reconstructing its subjects from the instruction source. The caller freezes
+/// action-specific observations at the semantic completion boundary.
+#[derive(Debug, Clone)]
+struct PublishKeywordActionCompletion(TriggerEvent);
+
+impl EffectExecutor for PublishKeywordActionCompletion {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        observe_keyword_action_completion(game, self.0.clone())
+    }
+}
+
+/// Shared completion observation owner for recorded effects and game-loop
+/// actions. Root actions retain their own queue/transaction boundary; neither
+/// adapter reconstructs occurrence identity, lifecycle state or grouping.
+pub(crate) fn observe_keyword_action_completion(
+    game: &mut GameState,
+    event: TriggerEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    if event.downcast::<KeywordActionEvent>().is_none() {
+        return Err(ExecutionError::InternalError(
+            "keyword completion requires a keyword action observation".into(),
+        ));
+    }
+    let parent = event.provenance();
+    let event = crate::effects::observe_action_completion(game, event, Some(parent))?;
+    Ok(EffectOutcome::resolved().with_event(event))
+}
+
+pub(crate) fn complete_keyword_action(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: KeywordActionEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    publish_keyword_action_completion(
+        game,
+        ctx,
+        TriggerEvent::new_with_provenance(event, ctx.provenance),
+    )
+}
+
+/// Publish an authored observation with its original parent, snapshots and
+/// simultaneous group. Cost and resolution adapters need those identities even
+/// when their publication context no longer names the original instruction.
+pub(crate) fn publish_keyword_action_completion(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: TriggerEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    publish_keyword_action_completion_receipt(game, ctx, event)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// The recorded completion leaf retains its packet through scalar adapters.
+pub(crate) fn publish_keyword_action_completion_receipt(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: TriggerEvent,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if event.downcast::<KeywordActionEvent>().is_none() {
+        return Err(ExecutionError::InternalError(
+            "keyword completion requires a keyword action observation".into(),
+        ));
+    }
+    PublishKeywordActionCompletion(event).execute_child_with_outputs(game, ctx)
+}
+
+/// Keep the action body's result independent of its completion notification.
+/// Both remain recorded children; publication must not add to a count or replace
+/// a chosen/affected-object result supplied by the action's owner.
+pub(crate) fn complete_keyword_action_with_result(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: EffectOutcome,
+    event: KeywordActionEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    publish_keyword_action_completion_with_result(
+        game,
+        ctx,
+        original,
+        TriggerEvent::new_with_provenance(event, ctx.provenance),
+    )
+}
+
+/// Retain the body owner's outputs while publishing its one completion.
+pub(crate) fn complete_keyword_action_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: crate::effects::CompletedEffectOutputs,
+    event: KeywordActionEvent,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    publish_keyword_action_completion_with_outputs(
+        game,
+        ctx,
+        original,
+        TriggerEvent::new_with_provenance(event, ctx.provenance),
+    )
+}
+
+/// Preserve an action's primary result when its completion carries captured
+/// provenance, snapshots or a group whose original scope has already closed.
+pub(crate) fn publish_keyword_action_completion_with_result(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: EffectOutcome,
+    event: TriggerEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    publish_keyword_action_completion_with_outputs(
+        game,
+        ctx,
+        crate::effects::CompletedEffectOutputs::aggregate_only(original),
+        event,
+    )
+    .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// Aggregate and retained callers share publication and primary projection.
+pub(crate) fn publish_keyword_action_completion_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: crate::effects::CompletedEffectOutputs,
+    event: TriggerEvent,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let completion = publish_keyword_action_completion_receipt(game, ctx, event)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    Ok(original.append_batch_completion_outputs(completion))
 }
 
 impl CostExecutableEffect for EmitKeywordActionEffect {

@@ -3,14 +3,12 @@
 use crate::combat_state::AttackTarget;
 use crate::decisions::context::{OrderContext, SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{
-    resolve_objects_for_effect, resolve_player_filter, resolve_tagged_object_id,
-};
+use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{
     EventOutcome, PreparedEventOutcome, PreparedZoneProposal, ReplacementEventContext,
-    commit_prepared_zone_change, prepare_zone_change_proposal_scoped,
+    prepare_zone_change_proposal_scoped,
 };
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
@@ -24,7 +22,7 @@ use crate::zone::Zone;
 
 use super::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, maybe_prompt_for_split_result_order,
-    move_to_battlefield_batch_with_options_and_zone_proposals, resolve_battlefield_entry_counters,
+    move_to_battlefield_batch_with_companions, resolve_battlefield_entry_counters,
     take_recorded_zone_change,
 };
 pub use ironsmith_core::BattlefieldController;
@@ -128,26 +126,24 @@ fn apply_library_placement_order(
     }
 
     for (owner, ordered_ids) in by_owner {
-        let Some(current) = game.player(owner).map(|player| player.library.clone()) else {
-            continue;
-        };
-        let mut unaffected = current
-            .into_iter()
-            .filter(|object_id| !ordered_ids.contains(object_id))
-            .collect::<Vec<_>>();
-        let final_order = if to_top {
-            unaffected.extend(ordered_ids.iter().rev().copied());
-            unaffected
+        if to_top {
+            crate::effects::cards::arrange_library_cards(
+                game,
+                owner,
+                &ordered_ids,
+                &[],
+                "ordered multi-card library placement",
+            );
         } else {
-            let mut bottom_first = ordered_ids;
-            bottom_first.extend(unaffected);
-            bottom_first
-        };
-        game.set_player_library_order_with_audit(
-            owner,
-            final_order,
-            "ordered multi-card library placement",
-        );
+            let top_to_bottom = ordered_ids.into_iter().rev().collect::<Vec<_>>();
+            crate::effects::cards::arrange_library_cards(
+                game,
+                owner,
+                &[],
+                &top_to_bottom,
+                "ordered multi-card library placement",
+            );
+        }
     }
 }
 
@@ -276,6 +272,10 @@ fn matching_cost_candidate_count(
 }
 
 impl EffectExecutor for MoveToZoneEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.target)
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -308,28 +308,9 @@ impl EffectExecutor for MoveToZoneEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::context::ExecutionContextCheckpoint::capture(ctx);
-        // CR 603.10a: objects this instruction moves together share one
-        // pre-event look-back, so a leaves-the-battlefield observer moved in
-        // the same event sees every other object leave.
-        let pinned_lookback = (self.zone != Zone::Battlefield
-            && (!self.target.is_single() || matches!(self.target.base(), ChooseSpec::Tagged(_))))
-            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-        let outcome = self.execute_with_shared_lookback(game, ctx);
-        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || outcome.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        outcome
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            self.execute_with_shared_lookback(game, ctx)
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -389,26 +370,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         if let Some(actor) = actor {
             ctx.iteration.iterated_player = Some(actor);
         }
-        let resolved = resolve_objects_for_effect(game, ctx, &self.target);
+        let resolved = super::resolve_zone_move_objects(game, ctx, &self.target);
         ctx.iteration.iterated_player = saved_iterated_player;
         let mut object_ids = resolved?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
-        }
-        // When a tag snapshot carries a stale ObjectId (the tagged object
-        // changed zones since the snapshot was taken), resolve through
-        // stable_id so the move can find the actual game object.
-        if let ChooseSpec::Tagged(tag) = &self.target
-            && let Some(tagged) = ctx.get_tagged_all(tag)
-        {
-            for (idx, snapshot) in tagged.iter().enumerate() {
-                if idx < object_ids.len()
-                    && game.object(object_ids[idx]).is_none()
-                    && let Some(resolved) = resolve_tagged_object_id(game, ctx, snapshot)
-                {
-                    object_ids[idx] = resolved;
-                }
-            }
         }
         // CR 726.4: after a restart, "then put those cards onto the
         // battlefield" happens once the new game's starting procedure is done.
@@ -558,7 +524,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let original_order = object_ids.clone();
         let mut zone_receipts = Vec::new();
         let mut authored_facts = Vec::new();
+        let mut arrival_counter_programs = Vec::new();
         let opened_batch = game.open_simultaneous_action();
+        let pinned_lookback = self.zone != Zone::Battlefield
+            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+        let mut prepared_moves = Vec::new();
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
                 continue;
@@ -588,19 +558,14 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     continue;
                 }
             }
-            let source_lki_before_move = if moves_source && object_id == ctx.source {
-                Some(
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        obj, game,
-                    ),
-                )
-            } else {
-                None
-            };
             let target_lki_before_move =
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    obj, game,
-                );
+                original_snapshots.get(&object_id).cloned().ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "move proposal has no frozen original snapshot".into(),
+                    )
+                })?;
+            let source_lki_before_move =
+                (moves_source && object_id == ctx.source).then(|| target_lki_before_move.clone());
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             let scope = ReplacementEventContext::with_scope(
@@ -631,22 +596,27 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 return Ok(EffectOutcome::count(0));
             }
 
-            let PreparedEventOutcome {
-                original: result,
-                mut programs,
-            } = result;
-            match result {
-                EventOutcome::Prevented => {
-                    any_prevented = true;
-                    zone_receipts.push((
-                        object_id,
-                        PreparedEventOutcome {
-                            original: EventOutcome::Prevented,
-                            programs,
-                        },
-                    ));
-                    continue;
-                }
+            prepared_moves.push((
+                object_id,
+                from_zone,
+                target_lki_before_move,
+                source_lki_before_move,
+                additional_effects,
+                result,
+            ));
+        }
+        let mut companion_moves = Vec::new();
+        for (
+            object_id,
+            from_zone,
+            target_lki_before_move,
+            source_lki_before_move,
+            additional_effects,
+            result,
+        ) in prepared_moves
+        {
+            let PreparedEventOutcome { original, programs } = result;
+            match original {
                 EventOutcome::Proceed(PreparedZoneProposal::Battlefield(mut proposal)) => {
                     proposal.prepend_programs(programs);
                     let options = match self.battlefield_controller {
@@ -677,22 +647,41 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         target_lki_before_move,
                         source_lki_before_move,
                     ));
-                    continue;
                 }
-                EventOutcome::Proceed(PreparedZoneProposal::Ready(prepared)) => {
-                    let replacement_context = prepared.context.clone();
-                    let mut committed = commit_prepared_zone_change(
-                        game,
-                        object_id,
-                        prepared,
-                        &mut *ctx.decision_maker,
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    programs.append(&mut committed.programs);
-                    let new_object_id = match committed.original {
-                        EventOutcome::Proceed(id) => Some(id),
+                original => companion_moves.push((
+                    object_id,
+                    from_zone,
+                    target_lki_before_move,
+                    source_lki_before_move,
+                    additional_effects,
+                    PreparedEventOutcome { original, programs },
+                )),
+            }
+        }
+        let entry_requests = battlefield_entries
+            .iter()
+            .map(|(object, options, _, _)| (*object, options.clone()))
+            .collect();
+        let completed = move_to_battlefield_batch_with_companions(
+            game,
+            ctx,
+            entry_requests,
+            zone_entry_proposals,
+            |game, ctx| {
+                for (
+                    object_id,
+                    from_zone,
+                    target_lki_before_move,
+                    source_lki_before_move,
+                    additional_effects,
+                    result,
+                ) in companion_moves
+                {
+                    let PreparedEventOutcome {
+                        original: result,
+                        mut programs,
+                    } = result;
+                    match result {
                         EventOutcome::Prevented => {
                             any_prevented = true;
                             zone_receipts.push((
@@ -704,10 +693,197 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                             ));
                             continue;
                         }
-                        EventOutcome::NotApplicable => {
-                            any_unchanged = true;
-                            affected_ids.push(object_id);
-                            affected_memory.push(Clone::clone(&target_lki_before_move));
+                        EventOutcome::Proceed(PreparedZoneProposal::Battlefield(_)) => {
+                            return Err(ExecutionError::InternalError(
+                                "entry proposal escaped its movement owner".into(),
+                            ));
+                        }
+                        EventOutcome::Proceed(PreparedZoneProposal::Ready(prepared)) => {
+                            let replacement_context = prepared.context.clone();
+                            let committed = super::commit_zone_change_proposal(
+                                game,
+                                object_id,
+                                PreparedEventOutcome {
+                                    original: EventOutcome::Proceed(prepared),
+                                    programs,
+                                },
+                                &mut *ctx.decision_maker,
+                            )?;
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(());
+                            }
+                            programs = committed.programs;
+                            let mut result = match committed.original {
+                                EventOutcome::Proceed(change) => change,
+                                EventOutcome::Prevented => {
+                                    any_prevented = true;
+                                    zone_receipts.push((
+                                        object_id,
+                                        PreparedEventOutcome {
+                                            original: EventOutcome::Prevented,
+                                            programs,
+                                        },
+                                    ));
+                                    continue;
+                                }
+                                EventOutcome::NotApplicable => {
+                                    any_unchanged = true;
+                                    affected_ids.push(object_id);
+                                    affected_memory.push(Clone::clone(&target_lki_before_move));
+                                    zone_receipts.push((
+                                        object_id,
+                                        PreparedEventOutcome {
+                                            original: EventOutcome::NotApplicable,
+                                            programs,
+                                        },
+                                    ));
+                                    continue;
+                                }
+                                EventOutcome::Replaced => {
+                                    any_replaced = true;
+                                    if let Some(change) = take_recorded_zone_change(game, object_id)
+                                    {
+                                        game.record_zone_change_results(
+                                            object_id,
+                                            change.new_object_ids.clone(),
+                                        );
+                                        if orders_library && change.final_zone == Zone::Library {
+                                            ordered_library_results
+                                                .extend(change.new_object_ids.iter().copied());
+                                        }
+                                        affected_ids.extend(change.new_object_ids);
+                                    }
+                                    affected_memory.push(Clone::clone(&target_lki_before_move));
+                                    zone_receipts.push((
+                                        object_id,
+                                        PreparedEventOutcome {
+                                            original: EventOutcome::Replaced,
+                                            programs,
+                                        },
+                                    ));
+                                    continue;
+                                }
+                            };
+                            let final_zone = result.final_zone;
+                            if final_zone == Zone::Hand {
+                                for &id in &result.new_object_ids {
+                                    let arriving = game.object(id).ok_or_else(|| {
+                                        ExecutionError::InternalError(
+                                            "hand arrival disappeared before result capture".into(),
+                                        )
+                                    })?;
+                                    let snapshot = ObjectSnapshot::from_object(arriving, game);
+                                    if arriving.kind == crate::object::ObjectKind::Card {
+                                        let memory = Clone::clone(&snapshot);
+                                        authored_facts.push(
+                                            crate::effect::ExecutionFact::CardsPutIntoHand {
+                                                player: arriving.owner,
+                                                cards: vec![memory],
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                            // Retain the exact arrival identities for enclosing replacement owners.
+                            game.record_zone_change_results(
+                                object_id,
+                                result.new_object_ids.clone(),
+                            );
+                            if !result.new_object_ids.is_empty() {
+                                ctx.refresh_target_snapshot(target_lki_before_move.clone());
+                                affected_memory.push(Clone::clone(&target_lki_before_move));
+                                if let Some(snapshot) = source_lki_before_move.clone() {
+                                    moved_source_lki = Some(snapshot);
+                                }
+                            }
+                            if !result.new_object_ids.is_empty() {
+                                // Counters authored as part of the move ("Exile this
+                                // with three time counters on it") belong to the object
+                                // that arrives, not the one that left.
+                                let arriving_counters =
+                                    authored_counters.remove(&object_id).unwrap_or_default();
+                                for &new_id in &result.new_object_ids {
+                                    if !arriving_counters.is_empty() {
+                                        let parent =
+                                            crate::effects::ExecutionContextCheckpoint::capture(
+                                                ctx,
+                                            );
+                                        ctx.source_snapshot = source_lki_before_move
+                                            .clone()
+                                            .or_else(|| ctx.source_snapshot.clone());
+                                        replacement_context.apply_to(ctx);
+                                        ctx.replacement.additional_replacement_effects =
+                                            additional_effects.clone();
+                                        for &(counter_type, amount) in &arriving_counters {
+                                            let event = crate::events::Event::put_counters(
+                                                new_id,
+                                                counter_type,
+                                                amount,
+                                                ctx.cause.clone(),
+                                            )
+                                            .with_provenance(ctx.provenance);
+                                            arrival_counter_programs.push((
+                                                crate::effects::ExecutionContextCheckpoint::capture(
+                                                    ctx,
+                                                ),
+                                                event,
+                                            ));
+                                        }
+                                        parent.restore(ctx);
+                                    }
+                                    if final_zone == Zone::Exile {
+                                        game.add_exiled_with_source_link(ctx.source, new_id);
+                                        if let Some(object) = game.object(new_id) {
+                                            ctx.tag_source_exiled_result(
+                                                ObjectSnapshot::from_object(object, game),
+                                            );
+                                        }
+                                    }
+                                    if final_zone == Zone::Library
+                                        && !self.to_top
+                                        && let Some(owner) =
+                                            game.object(new_id).map(|obj| obj.owner)
+                                    {
+                                        crate::effects::cards::position_library_card(
+                                            game,
+                                            owner,
+                                            new_id,
+                                            crate::effects::cards::LibraryCardPosition::Bottom,
+                                            "card put on bottom of library",
+                                        );
+                                    }
+                                }
+                                if final_zone == Zone::Library && from_zone == Zone::Battlefield {
+                                    maybe_prompt_for_split_result_order(
+                                        game,
+                                        &mut ctx.decision_maker,
+                                        final_zone,
+                                        &ctx.cause,
+                                        &mut result,
+                                    );
+                                    if ctx.decision_maker.awaiting_choice() {
+                                        return Ok(());
+                                    }
+                                    game.record_zone_change_results(
+                                        object_id,
+                                        result.new_object_ids.clone(),
+                                    );
+                                }
+                                affected_ids.extend(result.new_object_ids.iter().copied());
+                                if orders_library && final_zone == Zone::Library {
+                                    ordered_library_results
+                                        .extend(result.new_object_ids.iter().copied());
+                                }
+                                moved_ids.extend(result.new_object_ids.iter().copied());
+                                zone_receipts.push((
+                                    object_id,
+                                    PreparedEventOutcome {
+                                        original: EventOutcome::Proceed(result),
+                                        programs,
+                                    },
+                                ));
+                                continue;
+                            }
                             zone_receipts.push((
                                 object_id,
                                 PreparedEventOutcome {
@@ -719,16 +895,16 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         }
                         EventOutcome::Replaced => {
                             any_replaced = true;
-                            if let Some(change) = take_recorded_zone_change(game, object_id) {
+                            if let Some(result) = take_recorded_zone_change(game, object_id) {
                                 game.record_zone_change_results(
                                     object_id,
-                                    change.new_object_ids.clone(),
+                                    result.new_object_ids.clone(),
                                 );
-                                if orders_library && change.final_zone == Zone::Library {
+                                if orders_library && result.final_zone == Zone::Library {
                                     ordered_library_results
-                                        .extend(change.new_object_ids.iter().copied());
+                                        .extend(result.new_object_ids.iter().copied());
                                 }
-                                affected_ids.extend(change.new_object_ids);
+                                affected_ids.extend(result.new_object_ids);
                             }
                             affected_memory.push(Clone::clone(&target_lki_before_move));
                             zone_receipts.push((
@@ -738,222 +914,51 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                                     programs,
                                 },
                             ));
+                        }
+                        EventOutcome::NotApplicable => {
+                            if game
+                                .object(object_id)
+                                .is_some_and(|object| object.zone == from_zone)
+                            {
+                                any_unchanged = true;
+                                affected_ids.push(object_id);
+                                affected_memory.push(Clone::clone(&target_lki_before_move));
+                            }
+                            // Positioning a card within its current library preserves
+                            // object identity and does not count as a zone movement.
+                            if self.zone == Zone::Library
+                                && from_zone == Zone::Library
+                                && game
+                                    .object(object_id)
+                                    .is_some_and(|object| object.zone == Zone::Library)
+                            {
+                                ordered_library_results.push(object_id);
+                            }
+                            zone_receipts.push((
+                                object_id,
+                                PreparedEventOutcome {
+                                    original: EventOutcome::NotApplicable,
+                                    programs,
+                                },
+                            ));
                             continue;
                         }
-                    };
-                    let final_zone = game
-                        .object(new_object_id.unwrap())
-                        .map(|card| card.zone)
-                        .ok_or_else(|| {
-                            ExecutionError::InternalError(
-                                "move arrival disappeared before authored work".into(),
-                            )
-                        })?;
-                    let mut new_object_ids = game.take_zone_change_results(object_id);
-                    if new_object_ids.is_empty()
-                        && let Some(id) = new_object_id
-                    {
-                        new_object_ids.push(id);
                     }
-                    let mut result = super::AppliedZoneChange {
-                        final_zone,
-                        new_object_id,
-                        new_object_ids,
-                    };
-                    if final_zone == Zone::Hand {
-                        for &id in &result.new_object_ids {
-                            let arriving = game.object(id).ok_or_else(|| {
-                                ExecutionError::InternalError(
-                                    "hand arrival disappeared before result capture".into(),
-                                )
-                            })?;
-                            let snapshot = ObjectSnapshot::from_object(arriving, game);
-                            if arriving.kind == crate::object::ObjectKind::Card {
-                                let memory = Clone::clone(&snapshot);
-                                authored_facts.push(
-                                    crate::effect::ExecutionFact::CardsPutIntoHand {
-                                        player: arriving.owner,
-                                        cards: vec![memory],
-                                    },
-                                );
-                            }
-                        }
-                    }
-                    // Retain the exact arrival identities for enclosing replacement owners.
-                    game.record_zone_change_results(object_id, result.new_object_ids.clone());
-                    if !result.new_object_ids.is_empty() {
-                        ctx.refresh_target_snapshot(target_lki_before_move.clone());
-                        affected_memory.push(Clone::clone(&target_lki_before_move));
-                        if let Some(snapshot) = source_lki_before_move.clone() {
-                            moved_source_lki = Some(snapshot);
-                        }
-                    }
-                    if !result.new_object_ids.is_empty() {
-                        // Counters authored as part of the move ("Exile this
-                        // with three time counters on it") belong to the object
-                        // that arrives, not the one that left.
-                        let arriving_counters =
-                            authored_counters.remove(&object_id).unwrap_or_default();
-                        for &new_id in &result.new_object_ids {
-                            for &(counter_type, amount) in &arriving_counters {
-                                let mut counter_ctx = ExecutionContext::new(
-                                    ctx.source,
-                                    ctx.controller,
-                                    &mut *ctx.decision_maker,
-                                );
-                                counter_ctx.source_snapshot = source_lki_before_move
-                                    .clone()
-                                    .or_else(|| ctx.source_snapshot.clone());
-                                counter_ctx.cause = ctx.cause.clone();
-                                counter_ctx.provenance = ctx.provenance;
-                                counter_ctx.replacement.additional_replacement_effects =
-                                    additional_effects.clone();
-                                replacement_context.apply_to(&mut counter_ctx);
-                                let event = crate::events::Event::put_counters(
-                                    new_id,
-                                    counter_type,
-                                    amount,
-                                    counter_ctx.cause.clone(),
-                                )
-                                .with_provenance(counter_ctx.provenance);
-                                let mut outcome =
-                                    crate::effects::counters::execute_object_counter_placement(
-                                        game,
-                                        &mut counter_ctx,
-                                        event,
-                                    )?;
-                                if counter_ctx.decision_maker.awaiting_choice() {
-                                    return Ok(EffectOutcome::count(0));
-                                }
-                                crate::effects::retain_unmatched_outcome_events(
-                                    game,
-                                    &mut outcome.events,
-                                );
-                                authored_facts.append(&mut outcome.execution_facts);
-                                for event in outcome.events {
-                                    game.queue_trigger_event(event.provenance(), event);
-                                }
-                            }
-                            if final_zone == Zone::Exile {
-                                game.add_exiled_with_source_link(ctx.source, new_id);
-                                if let Some(object) = game.object(new_id) {
-                                    ctx.tag_source_exiled_result(ObjectSnapshot::from_object(
-                                        object, game,
-                                    ));
-                                }
-                            }
-                            if final_zone == Zone::Library
-                                && !self.to_top
-                                && let Some(owner) = game.object(new_id).map(|obj| obj.owner)
-                            {
-                                game.move_library_card_to_bottom(
-                                    owner,
-                                    new_id,
-                                    "card put on bottom of library",
-                                );
-                            }
-                        }
-                        if final_zone == Zone::Library && from_zone == Zone::Battlefield {
-                            maybe_prompt_for_split_result_order(
-                                game,
-                                &mut ctx.decision_maker,
-                                final_zone,
-                                &ctx.cause,
-                                &mut result,
-                            );
-                            if ctx.decision_maker.awaiting_choice() {
-                                return Ok(EffectOutcome::count(0));
-                            }
-                            game.record_zone_change_results(
-                                object_id,
-                                result.new_object_ids.clone(),
-                            );
-                        }
-                        affected_ids.extend(result.new_object_ids.iter().copied());
-                        if orders_library && final_zone == Zone::Library {
-                            ordered_library_results.extend(result.new_object_ids.iter().copied());
-                        }
-                        moved_ids.extend(result.new_object_ids.iter().copied());
-                        zone_receipts.push((
-                            object_id,
-                            PreparedEventOutcome {
-                                original: EventOutcome::Proceed(result),
-                                programs,
-                            },
-                        ));
-                        continue;
-                    }
-                    zone_receipts.push((
-                        object_id,
-                        PreparedEventOutcome {
-                            original: EventOutcome::NotApplicable,
-                            programs,
-                        },
-                    ));
-                    continue;
                 }
-                EventOutcome::Replaced => {
-                    any_replaced = true;
-                    if let Some(result) = take_recorded_zone_change(game, object_id) {
-                        game.record_zone_change_results(object_id, result.new_object_ids.clone());
-                        if orders_library && result.final_zone == Zone::Library {
-                            ordered_library_results.extend(result.new_object_ids.iter().copied());
-                        }
-                        affected_ids.extend(result.new_object_ids);
-                    }
-                    affected_memory.push(Clone::clone(&target_lki_before_move));
-                    zone_receipts.push((
-                        object_id,
-                        PreparedEventOutcome {
-                            original: EventOutcome::Replaced,
-                            programs,
-                        },
-                    ));
-                }
-                EventOutcome::NotApplicable => {
-                    if game
-                        .object(object_id)
-                        .is_some_and(|object| object.zone == from_zone)
-                    {
-                        any_unchanged = true;
-                        affected_ids.push(object_id);
-                        affected_memory.push(Clone::clone(&target_lki_before_move));
-                    }
-                    // Positioning a card within its current library preserves
-                    // object identity and does not count as a zone movement.
-                    if self.zone == Zone::Library
-                        && from_zone == Zone::Library
-                        && game
-                            .object(object_id)
-                            .is_some_and(|object| object.zone == Zone::Library)
-                    {
-                        ordered_library_results.push(object_id);
-                    }
-                    zone_receipts.push((
-                        object_id,
-                        PreparedEventOutcome {
-                            original: EventOutcome::NotApplicable,
-                            programs,
-                        },
-                    ));
-                    continue;
-                }
-            }
-        }
 
+                Ok(())
+            },
+        )?;
+        let Some((entry_outcomes, ())) = completed else {
+            return if ctx.decision_maker.awaiting_choice() {
+                Ok(EffectOutcome::count(0))
+            } else {
+                Err(ExecutionError::InternalError(
+                    "movement entry batch did not complete or suspend".into(),
+                ))
+            };
+        };
         if !battlefield_entries.is_empty() {
-            let entry_outcomes = move_to_battlefield_batch_with_options_and_zone_proposals(
-                game,
-                ctx,
-                battlefield_entries
-                    .iter()
-                    .map(|(object, options, _, _)| (*object, options.clone()))
-                    .collect(),
-                zone_entry_proposals,
-            )?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
             if entry_outcomes.len() != battlefield_entries.len() {
                 return Err(ExecutionError::InternalError(
                     "move entry batch lost an original receipt".into(),
@@ -1040,6 +1045,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             apply_library_placement_order(game, &ordered_library_results, self.to_top);
         }
 
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
         game.close_simultaneous_action(opened_batch);
         let mut original = (|| -> EffectOutcome {
             if !moved_ids.is_empty() {
@@ -1076,11 +1082,48 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 .position(|id| id == object)
                 .unwrap_or(usize::MAX)
         });
-        super::finish_zone_change_receipts(game, ctx, original, zone_receipts)
+        // Freeze movement bindings after all authored counter originals, before
+        // counter additions can move those successors or alter their snapshots.
+        let mut frozen = None;
+        let counter_outcome = crate::effects::counters::execute_scoped_counter_placements(
+            game,
+            ctx,
+            arrival_counter_programs,
+            |game, _| {
+                frozen = Some(super::freeze_zone_change_receipts(game, zone_receipts));
+                Ok(())
+            },
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let frozen = frozen.ok_or_else(|| {
+            ExecutionError::InternalError(
+                "movement counters did not freeze the completed original batch".into(),
+            )
+        })?;
+        original = EffectOutcome::aggregate_replacement_outcomes(original, [counter_outcome]);
+        super::finish_zone_change_receipts_frozen(game, ctx, original, frozen)
     }
 }
 
 impl CostExecutableEffect for MoveToZoneEffect {
+    fn validate_payment_outcome(&self, outcome: &EffectOutcome) -> Result<(), CostValidationError> {
+        let moved = outcome
+            .affected_objects()
+            .map_or(0, |affected| affected.len());
+        let count = self.target.count();
+        let fixed_required = count.max.filter(|max| *max == count.min).map(|_| count.min);
+        if let Some(required) = fixed_required
+            && moved < required
+        {
+            return Err(CostValidationError::Other(format!(
+                "move-to-zone cost moved {moved} objects, required {required}"
+            )));
+        }
+        Ok(())
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -1104,7 +1147,6 @@ impl CostExecutableEffect for MoveToZoneEffect {
         ))
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

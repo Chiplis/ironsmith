@@ -9,16 +9,17 @@ export default function GroupedManaAbility({ group, onActivate, name, className,
     {group.parts.map((part, index) => {
       if (part.type === 'literal') return <span key={index}>{part.value}</span>;
       const option = group.options.find(option => option.output === part.value);
-      const action = option.actions.find(action => !action.payment_pending && action.mana_payment_available !== false);
-      const available = Boolean(action && onActivate);
+      const action = option.actions.find(action => !action.payment_pending && action.mana_payment_available !== false) || option.actions[0];
+      const clickable = Boolean(action && onActivate);
+      const available = clickable && !action.payment_pending && action.mana_payment_available !== false;
       return <button key={index} type="button" className="inspector-mana-choice"
-        data-available={available ? 'true' : 'false'} aria-disabled={available ? undefined : 'true'}
+        data-available={available ? 'true' : 'false'} aria-disabled={clickable ? undefined : 'true'}
         aria-label={ui("{0}: {1}{2}{3}", { 0: name || 'Card', 1: group.prefix, 2: option.output, 3: group.suffix })}
         onPointerDown={event => event.stopPropagation()}
         onClick={event => {
           event.preventDefault();
           event.stopPropagation();
-          if (available) onActivate(action);
+          if (clickable) onActivate(action);
         }}>
         <SymbolText text={option.output} />
       </button>;

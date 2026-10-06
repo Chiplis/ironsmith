@@ -8,7 +8,6 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
-use crate::triggers::TriggerEvent;
 
 /// Effect that performs the investigate keyword action.
 ///
@@ -37,50 +36,85 @@ impl InvestigateEffect {
 }
 
 impl EffectExecutor for InvestigateEffect {
+    fn requires_sequential_player_actions(&self) -> bool {
+        true
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
-            let player_id = resolve_player_filter(game, &self.player, ctx)?;
-            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-            if count == 0 {
-                return Ok(EffectOutcome::resolved());
-            }
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-            game.reserve_token_repetition_work(count)?;
-            let mut outcomes = super::resources::buffer(count)?;
-            let mut action_events = super::resources::buffer(count)?;
-            for _ in 0..count {
-                let effect = CreateTokenEffect::new(
-                    clue_token_definition(),
-                    1,
-                    PlayerFilter::Specific(player_id),
-                );
-                outcomes.push(effect.execute_child(game, ctx)?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::resolved());
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::lifecycle::execute_token_instruction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+                if count == 0 {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
+                    ));
                 }
-                action_events.push(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Investigate,
-                        player_id,
-                        ctx.source,
-                        1,
-                    ),
-                    ctx.provenance,
-                ));
-            }
 
-            let created_clues = outcomes
-                .iter()
-                .map(|outcome| outcome.output_objects().len() as i64)
-                .sum();
-            let mut outcome = EffectOutcome::aggregate(outcomes).with_events(action_events);
-            outcome.set_value(crate::effect::OutcomeValue::Count(created_clues));
-            Ok(outcome)
-        })
+                game.reserve_token_repetition_work(count)?;
+                let mut outcomes = super::resources::buffer(count)?;
+                let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved(),
+                );
+                let mut created_clues = 0i64;
+                for _ in 0..count {
+                    let effect = CreateTokenEffect::new(
+                        clue_token_definition(),
+                        1,
+                        PlayerFilter::Specific(player_id),
+                    );
+                    let creation = effect.execute_child_with_outputs(game, ctx)?;
+                    created_clues += creation.outcome.output_objects().len() as i64;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::resolved(),
+                        ));
+                    }
+                    let child = crate::effects::composition::complete_keyword_action_with_outputs(
+                        game,
+                        ctx,
+                        creation,
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Investigate,
+                            player_id,
+                            ctx.source,
+                            1,
+                        ),
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::resolved(),
+                        ));
+                    }
+                    outcomes.push(child.outcome.clone());
+                    outputs.retain_owned_child(child);
+                }
+
+                let mut outcome = EffectOutcome::aggregate(outcomes);
+                outcome.set_value(crate::effect::OutcomeValue::Count(created_clues));
+                Ok(outputs.project_aggregate(outcome))
+            },
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 //! Move counters effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -14,95 +14,120 @@ impl EffectExecutor for MoveCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            // Targeted moves read the two resolved targets; untargeted moves
-            // (graft: this permanent onto the entering creature, CR 702.58a)
-            // resolve `from`/`to` through their specs.
-            let is_reference = |spec: &ChooseSpec| {
-                matches!(spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_))
-            };
-            let target_pair = if !is_reference(&self.from) && !is_reference(&self.to) {
-                super::assigned_counter_transfer_pair(ctx)
-            } else {
-                let from = match self.from.base() {
-                    ChooseSpec::Source => vec![ctx.source],
-                    _ => resolve_objects_for_effect(game, ctx, &self.from)?,
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                // Targeted moves read the two resolved targets; untargeted moves
+                // (graft: this permanent onto the entering creature, CR 702.58a)
+                // resolve `from`/`to` through their specs.
+                let is_reference = |spec: &ChooseSpec| {
+                    matches!(spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_))
                 };
-                let to = match self.to.base() {
-                    ChooseSpec::Source => vec![ctx.source],
-                    _ => resolve_objects_for_effect(game, ctx, &self.to)?,
+                let target_pair = if !is_reference(&self.from) && !is_reference(&self.to) {
+                    super::assigned_counter_transfer_pair(ctx)
+                } else {
+                    let from = match self.from.base() {
+                        ChooseSpec::Source => vec![ctx.source],
+                        _ => resolve_objects_for_effect(game, ctx, &self.from)?,
+                    };
+                    let to = match self.to.base() {
+                        ChooseSpec::Source => vec![ctx.source],
+                        _ => resolve_objects_for_effect(game, ctx, &self.to)?,
+                    };
+                    from.first().copied().zip(to.first().copied())
                 };
-                from.first().copied().zip(to.first().copied())
-            };
-            let Some((from_id, to_id)) = target_pair else {
-                return Ok(EffectOutcome::target_invalid());
-            };
-            // CR 122.5: nothing is removed if the counters can't be put onto the
-            // second object.
-            if game.is_phased_out(from_id)
-                || from_id == to_id
-                || !super::move_destination_can_receive_counters(game, to_id, self.counter_type)
-            {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            // Get current counter count on source
-            let available = game
-                .object(from_id)
-                .and_then(|obj| obj.counters.get(&self.counter_type).copied())
-                .unwrap_or(0);
-
-            let to_move = match &self.count {
-                ironsmith_core::effect::CounterMoveAmount::Exact(value) => {
-                    resolve_bounded_nonnegative_u32(game, value, ctx, available)?
+                let Some((from_id, to_id)) = target_pair else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
+                };
+                // CR 122.5: nothing is removed if the counters can't be put onto the
+                // second object.
+                if game.is_phased_out(from_id)
+                    || from_id == to_id
+                    || !super::move_destination_can_receive_counters(game, to_id, self.counter_type)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
-                ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
-                    let spec = crate::decisions::NumberSpec::up_to(
-                        ctx.source,
-                        available,
-                        format!(
-                            "Choose how many {} counters to move",
-                            self.counter_type.description()
-                        ),
-                    );
-                    let chosen = crate::decisions::make_decision_with_fallback(
-                        game,
-                        &mut ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                        crate::decision::FallbackStrategy::Maximum,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
+
+                // Get current counter count on source
+                let available = game
+                    .object(from_id)
+                    .and_then(|obj| obj.counters.get(&self.counter_type).copied())
+                    .unwrap_or(0);
+
+                let to_move = match &self.count {
+                    ironsmith_core::effect::CounterMoveAmount::Exact(value) => {
+                        resolve_bounded_nonnegative_u32(game, value, ctx, available)?
                     }
-                    chosen
+                    ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
+                        let spec = crate::decisions::NumberSpec::up_to(
+                            ctx.source,
+                            available,
+                            format!(
+                                "Choose how many {} counters to move",
+                                self.counter_type.description()
+                            ),
+                        );
+                        let chosen = crate::decisions::make_decision_with_fallback(
+                            game,
+                            &mut ctx.decision_maker,
+                            ctx.controller,
+                            Some(ctx.source),
+                            spec,
+                            crate::decision::FallbackStrategy::Maximum,
+                        );
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        chosen
+                    }
                 }
-            }
-            .min(available);
+                .min(available);
 
-            if to_move == 0 {
-                return Ok(EffectOutcome::count(0));
-            }
+                if to_move == 0 {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-            let source = game.object(from_id).map(|object| (from_id, object.zone));
-            super::transfer_counters(game, ctx, source, to_id, self.counter_type, to_move)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() && result.is_ok() {
-                return Ok(EffectOutcome::count(0));
-            }
+                let source = game.object(from_id).map(|object| (from_id, object.zone));
+                super::transfer_counters_with_outputs(
+                    game,
+                    ctx,
+                    source,
+                    to_id,
+                    self.counter_type,
+                    to_move,
+                )
+            },
+        );
+        // Preserve the authored adapter's existing neutral suspension policy.
+        // The shared transaction owns restoration of the complete action.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

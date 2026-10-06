@@ -47,6 +47,7 @@
 //! effect execution entry points live here, while effect model data remains in
 //! the shared compiled-card domain.
 
+mod action_observation;
 pub mod cards;
 pub mod combat;
 pub mod composition;
@@ -58,10 +59,18 @@ pub mod counters;
 pub mod damage;
 pub mod delayed;
 mod executor_trait;
-pub(crate) mod outcome_recording;
+mod payment_resources;
+pub use payment_resources::PaymentResourceClaim;
+pub(crate) use payment_resources::can_pay_declared_resources;
 pub mod helpers;
 pub mod life;
 pub mod mana;
+pub(crate) use action_observation::{
+    observe_action_completion, observe_action_completions_retaining_groups,
+    observe_lifecycle_completions, observe_lifecycle_completions_with_observations,
+    with_action_observations,
+};
+pub(crate) mod outcome_recording;
 pub mod permanents;
 pub mod player;
 pub mod replacement;
@@ -77,23 +86,30 @@ pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
+pub use composition::{
+    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion, ProgramPreparation,
+};
 pub use context::{
     DoThisLimit, ExecutionError, IterationContext, ReplacementExecutionContext, ResolvedTarget,
     TargetError, rebase_target_scope,
 };
+pub(crate) use executor_trait::canonical_cost_children;
 pub use executor_trait::{
-    CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
-    EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec, SimultaneousEffectCommit,
-    SimultaneousEffectCompletion, SimultaneousEffectProposal, TargetReusePolicy,
-    TargetSelectionProfile,
+    CompletedEffectOutputs, CostChoiceBindings, CostExecutableEffect, CostValidationError,
+    DamageActionBinding, DeferredPlayerActionProposal, EffectExecutionCategory, EffectExecutor,
+    EffectOutcomeContribution, EffectOutcomeScope, ModalEffectSpec, ModalSpec,
+    OriginalEffectOutput, PreparedSelectionBinding, ScopedEffectOutcome, SharedEffectOutcome,
+    SharedOutcomeOwnership, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+    SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
-pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint};
+pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint, PaymentExecutionInputs};
+pub(crate) use runtime::{EffectExecutionPurpose, execute_effect_payment_with_outputs};
 pub(crate) use runtime::{
     capture_triggers_before_added_program, match_triggers_at_instruction_boundary,
     retain_unmatched_outcome_events, with_per_event_trigger_matching,
 };
-pub use runtime::{execute_effect, resolve_value, validate_target};
+pub use runtime::{execute_effect, execute_effect_with_outputs, resolve_value, validate_target};
 
 // Re-export effect implementations
 pub use cards::{
@@ -249,7 +265,9 @@ pub(crate) use composition::{
     prepare_conditional_branch, resolve_source_binding,
 };
 
-pub(crate) use composition::{PreparedIfBranch, execute_if_branches, prepare_if_branches};
+pub(crate) use composition::{
+    PreparedIfBranch, execute_if_branches_with_outputs, prepare_if_branches,
+};
 
 pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
 

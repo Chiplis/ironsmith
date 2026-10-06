@@ -351,8 +351,8 @@ fn execute_planned_keyword_payments(
     // CR 702.66a / 603.2c: the cards exiled with delve leave the graveyard
     // together, as one event ("whenever one or more cards leave your
     // graveyard").
-    let before = crate::events::other::before_tap_state_snapshots(game);
-    let mut tapped_events = Vec::new();
+    let mut taps =
+        crate::effects::permanents::TapAction::new(game, pending.caster, pending.provenance);
     let opened_batch = game.open_simultaneous_action();
     let result = (|| -> Result<(), GameLoopError> {
         for allocation in &payment.plan.allocations {
@@ -393,15 +393,19 @@ fn execute_planned_keyword_payments(
                     "planned {effect:?} permanent {permanent_id:?} is no longer available"
                 )));
             }
-            if let Some(event) = tap_permanent_with_trigger(game, permanent_id, pending.caster) {
-                tapped_events.push(event);
+            let tap_provenance = game
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::PermanentTapped);
+            if !taps.tap_with_event_provenance(game, permanent_id, tap_provenance) {
+                return Err(GameLoopError::InvalidState(format!(
+                    "planned {effect:?} permanent {permanent_id:?} could not be tapped"
+                )));
             }
             let event_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::KeywordAction);
-            queue_triggers_from_event(
+            let completion = crate::effects::composition::observe_keyword_action_completion(
                 game,
-                trigger_queue,
                 TriggerEvent::new_with_provenance(
                     KeywordActionEvent::new(
                         keyword_action_from_alternative_effect(effect),
@@ -411,8 +415,11 @@ fn execute_planned_keyword_payments(
                     ),
                     event_provenance,
                 ),
-                true,
-            );
+            )
+            .map_err(GameLoopError::ExecutionFailed)?;
+            for event in completion.events {
+                queue_triggers_from_event(game, trigger_queue, event, true);
+            }
             record_keyword_payment_contribution(
                 &mut pending.keyword_payment_contributions,
                 permanent_id,
@@ -422,9 +429,7 @@ fn execute_planned_keyword_payments(
         Ok(())
     })();
     if result.is_ok() {
-        crate::events::other::bind_before_tap_state_snapshots(&mut tapped_events, &before);
-        crate::events::other::group_tap_state_events(game, &mut tapped_events, pending.provenance);
-        for event in tapped_events {
+        for event in taps.finish(game).events {
             game.queue_trigger_event(event.provenance(), event);
         }
     }
@@ -479,7 +484,7 @@ pub(super) fn prompt_pending_mana_ability_payment(
             Some(pending.source),
             crate::costs::PaymentReason::ActivateManaAbility,
         );
-    let plan_result = crate::mana_payment::plan_first_mana_payment(game, &request);
+    let plan_result = crate::mana_payment::plan_prompt_mana_payment(game, &request, !refining_existing_plan);
     let plan_result = plan_result.or_else(|failure| {
         if refining_existing_plan
             && matches!(

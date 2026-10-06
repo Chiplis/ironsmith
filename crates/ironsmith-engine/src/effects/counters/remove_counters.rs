@@ -1,8 +1,8 @@
 //! Remove counters effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_bounded_nonnegative_u32};
-use crate::effects::{CostExecutableEffect, EffectExecutor};
+use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_single_object_for_effect};
+use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -34,13 +34,11 @@ impl EffectExecutor for RemoveCountersEffect {
     fn prepare_simultaneous_player_action(
         &self,
         _game: &GameState,
-        ctx: &mut ExecutionContext,
+        _ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Defer removal and its replacement choices to batch commit, where
-        // the enclosing each-player checkpoint owns the whole action.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
+        Ok(Box::new(CounterRemovalInstructionProposal {
+            effect: self.clone(),
+            prepared: None,
         }))
     }
 
@@ -53,22 +51,39 @@ impl EffectExecutor for RemoveCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-            let requested = resolve_bounded_nonnegative_u32(game, &self.count, ctx, game.counter_count(target_id, self.counter_type))?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let event = crate::events::Event::remove_counters(target_id, self.counter_type, requested)
-                .with_provenance(ctx.provenance);
-            execute_counter_removal_event(game, ctx, event)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let Some(event) = counter_removal_instruction_event(self, game, ctx)? else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
+                super::execute_counter_removal_with_outputs(game, ctx, event)
+            },
+        );
+        // Preserve the authored adapter's existing neutral suspension policy.
+        // The shared transaction owns restoration of the complete action.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }
@@ -96,107 +111,1079 @@ impl EffectExecutor for RemoveCountersEffect {
     }
 }
 
+/// Freeze the authored target and quantity before sibling originals mutate.
+/// Both ordinary and simultaneous instructions use this same input resolver.
+fn counter_removal_instruction_event(
+    effect: &RemoveCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Option<crate::events::Event>, ExecutionError> {
+    let target_id = resolve_single_object_for_effect(game, ctx, &effect.target)?;
+    let requested = resolve_bounded_nonnegative_u32(
+        game,
+        &effect.count,
+        ctx,
+        game.counter_count(target_id, effect.counter_type),
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+    Ok(Some(
+        crate::events::Event::remove_counters(target_id, effect.counter_type, requested)
+            .with_provenance(ctx.provenance),
+    ))
+}
 
-pub(crate) fn execute_counter_removal_event(
+/// A counter instruction owns preparation only. The existing removal owner
+/// commits its original and retains additions for the enclosing coordinator.
+struct CounterRemovalInstructionProposal {
+    effect: RemoveCountersEffect,
+    prepared: Option<PreparedCounterRemoval>,
+}
+
+impl std::fmt::Debug for CounterRemovalInstructionProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CounterRemovalInstructionProposal")
+            .field("effect", &self.effect)
+            .field("prepared", &self.prepared.is_some())
+            .finish()
+    }
+}
+
+impl crate::effects::SimultaneousEffectProposal for CounterRemovalInstructionProposal {
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.prepared.is_some() || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let Some(event) = counter_removal_instruction_event(&self.effect, game, ctx)? else {
+            return Ok(());
+        };
+        let prepared = prepare_counter_removal(game, ctx, event)?;
+        if !ctx.decision_maker.awaiting_choice() {
+            self.prepared = Some(prepared);
+        }
+        Ok(())
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let prepared = self.prepared.take().ok_or_else(|| {
+            ExecutionError::InternalError("counter instruction lost its prepared removal".into())
+        })?;
+        commit_prepared_counter_removal_original_with_outputs(game, ctx, prepared)
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, false)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+}
+
+pub(crate) struct PreparedCounterRemoval {
+    requested: u32,
+    result: Option<crate::events::processing::TraitEventResult>,
+    skipped: EffectOutcome,
+    replacement_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+}
+
+impl std::fmt::Debug for PreparedCounterRemoval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedCounterRemoval")
+            .field("requested", &self.requested)
+            .field("replacement_prepared", &self.result.is_some())
+            .finish()
+    }
+}
+
+impl crate::effects::SimultaneousEffectProposal for PreparedCounterRemoval {
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        commit_prepared_counter_removal_original_with_outputs(game, ctx, *self)
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, false)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+}
+
+pub(crate) fn prepare_counter_removal(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     event: crate::events::Event,
-) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let removal = crate::events::downcast_event::<crate::events::RemoveCountersEvent>(event.inner())
-                .ok_or_else(|| ExecutionError::InternalError("counter-removal owner requires a removal event".into()))?;
-            if game.object(removal.target).is_none() { return Ok(EffectOutcome::target_invalid()); }
-            if game.is_phased_out(removal.target) { return Ok(EffectOutcome::count(0)); }
-            let count = removal.count.min(game.counter_count(removal.target, removal.counter_type));
-            if count == 0 { return Ok(EffectOutcome::count(0)); }
-            // The instruction's provenance is a causal parent, not this proposal's identity.
-            // Several counter groups can be removed by one instruction.
-            let parent = event.provenance();
-            let proposal = if game.provenance_graph().node(parent).is_some() {
-                game.alloc_child_event_provenance(parent, crate::events::EventKind::RemoveCounters)
-            } else {
-                game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::RemoveCounters)
-            };
-            let event = event.rewrap(removal.with_count(count)).with_provenance(proposal);
-            let processed = crate::events::processing::process_trait_event_with_execution_context(game, event, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            commit_counter_removal(game, ctx, processed)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+) -> Result<PreparedCounterRemoval, ExecutionError> {
+    let event = match crate::events::CounterRemovalEvent::from_event(event.inner()) {
+        Some(crate::events::CounterRemovalEvent::Object(removal)) => event.rewrap(
+            removal
+                .clone()
+                .with_attribution(Some(ctx.source), Some(ctx.controller))
+                .with_cause(ctx.cause.clone()),
+        ),
+        Some(crate::events::CounterRemovalEvent::Player(removal)) => {
+            event.rewrap(removal.clone().with_cause(ctx.cause.clone()))
         }
-        result
+        None => {
+            return Err(ExecutionError::InternalError(
+                "counter-removal preparation requires a removal event".into(),
+            ));
+        }
+    };
+    prepare_counter_removal_event(game, ctx, event)
 }
 
-fn commit_counter_removal(
+fn prepare_counter_removal_event(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: crate::events::Event,
+) -> Result<PreparedCounterRemoval, ExecutionError> {
+    let requested = crate::events::CounterRemovalEvent::from_event(event.inner())
+        .ok_or_else(|| {
+            ExecutionError::InternalError(
+                "counter-removal preparation requires a removal event".into(),
+            )
+        })?
+        .count();
+    let removal =
+        crate::events::CounterRemovalEvent::from_event(event.inner()).ok_or_else(|| {
+            ExecutionError::InternalError("counter-removal owner requires a removal event".into())
+        })?;
+    let count = match &removal {
+        crate::events::CounterRemovalEvent::Object(removal) => {
+            if game.object(removal.target).is_none() {
+                return Ok(PreparedCounterRemoval {
+                    requested,
+                    result: None,
+                    skipped: EffectOutcome::target_invalid(),
+                    replacement_source_snapshot: None,
+                });
+            }
+            if game.is_phased_out(removal.target) {
+                return Ok(PreparedCounterRemoval {
+                    requested,
+                    result: None,
+                    skipped: EffectOutcome::count(0),
+                    replacement_source_snapshot: None,
+                });
+            }
+            removal
+                .count
+                .min(game.counter_count(removal.target, removal.counter_type))
+        }
+        crate::events::CounterRemovalEvent::Player(removal) => removal.count.min(
+            game.player(removal.player)
+                .map_or(0, |player| player.counter_count(removal.counter_type)),
+        ),
+    };
+    if count == 0 {
+        return Ok(PreparedCounterRemoval {
+            requested,
+            result: None,
+            skipped: EffectOutcome::count(0),
+            replacement_source_snapshot: None,
+        });
+    }
+    // The instruction's provenance is a causal parent, not this proposal's identity.
+    // Several counter groups can be removed by one instruction.
+    let parent = event.provenance();
+    let proposal = if game.provenance_graph().node(parent).is_some() {
+        game.alloc_child_event_provenance(parent, crate::events::EventKind::RemoveCounters)
+    } else {
+        game.provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::RemoveCounters)
+    };
+    let event = removal.with_count(&event, count).with_provenance(proposal);
+    let processed =
+        crate::events::processing::process_trait_event_with_execution_context(game, event, ctx)?;
+
+    let (original, programs) = processed.into_expansion();
+    let replacement_source_snapshot =
+        if let crate::events::processing::TraitEventResult::Replaced { source, .. } = &original {
+            let observed = game
+                .continuous_query_snapshot()
+                .map_err(ExecutionError::ContinuousDiscovery)?;
+            observed
+                .object(*source)
+                .map(|object| {
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                        object, &observed,
+                    )
+                })
+                .or_else(|| {
+                    game.turn_store
+                        .turn_history
+                        .source_last_known_snapshot(*source)
+                        .cloned()
+                })
+        } else {
+            None
+        };
+    let result = if programs.is_empty() {
+        original
+    } else {
+        crate::events::processing::TraitEventResult::Expanded {
+            original: Box::new(original),
+            programs,
+        }
+    };
+    Ok(PreparedCounterRemoval {
+        requested,
+        result: Some(result),
+        skipped: EffectOutcome::count(0),
+        replacement_source_snapshot,
+    })
+}
+
+/// State-based removals are not controlled by a player (CR 704.2).
+pub(crate) fn prepare_game_rule_counter_removal(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: crate::events::Event,
+) -> Result<PreparedCounterRemoval, ExecutionError> {
+    let event = match crate::events::CounterRemovalEvent::from_event(event.inner()) {
+        Some(crate::events::CounterRemovalEvent::Object(removal)) => event.rewrap(
+            removal
+                .clone()
+                .with_attribution(None, None)
+                .with_cause(ctx.cause.clone()),
+        ),
+        Some(crate::events::CounterRemovalEvent::Player(removal)) => event.rewrap(
+            removal
+                .clone()
+                .with_attribution(None, None)
+                .with_cause(ctx.cause.clone()),
+        ),
+        None => {
+            return Err(ExecutionError::InternalError(
+                "game-rule counter removal requires a removal event".into(),
+            ));
+        }
+    };
+    prepare_counter_removal_event(game, ctx, event)
+}
+
+struct CounterRemovalCompletion {
+    original: Option<Box<dyn crate::effects::SimultaneousEffectCompletion>>,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+}
+
+impl crate::effects::SimultaneousEffectCompletion for CounterRemovalCompletion {
+    fn observe_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        outcome: &mut EffectOutcome,
+    ) -> Result<(), ExecutionError> {
+        if let Some(original) = &mut self.original {
+            original.observe_original(game, ctx, outcome)?;
+        }
+        Ok(())
+    }
+
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        if let Some(original) = &mut self.original {
+            original.freeze(game)?;
+        }
+        Ok(())
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let outputs = if let Some(inner) = self.original {
+            inner.complete_with_outputs(game, ctx, original)?
+        } else {
+            crate::effects::CompletedEffectOutputs::aggregate_only(original)
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let completed =
+            crate::effects::replacement::complete_deferred_replacement_programs_with_targets(
+                game,
+                ctx,
+                outputs.outcome.clone(),
+                self.programs,
+                |_, context, _| removal_bindings(context),
+            )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        Ok(outputs.append_batch_program_outputs(completed))
+    }
+}
+
+fn removal_bindings(
+    context: &crate::events::processing::ReplacementEventContext,
+) -> Result<Option<Vec<crate::effects::ResolvedTarget>>, ExecutionError> {
+    let removal = crate::events::CounterRemovalEvent::from_event(context.event.inner())
+        .ok_or_else(|| {
+            ExecutionError::InternalError("counter-removal continuation lost its event".into())
+        })?;
+    Ok(Some(vec![removal_target(removal.target())]))
+}
+
+pub(crate) fn commit_prepared_counter_removal_original_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    prepared: PreparedCounterRemoval,
+) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+    let Some(result) = prepared.result else {
+        return Ok(crate::effects::SimultaneousEffectCommit::finished(
+            CompletedEffectOutputs::aggregate_only(
+                prepared.skipped.with_requested_amount(prepared.requested),
+            ),
+        ));
+    };
+    let (original, programs) = result.into_expansion();
+    let deferred = if let crate::events::processing::TraitEventResult::Replaced {
+        effects,
+        source,
+        controller,
+        context,
+        ..
+    } = &original
+    {
+        crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
+            game,
+            ctx,
+            effects,
+            *source,
+            *controller,
+            context,
+            prepared.replacement_source_snapshot.clone(),
+            crate::effects::replacement::ReplacementProgramBindings {
+                targets: removal_bindings(context)?,
+                object_tags: Vec::new(),
+            },
+        )?
+    } else {
+        None
+    };
+    let (outcome, continuation) = if let Some(receipt) = deferred {
+        (receipt.outcome, receipt.completion)
+    } else {
+        (
+            commit_counter_removal_with_outputs(
+                game,
+                ctx,
+                original,
+                prepared.replacement_source_snapshot,
+            )?,
+            None,
+        )
+    };
+    Ok(crate::effects::SimultaneousEffectCommit {
+        outcome: {
+            let aggregate = outcome
+                .outcome
+                .clone()
+                .with_requested_amount(prepared.requested);
+            outcome.project_aggregate(aggregate)
+        },
+        completion: if programs.is_empty() && continuation.is_none() {
+            None
+        } else {
+            Some(Box::new(CounterRemovalCompletion {
+                original: continuation,
+                programs,
+            }))
+        },
+    })
+}
+
+pub(crate) fn execute_counter_removal_event_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: crate::events::Event,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let outcomes = execute_counter_removal_originals_with_outputs(game, ctx, vec![event], false)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    outcomes.into_iter().next().ok_or_else(|| {
+        ExecutionError::InternalError("counter-removal owner lost its receipt".into())
+    })
+}
+
+/// Selection has no original mutations. Recorded envelopes preserve composed
+/// instruction evidence while the selected groups share the parent's phases.
+pub(super) enum SelectedCounterRemovalPlan {
+    Single(crate::events::Event),
+    Finished(CompletedEffectOutputs),
+    Groups {
+        events: Vec<crate::events::Event>,
+        requested: u64,
+    },
+    Recorded(Box<SelectedCounterRemovalPlan>),
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum CounterRemovalSelector {
+    Among(ironsmith_core::RemoveAnyCountersAmongEffect),
+    UpTo(ironsmith_core::RemoveUpToAnyCountersEffect),
+    UpToKind(super::remove_up_to_counters::RemoveUpToCountersEffect),
+}
+
+impl CounterRemovalSelector {
+    fn select(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SelectedCounterRemovalPlan, ExecutionError> {
+        match self {
+            Self::Among(effect) => {
+                super::remove_any_counters_among::select_distributed_counter_removal(
+                    &effect, game, ctx,
+                )
+            }
+            Self::UpTo(effect) => {
+                super::remove_up_to_any_counters::select_up_to_any_counter_removal(
+                    &effect, game, ctx,
+                )
+            }
+            Self::UpToKind(effect) => {
+                super::remove_up_to_counters::select_up_to_counter_removal(&effect, game, ctx)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SelectedCounterRemovalProposal {
+    selector: CounterRemovalSelector,
+    prepared: Option<(Box<dyn crate::effects::SimultaneousEffectProposal>, bool)>,
+}
+
+pub(super) fn selected_counter_removal_proposal(
+    selector: CounterRemovalSelector,
+) -> Box<dyn crate::effects::SimultaneousEffectProposal> {
+    Box::new(SelectedCounterRemovalProposal {
+        selector,
+        prepared: None,
+    })
+}
+
+impl crate::effects::SimultaneousEffectProposal for SelectedCounterRemovalProposal {
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.prepared.is_some() || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let plan = self.selector.clone().select(game, ctx)?;
+        if !ctx.decision_maker.awaiting_choice() {
+            let prepared = prepare_selected_counter_removal_plan(game, ctx, plan)?;
+            if !ctx.decision_maker.awaiting_choice() {
+                self.prepared = Some(prepared);
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let (proposal, _) = self.prepared.take().ok_or_else(|| {
+            ExecutionError::InternalError(
+                "selected counter instruction lost its prepared groups".into(),
+            )
+        })?;
+        proposal.commit_original_with_outputs(game, ctx)
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || EffectOutcome::count(0),
+            |game, ctx| {
+                self.prepare_original(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                let (proposal, simultaneous) = self.prepared.take().ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "selected counter instruction lost its prepared groups".into(),
+                    )
+                })?;
+                crate::effects::composition::complete_prepared_original_with_outputs(
+                    proposal,
+                    game,
+                    ctx,
+                    simultaneous,
+                )
+                .map(CompletedEffectOutputs::into_outcome)
+            },
+        )
+    }
+}
+
+enum PreparedSelectedCounterRemoval {
+    Finished(CompletedEffectOutputs),
+    Groups {
+        children: Vec<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+        requested: u64,
+    },
+}
+
+impl std::fmt::Debug for PreparedSelectedCounterRemoval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Finished(_) => f.write_str("FinishedCounterRemoval"),
+            Self::Groups {
+                children,
+                requested,
+            } => f
+                .debug_struct("PreparedCounterRemovalGroups")
+                .field("groups", &children.len())
+                .field("requested", requested)
+                .finish(),
+        }
+    }
+}
+
+impl crate::effects::SimultaneousEffectProposal for PreparedSelectedCounterRemoval {
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError>
+    {
+        match *self {
+            Self::Finished(outputs) => {
+                Ok(crate::effects::SimultaneousEffectCommit::finished(outputs))
+            }
+            Self::Groups {
+                children,
+                requested,
+            } => {
+                let mut receipts = Vec::with_capacity(children.len());
+                for child in children {
+                    receipts.push(child.commit_original_with_outputs(game, ctx)?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                        ));
+                    }
+                }
+                crate::effects::composition::compose_original_commits_with_fallible_projection_outputs(
+                    receipts, Box::new(move |outcomes| project_selected_counter_removal(outcomes, requested)))
+            }
+        }
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, false)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+}
+
+fn prepare_selected_counter_removal_plan(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    plan: SelectedCounterRemovalPlan,
+) -> Result<(Box<dyn crate::effects::SimultaneousEffectProposal>, bool), ExecutionError> {
+    match plan {
+        SelectedCounterRemovalPlan::Single(event) => {
+            let children = prepare_counter_removal_proposals(game, ctx, vec![event], true)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok((
+                    Box::new(PreparedSelectedCounterRemoval::Finished(
+                        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                    )),
+                    false,
+                ));
+            }
+            let proposal = children.into_iter().next().ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "selected counter instruction lost its single proposal".into(),
+                )
+            })?;
+            Ok((proposal, false))
+        }
+
+        SelectedCounterRemovalPlan::Finished(outputs) => Ok((
+            Box::new(PreparedSelectedCounterRemoval::Finished(outputs)),
+            false,
+        )),
+        SelectedCounterRemovalPlan::Groups { events, requested } => {
+            let simultaneous = events.len() > 1;
+            let children = prepare_counter_removal_proposals(game, ctx, events, true)?;
+            Ok((
+                Box::new(PreparedSelectedCounterRemoval::Groups {
+                    children,
+                    requested,
+                }),
+                simultaneous,
+            ))
+        }
+        SelectedCounterRemovalPlan::Recorded(plan) => {
+            let (proposal, simultaneous) = prepare_selected_counter_removal_plan(game, ctx, *plan)?;
+            Ok((
+                crate::effects::outcome_recording::record_proposal(proposal, None),
+                simultaneous,
+            ))
+        }
+    }
+}
+
+fn project_selected_counter_removal(
+    outcomes: Vec<EffectOutcome>,
+    requested: u64,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut removed_total = 0u64;
+    for outcome in &outcomes {
+        let removed = u32::try_from(outcome.count_or_zero())
+            .map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
+        removed_total = removed_total
+            .checked_add(u64::from(removed))
+            .ok_or_else(|| {
+                ExecutionError::InternalError("counter-removal total overflow".into())
+            })?;
+    }
+    let count = i64::try_from(removed_total).map_err(|_| {
+        ExecutionError::InternalError("counter-removal total exceeds outcome range".into())
+    })?;
+    let mut outcome = EffectOutcome::aggregate(outcomes);
+    outcome.set_value(crate::effect::OutcomeValue::Count(count));
+    Ok(outcome.with_requested_amount(requested))
+}
+
+pub(super) fn complete_selected_counter_removal_plan(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    plan: SelectedCounterRemovalPlan,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    if let SelectedCounterRemovalPlan::Finished(outputs) = plan {
+        return Ok(outputs);
+    }
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let (proposal, simultaneous) = prepare_selected_counter_removal_plan(game, ctx, plan)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            crate::effects::composition::complete_prepared_original_with_outputs(
+                proposal,
+                game,
+                ctx,
+                simultaneous,
+            )
+        },
+    )
+}
+
+pub(super) fn prepare_counter_removal_proposals(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    events: Vec<crate::events::Event>,
+    record_children: bool,
+) -> Result<Vec<Box<dyn crate::effects::SimultaneousEffectProposal>>, ExecutionError> {
+    let mut children = Vec::with_capacity(events.len());
+    for event in events {
+        let original = prepare_counter_removal(game, ctx, event)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        let proposal: Box<dyn crate::effects::SimultaneousEffectProposal> = Box::new(original);
+        children.push(if record_children {
+            crate::effects::outcome_recording::record_proposal(proposal, None)
+        } else {
+            proposal
+        });
+    }
+    Ok(children)
+}
+
+/// Ordinary single removals already have a recorded child gateway. A compound
+/// batch records each prepared child instead, without recording a single twice.
+fn execute_counter_removal_originals_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    events: Vec<crate::events::Event>,
+    record_children: bool,
+) -> Result<Vec<CompletedEffectOutputs>, ExecutionError> {
+    crate::effects::composition::execute_transaction(game, ctx, Vec::new, |game, ctx| {
+        game.clear_pending_decision_controllers();
+        let simultaneous = events.len() > 1;
+        let prepared = prepare_counter_removal_proposals(game, ctx, events, record_children)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        crate::effects::composition::execute_simultaneous_originals_with_default_outputs(
+            game,
+            ctx,
+            simultaneous,
+            |game, ctx| {
+                let mut receipts = Vec::with_capacity(prepared.len());
+                for original in prepared {
+                    receipts.push(original.commit_original_with_outputs(game, ctx)?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(Vec::new());
+                    }
+                }
+                Ok(receipts)
+            },
+        )
+    })
+}
+
+fn commit_counter_removal_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     processed: crate::events::processing::TraitEventResult,
-) -> Result<EffectOutcome, ExecutionError> {
-    use crate::events::{RemoveCountersEvent, downcast_event};
+    replacement_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    use crate::events::CounterRemovalEvent;
     use crate::events::processing::TraitEventResult;
     match processed {
-        expanded @ TraitEventResult::Expanded { .. } =>
-            crate::effects::replacement::execute_event_expansion_with_targets(
-                game, ctx, expanded, commit_counter_removal,
-                |_game, context, _outcome| {
-                    let removal = downcast_event::<RemoveCountersEvent>(context.event.inner())
-                        .ok_or_else(|| ExecutionError::InternalError("added counter-removal program lost its event".into()))?;
-                    Ok(Some(vec![crate::effects::ResolvedTarget::Object(removal.target)]))
-                },
-            ),
+        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError(
+            "counter removal received an unflattened original".into(),
+        )),
         TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
-            let removal = downcast_event::<RemoveCountersEvent>(event.inner()).ok_or_else(||
-                ExecutionError::InternalError("counter-removal replacement returned an incompatible event".into()))?;
-            if game.object(removal.target).is_none() { return Ok(EffectOutcome::target_invalid()); }
-            let actual = removal.count.min(game.counter_count(removal.target, removal.counter_type));
-            let count = i64::from(actual);
-            match game.remove_counters(removal.target, removal.counter_type, removal.count,
-                Some(ctx.source), Some(ctx.controller)) {
-                Some((removed, mut notification)) => {
-                    if removed != actual { return Err(ExecutionError::InternalError(
-                        "counter-removal commit disagrees with its resolved amount".into())); }
-                    // The committed observation is distinct from the replaceable proposal.
-                    let observation = game.alloc_child_event_provenance(
-                        event.provenance(), crate::events::EventKind::MarkersChanged);
-                    notification = notification.with_provenance(observation);
-                    if game.object(ctx.source).is_none() && let Some(snapshot) = &ctx.source_snapshot {
-                        notification = notification.with_source_snapshot(snapshot.clone());
-                    }
-                    Ok(EffectOutcome::count(count).with_event(notification)
-                        .with_affected_objects_from_game(game, vec![removal.target]))
-                }
-                None => Ok(EffectOutcome::count(0)),
-            }
+            commit_resolved_counter_removal(game, ctx, event)
+                .map(CompletedEffectOutputs::aggregate_only)
         }
-        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
-            let removal = downcast_event::<RemoveCountersEvent>(context.event.inner()).ok_or_else(||
-                ExecutionError::InternalError("counter-removal replacement lost its event".into()))?;
-            let payload = crate::effects::replacement::execute_replacement_payload(
-                game, ctx, &effects, source, controller, &context,
-                Some(vec![crate::effects::ResolvedTarget::Object(removal.target)]),
+        TraitEventResult::Replaced {
+            effects,
+            source,
+            controller,
+            context,
+            ..
+        } => {
+            let removal =
+                CounterRemovalEvent::from_event(context.event.inner()).ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "counter-removal replacement lost its event".into(),
+                    )
+                })?;
+            let payload = crate::effects::replacement::execute_replacement_payload_with_outputs(
+                game,
+                ctx,
+                &effects,
+                source,
+                controller,
+                &context,
+                Some(vec![removal_target(removal.target())]),
+                replacement_source_snapshot,
+                Vec::new(),
             )?;
             let mut original = EffectOutcome::replaced();
             original.set_value(crate::effect::OutcomeValue::Count(0));
-            Ok(EffectOutcome::aggregate_replacement_outcomes(original, [payload]))
+            let aggregate =
+                EffectOutcome::aggregate_replacement_outcomes(original, [payload.outcome.clone()]);
+            Ok(payload.project_aggregate(aggregate))
         }
         TraitEventResult::Prevented => {
             let mut outcome = EffectOutcome::prevented();
             outcome.set_value(crate::effect::OutcomeValue::Count(0));
-            Ok(outcome)
+            Ok(CompletedEffectOutputs::aggregate_only(outcome))
         }
-        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } =>
-            Err(ExecutionError::InternalError("counter removal suspended without a captured decision".into())),
+        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+            Err(ExecutionError::InternalError(
+                "counter removal suspended without a captured decision".into(),
+            ))
+        }
     }
 }
 
+fn commit_resolved_counter_removal(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: crate::events::Event,
+) -> Result<EffectOutcome, ExecutionError> {
+    use crate::events::CounterRemovalEvent;
+    let removal = CounterRemovalEvent::from_event(event.inner()).ok_or_else(|| {
+        ExecutionError::InternalError(
+            "counter-removal replacement returned an incompatible event".into(),
+        )
+    })?;
+    let mut outcome = match removal {
+        CounterRemovalEvent::Object(removal) => {
+            if game.object(removal.target).is_none() {
+                return Ok(EffectOutcome::target_invalid());
+            }
+            commit_object_counter_removal(game, ctx, removal)?
+        }
+        CounterRemovalEvent::Player(removal) => commit_player_counter_removal(game, ctx, removal)?,
+    };
+    for notification in &mut outcome.events {
+        let observation = game.alloc_child_event_provenance(
+            event.provenance(),
+            crate::events::EventKind::MarkersChanged,
+        );
+        *notification = notification.clone().with_provenance(observation);
+    }
+    Ok(outcome)
+}
+
+fn removal_target(target: crate::game_state::Target) -> crate::effects::ResolvedTarget {
+    match target {
+        crate::game_state::Target::Object(object) => crate::effects::ResolvedTarget::Object(object),
+        crate::game_state::Target::Player(player) => crate::effects::ResolvedTarget::Player(player),
+    }
+}
+
+/// Player and object commits retain their target-specific notifications but
+/// share preparation, amount replacements, redirects and deferred programs.
+fn commit_player_counter_removal(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    removal: &crate::events::RemovePlayerCountersEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    let actual = removal.count.min(
+        game.player(removal.player)
+            .map_or(0, |player| player.counter_count(removal.counter_type)),
+    );
+    match game.remove_player_counters_with_source(
+        removal.player,
+        removal.counter_type,
+        removal.count,
+        removal.source,
+        removal.actor,
+    ) {
+        Some((removed, mut notification)) => {
+            if removed != actual {
+                return Err(ExecutionError::InternalError(
+                    "player counter-removal commit disagrees with its resolved amount".into(),
+                ));
+            }
+            if removal.source == Some(ctx.source)
+                && game.object(ctx.source).is_none()
+                && let Some(snapshot) = &ctx.source_snapshot
+            {
+                notification = notification.with_source_snapshot(snapshot.clone());
+            }
+            Ok(EffectOutcome::count(i64::from(removed)).with_event(notification))
+        }
+        None => Ok(EffectOutcome::count(0)),
+    }
+}
+
+/// Commit an already accepted removal. Replacement-aware proposals and
+/// validated cost payments share mutation and observation capture here.
+fn commit_object_counter_removal(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    removal: &crate::events::RemoveCountersEvent,
+) -> Result<EffectOutcome, ExecutionError> {
+    let target = removal.target;
+    let actual = removal
+        .count
+        .min(game.counter_count(target, removal.counter_type));
+    match game.remove_counters(
+        target,
+        removal.counter_type,
+        removal.count,
+        removal.source,
+        removal.actor,
+    ) {
+        Some((removed, mut notification)) => {
+            if removed != actual {
+                return Err(ExecutionError::InternalError(
+                    "counter-removal commit disagrees with its resolved amount".into(),
+                ));
+            }
+            if removal.source == Some(ctx.source)
+                && game.object(ctx.source).is_none()
+                && let Some(snapshot) = &ctx.source_snapshot
+            {
+                notification = notification.with_source_snapshot(snapshot.clone());
+            }
+            Ok(EffectOutcome::count(i64::from(removed))
+                .with_event(notification)
+                .with_affected_objects_from_game(game, vec![target]))
+        }
+        None => Ok(EffectOutcome::count(0)),
+    }
+}
+
+/// One quantity decoder for counter-cost families. The enclosing instruction
+/// owns this receipt even when replacements prevent, redirect or add actions.
+/// Pending selection has not committed a cost and exports no new X.
+pub(crate) fn counter_cost_x_from_outcome(
+    outcome: &EffectOutcome,
+    execution: &ExecutionContext,
+) -> Result<Option<u32>, crate::effects::CostValidationError> {
+    if execution.decision_maker.awaiting_choice() {
+        return Ok(None);
+    }
+    let requested = outcome.requested_amount().ok_or_else(|| {
+        crate::effects::CostValidationError::Other(
+            "counter cost has no original quantity receipt".into(),
+        )
+    })?;
+    u32::try_from(requested).map(Some).map_err(|_| {
+        crate::effects::CostValidationError::Other(
+            "counter cost X exceeds the supported range".into(),
+        )
+    })
+}
+
 impl CostExecutableEffect for RemoveCountersEffect {
+    fn payment_x_from_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+        _execution: &ExecutionContext,
+    ) -> Result<Option<u32>, crate::effects::CostValidationError> {
+        super::prepared_payment::counter_quantity_payment_x(proposal, Some(self.counter_type))
+    }
+
+    fn supports_prepared_payment(&self) -> bool {
+        matches!(self.target.base(), ChooseSpec::Source)
+            && self
+                .count
+                .constant_integer()
+                .is_some_and(|quantity| u32::try_from(quantity.max(0)).is_ok())
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        CostExecutableEffect::can_execute_as_cost(self, game, ctx.source, ctx.controller)
+            .map_err(|error| ExecutionError::Impossible(format!("{error:?}")))?;
+        let quantity = self.count.constant_integer().ok_or_else(|| {
+            ExecutionError::Impossible("counter cost requires constant integer arithmetic".into())
+        })?;
+        let count = u32::try_from(quantity.max(0)).map_err(|_| {
+            ExecutionError::Impossible("counter cost exceeds the unsigned counter range".into())
+        })?;
+        let event = crate::events::Event::remove_counters(ctx.source, self.counter_type, count)
+            .with_provenance(ctx.provenance);
+        super::capture_counter_payment_with_quantity(game, ctx, vec![event])
+    }
+
+    fn accepts_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+    ) -> bool {
+        super::prepared_payment::accepts_counter_quantity_payment(proposal, Some(self.counter_type))
+    }
+
+    fn validate_payment_outcome(
+        &self,
+        outcome: &EffectOutcome,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        super::prepared_payment::validate_counter_quantity_payment(outcome)
+    }
+
+    fn payment_x_from_outcome(
+        &self,
+        outcome: &EffectOutcome,
+        execution: &ExecutionContext,
+    ) -> Result<Option<u32>, crate::effects::CostValidationError> {
+        if matches!(self.target.base(), ChooseSpec::Source) {
+            counter_cost_x_from_outcome(outcome, execution)
+        } else {
+            Ok(None)
+        }
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -208,11 +1195,17 @@ impl CostExecutableEffect for RemoveCountersEffect {
                 "remove-counters cost supports only source".to_string(),
             ));
         }
-        let quantity = self.count.constant_integer().ok_or_else(||
+        let quantity = self.count.constant_integer().ok_or_else(|| {
             crate::effects::CostValidationError::Other(
-                "remove-counters cost requires representable constant integer arithmetic".to_string()))?;
-        let count = u32::try_from(quantity.max(0)).map_err(|_| crate::effects::CostValidationError::Other(
-            "remove-counters cost exceeds the unsigned counter range".to_string()))?;
+                "remove-counters cost requires representable constant integer arithmetic"
+                    .to_string(),
+            )
+        })?;
+        let count = u32::try_from(quantity.max(0)).map_err(|_| {
+            crate::effects::CostValidationError::Other(
+                "remove-counters cost exceeds the unsigned counter range".to_string(),
+            )
+        })?;
         if game.counter_count(source, self.counter_type) < count {
             return Err(crate::effects::CostValidationError::Other(
                 "not enough counters".to_string(),

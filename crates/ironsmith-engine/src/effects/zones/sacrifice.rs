@@ -5,7 +5,6 @@ use crate::effects::helpers::{
     normalize_object_selection, resolve_player_filter, resolve_single_object_for_effect,
     resolve_value,
 };
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::permanents::SacrificeEvent;
@@ -20,6 +19,50 @@ use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::SacrificePlayerEffect;
+
+/// Retain the permanent incarnation used to pay a sacrifice cost. Movement
+/// journals supply immutable departure snapshots; later payment/reflexive
+/// frames must not substitute the new graveyard or redirected incarnation.
+fn retain_sacrifice_payment_bindings(game: &GameState, execution: &mut ExecutionContext) {
+    let receipts = execution
+        .tagged_objects
+        .iter()
+        .filter_map(|(tag, snapshots)| {
+            tag.as_str()
+                .strip_prefix("__pre_move_history__")
+                .map(|tag| (crate::tag::TagKey::from(tag), snapshots.clone()))
+        })
+        .collect::<Vec<_>>();
+    for (tag, snapshots) in receipts {
+        execution.set_tagged_objects(tag, snapshots);
+    }
+    let frozen = execution
+        .tagged_objects
+        .iter()
+        .filter_map(|(tag, snapshots)| {
+            if tag.as_str().starts_with("__") {
+                return None;
+            }
+            let departed = snapshots
+                .iter()
+                .filter(|snapshot| {
+                    snapshot.zone == crate::zone::Zone::Battlefield
+                        && game.object(snapshot.object_id).is_none()
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            (!departed.is_empty()).then(|| {
+                (
+                    crate::tag::TagKey::from(format!("__paid_departure__{}", tag.as_str())),
+                    departed,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    for (tag, snapshots) in frozen {
+        execution.set_tagged_objects(tag, snapshots);
+    }
+}
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
@@ -223,6 +266,14 @@ impl SacrificeEffect {
 }
 
 impl EffectExecutor for SacrificePlayerEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        if self.player == PlayerFilter::You {
+            crate::effects::CostChoiceBindings::from_filter(&self.filter)
+        } else {
+            crate::effects::CostChoiceBindings::default()
+        }
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
     }
@@ -265,11 +316,41 @@ impl EffectExecutor for SacrificePlayerEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         SacrificeEffect::player(self.filter.clone(), self.count.clone(), self.player.clone())
-            .execute(game, ctx)
+            .execute_child(game, ctx)
     }
 }
 
 impl CostExecutableEffect for SacrificePlayerEffect {
+    fn cost_choice_candidate_is_eligible(
+        &self,
+        game: &GameState,
+        execution: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+        tag: &crate::tag::TagKey,
+        object: ObjectId,
+    ) -> Option<bool> {
+        sacrifice_cost_choice_candidate_is_eligible(
+            &self.filter,
+            &self.player,
+            game,
+            execution,
+            reason,
+            tag,
+            object,
+        )
+    }
+
+    fn finalize_payment_bindings(
+        &self,
+        game: &GameState,
+        _outcome: &EffectOutcome,
+        execution: &mut ExecutionContext,
+        _payment_x: Option<u32>,
+    ) -> Result<(), crate::cost::CostPaymentError> {
+        retain_sacrifice_payment_bindings(game, execution);
+        Ok(())
+    }
+
     fn can_execute_as_cost_with_reason(
         &self,
         game: &GameState,
@@ -297,6 +378,14 @@ impl CostExecutableEffect for SacrificePlayerEffect {
 }
 
 impl EffectExecutor for SacrificeEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        if self.player == PlayerFilter::You {
+            crate::effects::CostChoiceBindings::from_filter(&self.filter)
+        } else {
+            crate::effects::CostChoiceBindings::default()
+        }
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Sacrificed)
     }
@@ -617,10 +706,25 @@ pub(crate) fn sacrifice_selected_objects_with_original<'a>(
             begin_sacrifice_batch_lookback(game, to_sacrifice.len());
 
         let original = (|| -> Result<EffectOutcome, ExecutionError> {
-            for id in to_sacrifice {
-                if !game.can_be_sacrificed_with_cause(id, &ctx.cause) {
-                    continue;
-                }
+            let requests = to_sacrifice
+                .into_iter()
+                .filter(|id| game.can_be_sacrificed_with_cause(*id, &ctx.cause))
+                .map(|id| {
+                    super::PreparedZoneMove::capture(
+                        game,
+                        id,
+                        Zone::Battlefield,
+                        Zone::Graveyard,
+                        ctx.cause.clone(),
+                        original_snapshots.get(&id).cloned(),
+                    )
+                })
+                .collect();
+            let proposals = super::prepare_zone_moves(game, ctx, requests)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            for (id, proposal) in proposals {
                 let pre_snapshot = original_snapshots.get(&id).cloned();
                 let source_snapshot_for_event = if event_source_tags.is_empty() {
                     None
@@ -633,17 +737,11 @@ pub(crate) fn sacrifice_selected_objects_with_original<'a>(
                     original_source_snapshot.clone()
                 };
                 let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
-                let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-                // Process each sacrifice through replacement effects with decision maker
-                let result = apply_zone_change_with_context_and_additional_effects(
+                let result = super::commit_zone_change_proposal(
                     game,
                     id,
-                    Zone::Battlefield,
-                    Zone::Graveyard,
-                    ctx.cause.clone(),
-                    ctx,
-                    &additional_effects,
+                    proposal,
+                    &mut *ctx.decision_maker,
                 )?;
 
                 if ctx.decision_maker.awaiting_choice() {
@@ -686,25 +784,11 @@ pub(crate) fn sacrifice_selected_objects_with_original<'a>(
                         ));
                     }
                     EventOutcome::Replaced => {
-                        // Replacement effects already executed by process_zone_change
-                        tag_sacrifice_zone_change_event(
-                            game,
-                            id,
-                            event_object_tags,
-                            event_source_tags,
-                            pre_snapshot.as_ref(),
-                            source_snapshot_for_event.as_ref(),
-                        );
-                        sacrificed_count += 1;
-                        sacrificed_objects.push(id);
-                        if let Some(snapshot) = pre_snapshot.as_ref() {
-                            sacrificed_memory.push(Clone::clone(snapshot));
-                        }
-                        sacrifice_events.push(TriggerEvent::new_with_provenance(
-                            SacrificeEvent::new(id, Some(ctx.source))
-                                .with_snapshot(pre_snapshot, sacrificing_player),
-                            ctx.provenance,
-                        ));
+                        // The replaced original did not sacrifice this object
+                        // (CR 614.6). Retain the replacement receipt/programs,
+                        // but let their owners report any actual actions. Cost
+                        // acknowledgement is independent of performed events.
+                        continue;
                     }
                     EventOutcome::NotApplicable => {
                         // Object no longer exists or isn't applicable
@@ -743,7 +827,7 @@ pub(crate) fn sacrifice_selected_objects_with_original<'a>(
         super::finish_zone_change_receipts(game, ctx, original, receipts)
     })();
     if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, ctx.decision_maker.awaiting_choice());
         context_checkpoint.restore(ctx);
     }
     if ctx.decision_maker.awaiting_choice() {
@@ -752,7 +836,66 @@ pub(crate) fn sacrifice_selected_objects_with_original<'a>(
     instruction
 }
 
+/// Share payment subject eligibility across sacrifice adapters. The actual
+/// cost query still validates the whole collection, amount and bindings.
+fn sacrifice_cost_choice_candidate_is_eligible(
+    filter: &ObjectFilter,
+    player: &PlayerFilter,
+    game: &GameState,
+    execution: &ExecutionContext,
+    reason: crate::costs::PaymentReason,
+    tag: &crate::tag::TagKey,
+    object: ObjectId,
+) -> Option<bool> {
+    if player != &PlayerFilter::You || !crate::game_loop::tagged_filter_matches(filter, tag) {
+        return None;
+    }
+    let mut filter = filter.clone();
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.tag == *tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+    });
+    Some(game.object(object).is_some_and(|subject| {
+        game.controller_of(subject) == execution.controller
+            && filter.matches(subject, &execution.filter_context(game), game)
+            && game.can_be_sacrificed_with_cause(object, &execution.cause)
+            && !(reason.is_cast_or_ability_payment()
+                && game.player_cant_sacrifice_nonland_to_cast_or_activate(execution.controller)
+                && !game.current_has_card_type(object, crate::types::CardType::Land))
+    }))
+}
+
 impl CostExecutableEffect for SacrificeEffect {
+    fn cost_choice_candidate_is_eligible(
+        &self,
+        game: &GameState,
+        execution: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+        tag: &crate::tag::TagKey,
+        object: ObjectId,
+    ) -> Option<bool> {
+        sacrifice_cost_choice_candidate_is_eligible(
+            &self.filter,
+            &self.player,
+            game,
+            execution,
+            reason,
+            tag,
+            object,
+        )
+    }
+
+    fn finalize_payment_bindings(
+        &self,
+        game: &GameState,
+        _outcome: &EffectOutcome,
+        execution: &mut ExecutionContext,
+        _payment_x: Option<u32>,
+    ) -> Result<(), crate::cost::CostPaymentError> {
+        retain_sacrifice_payment_bindings(game, execution);
+        Ok(())
+    }
+
     fn can_execute_as_cost_with_reason(
         &self,
         game: &GameState,
@@ -1019,6 +1162,17 @@ impl EffectExecutor for SacrificeTargetEffect {
 }
 
 impl CostExecutableEffect for SacrificeTargetEffect {
+    fn finalize_payment_bindings(
+        &self,
+        game: &GameState,
+        _outcome: &EffectOutcome,
+        execution: &mut ExecutionContext,
+        _payment_x: Option<u32>,
+    ) -> Result<(), crate::cost::CostPaymentError> {
+        retain_sacrifice_payment_bindings(game, execution);
+        Ok(())
+    }
+
     fn can_execute_as_cost_with_reason(
         &self,
         game: &GameState,

@@ -64,6 +64,7 @@ export default function Topbar({
 }) {
   const ui = useUiText();
   const {
+    surrenderRequested,
     multiplayer,
     playerAccentOverrides,
     state,
@@ -334,7 +335,7 @@ export default function Topbar({
               "--topbar-decision-rgb": perspectiveAccent.rgb,
             }}
           >
-            {(state?.decision?.kind === "priority" && !openingHandDecision) || state?.game_over ? (
+            {surrenderRequested || (state?.decision?.kind === "priority" && !openingHandDecision) || state?.game_over ? (
               <div className="table-action-bar relative h-full w-full rounded-none border">
                 <DecisionPopupLayer priorityInline />
               </div>

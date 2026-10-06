@@ -15,15 +15,22 @@
 //! - `ChooseObjects` - Interactive object selection with tagging
 //! - `Vote` - Council's dilemma and voting mechanics
 
+mod action_program;
+mod action_units;
+pub use action_program::{
+    ActionProgramCursor, ProgramAction, ProgramActionScope, ProgramCompletion, ProgramPreparation,
+};
 mod aura_swap;
 mod behold;
 mod bid_life;
+mod branch_program;
 mod choose_mode;
 mod choose_mode_runtime;
 pub(crate) mod choose_objects;
 pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
+mod compound;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -35,17 +42,37 @@ mod for_each_tagged;
 mod for_players;
 mod grant_repeatable_mana_payment_action;
 mod if_effect;
+mod iteration_program;
 mod local_rewrite;
 mod mana_restricted;
 mod mana_retained;
 mod may;
 pub(crate) mod mechanic_actions;
+mod prepared_branch;
+mod prepared_iteration;
 mod reflexive_trigger;
 mod repeat_effects;
+pub(crate) use repeat_effects::{
+    RepetitionScope, finish_repeated_sequence_outcomes, resolve_repeat_count,
+};
 mod repeat_process;
 mod repeat_process_prompt;
 mod secret_choice;
 mod sequence;
+mod simultaneous;
+pub(crate) use prepared_iteration::{
+    scope_prepared_iteration, with_iteration_tags, with_object_iteration,
+};
+pub(crate) use simultaneous::{
+    OriginalOutcomeAdapter, adapt_original_outcome_with_outputs, with_held_original_triggers,
+    with_original_execution_context,
+};
+pub(crate) use simultaneous::{
+    complete_prepared_original, complete_prepared_original_with_grouping,
+    compose_original_commits_with_fallible_projection_outputs,
+    compose_original_commits_with_outputs, compose_original_commits_with_projection_outputs,
+    inherit_observed_events, inherit_original_observations,
+};
 mod tag_attached_to_source;
 mod tag_matching_objects;
 mod tag_other_block_participant;
@@ -75,10 +102,16 @@ pub(crate) use choose_mode_runtime::{
 pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;
 pub use collect_evidence::CollectEvidenceEffect;
+pub(crate) use compound::{execute_compound, execute_transaction};
 pub use conditional::ConditionalEffect;
 pub use cumulative_upkeep::CumulativeUpkeepEffect;
 pub use emit_gift_given::EmitGiftGivenEffect;
 pub use emit_keyword_action::EmitKeywordActionEffect;
+pub(crate) use emit_keyword_action::{
+    complete_keyword_action, complete_keyword_action_with_outputs,
+    complete_keyword_action_with_result, observe_keyword_action_completion,
+    publish_keyword_action_completion, publish_keyword_action_completion_receipt,
+};
 pub use execute_with_source::ExecuteWithSourceEffect;
 pub use for_each_correlated_result::ForEachObjectCorrelatedResultEffect;
 pub use for_each_object::ForEachObject;
@@ -86,6 +119,7 @@ pub use for_each_tagged::{
     ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
 };
 pub use for_players::ForPlayersEffect;
+pub(crate) use for_players::execute_player_occurrences_with_outputs;
 pub use grant_repeatable_mana_payment_action::{
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
 };
@@ -110,6 +144,12 @@ pub use repeat_process::RepeatProcessEffect;
 pub use repeat_process_prompt::RepeatProcessPromptEffect;
 pub use secret_choice::{SecretChoiceEffect, SecretChoiceResult};
 pub use sequence::SequenceEffect;
+pub(crate) use sequence::execute_checked_program_with_outputs;
+pub(crate) use simultaneous::{
+    OriginalTriggerObservation, complete_prepared_original_with_outputs,
+    execute_simultaneous_originals, execute_simultaneous_originals_with_default_outputs,
+    execute_simultaneous_originals_with_outputs, finish_simultaneous_originals_with_participants,
+};
 pub use tag_attached_to_source::TagAttachedToSourceEffect;
 pub use tag_matching_objects::TagMatchingObjectsEffect;
 pub use tag_other_block_participant::TagOtherBlockParticipantEffect;
@@ -135,11 +175,21 @@ pub(crate) use may::is_object_selection;
 pub(crate) use tagged::apply_outcome_tags;
 pub(crate) use tagging_runtime::{TaggedRuntimeState, capture_tagged_runtime_state};
 
-pub(crate) use if_effect::{PreparedIfBranch, execute_if_branches, prepare_if_branches};
+pub(crate) use if_effect::{
+    PreparedIfBranch, execute_if_branches_with_outputs, prepare_if_branches,
+};
 
 pub(crate) use for_players::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
 
 mod keyword_action;
-pub(crate) use keyword_action::{KeywordActionAmount, KeywordActionOutput, execute_keyword_action};
+pub(crate) use keyword_action::{
+    KeywordActionAmount, KeywordActionOutput, execute_keyword_action,
+    execute_keyword_action_with_outputs,
+};
 
 mod keyword_programs;
+
+pub(crate) use simultaneous::{
+    complete_committed_original_with_outputs, complete_standalone_original_with_outputs,
+    observe_original_completion,
+};

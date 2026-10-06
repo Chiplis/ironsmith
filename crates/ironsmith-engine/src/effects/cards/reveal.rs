@@ -8,6 +8,41 @@ use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 
+/// Publish one exact group. Selection and hidden-card opening happen before
+/// this boundary; the caller owns whether presentation can suspend its action.
+pub(crate) fn public_reveal_view(
+    game: &GameState,
+    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    viewer: PlayerId,
+    subject: PlayerId,
+    source: crate::ids::ObjectId,
+    zone: crate::zone::Zone,
+    cards: &[crate::ids::ObjectId],
+    description: &str,
+) {
+    let view =
+        ViewCardsContext::new(viewer, subject, Some(source), zone, description).with_public(true);
+    decision_maker.view_cards(game, viewer, cards, &view);
+}
+
+/// One observation owner for ordinary reveals and draw-time rule reveals.
+/// Preserve the supplied pre-action snapshot and the caller's exact provenance.
+pub(crate) fn public_reveal_observation(
+    actor: PlayerId,
+    card: crate::ids::ObjectId,
+    zone: crate::zone::Zone,
+    source: crate::ids::ObjectId,
+    snapshot: Option<ObjectSnapshot>,
+    context_amount: Option<i32>,
+    provenance: crate::provenance::ProvNodeId,
+) -> crate::triggers::TriggerEvent {
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::CardRevealedEvent::new(actor, card, zone, Some(source), snapshot)
+            .with_reveal_context_amount(context_amount),
+        provenance,
+    )
+}
+
 #[derive(Debug, Clone)]
 struct RevealObjects {
     objects: Vec<ObjectSnapshot>,
@@ -47,15 +82,16 @@ impl EffectExecutor for RevealObjects {
                 .collect::<Vec<_>>();
             for index in 0..game.players.len() {
                 let viewer = PlayerId::from_index(index as u8);
-                let view = ViewCardsContext::new(
+                public_reveal_view(
+                    game,
+                    ctx.decision_maker,
                     viewer,
                     owner,
-                    Some(ctx.source),
+                    ctx.source,
                     zone,
-                    self.description.clone(),
-                )
-                .with_public(true);
-                ctx.decision_maker.view_cards(game, viewer, &ids, &view);
+                    &ids,
+                    &self.description,
+                );
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
@@ -83,15 +119,13 @@ impl EffectExecutor for RevealObjects {
             .objects
             .iter()
             .map(|snapshot| {
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardRevealedEvent::new(
-                        self.actor.unwrap_or(snapshot.owner),
-                        snapshot.object_id,
-                        snapshot.zone,
-                        Some(ctx.source),
-                        Some(snapshot.clone()),
-                    )
-                    .with_reveal_context_amount(self.context_amount),
+                public_reveal_observation(
+                    self.actor.unwrap_or(snapshot.owner),
+                    snapshot.object_id,
+                    snapshot.zone,
+                    ctx.source,
+                    Some(snapshot.clone()),
+                    self.context_amount,
                     ctx.provenance,
                 )
             })

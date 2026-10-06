@@ -1,6 +1,7 @@
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
@@ -46,42 +47,25 @@ impl EffectExecutor for RollDieEffect {
             if self.sides == 0 {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(mut rolls) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)?
+            let Some(transaction) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)?
             else {
                 return Ok(EffectOutcome::count(0));
             };
-            let roll = rolls.remove(0);
-            let ordinal = game.turn_store.turn_history.record_completed_die_rolls(
+            let roll = transaction.rolls[0];
+            let completion = super::die_roll_transaction::complete_die_rolls(
+                game,
+                ctx,
                 player,
-                &[roll.result],
-                false,
+                self.sides,
+                &transaction.rolls,
+                roll.result,
+                super::die_roll_transaction::DieRollCompletion::Single,
             )?;
-            // Die-roll history can end continuous effects (for example, "until
-            // any player rolls a 1") and can change other history-dependent
-            // characteristics. Make those derived characteristics observable
-            // immediately after the roll.
-            game.mark_continuous_state_dirty();
-            game.record_ui_effect_event(
-                "die_roll",
-                Some(player),
-                None,
-                Vec::new(),
-                Some(i64::from(roll.result)),
-                Some(format!("d{}", self.sides)),
-            );
-            Ok(EffectOutcome::count(i64::from(roll.result))
-                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                    DieRolledEvent::new_with_natural_result(
-                        player,
-                        ctx.source,
-                        roll.natural_result,
-                        roll.result,
-                        self.sides,
-                    )
-                    .with_turn_ordinal(ordinal),
-                    ctx.provenance,
-                ))
-                .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)))
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(i64::from(roll.result))
+                    .with_execution_fact(ExecutionFact::ChosenNumber(roll.result)),
+                transaction.payments.into_iter().chain([completion]),
+            ))
         })();
         let pending = ctx.decision_maker.awaiting_choice();
         if pending || result.is_err() {

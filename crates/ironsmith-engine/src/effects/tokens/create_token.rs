@@ -280,14 +280,15 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-        commit_token_proposal(*self, game, ctx, true)
+        commit_token_proposal(*self, game, ctx)
     }
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        commit_token_proposal(*self, game, ctx, false).map(|commit| commit.outcome)
+        complete_token_proposal(*self, game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
     }
 }
 /// A token creation request with entry-time instructions. This uses the same
@@ -302,22 +303,113 @@ pub(crate) fn create_tokens_with_entry_counters(
     let mut proposal = prepare_token_proposal(effect, game, ctx)?;
     proposal.initial_counters = counters;
     proposal.completion = completion;
-    commit_token_proposal(proposal, game, ctx, false).map(|commit| commit.outcome)
+    complete_token_proposal(proposal, game, ctx)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// One creation instruction whose requested amount is multiplied by an
+/// authored repetition count. Resolve the base amount once, then send the
+/// whole quantity through the ordinary token proposal/replacement owner.
+/// This differs from repeating keyword actions such as Investigate.
+#[derive(Debug, Clone)]
+struct MultipliedTokenInstruction {
+    effect: CreateTokenEffect,
+    multiplier: u32,
+}
+
+fn prepare_multiplied_token_proposal(
+    effect: &CreateTokenEffect,
+    multiplier: u32,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<TokenProposal, ExecutionError> {
+    let mut proposal = prepare_token_proposal(effect, game, ctx)?;
+    proposal.count =
+        super::resources::checked_token_count(u128::from(proposal.count) * u128::from(multiplier))?;
+    Ok(proposal)
+}
+
+impl EffectExecutor for MultipliedTokenInstruction {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let mut proposal =
+            prepare_multiplied_token_proposal(&self.effect, self.multiplier, game, ctx)?;
+        proposal.charge_instruction = true;
+        Ok(Box::new(proposal))
+    }
+
+    fn visit_card_definitions(&self, visitor: &mut dyn FnMut(&CardDefinition)) {
+        visitor(&self.effect.token);
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::lifecycle::execute_token_instruction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                let proposal =
+                    prepare_multiplied_token_proposal(&self.effect, self.multiplier, game, ctx)?;
+                complete_token_proposal(proposal, game, ctx)
+            },
+        )
+    }
+}
+
+pub(crate) fn multiplied_token_instruction(
+    effect: &CreateTokenEffect,
+    multiplier: u32,
+) -> crate::effect::Effect {
+    crate::effect::Effect::new(MultipliedTokenInstruction {
+        effect: effect.clone(),
+        multiplier,
+    })
 }
 
 fn execute_token_instruction(
     effect: &CreateTokenEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    commit_token_proposal(prepare_token_proposal(effect, game, ctx)?, game, ctx, false)
-        .map(|commit| commit.outcome)
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    complete_token_proposal(prepare_token_proposal(effect, game, ctx)?, game, ctx)
 }
+
+fn complete_token_proposal(
+    proposal: TokenProposal,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let receipt = commit_token_proposal(proposal, game, ctx)?;
+    crate::effects::composition::complete_standalone_original_with_outputs(game, ctx, receipt)
+}
+
 fn commit_token_proposal(
     mut proposal: TokenProposal,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    defer_additions: bool,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
     use crate::effects::SimultaneousEffectProposal;
     use crate::events::processing::PreparedTokenCreation;
@@ -334,7 +426,16 @@ fn commit_token_proposal(
         .as_ref()
         .map(|permit| permit.enter_phase())
         .transpose()?;
-    let mut committed = match proposal.prepared.take().unwrap() {
+    let prepared = proposal.prepared.take().unwrap();
+    // The proposal owner publishes its own completion exactly once. Nested
+    // replacement actions may publish the same keyword, but they cannot
+    // acknowledge this instruction. Preserve the processed recipient when
+    // creation proceeds and the authored performer when it is replaced.
+    let completion_controller = match &prepared {
+        PreparedTokenCreation::Proceed { event, .. } => event.controller,
+        PreparedTokenCreation::Finished { .. } => proposal.controller,
+    };
+    let mut committed = match prepared {
         PreparedTokenCreation::Finished { outcome, programs } => {
             crate::effects::SimultaneousEffectCommit {
                 outcome,
@@ -358,7 +459,6 @@ fn commit_token_proposal(
                 &proposal.effect,
                 &proposal.resolved_token,
                 &proposal.initial_counters,
-                proposal.completion,
                 preview,
                 game,
                 ctx,
@@ -369,38 +469,25 @@ fn commit_token_proposal(
         }
     };
     if let Some((action, amount)) = proposal.completion {
-        if !committed.outcome.events.iter().any(|event| {
-            event
-                .downcast::<crate::events::KeywordActionEvent>()
-                .is_some_and(|event| event.action == action)
-        }) {
-            committed
-                .outcome
-                .events
-                .push(crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::KeywordActionEvent::new(
-                        action,
-                        proposal.controller,
-                        ctx.source,
-                        amount,
-                    ),
-                    ctx.provenance,
-                ));
-        }
+        committed.outcome = crate::effects::composition::complete_keyword_action_with_result(
+            game,
+            ctx,
+            committed.outcome,
+            crate::events::KeywordActionEvent::new(
+                action,
+                completion_controller,
+                ctx.source,
+                amount,
+            ),
+        )?;
     }
     drop(phase);
-    if !defer_additions && let Some(mut completion) = committed.completion.take() {
-        game.freeze_completed_entry_events(committed.outcome.events.iter_mut())?;
-        completion.freeze(game)?;
-        committed.outcome = completion.complete(game, ctx, committed.outcome)?;
-    }
     Ok(committed)
 }
 fn commit_token_original(
     effect: &CreateTokenEffect,
     resolved_token: &CardDefinition,
     initial_counters: &[(crate::object::CounterType, u32)],
-    completion: Option<(crate::events::KeywordActionKind, u32)>,
     token_preview: crate::object::Object,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -446,6 +533,7 @@ fn commit_token_original(
     let mut created_ids = super::resources::buffer(count)?;
     let mut events = super::resources::buffer(count)?;
     let mut entry_receipts = Vec::new();
+    let mut lifecycle_children = Vec::new();
     let pending_start = game.effect_store.pending_trigger_events.len();
     let cost_exiled = cost_exiled_objects(game, ctx);
     // CR 607.2a: a token whose ability returns "the exiled card" is linked
@@ -513,7 +601,7 @@ fn commit_token_original(
         if entered_battlefield {
             let entered_is_creature = game.current_is_creature(entered_id);
             let tracks_creature_etb = entered_is_creature || token_is_creature;
-            apply_token_battlefield_entry(
+            let entry_observation = apply_token_battlefield_entry(
                 game,
                 ctx,
                 entered_id,
@@ -524,6 +612,11 @@ fn commit_token_original(
                 entry_result.enters_tapped,
                 &mut events,
             )?;
+            super::lifecycle::retain_token_child(
+                &mut events,
+                &mut lifecycle_children,
+                entry_observation,
+            );
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effects::SimultaneousEffectCommit::finished(
                     EffectOutcome::with_objects(Vec::new()),
@@ -559,13 +652,14 @@ fn commit_token_original(
                 crate::effects::combat::put_onto_battlefield_blocking(game, entered_id, attacker);
             }
 
-            schedule_token_cleanup(
+            let cleanup = schedule_token_cleanup(
                 game,
                 ctx,
                 entered_id,
                 controller_id,
                 cleanup_options.clone(),
             )?;
+            super::lifecycle::retain_token_child(&mut events, &mut lifecycle_children, cleanup);
         }
     }
 
@@ -592,6 +686,7 @@ fn commit_token_original(
         },
         &mut events,
         &mut entry_receipts,
+        &mut lifecycle_children,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -659,18 +754,13 @@ fn commit_token_original(
         );
     }
 
-    if let Some((action, amount)) = completion {
-        events.push(crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::KeywordActionEvent::new(action, controller_id, ctx.source, amount),
-            ctx.provenance,
-        ));
-    }
     let original = EffectOutcome::with_objects(created_ids.clone())
         .with_result_objects(created_ids.clone())
         .with_events(events)
         .with_affected_objects_from_game(game, created_ids);
+    let outcome = super::lifecycle::compose_token_original(original, lifecycle_children);
     Ok(crate::effects::SimultaneousEffectCommit {
-        outcome: original,
+        outcome,
         completion: Some(super::lifecycle::token_instruction_completion(
             instruction,
             entry_receipts,
@@ -703,9 +793,25 @@ impl EffectExecutor for CreateTokenEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        super::lifecycle::execute_token_instruction_atomically(game, ctx, |game, ctx| {
-            execute_token_instruction(self, game, ctx)
-        })
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::lifecycle::execute_token_instruction_with_pending_value(
+            game,
+            ctx,
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| execute_token_instruction(self, game, ctx),
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

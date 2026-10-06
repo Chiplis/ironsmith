@@ -2,8 +2,11 @@
 
 use crate::ability::Ability;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::{EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{
+    EffectExecutor, EnterAttackingEffect, SacrificeTargetEffect, ScheduleDelayedTriggerEffect,
+};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+#[cfg(test)]
 use crate::events::EnterBattlefieldEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -22,7 +25,22 @@ pub(crate) fn execute_token_instruction_atomically<'a>(
         &mut ExecutionContext<'a>,
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+    execute_token_instruction_with_pending_value(
+        game,
+        ctx,
+        || crate::effect::EffectOutcome::with_objects(Vec::new()),
+        execute,
+    )
+}
+
+/// One resource transaction and instruction permit serve either receipt shape.
+pub(crate) fn execute_token_instruction_with_pending_value<'a, T>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    pending_value: impl FnOnce() -> T,
+    execute: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, ExecutionError>,
+) -> Result<T, ExecutionError> {
+    execute_resource_transaction_with_pending_value(game, ctx, pending_value, |game, ctx| {
         let (_, meter) = game.begin_token_resource_scope();
         let _guard = super::resources::TokenInstructionGuard::enter(meter)?;
         execute(game, ctx)
@@ -37,8 +55,24 @@ pub(crate) fn execute_resource_transaction_atomically<'a>(
         &mut ExecutionContext<'a>,
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    execute_resource_transaction_with_pending_value(
+        game,
+        ctx,
+        || crate::effect::EffectOutcome::with_objects(Vec::new()),
+        execute,
+    )
+}
+
+/// The resource rollback owner is independent of the completed receipt shape.
+/// Callers supply their existing neutral result for a suspended operation.
+pub(crate) fn execute_resource_transaction_with_pending_value<'a, T>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    pending_value: impl FnOnce() -> T,
+    execute: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, ExecutionError>,
+) -> Result<T, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
+        return Ok(pending_value());
     }
     game.clear_pending_decision_controllers();
     let (root, meter) = game.begin_token_resource_scope();
@@ -61,9 +95,33 @@ pub(crate) fn execute_resource_transaction_atomically<'a>(
     }
     game.end_token_resource_scope(root, &meter);
     if pending && result.is_ok() {
-        return Ok(crate::effect::EffectOutcome::with_objects(Vec::new()));
+        return Ok(pending_value());
     }
     result
+}
+
+/// Retain a child receipt at its execution position relative to authored
+/// entry/group events. Neither its observations nor its event identity are
+/// flattened away by the token adapter.
+pub(crate) fn retain_token_child(
+    events: &mut Vec<TriggerEvent>,
+    children: &mut Vec<EffectOutcome>,
+    child: EffectOutcome,
+) {
+    if !events.is_empty() {
+        children.push(EffectOutcome::resolved().with_events(std::mem::take(events)));
+    }
+    children.push(child);
+}
+
+pub(crate) fn compose_token_original(
+    original: EffectOutcome,
+    children: Vec<EffectOutcome>,
+) -> EffectOutcome {
+    EffectOutcome::aggregate_with_primary_result(
+        original.summary_projection(),
+        children.into_iter().chain([original]),
+    )
 }
 
 /// Entry-processing options for newly created tokens.
@@ -164,6 +222,7 @@ pub(crate) fn create_replacement_additional_tokens(
         ObjectId,
         crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>,
     )>,
+    children: &mut Vec<EffectOutcome>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     use super::create_token_copy::{attack_targets_for_player, choose_attack_target};
     use crate::events::tokens::TokenGroupKey;
@@ -225,7 +284,7 @@ pub(crate) fn create_replacement_additional_tokens(
                 .object(entered)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
             {
-                apply_token_battlefield_entry(
+                let entry_observation = apply_token_battlefield_entry(
                     game,
                     ctx,
                     entered,
@@ -240,6 +299,7 @@ pub(crate) fn create_replacement_additional_tokens(
                     entry.enters_tapped,
                     events,
                 )?;
+                retain_token_child(events, children, entry_observation);
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
                 }
@@ -273,10 +333,21 @@ pub(crate) fn create_replacement_additional_tokens(
                     crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
                 }
                 if instructions.gains_haste {
-                    grant_token_static_abilities(game, ctx, entered, &[StaticAbility::haste()])?;
+                    let grant = grant_token_static_abilities(
+                        game,
+                        ctx,
+                        entered,
+                        &[StaticAbility::haste()],
+                    )?;
+                    retain_token_child(events, children, grant);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(Vec::new());
+                    }
                 }
                 if let Some(cleanup) = &instructions.cleanup {
-                    schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?;
+                    let cleanup =
+                        schedule_token_cleanup(game, ctx, entered, controller_id, cleanup.clone())?;
+                    retain_token_child(events, children, cleanup);
                 }
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
@@ -311,7 +382,7 @@ pub(crate) fn apply_token_battlefield_entry(
     from_zone: Zone,
     enters_tapped: bool,
     events: &mut Vec<TriggerEvent>,
-) -> Result<(), ExecutionError> {
+) -> Result<EffectOutcome, ExecutionError> {
     let source_stable_id = game
         .object(ctx.source)
         .map(|source| source.stable_id)
@@ -327,27 +398,23 @@ pub(crate) fn apply_token_battlefield_entry(
 
     // Zone-change events are queued by `move_object_with_etb_processing_with_dm`.
     // Emit the explicit ETB event here so enters-tapped/untapped triggers can match.
-    let etb_event = if enters_tapped {
-        TriggerEvent::new_with_provenance(
-            EnterBattlefieldEvent::tapped(token_id, from_zone),
-            ctx.provenance,
-        )
-    } else {
-        TriggerEvent::new_with_provenance(
-            EnterBattlefieldEvent::new(token_id, from_zone),
-            ctx.provenance,
-        )
-    };
-    events.push(etb_event);
+    events.push(crate::effects::zones::battlefield_entry_observation(
+        game,
+        token_id,
+        from_zone,
+        enters_tapped,
+        ctx.provenance,
+        Vec::new(),
+    )?);
 
     if options.enters_attacking {
-        ctx.with_temp_targets(vec![ResolvedTarget::Object(token_id)], |ctx| {
+        return ctx.with_temp_targets(vec![ResolvedTarget::Object(token_id)], |ctx| {
             let enter_attacking = EnterAttackingEffect::new(ChooseSpec::AnyTarget);
-            execute_effect(game, &Effect::new(enter_attacking), ctx).map(|_| ())
-        })?;
+            enter_attacking.execute_child(game, ctx)
+        });
     }
 
-    Ok(())
+    Ok(EffectOutcome::resolved())
 }
 
 /// Grant a sequence of static abilities to a created token.
@@ -356,18 +423,26 @@ pub(crate) fn grant_token_static_abilities(
     ctx: &mut ExecutionContext,
     token_id: ObjectId,
     static_abilities: &[StaticAbility],
-) -> Result<(), ExecutionError> {
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut children = Vec::new();
     for static_ability in static_abilities {
-        ctx.with_temp_targets(vec![ResolvedTarget::Object(token_id)], |ctx| {
+        let outcome = ctx.with_temp_targets(vec![ResolvedTarget::Object(token_id)], |ctx| {
             let grant_effect = crate::effects::GrantObjectAbilityEffect::new(
                 Ability::static_ability(static_ability.clone()),
                 ChooseSpec::AnyTarget,
             );
-            execute_effect(game, &Effect::new(grant_effect), ctx).map(|_| ())
+            grant_effect.execute_child(game, ctx)
         })?;
+        children.push(outcome);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
 
-    Ok(())
+    Ok(EffectOutcome::aggregate_with_primary_result(
+        EffectOutcome::resolved(),
+        children,
+    ))
 }
 
 /// Delayed-cleanup scheduling options for newly created tokens.
@@ -405,20 +480,24 @@ pub(crate) fn schedule_token_cleanup(
     token_id: ObjectId,
     controller_id: PlayerId,
     options: TokenCleanupOptions,
-) -> Result<(), ExecutionError> {
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut children = Vec::new();
     if options.exile_at_end_of_combat {
-        schedule_token_delayed_effect(
+        children.push(schedule_token_delayed_effect(
             game,
             ctx,
             token_id,
             controller_id,
             Trigger::end_of_combat(),
             vec![Effect::exile(ChooseSpec::SpecificObject(token_id))],
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
 
     if options.sacrifice_at_end_of_combat {
-        schedule_token_delayed_effect(
+        children.push(schedule_token_delayed_effect(
             game,
             ctx,
             token_id,
@@ -427,11 +506,14 @@ pub(crate) fn schedule_token_cleanup(
             vec![Effect::new(SacrificeTargetEffect::new(ChooseSpec::All(
                 crate::target::ObjectFilter::specific(token_id).you_control(),
             )))],
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
 
     if options.sacrifice_at_next_end_step {
-        schedule_token_delayed_effect(
+        children.push(schedule_token_delayed_effect(
             game,
             ctx,
             token_id,
@@ -440,21 +522,30 @@ pub(crate) fn schedule_token_cleanup(
             vec![Effect::new(SacrificeTargetEffect::new(ChooseSpec::All(
                 crate::target::ObjectFilter::specific(token_id).you_control(),
             )))],
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
 
     if options.exile_at_next_end_step {
-        schedule_token_delayed_effect(
+        children.push(schedule_token_delayed_effect(
             game,
             ctx,
             token_id,
             controller_id,
             Trigger::beginning_of_end_step(options.next_end_step_player.clone()),
             vec![Effect::exile(ChooseSpec::SpecificObject(token_id))],
-        )?;
+        )?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
     }
 
-    Ok(())
+    Ok(EffectOutcome::aggregate_with_primary_result(
+        EffectOutcome::resolved(),
+        children,
+    ))
 }
 
 fn schedule_token_delayed_effect(
@@ -464,7 +555,7 @@ fn schedule_token_delayed_effect(
     controller_id: PlayerId,
     trigger: Trigger,
     effects: Vec<Effect>,
-) -> Result<(), ExecutionError> {
+) -> Result<EffectOutcome, ExecutionError> {
     let schedule = ScheduleDelayedTriggerEffect::new(
         trigger,
         effects,
@@ -472,10 +563,8 @@ fn schedule_token_delayed_effect(
         vec![token_id],
         PlayerFilter::Specific(controller_id),
     );
-    let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
-    Ok(())
+    schedule.execute_child(game, ctx)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,6 +858,15 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
         ctx: &mut ExecutionContext,
         original: EffectOutcome,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let _phase = self
             .instruction
             .as_ref()
@@ -777,14 +875,26 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
         let frozen = self.frozen.ok_or_else(|| {
             ExecutionError::InternalError("token completion requires the original batch".into())
         })?;
-        let original =
-            crate::effects::zones::finish_zone_change_receipts_frozen(game, ctx, original, frozen)?;
-        crate::effects::replacement::execute_deferred_replacement_programs(
+        let outputs = crate::effects::zones::finish_zone_change_receipts_frozen_with_outputs(
+            game, ctx, original, frozen,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let completed = crate::effects::replacement::complete_deferred_replacement_programs(
             game,
             ctx,
-            original,
+            outputs.outcome.clone(),
             self.programs,
-        )
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        Ok(outputs.append_batch_program_outputs(completed))
     }
 }
 

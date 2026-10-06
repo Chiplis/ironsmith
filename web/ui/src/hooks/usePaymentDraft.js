@@ -70,7 +70,10 @@ export default function usePaymentDraft({ payment, dispatch, cancelBackgroundDis
     active.edited = false;
     setConfirming(true);
     try {
-      await callbacks.current.dispatch(manaActivationCommand(action), `Activated ${action.source_name}'s mana ability`, { waitForPaymentReady: true });
+      // Stopping background planning publishes a snapshot before React renders
+      // it. Bind this continuation to the payment, just like a draft edit,
+      // so that render delay cannot silently drop the source activation.
+      await callbacks.current.dispatch(manaActivationCommand(action), `Activated ${action.source_name}'s mana ability`, { waitForPaymentReady: true, paymentTransactionId: active.key });
     } finally { if (session.current === active) setConfirming(false); }
   }, [dirty, confirming]);
   return {

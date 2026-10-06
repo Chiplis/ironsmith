@@ -6,8 +6,10 @@
 use crate::cost::CostPaymentError;
 use crate::costs::{CostContext, CostPayer, CostPaymentResult};
 use crate::effect::Effect;
+#[cfg(test)]
+use crate::effects::ExecutionContext;
+use crate::effects::execute_effect_payment_with_outputs;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::{ExecutionContext, execute_effect};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 
@@ -18,6 +20,7 @@ fn convert_validation_error(err: CostValidationError) -> CostPaymentError {
         CostValidationError::AlreadyUntapped => CostPaymentError::AlreadyUntapped,
         CostValidationError::SummoningSickness => CostPaymentError::SummoningSickness,
         CostValidationError::NotEnoughLife => CostPaymentError::InsufficientLife,
+        CostValidationError::NotEnoughEnergy => CostPaymentError::InsufficientEnergy,
         CostValidationError::NotEnoughCards => CostPaymentError::InsufficientCardsInHand,
         CostValidationError::CannotSacrifice => CostPaymentError::NoValidSacrificeTarget,
         CostValidationError::Other(msg) => CostPaymentError::Other(msg),
@@ -28,14 +31,19 @@ fn convert_validation_error(err: CostValidationError) -> CostPaymentError {
 #[derive(Debug, Clone)]
 pub struct CostEffect {
     /// Effect executed as part of paying this cost.
-    pub effect: Effect,
+    effect: Effect,
 }
 
 impl CostEffect {
     pub fn new<E: CostExecutableEffect + 'static>(effect: E) -> Self {
+        let canonical = effect.canonical_cost_effect();
         Self {
-            effect: Effect::new(effect),
+            effect: canonical.unwrap_or_else(|| Effect::new(effect)),
         }
+    }
+
+    pub fn effect(&self) -> &Effect {
+        &self.effect
     }
 
     pub fn try_new(effect: Effect) -> Result<Self, String> {
@@ -44,7 +52,13 @@ impl CostEffect {
 
     pub fn from_validated_effect(effect: Effect) -> Result<Self, String> {
         if effect.0.as_cost_executable().is_some() {
-            Ok(Self { effect })
+            let canonical = effect
+                .0
+                .as_cost_executable()
+                .and_then(|cost| cost.canonical_cost_effect());
+            Ok(Self {
+                effect: canonical.unwrap_or(effect),
+            })
         } else {
             Err(format!(
                 "effect is not marked as cost-executable: {effect:?}"
@@ -66,7 +80,7 @@ impl PartialEq for CostEffect {
 /// execution must still retain the wrappers so their tags and outcomes are
 /// recorded.
 fn transparent_cost_effect(mut effect: &Effect) -> &Effect {
-    while let Some(inner) = effect.transparent_child_effect() {
+    while let Some(inner) = effect.0.transparent_cost_precheck_child_effect() {
         effect = inner;
     }
     effect
@@ -129,10 +143,10 @@ fn sacrifice_cost_precheck(
         crate::effect::Value::X => ctx.x_value.unwrap_or(0) as usize,
         _ if filter.tagged_constraints.is_empty() => return None,
         _ => {
-            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_tagged_objects(ctx.tagged_objects.clone());
-            exec.replacement = ctx.replacement.clone();
-            exec.x_value = ctx.x_value;
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            let exec = ctx
+                .execution_bindings()
+                .execution_context(&mut decision_maker);
             match crate::effects::helpers::resolve_value(game, count, &exec) {
                 Ok(value) => value.max(0) as usize,
                 Err(error) => {
@@ -297,7 +311,20 @@ fn tagged_choice_consumer_cost_precheck(
     game: &GameState,
     ctx: &CostContext,
 ) -> Option<Result<(), CostPaymentError>> {
-    let tag = crate::cost::effect_consumed_choice_tag(effect)?;
+    // Presence of an external tag does not establish a compound's payment
+    // eligibility. Retain opaque input scopes and let its contextual owner
+    // validate every child rather than treating its first dependency as success.
+    let effect = transparent_cost_effect(effect);
+    let mut has_children = false;
+    effect.0.visit_child_effects(&mut |_| has_children = true);
+    if has_children {
+        return None;
+    }
+    let bindings = effect.0.cost_choice_bindings();
+    if bindings.required.len() != 1 || !bindings.published.is_empty() {
+        return None;
+    }
+    let tag = &bindings.required[0];
     let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
         return Some(Err(CostPaymentError::Other(
             "cost consumer has no bound choice".into(),
@@ -413,6 +440,19 @@ fn simple_exile_from_graveyard_filter(
     (filter == &expected).then_some(card_type)
 }
 
+fn life_payment_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let payment =
+        transparent_cost_effect(effect).downcast_ref::<crate::effects::PayLifeEffect>()?;
+    Some(ctx.with_execution_context(|execution| {
+        CostExecutableEffect::can_execute_as_cost_with_context(payment, game, execution, ctx.reason)
+            .map_err(convert_validation_error)
+    }))
+}
+
 fn discard_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -421,25 +461,10 @@ fn discard_cost_precheck(
 ) -> Option<Result<(), CostPaymentError>> {
     let discard =
         transparent_cost_effect(effect).downcast_ref::<crate::effects::DiscardEffect>()?;
-    let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-        .with_tagged_objects(ctx.tagged_objects.clone());
-    exec.replacement = ctx.replacement.clone();
-    exec.source_snapshot = ctx.source_snapshot.clone();
-    exec.x_value = ctx.x_value;
-    exec.effect_outcomes = ctx.effect_outcomes.clone();
-    exec.announced_targets = Some(
-        ctx.announced_targets
-            .iter()
-            .map(|target| match target {
-                crate::game_state::Target::Object(id) => {
-                    crate::effects::ResolvedTarget::Object(*id)
-                }
-                crate::game_state::Target::Player(player) => {
-                    crate::effects::ResolvedTarget::Player(*player)
-                }
-            })
-            .collect(),
-    );
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let exec = ctx
+        .execution_bindings()
+        .execution_context(&mut decision_maker);
     Some(
         discard
             .check_cost_with_context(game, &exec, ctx.reason, allow_unannounced_x)
@@ -448,7 +473,89 @@ fn discard_cost_precheck(
 }
 
 impl CostPayer for CostEffect {
+    fn payment_x_from_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+        execution: &crate::effects::ExecutionContext,
+    ) -> Result<Option<u32>, CostPaymentError> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .ok_or_else(|| CostPaymentError::Other("cost effect lost its payment contract".into()))?
+            .payment_x_from_prepared_payment(proposal, execution)
+            .map_err(convert_validation_error)
+    }
+
+    fn finalize_payment_bindings(
+        &self,
+        game: &GameState,
+        outcome: &crate::effect::EffectOutcome,
+        execution: &mut crate::effects::ExecutionContext,
+        payment_x: Option<u32>,
+    ) -> Result<(), CostPaymentError> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .ok_or_else(|| CostPaymentError::Other("cost effect lost its payment contract".into()))?
+            .finalize_payment_bindings(game, outcome, execution, payment_x)
+    }
+
+    fn payment_x_from_outcome(
+        &self,
+        outcome: &crate::effect::EffectOutcome,
+        execution: &crate::effects::ExecutionContext,
+    ) -> Result<Option<u32>, CostPaymentError> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .ok_or_else(|| CostPaymentError::Other("cost effect lost its payment contract".into()))?
+            .payment_x_from_outcome(outcome, execution)
+            .map_err(convert_validation_error)
+    }
+
+    fn validate_payment_outcome(
+        &self,
+        outcome: &crate::effect::EffectOutcome,
+    ) -> Result<(), CostPaymentError> {
+        self.effect
+            .0
+            .as_cost_executable()
+            .ok_or_else(|| CostPaymentError::Other("cost effect lost its payment contract".into()))?
+            .validate_payment_outcome(outcome)
+            .map_err(convert_validation_error)
+    }
+
+    fn supports_prepared_payment(&self) -> bool {
+        self.effect
+            .0
+            .as_cost_executable()
+            .is_some_and(|cost| cost.supports_prepared_payment())
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        execution: &mut crate::effects::ExecutionContext,
+    ) -> Result<
+        Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+        crate::effects::ExecutionError,
+    > {
+        if !CostPayer::supports_prepared_payment(self) {
+            return Ok(None);
+        }
+        let proposal = self.effect.prepare_simultaneous_payment(game, execution)?;
+        let accepted = self
+            .effect
+            .0
+            .as_cost_executable()
+            .is_some_and(|cost| cost.accepts_prepared_payment(proposal.as_ref()));
+        Ok(accepted.then_some(proposal))
+    }
+
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(result) = life_payment_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         if !ctx.tagged_objects.is_empty()
             && let Some(choose) = transparent_cost_effect(&self.effect)
                 .downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -493,11 +600,10 @@ impl CostPayer for CostEffect {
             .downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && crate::effects::composition::selection_relations::has_relations(&choose.filter)
         {
-            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_tagged_objects(ctx.tagged_objects.clone());
-            exec.source_snapshot = ctx.source_snapshot.clone();
-            exec.replacement = ctx.replacement.clone();
-            exec.x_value = ctx.x_value;
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            let exec = ctx
+                .execution_bindings()
+                .execution_context(&mut decision_maker);
             crate::effects::composition::choose_objects::check_relation_cost_with_context(
                 choose, game, &exec,
             )
@@ -539,66 +645,13 @@ impl CostPayer for CostEffect {
             return Err(CostPaymentError::InsufficientCardsInHand);
         }
 
-        // A lowered compiler component can contain a choice followed by its
-        // tagged consumer inside one SequenceEffect. Checking its children
-        // independently discards that dependency and rejects a payable cost.
-        // Reuse the side-effect-free component checker with this cost's exact
-        // context; only the children become components, never the sequence
-        // itself, so nested sequences recurse into strictly smaller programs.
-        if let Some(sequence) =
-            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::SequenceEffect>()
-        {
-            let total = sequence
-                .cost_components()
-                .map_err(CostPaymentError::Other)?;
-            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_cause(ctx.event_cause())
-                .with_tagged_objects(ctx.tagged_objects.clone())
-                .with_provenance(ctx.provenance);
-            exec.source_snapshot = ctx.source_snapshot.clone();
-            exec.replacement = ctx.replacement.clone();
-            exec.x_value = ctx.x_value;
-            exec.effect_outcomes = ctx.effect_outcomes.clone();
-            exec.announced_targets = Some(
-                ctx.announced_targets
-                    .iter()
-                    .map(|target| match target {
-                        crate::game_state::Target::Object(id) => {
-                            crate::effects::ResolvedTarget::Object(*id)
-                        }
-                        crate::game_state::Target::Player(player) => {
-                            crate::effects::ResolvedTarget::Player(*player)
-                        }
-                    })
-                    .collect(),
-            );
-            return crate::special_actions::can_pay_total_cost_with_reason_in_context(
-                game, ctx.payer, ctx.source, &total, ctx.reason, &mut exec,
-            );
-        }
-
         if let Some(evidence) = transparent_cost_effect(&self.effect)
             .downcast_ref::<crate::effects::CollectEvidenceEffect>()
         {
-            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_tagged_objects(ctx.tagged_objects.clone());
-            exec.source_snapshot = ctx.source_snapshot.clone();
-            exec.replacement = ctx.replacement.clone();
-            exec.x_value = ctx.x_value;
-            exec.effect_outcomes = ctx.effect_outcomes.clone();
-            exec.announced_targets = Some(
-                ctx.announced_targets
-                    .iter()
-                    .map(|target| match target {
-                        crate::game_state::Target::Object(id) => {
-                            crate::effects::ResolvedTarget::Object(*id)
-                        }
-                        crate::game_state::Target::Player(player) => {
-                            crate::effects::ResolvedTarget::Player(*player)
-                        }
-                    })
-                    .collect(),
-            );
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            let exec = ctx
+                .execution_bindings()
+                .execution_context(&mut decision_maker);
             let required = crate::effects::composition::collect_evidence::evidence_requirement(
                 evidence, game, &exec,
             )
@@ -612,25 +665,6 @@ impl CostPayer for CostEffect {
                 .ok_or_else(|| {
                     CostPaymentError::Other("not enough mana value to collect evidence".into())
                 });
-        }
-        if let Some(life) =
-            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayLifeEffect>()
-        {
-            let mut exec = ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_tagged_objects(ctx.tagged_objects.clone());
-            exec.replacement = ctx.replacement.clone();
-            exec.source_snapshot = ctx.source_snapshot.clone();
-            exec.x_value = ctx.x_value.or(Some(0));
-            let payer =
-                crate::effects::helpers::resolve_player_from_spec(game, &life.player, &exec)
-                    .map_err(CostPaymentError::ExecutionFailed)?;
-            let amount = crate::effects::helpers::resolve_value(game, &life.amount, &exec)
-                .map_err(CostPaymentError::ExecutionFailed)?
-                .max(0) as u32;
-            return game
-                .can_pay_life_with_reason(payer, amount, ctx.reason)
-                .then_some(())
-                .ok_or(CostPaymentError::InsufficientLife);
         }
         if let Some(result) = sacrifice_cost_precheck(&self.effect, game, ctx) {
             return result;
@@ -653,32 +687,14 @@ impl CostPayer for CostEffect {
         if let Some(result) = dynamic_counter_removal_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
-        if let Some(pay_energy) =
-            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::PayEnergyEffect>()
-        {
-            let mut exec_ctx = crate::effects::ExecutionContext::new_default(ctx.source, ctx.payer)
-                .with_tagged_objects(ctx.tagged_objects.clone());
-            exec_ctx.replacement = ctx.replacement.clone();
-            exec_ctx.source_snapshot = ctx.source_snapshot.clone();
-            exec_ctx.x_value = ctx.x_value.or(Some(0));
-            let payer = crate::effects::helpers::resolve_player_from_spec(
-                game,
-                &pay_energy.player,
-                &exec_ctx,
-            )
-            .map_err(CostPaymentError::ExecutionFailed)?;
-            let needed = crate::effects::helpers::resolve_value(game, &pay_energy.amount, &exec_ctx)
-                .map_err(CostPaymentError::ExecutionFailed)?
-                .max(0) as u32;
-            let player = game.player(payer).ok_or(CostPaymentError::PlayerNotFound)?;
-            return (player.energy_counters >= needed)
-                .then_some(())
-                .ok_or(CostPaymentError::InsufficientEnergy);
-        }
-        self.effect
-            .0
-            .can_execute_as_cost_with_reason(game, ctx.source, ctx.payer, ctx.reason)
-            .map_err(convert_validation_error)
+        ctx.with_execution_context(|execution| {
+            let cost =
+                self.effect.0.as_cost_executable().ok_or_else(|| {
+                    CostPaymentError::Other("effect is not cost-executable".into())
+                })?;
+            cost.can_execute_as_cost_with_context(game, execution, ctx.reason)
+                .map_err(convert_validation_error)
+        })
     }
 
     fn pay(
@@ -686,6 +702,9 @@ impl CostPayer for CostEffect {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
+        if let Some(result) = life_payment_cost_precheck(&self.effect, game, ctx) {
+            result?;
+        }
         if let Some(result) = discard_cost_precheck(&self.effect, game, ctx, false) {
             result?;
         }
@@ -705,43 +724,13 @@ impl CostPayer for CostEffect {
             self.can_pay(game, ctx)?;
         }
 
-        // Clone the existing tags to pass to ExecutionContext
-        let existing_tags = ctx.tagged_objects.clone();
-        let chosen_targets = ctx
-            .pre_chosen_cards
-            .iter()
-            .copied()
-            .map(crate::effects::ResolvedTarget::Object)
-            .collect();
-
-        let cause = ctx.event_cause();
-        let mut exec_ctx = ExecutionContext::new(ctx.source, ctx.payer, &mut *ctx.decision_maker)
-            .with_cause(cause)
-            .with_tagged_objects(existing_tags)
-            .with_cost_choice_targets(chosen_targets)
-            .with_provenance(ctx.provenance);
-        exec_ctx.source_snapshot = ctx.source_snapshot.clone();
-        exec_ctx.replacement = ctx.replacement.clone();
-        exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
-        exec_ctx.announced_targets = Some(
-            ctx.announced_targets
-                .iter()
-                .map(|target| match target {
-                    crate::game_state::Target::Object(id) => {
-                        crate::effects::ResolvedTarget::Object(*id)
-                    }
-                    crate::game_state::Target::Player(player) => {
-                        crate::effects::ResolvedTarget::Player(*player)
-                    }
-                })
-                .collect(),
-        );
-        if let Some(x) = ctx.x_value {
-            exec_ctx = exec_ctx.with_x(x);
-        }
+        let bindings = ctx.execution_bindings();
+        let mut exec_ctx = bindings.execution_context(&mut *ctx.decision_maker);
 
         let outcome = crate::effects::with_per_event_trigger_matching(game, true, |game| {
-            let mut outcome = execute_effect(game, &self.effect, &mut exec_ctx)?;
+            let mut outcome =
+                execute_effect_payment_with_outputs(game, &self.effect, &mut exec_ctx)?
+                    .into_outcome();
             // Retain payment evidence for later typed amount/counter queries,
             // while freezing triggers before the next payment instruction.
             crate::effects::capture_triggers_before_added_program(
@@ -753,143 +742,26 @@ impl CostPayer for CostEffect {
             Ok::<_, crate::effects::ExecutionError>(outcome)
         })
         .map_err(CostPaymentError::ExecutionFailed)?;
-        if let Some(move_to_zone) =
-            transparent_cost_effect(&self.effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
-        {
-            let moved = outcome
-                .affected_objects()
-                .map_or(0, |affected| affected.len());
-            let count = move_to_zone.target.count();
-            let fixed_required = count.max.filter(|max| *max == count.min).map(|_| count.min);
-            if let Some(required) = fixed_required
-                && moved < required
-            {
-                return Err(CostPaymentError::Other(format!(
-                    "move-to-zone cost moved {moved} objects, required {required}"
-                )));
-            }
+        if exec_ctx.decision_maker.awaiting_choice() {
+            // Keep the legacy neutral return while the pending decision is
+            // authoritative. No acknowledgement or payment bindings publish.
+            return Ok(CostPaymentResult::Paid);
         }
+        CostPayer::validate_payment_outcome(self, &outcome)?;
         for event in outcome.events.iter().cloned() {
             game.queue_trigger_event(ctx.provenance, event);
         }
 
-        let removed_marker_total = outcome.total_marker_changes(|event| event.is_removed());
-
-        if ctx.x_value.is_none()
-            && (self
-                .effect
-                .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                .is_some_and(|effect| {
-                    matches!(effect.target.base(), crate::target::ChooseSpec::Source)
-                })
-                || self
-                    .effect
-                    .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
-                    .is_some()
-                || self
-                    .effect
-                    .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
-                    .is_some())
-        {
-            ctx.x_value = Some(removed_marker_total);
-        }
-
-        // Preserve an explicitly completed zero-object choice. Later cost steps
-        // must distinguish it from a missing (never paid) selection.
-        if let Some(choose) = transparent_cost_effect(&self.effect)
-            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        {
-            // Resolution choices may do as much as possible, but a cost must
-            // select the full required amount before subsequent steps pay it.
-            let required = if choose.count.up_to_x
-                || (choose.is_search
-                    && choose.search_mode == crate::effect::SearchSelectionMode::Optional)
-            {
-                0
-            } else if let Some(value) = choose.count_value.as_ref() {
-                crate::effects::helpers::resolve_value(game, value, &exec_ctx)
-                    .map_err(CostPaymentError::ExecutionFailed)?
-                    .max(0) as usize
-            } else if choose.count.dynamic_x {
-                ctx.x_value
-                    .ok_or_else(|| CostPaymentError::Other("X value not set for cost".into()))?
-                    as usize
-            } else {
-                choose.count.min
-            };
-            let selected = exec_ctx.tagged_objects.get(&choose.tag).map_or(0, Vec::len);
-            if selected < required {
-                return Err(CostPaymentError::Other(format!(
-                    "Not enough objects selected to pay cost ({required} needed, {selected} selected)"
-                )));
-            }
-            exec_ctx
-                .tagged_objects
-                .entry(choose.tag.clone())
-                .or_default();
-        }
-
-        // A resolving collect-evidence cost may announce X inside its own
-        // action. Keep that announced value for the enclosing cost/reflexive
-        // continuation; overpayment never supplies a different X.
-        if ctx.x_value.is_none()
-            && transparent_cost_effect(&self.effect)
-                .downcast_ref::<crate::effects::CollectEvidenceEffect>()
-                .is_some()
-        {
+        if ctx.x_value.is_none() {
             ctx.x_value = exec_ctx.x_value;
         }
 
-        // A sacrifice payment refers to the permanent as it departed, rather
-        // than the new graveyard incarnation exported by a movement result.
-        if transparent_cost_effect(&self.effect)
-            .downcast_ref::<crate::effects::SacrificeEffect>()
-            .is_some()
-            || transparent_cost_effect(&self.effect)
-                .downcast_ref::<crate::effects::SacrificeTargetEffect>()
-                .is_some()
-        {
-            let receipts = exec_ctx
-                .tagged_objects
-                .iter()
-                .filter_map(|(tag, snapshots)| {
-                    tag.as_str()
-                        .strip_prefix("__pre_move_history__")
-                        .map(|tag| (crate::tag::TagKey::from(tag), snapshots.clone()))
-                })
-                .collect::<Vec<_>>();
-            for (tag, snapshots) in receipts {
-                exec_ctx.set_tagged_objects(tag, snapshots);
-            }
-            let frozen = exec_ctx
-                .tagged_objects
-                .iter()
-                .filter_map(|(tag, snapshots)| {
-                    if tag.as_str().starts_with("__") {
-                        return None;
-                    }
-                    let departed = snapshots
-                        .iter()
-                        .filter(|snapshot| {
-                            snapshot.zone == crate::zone::Zone::Battlefield
-                                && game.object(snapshot.object_id).is_none()
-                        })
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    (!departed.is_empty()).then(|| {
-                        (
-                            crate::tag::TagKey::from(format!("__paid_departure__{}", tag.as_str())),
-                            departed,
-                        )
-                    })
-                })
-                .collect::<Vec<_>>();
-            for (tag, snapshots) in frozen {
-                exec_ctx.set_tagged_objects(tag, snapshots);
-            }
-        }
-
-        // Copy any new tags back to CostContext for subsequent costs
+        // The shared payment gateway has acknowledged and published the
+        // completed owner's bindings; this bridge transfers the actual frame.
+        // Retain inherited input/output domains for subsequent payment frames.
+        ctx.execution_inputs = Some(Box::new(crate::effects::PaymentExecutionInputs::capture(
+            &exec_ctx,
+        )));
         ctx.tagged_objects = exec_ctx.tagged_objects;
         ctx.effect_outcomes = exec_ctx.effect_outcomes;
         ctx.pre_chosen_cards.clear();

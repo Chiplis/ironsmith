@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/sheet";
 import { Activity, ExternalLink, Github, Menu, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 import AddCardSheet from "./AddCardSheet";
+import SurrenderButton from "./SurrenderButton";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
 import DiagnosticsSheet from "./DiagnosticsSheet";
@@ -79,10 +80,8 @@ export default function TopbarMenuSheet({
     wasmRegistryCount,
     wasmRegistryTotal,
     multiplayer,
-    autoPassEnabled,
-    setAutoPassEnabled,
-    holdRule,
-    setHoldRule,
+    autoResolveEnabled,
+    setAutoResolveEnabled,
     fixedStartingBoard,
     setFixedStartingBoard,
     inspectorDebug,
@@ -226,38 +225,44 @@ export default function TopbarMenuSheet({
               description={t("settings.quick.description")}
             >
               <div className="grid gap-2 sm:grid-cols-2">
-                <AddCardSheet
-                  onAddCardNotice={onAddCardNotice}
-                  trigger={(
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="stone-pill justify-start"
+                {multiplayer.matchStarted || multiplayer.mode === "in_match" ? (
+                  <SurrenderButton onClick={() => setOpen(false)} />
+                ) : (
+                  <>
+                    <AddCardSheet
+                      onAddCardNotice={onAddCardNotice}
+                      trigger={(
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="stone-pill justify-start"
+                          disabled={addLocked}
+                        >
+                          {t("action.addCard")}
+                        </Button>
+                      )}
+                    />
+                    <CreateCardForgeSheet
                       disabled={addLocked}
-                    >
-                      {t("action.addCard")}
-                    </Button>
-                  )}
-                />
-                <CreateCardForgeSheet
-                  disabled={addLocked}
-                  players={players}
-                  selectedPlayer={forgePlayer}
-                  onSelectPlayer={setForgePlayer}
-                  zone={forgeZone}
-                  onZoneChange={setForgeZone}
-                  skipTriggers={forgeSkipTriggers}
-                  onSkipTriggersChange={setForgeSkipTriggers}
-                  trigger={(
-                    <button
-                      type="button"
-                      className="stone-pill inline-flex items-center justify-start rounded-none px-2.5 py-2 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
-                      disabled={addLocked}
-                    >
-                      {t("action.compileCard")}
-                    </button>
-                  )}
-                />
+                      players={players}
+                      selectedPlayer={forgePlayer}
+                      onSelectPlayer={setForgePlayer}
+                      zone={forgeZone}
+                      onZoneChange={setForgeZone}
+                      skipTriggers={forgeSkipTriggers}
+                      onSkipTriggersChange={setForgeSkipTriggers}
+                      trigger={(
+                        <button
+                          type="button"
+                          className="stone-pill inline-flex items-center justify-start rounded-none px-2.5 py-2 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                          disabled={addLocked}
+                        >
+                          {t("action.compileCard")}
+                        </button>
+                      )}
+                    />
+                  </>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
@@ -334,27 +339,12 @@ export default function TopbarMenuSheet({
             description={t("settings.live.description")}
           >
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className={labelClass}>
-                {t("settings.autoPassHold")}
-                <select
-                  className={inputClass}
-                  value={holdRule}
-                  onChange={(event) => setHoldRule(event.target.value)}
-                >
-                  <option value="never">{t("hold.never")}</option>
-                  <option value="if_actions">{t("hold.ifActions")}</option>
-                  <option value="stack">{t("hold.stack")}</option>
-                  <option value="main">{t("hold.main")}</option>
-                  <option value="combat">{t("hold.combat")}</option>
-                  <option value="ending">{t("hold.ending")}</option>
-                  <option value="always">{t("hold.always")}</option>
-                </select>
-              </label>
+
               <div className="grid gap-2">
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
-                    checked={autoPassEnabled}
-                    onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
+                    checked={autoResolveEnabled}
+                    onCheckedChange={(value) => setAutoResolveEnabled(Boolean(value))}
                   />
                   {t("action.autoPass")}
                 </label>

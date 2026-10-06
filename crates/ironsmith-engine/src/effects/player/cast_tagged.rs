@@ -7,15 +7,12 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_with_options,
-};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::zone::Zone;
 pub type CastTaggedEffect = ironsmith_core::CastTaggedEffect<crate::costs::Cost>;
 
-use super::runtime_helpers::{queue_effect_driven_land_play, with_spell_cast_event};
+use super::runtime_helpers::with_spell_cast_event;
 
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
@@ -133,43 +130,8 @@ impl EffectExecutor for CastTaggedEffect {
                         }
                         copy_obj.zone = Zone::Command;
                         game.add_object(copy_obj);
-                        let entry = move_to_battlefield_with_options(
-                            game,
-                            ctx,
-                            copy_id,
-                            BattlefieldEntryOptions::specific(caster, false),
-                        )?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
-                        }
-                        let entry = entry.ok_or_else(|| {
-                            ExecutionError::InternalError(
-                                "land entry lost its receipt without pending input".into(),
-                            )
-                        })?;
-                        let original = match &entry.outcome {
-                            BattlefieldEntryOutcome::Moved(new_id) => {
-                                queue_effect_driven_land_play(
-                                    game, ctx, *new_id, caster, from_zone,
-                                );
-                                EffectOutcome::with_objects(vec![*new_id])
-                            }
-                            BattlefieldEntryOutcome::Redirected(change) => {
-                                if let Some(id) = change.new_object_id {
-                                    queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
-                                }
-                                EffectOutcome::with_objects(change.new_object_ids.clone())
-                            }
-                            BattlefieldEntryOutcome::Prevented => {
-                                game.remove_object(copy_id);
-                                EffectOutcome::impossible()
-                            }
-                        };
-                        return crate::effects::zones::finish_battlefield_entry_receipts(
-                            game,
-                            ctx,
-                            original,
-                            vec![entry],
+                        return crate::effects::zones::play_land_from_resolving_effect(
+                            game, ctx, copy_id, caster, from_zone, true,
                         );
                     }
 
@@ -225,38 +187,8 @@ impl EffectExecutor for CastTaggedEffect {
                         return Ok(EffectOutcome::target_invalid());
                     }
 
-                    let entry = move_to_battlefield_with_options(
-                        game,
-                        ctx,
-                        object_id,
-                        BattlefieldEntryOptions::specific(caster, false),
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    let entry = entry.ok_or_else(|| {
-                        ExecutionError::InternalError(
-                            "land entry lost its receipt without pending input".into(),
-                        )
-                    })?;
-                    let original = match &entry.outcome {
-                        BattlefieldEntryOutcome::Moved(new_id) => {
-                            queue_effect_driven_land_play(game, ctx, *new_id, caster, from_zone);
-                            EffectOutcome::with_objects(vec![*new_id])
-                        }
-                        BattlefieldEntryOutcome::Redirected(change) => {
-                            if let Some(id) = change.new_object_id {
-                                queue_effect_driven_land_play(game, ctx, id, caster, from_zone);
-                            }
-                            EffectOutcome::with_objects(change.new_object_ids.clone())
-                        }
-                        BattlefieldEntryOutcome::Prevented => EffectOutcome::impossible(),
-                    };
-                    return crate::effects::zones::finish_battlefield_entry_receipts(
-                        game,
-                        ctx,
-                        original,
-                        vec![entry],
+                    return crate::effects::zones::play_land_from_resolving_effect(
+                        game, ctx, object_id, caster, from_zone, false,
                     );
                 }
 
@@ -312,7 +244,6 @@ impl EffectExecutor for CastTaggedEffect {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

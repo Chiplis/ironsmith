@@ -22,6 +22,10 @@ pub use ironsmith_core::UntapEffect;
 /// let effect = UntapEffect::all(ObjectFilter::creature().you_control());
 /// ```
 impl EffectExecutor for UntapEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.target)
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -144,6 +148,26 @@ impl EffectExecutor for UntapEffect {
 }
 
 impl CostExecutableEffect for UntapEffect {
+    fn cost_choice_tap_state(&self) -> Option<bool> {
+        Some(false)
+    }
+
+    fn cost_choice_candidate_is_eligible(
+        &self,
+        game: &GameState,
+        _execution: &mut ExecutionContext,
+        _reason: crate::costs::PaymentReason,
+        tag: &crate::tag::TagKey,
+        object: crate::ids::ObjectId,
+    ) -> Option<bool> {
+        let consumes_tag = match self.target.base() {
+            ChooseSpec::Tagged(target) => target == tag,
+            ChooseSpec::Object(filter) => crate::game_loop::tagged_filter_matches(filter, tag),
+            _ => false,
+        };
+        consumes_tag.then(|| game.can_untap(object))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,

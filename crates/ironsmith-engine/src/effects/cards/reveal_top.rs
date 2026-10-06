@@ -1,9 +1,10 @@
 //! Reveal top card effect implementation.
 
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
 };
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -19,9 +20,18 @@ impl EffectExecutor for RevealTopEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        let result = execute_library_consult(
+        let result = execute_library_consult_with_outputs(
             game,
             ctx,
             player_id,
@@ -45,7 +55,7 @@ impl EffectExecutor for RevealTopEffect {
                 result.exposed_snapshots.clone(),
             );
         }
-        Ok(result.attach_to_outcome(EffectOutcome::count(count)))
+        Ok(result.attach_to_outputs(EffectOutcome::count(count)))
     }
 
     fn is_read_only_simultaneous_player_action(&self) -> bool {

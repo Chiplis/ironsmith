@@ -33,7 +33,6 @@ use crate::object::{CounterType, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 use std::collections::HashMap;
 pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
@@ -86,35 +85,51 @@ impl EffectExecutor for BackupEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target = crate::effects::helpers::resolve_single_object_from_spec(
-            game,
-            &ChooseSpec::target_creature(),
-            ctx,
-        )?;
+        super::execute_compound(game, ctx, |game, ctx| {
+            let target = crate::effects::helpers::resolve_single_object_from_spec(
+                game,
+                &ChooseSpec::target_creature(),
+                ctx,
+            )?;
 
-        let mut outcomes = vec![
-            crate::effects::PutCountersEffect::new(
-                CounterType::PlusOnePlusOne,
-                self.amount,
-                ChooseSpec::SpecificObject(target),
-            )
-            .execute_child(game, ctx)?,
-        ];
+            let mut outcomes = vec![
+                crate::effects::PutCountersEffect::new(
+                    CounterType::PlusOnePlusOne,
+                    self.amount,
+                    ChooseSpec::SpecificObject(target),
+                )
+                .execute_child(game, ctx)?,
+            ];
 
-        if target != ctx.source {
-            for ability in &self.granted_abilities {
-                outcomes.push(
-                    crate::effects::ApplyContinuousEffect::new(
-                        crate::continuous::EffectTarget::Specific(target),
-                        crate::continuous::Modification::AddAbilityGeneric(ability.clone()),
-                        Until::EndOfTurn,
-                    )
-                    .execute_child(game, ctx)?,
-                );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-        }
+            let primary = outcomes[0].summary_projection();
+            if target != ctx.source
+                && game
+                    .object(target)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+                && !game.is_phased_out(target)
+            {
+                for ability in &self.granted_abilities {
+                    outcomes.push(
+                        crate::effects::ApplyContinuousEffect::new(
+                            crate::continuous::EffectTarget::Specific(target),
+                            crate::continuous::Modification::AddAbilityGeneric(ability.clone()),
+                            Until::EndOfTurn,
+                        )
+                        .execute_child(game, ctx)?,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                }
+            }
 
-        Ok(EffectOutcome::aggregate(outcomes))
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                primary, outcomes,
+            ))
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -168,7 +183,7 @@ fn players_in_apnap_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
-pub(crate) fn execute_keyword_action_replacement_effects(
+pub(crate) fn execute_keyword_action_replacement_effects_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: Vec<Effect>,
@@ -176,17 +191,14 @@ pub(crate) fn execute_keyword_action_replacement_effects(
     controller: PlayerId,
     context: &crate::events::processing::ReplacementEventContext,
     action_snapshot: Option<ObjectSnapshot>,
-) -> Result<EffectOutcome, ExecutionError> {
-    let tags = action_snapshot
-        .map(|snapshot| {
-            vec![
-                ("__it__".to_owned(), vec![snapshot.clone()]),
-                ("it".to_owned(), vec![snapshot]),
-            ]
-        })
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let tags = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
+        .map(|event| event.object_tags.clone())
         .unwrap_or_default();
-    crate::effects::replacement::execute_replacement_payload_with_object_tags(
-        game, ctx, &effects, source, controller, context, None, tags,
+    let tags =
+        super::keyword_action::keyword_action_object_bindings(tags, action_snapshot.as_ref());
+    crate::effects::replacement::execute_replacement_payload_with_outputs(
+        game, ctx, &effects, source, controller, context, None, None, tags,
     )
 }
 
@@ -216,9 +228,7 @@ impl EffectExecutor for ExploreEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
+        super::execute_compound(game, ctx, |game, ctx| {
             let target_ids = if let ChooseSpec::Tagged(tag) = self.target.base() {
                 ctx.get_tagged_all(tag)
                     .map(|snapshots| {
@@ -280,7 +290,6 @@ impl EffectExecutor for ExploreEffect {
                 });
             }
 
-            let mut events = Vec::new();
             let mut children = Vec::new();
             let mut explored_objects = Vec::new();
             let player_order = players_in_apnap_order(game);
@@ -316,9 +325,7 @@ impl EffectExecutor for ExploreEffect {
                         let selection: Vec<ObjectId> =
                             make_decision(game, ctx.decision_maker, player, Some(ctx.source), spec);
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok(
-                                EffectOutcome::with_objects(explored_objects).with_events(events)
-                            );
+                            return Ok(EffectOutcome::with_objects(explored_objects));
                         }
                         let normalized = normalize_object_selection(selection, &choices, 1);
                         let chosen_object = normalized.first().copied().unwrap_or(choices[0]);
@@ -351,7 +358,6 @@ impl EffectExecutor for ExploreEffect {
                         |game, ctx, action| {
                             let controller = action.player;
                             let target_id = action.source;
-                            let mut events = Vec::new();
                             let mut explored_objects = Vec::new();
                             let mut children = Vec::new();
 
@@ -371,6 +377,9 @@ impl EffectExecutor for ExploreEffect {
                                 None,
                             )?;
                             children.push(reveal);
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
 
                             let revealed_is_land = revealed_card_id
                                 .and_then(|card_id| game.object(card_id))
@@ -449,7 +458,9 @@ impl EffectExecutor for ExploreEffect {
                                     )])
                                 })
                                 .unwrap_or_default();
-                            events.push(TriggerEvent::new_with_provenance(
+                            children.push(super::complete_keyword_action(
+                                game,
+                                ctx,
                                 KeywordActionEvent::new(
                                     KeywordActionKind::Explore,
                                     controller,
@@ -458,11 +469,10 @@ impl EffectExecutor for ExploreEffect {
                                 )
                                 .with_snapshot(action_snapshot)
                                 .with_object_tags(object_tags),
-                                ctx.provenance,
-                            ));
+                            )?);
                             explored_objects.push(target_id);
                             Ok(EffectOutcome::aggregate_with_primary_result(
-                                EffectOutcome::with_objects(explored_objects).with_events(events),
+                                EffectOutcome::with_objects(explored_objects),
                                 children,
                             ))
                         },
@@ -478,18 +488,10 @@ impl EffectExecutor for ExploreEffect {
             }
 
             Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::with_objects(explored_objects).with_events(events),
+                EffectOutcome::with_objects(explored_objects),
                 children,
             ))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        result
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -536,9 +538,7 @@ impl EffectExecutor for OpenAttractionEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        super::execute_compound(game, ctx, |game, ctx| {
             // CR 701.51b: "you" is the controller of the instruction, not
             // whoever controls its source now.
             let controller = ctx.controller;
@@ -566,17 +566,17 @@ impl EffectExecutor for OpenAttractionEffect {
             let original: Result<EffectOutcome, ExecutionError> = match &receipt.outcome {
                 BattlefieldEntryOutcome::Moved(new_id) => {
                     game.finish_opening_attraction(controller, attraction, Some(*new_id));
-                    Ok(EffectOutcome::with_objects(vec![*new_id]).with_event(
-                        TriggerEvent::new_with_provenance(
-                            KeywordActionEvent::new(
-                                KeywordActionKind::OpenAttraction,
-                                controller,
-                                ctx.source,
-                                1,
-                            ),
-                            ctx.provenance,
+                    Ok(super::complete_keyword_action_with_result(
+                        game,
+                        ctx,
+                        EffectOutcome::with_objects(vec![*new_id]),
+                        KeywordActionEvent::new(
+                            KeywordActionKind::OpenAttraction,
+                            controller,
+                            ctx.source,
+                            1,
                         ),
-                    ))
+                    )?)
                 }
                 BattlefieldEntryOutcome::Redirected(receipt) => {
                     game.finish_opening_attraction(controller, attraction, None);
@@ -598,15 +598,7 @@ impl EffectExecutor for OpenAttractionEffect {
                 original,
                 vec![receipt],
             )
-        })();
-        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        instruction
+        })
     }
 }
 
@@ -684,9 +676,7 @@ impl EffectExecutor for ManifestObjectsEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        super::execute_compound(game, ctx, |game, ctx| {
             let controller =
                 crate::effects::helpers::resolve_player_filter(game, &self.controller, ctx)?;
             let mut object_ids =
@@ -723,10 +713,9 @@ impl EffectExecutor for ManifestObjectsEffect {
             }) {
                 let mut moved_ids = Vec::new();
                 let mut affected_memory = Vec::new();
-                let mut events = Vec::new();
                 let mut phase_outcomes = Vec::new();
                 for object_id in object_ids {
-                    let event_start = events.len();
+                    let mut phase = EffectOutcome::resolved();
                     let Some(object) = game.object(object_id) else {
                         continue;
                     };
@@ -754,7 +743,10 @@ impl EffectExecutor for ManifestObjectsEffect {
                             game.set_manifested(*new_id);
                             moved_ids.push(*new_id);
                             affected_memory.push(memory);
-                            events.push(TriggerEvent::new_with_provenance(
+                            phase = super::complete_keyword_action_with_result(
+                                game,
+                                ctx,
+                                phase,
                                 KeywordActionEvent::new(
                                     if self.cloak {
                                         KeywordActionKind::Cloak
@@ -765,8 +757,7 @@ impl EffectExecutor for ManifestObjectsEffect {
                                     ctx.source,
                                     1,
                                 ),
-                                ctx.provenance,
-                            ));
+                            )?;
                         }
                         BattlefieldEntryOutcome::Redirected(receipt) => {
                             moved_ids.extend(receipt.new_object_ids.iter().copied());
@@ -776,8 +767,6 @@ impl EffectExecutor for ManifestObjectsEffect {
                             rollback_manifest_preparation(game, &preparation);
                         }
                     }
-                    let phase =
-                        EffectOutcome::resolved().with_events(events.split_off(event_start));
                     let phase = crate::effects::zones::finish_battlefield_entry_receipts(
                         game,
                         ctx,
@@ -855,24 +844,18 @@ impl EffectExecutor for ManifestObjectsEffect {
                         } else {
                             KeywordActionKind::Manifest
                         };
-                        original = original.with_event(TriggerEvent::new_with_provenance(
+                        original = super::complete_keyword_action_with_result(
+                            game,
+                            ctx,
+                            original,
                             KeywordActionEvent::new(action, controller, ctx.source, entered_count),
-                            ctx.provenance,
-                        ));
+                        )?;
                     }
                     Ok(original)
                 },
             )
             .map(|commit| commit.outcome)
-        })();
-        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        instruction
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -897,9 +880,7 @@ impl EffectExecutor for ManifestDreadEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        super::execute_compound(game, ctx, |game, ctx| {
             let player = crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
             const LOOKED: &str = "__manifest_dread_look";
             let look = crate::effects::LookAtTopCardsEffect::new(
@@ -910,6 +891,9 @@ impl EffectExecutor for ManifestDreadEffect {
             .viewed_by(PlayerFilter::Specific(player));
             let observed =
                 ctx.with_object_tag(LOOKED, Vec::new(), |ctx| look.execute_child(game, ctx))?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let top_cards = observed
                 .affected_object_memory()
                 .unwrap_or_default()
@@ -921,18 +905,21 @@ impl EffectExecutor for ManifestDreadEffect {
                     TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
                     Vec::new(),
                 )]);
-                return Ok(
-                    EffectOutcome::count(0).with_event(TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::ManifestDread,
-                            player,
-                            ctx.source,
-                            1,
-                        )
-                        .with_object_tags(object_tags),
-                        ctx.provenance,
-                    )),
-                );
+                return Ok(super::complete_keyword_action_with_result(
+                    game,
+                    ctx,
+                    EffectOutcome::aggregate_with_primary_result(
+                        EffectOutcome::count(0),
+                        [observed],
+                    ),
+                    KeywordActionEvent::new(
+                        KeywordActionKind::ManifestDread,
+                        player,
+                        ctx.source,
+                        1,
+                    )
+                    .with_object_tags(object_tags),
+                )?);
             }
 
             let card_to_manifest = if top_cards.len() == 1 {
@@ -965,14 +952,8 @@ impl EffectExecutor for ManifestDreadEffect {
                     .unwrap_or(top_cards[0])
             };
 
-            let (mut outcome, entry_receipt) = prepare_manifest_entry(
-                game,
-                ctx,
-                card_to_manifest,
-                player,
-                false,
-                KeywordActionKind::ManifestDread,
-            )?;
+            let (mut outcome, entry_receipt) =
+                prepare_manifest_entry(game, ctx, card_to_manifest, player, false)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(outcome);
             }
@@ -1024,31 +1005,20 @@ impl EffectExecutor for ManifestDreadEffect {
 
             let primary = outcome.summary_projection();
             outcome = EffectOutcome::aggregate_with_primary_result(primary, [observed, outcome]);
-            outcome.events.retain(|event| {
-                !event
-                    .downcast::<KeywordActionEvent>()
-                    .is_some_and(|event| event.action == KeywordActionKind::ManifestDread)
-            });
             let object_tags = HashMap::from([(
                 TagKey::from(crate::tag::MANIFEST_DREAD_GRAVEYARD_TAG),
                 graveyard_snapshots,
             )]);
-            outcome.events.push(TriggerEvent::new_with_provenance(
+            outcome = super::complete_keyword_action_with_result(
+                game,
+                ctx,
+                outcome,
                 KeywordActionEvent::new(KeywordActionKind::ManifestDread, player, ctx.source, 1)
                     .with_object_tags(object_tags),
-                ctx.provenance,
-            ));
+            )?;
 
             crate::effects::zones::finish_zone_change_receipts(game, ctx, outcome, receipts)
-        })();
-        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        instruction
+        })
     }
 }
 
@@ -1194,7 +1164,6 @@ impl EffectExecutor for PopulateEffect {
             game.reserve_token_repetition_work(count)?;
             let mut created_ids = Vec::new();
             let mut outcomes = Vec::new();
-            let mut events = Vec::new();
 
             for _ in 0..count {
                 let candidates = game
@@ -1213,15 +1182,16 @@ impl EffectExecutor for PopulateEffect {
                     .collect::<Vec<_>>();
 
                 if candidates.is_empty() {
-                    events.push(TriggerEvent::new_with_provenance(
+                    outcomes.push(super::complete_keyword_action(
+                        game,
+                        ctx,
                         KeywordActionEvent::new(
                             KeywordActionKind::Populate,
                             ctx.controller,
                             ctx.source,
                             1,
                         ),
-                        ctx.provenance,
-                    ));
+                    )?);
                     continue;
                 }
 
@@ -1244,7 +1214,7 @@ impl EffectExecutor for PopulateEffect {
                     );
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::with_objects(created_ids).with_events(events),
+                            EffectOutcome::with_objects(created_ids),
                             outcomes,
                         ));
                     }
@@ -1267,19 +1237,20 @@ impl EffectExecutor for PopulateEffect {
                 }
                 created_ids.extend(outcome.instruction_result().output_objects());
                 outcomes.push(outcome);
-                events.push(TriggerEvent::new_with_provenance(
+                outcomes.push(super::complete_keyword_action(
+                    game,
+                    ctx,
                     KeywordActionEvent::new(
                         KeywordActionKind::Populate,
                         ctx.controller,
                         ctx.source,
                         1,
                     ),
-                    ctx.provenance,
-                ));
+                )?);
             }
 
             Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::with_objects(created_ids).with_events(events),
+                EffectOutcome::with_objects(created_ids),
                 outcomes,
             ))
         })
@@ -1296,77 +1267,88 @@ impl EffectExecutor for BolsterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut candidates = game
-            .battlefield
-            .iter()
-            .copied()
-            // CR 702.26b: phased-out creatures are treated as though they
-            // don't exist (they neither count for "least toughness" nor get
-            // the counters).
-            .filter(|&id| !game.is_phased_out(id))
-            .filter(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    game.controller_of(obj) == ctx.controller
-                        && game.object_has_card_type(id, crate::types::CardType::Creature)
+        super::execute_compound(game, ctx, |game, ctx| {
+            let mut candidates = game
+                .battlefield
+                .iter()
+                .copied()
+                // CR 702.26b: phased-out creatures are treated as though they
+                // don't exist (they neither count for "least toughness" nor get
+                // the counters).
+                .filter(|&id| !game.is_phased_out(id))
+                .filter(|&id| {
+                    game.object(id).is_some_and(|obj| {
+                        game.controller_of(obj) == ctx.controller
+                            && game.object_has_card_type(id, crate::types::CardType::Creature)
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
-        if candidates.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let least_toughness = candidates
-            .iter()
-            .filter_map(|&id| {
+            let least_toughness = candidates
+                .iter()
+                .filter_map(|&id| {
+                    game.calculated_toughness(id)
+                        .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
+                })
+                .min()
+                .unwrap_or(0);
+            candidates.retain(|&id| {
                 game.calculated_toughness(id)
                     .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
-            })
-            .min()
-            .unwrap_or(0);
-        candidates.retain(|&id| {
-            game.calculated_toughness(id)
-                .or_else(|| game.object(id).and_then(|obj| obj.toughness()))
-                == Some(least_toughness)
-        });
-        if candidates.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+                    == Some(least_toughness)
+            });
+            if candidates.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let chosen = if candidates.len() == 1 {
-            candidates[0]
-        } else {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose a creature with the least toughness you control for bolster",
-                candidates.clone(),
-                1,
-                Some(1),
-            );
-            let selection: Vec<ObjectId> = make_decision(
-                game,
-                ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-            );
+            let chosen = if candidates.len() == 1 {
+                candidates[0]
+            } else {
+                let spec = ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose a creature with the least toughness you control for bolster",
+                    candidates.clone(),
+                    1,
+                    Some(1),
+                );
+                let selection: Vec<ObjectId> = make_decision(
+                    game,
+                    ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                let normalized = normalize_object_selection(selection, &candidates, 1);
+                normalized.first().copied().unwrap_or(candidates[0])
+            };
+
+            let outcome = crate::effects::PutCountersEffect::new(
+                CounterType::PlusOnePlusOne,
+                self.amount,
+                ChooseSpec::SpecificObject(chosen),
+            )
+            .execute_child(game, ctx)?;
+
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let normalized = normalize_object_selection(selection, &candidates, 1);
-            normalized.first().copied().unwrap_or(candidates[0])
-        };
-
-        let outcome = crate::effects::PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            self.amount,
-            ChooseSpec::SpecificObject(chosen),
-        )
-        .execute_child(game, ctx)?;
-
-        Ok(outcome.with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Bolster, ctx.controller, ctx.source, 1),
-            ctx.provenance,
-        )))
+            let primary = outcome.summary_projection();
+            let completion = super::complete_keyword_action(
+                game,
+                ctx,
+                KeywordActionEvent::new(KeywordActionKind::Bolster, ctx.controller, ctx.source, 1),
+            )?;
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                primary,
+                [outcome, completion],
+            ))
+        })
     }
 }
 
@@ -1627,12 +1609,7 @@ impl EffectExecutor for DevourEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
+        super::execute_compound(game, ctx, |game, ctx| {
             // Devour applies as the permanent enters (CR 702.82a); the entry
             // program runs against the object before it reaches the battlefield.
             if !source_is_entering_or_on_battlefield(game, ctx) {
@@ -1717,15 +1694,7 @@ impl EffectExecutor for DevourEffect {
                     ))
                 },
             )
-        })();
-        if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        instruction
+        })
     }
 }
 
@@ -1739,150 +1708,175 @@ impl EffectExecutor for AmplifyEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Amplify applies as the permanent enters (CR 702.38a).
-        if !source_is_entering_or_on_battlefield(game, ctx) {
-            return Ok(EffectOutcome::resolved());
-        }
+        super::execute_compound(game, ctx, |game, ctx| {
+            // Amplify applies as the permanent enters (CR 702.38a).
+            if !source_is_entering_or_on_battlefield(game, ctx) {
+                return Ok(EffectOutcome::resolved());
+            }
 
-        let source_creature_types = game
-            .calculated_subtypes(ctx.source)
-            .into_iter()
-            .filter(|subtype| subtype.is_creature_type())
-            .collect::<Vec<_>>();
-        if source_creature_types.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+            let source_creature_types = game
+                .calculated_subtypes(ctx.source)
+                .into_iter()
+                .filter(|subtype| subtype.is_creature_type())
+                .collect::<Vec<_>>();
+            if source_creature_types.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        let candidates = game
-            .player(ctx.controller)
-            .map(|player| player.hand.to_vec())
-            .unwrap_or_default()
-            .into_iter()
-            // The entering card itself isn't one of the cards in your hand you
-            // reveal (CR 702.38a), even while the entry program runs.
-            .filter(|&id| id != ctx.source)
-            .filter(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    obj.zone == Zone::Hand
-                        && obj.has_card_type(crate::types::CardType::Creature)
-                        && source_creature_types
-                            .iter()
-                            .any(|&subtype| obj.has_subtype(subtype))
+            let candidates = game
+                .player(ctx.controller)
+                .map(|player| player.hand.to_vec())
+                .unwrap_or_default()
+                .into_iter()
+                // The entering card itself isn't one of the cards in your hand you
+                // reveal (CR 702.38a), even while the entry program runs.
+                // The same exclusion applies to every card reserved by this entry batch.
+                .filter(|&id| {
+                    id != ctx.source && !ctx.replacement.entry_reserved_objects.contains(&id)
                 })
-            })
-            .collect::<Vec<_>>();
-        // Only the owner knows which hidden hand cards share a creature type:
-        // peers offer their placeholders too, every peer asks, and the chosen
-        // cards are opened before the answer replays (see
-        // `game_state::hidden_hand_choices`). Opened cards that don't qualify
-        // drop out of `candidates` on every peer alike.
-        let creature_filter = crate::filter::ObjectFilter::default()
-            .in_zone(Zone::Hand)
-            .owned_by(crate::target::PlayerFilter::Specific(ctx.controller))
-            .with_type(crate::types::CardType::Creature);
-        let hand: Vec<ObjectId> = game
-            .player(ctx.controller)
-            .map(|player| {
-                player
-                    .hand
-                    .iter()
-                    .copied()
-                    .filter(|&id| id != ctx.source)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let hidden_hand_choice =
-            game.hand_choice_depends_on_hidden_identity(&creature_filter, hand.iter().copied());
-        let mut offered = candidates.clone();
-        if hidden_hand_choice {
-            let filter_ctx = ctx.filter_context(game);
-            for id in game.hidden_hand_placeholder_candidates(&creature_filter, &filter_ctx, hand) {
-                if !offered.contains(&id) {
-                    offered.push(id);
+                .filter(|&id| {
+                    game.object(id).is_some_and(|obj| {
+                        obj.zone == Zone::Hand
+                            && obj.has_card_type(crate::types::CardType::Creature)
+                            && source_creature_types
+                                .iter()
+                                .any(|&subtype| obj.has_subtype(subtype))
+                    })
+                })
+                .collect::<Vec<_>>();
+            // Only the owner knows which hidden hand cards share a creature type:
+            // peers offer their placeholders too, every peer asks, and the chosen
+            // cards are opened before the answer replays (see
+            // `game_state::hidden_hand_choices`). Opened cards that don't qualify
+            // drop out of `candidates` on every peer alike.
+            let creature_filter = crate::filter::ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(crate::target::PlayerFilter::Specific(ctx.controller))
+                .with_type(crate::types::CardType::Creature);
+            let hand: Vec<ObjectId> = game
+                .player(ctx.controller)
+                .map(|player| {
+                    player
+                        .hand
+                        .iter()
+                        .copied()
+                        .filter(|&id| {
+                            id != ctx.source
+                                && !ctx.replacement.entry_reserved_objects.contains(&id)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let hidden_hand_choice =
+                game.hand_choice_depends_on_hidden_identity(&creature_filter, hand.iter().copied());
+            let mut offered = candidates.clone();
+            if hidden_hand_choice {
+                let filter_ctx = ctx.filter_context(game);
+                for id in
+                    game.hidden_hand_placeholder_candidates(&creature_filter, &filter_ctx, hand)
+                {
+                    if !offered.contains(&id) {
+                        offered.push(id);
+                    }
                 }
             }
-        }
 
-        let chosen = if offered.is_empty() {
-            Vec::new()
-        } else {
-            let mut spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
-                offered.clone(),
-                0,
-                Some(offered.len()),
-            );
-            if hidden_hand_choice {
-                spec = spec.require_explicit_choice().with_selection_reveal_policy(
-                    crate::decisions::context::SelectionRevealPolicy::Public,
+            let chosen = if offered.is_empty() {
+                Vec::new()
+            } else {
+                let mut spec = ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose any number of cards from your hand that share a creature type with this creature to reveal for amplify",
+                    offered.clone(),
+                    0,
+                    Some(offered.len()),
                 );
+                if hidden_hand_choice {
+                    spec = spec.require_explicit_choice().with_selection_reveal_policy(
+                        crate::decisions::context::SelectionRevealPolicy::Public,
+                    );
+                }
+                let selection: Vec<ObjectId> = make_decision(
+                    game,
+                    ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                if hidden_hand_choice {
+                    let opened: Vec<ObjectId> = selection
+                        .iter()
+                        .copied()
+                        .filter(|id| offered.contains(id))
+                        .collect();
+                    let filter_ctx = ctx.filter_context(game);
+                    game.record_hidden_identity_obligations(
+                        &opened,
+                        &creature_filter,
+                        &filter_ctx,
+                        "reveal creature cards for amplify",
+                    );
+                    game.mark_hidden_cards_publicly_revealed(&opened);
+                }
+                selection
+                    .into_iter()
+                    .filter(|id| candidates.contains(id))
+                    .fold(Vec::new(), |mut chosen, id| {
+                        if !chosen.contains(&id) {
+                            chosen.push(id);
+                        }
+                        chosen
+                    })
+            };
+
+            if chosen.is_empty() {
+                return Ok(EffectOutcome::count(0));
             }
-            let selection: Vec<ObjectId> = make_decision(
+
+            let revealed = chosen
+                .iter()
+                .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
+                .collect();
+            let actor = ctx.controller;
+            let reveal = crate::effects::cards::reveal_objects(
                 game,
-                ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-            );
+                ctx,
+                revealed,
+                Some(actor),
+                "Reveal cards from hand for amplify",
+                None,
+            )?;
+
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            if hidden_hand_choice {
-                let opened: Vec<ObjectId> = selection
-                    .iter()
-                    .copied()
-                    .filter(|id| offered.contains(id))
-                    .collect();
-                let filter_ctx = ctx.filter_context(game);
-                game.record_hidden_identity_obligations(
-                    &opened,
-                    &creature_filter,
-                    &filter_ctx,
-                    "reveal creature cards for amplify",
-                );
-                game.mark_hidden_cards_publicly_revealed(&opened);
+            let revealed_count = u32::try_from(
+                reveal
+                    .instruction_result()
+                    .action_objects(crate::effect::PriorEffectAction::Revealed, Some(actor))
+                    .len(),
+            )
+            .map_err(|_| {
+                ExecutionError::InternalError("amplify count exceeds the counter range".into())
+            })?;
+            let counters = crate::effects::PutCountersEffect::new(
+                CounterType::PlusOnePlusOne,
+                revealed_count.saturating_mul(self.amount),
+                ChooseSpec::Source,
+            )
+            .execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
-            selection
-                .into_iter()
-                .filter(|id| candidates.contains(id))
-                .fold(Vec::new(), |mut chosen, id| {
-                    if !chosen.contains(&id) {
-                        chosen.push(id);
-                    }
-                    chosen
-                })
-        };
-
-        if chosen.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let revealed = chosen
-            .iter()
-            .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
-            .collect();
-        let actor = ctx.controller;
-        let reveal = crate::effects::cards::reveal_objects(
-            game,
-            ctx,
-            revealed,
-            Some(actor),
-            "Reveal cards from hand for amplify",
-            None,
-        )?;
-
-        let mut counters = crate::effects::PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            (chosen.len() as i32).saturating_mul(self.amount as i32),
-            ChooseSpec::Source,
-        )
-        .execute_child(game, ctx)?;
-        let primary = counters.summary_projection();
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            primary,
-            [reveal, counters],
-        ))
+            let primary = counters.summary_projection();
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                primary,
+                [reveal, counters],
+            ))
+        })
     }
 }
 
@@ -1913,23 +1907,33 @@ impl EffectExecutor for SupportEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut outcome = crate::effects::PutCountersEffect::new(
-            CounterType::PlusOnePlusOne,
-            1,
-            self.target.clone(),
-        )
-        .with_target_count(ChoiceCount::up_to(self.amount as usize))
-        .execute_child(game, ctx)?;
-        outcome.events.push(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(
-                KeywordActionKind::Support,
-                ctx.controller,
-                ctx.source,
-                self.amount,
-            ),
-            ctx.provenance,
-        ));
-        Ok(outcome)
+        super::execute_compound(game, ctx, |game, ctx| {
+            let outcome = crate::effects::PutCountersEffect::new(
+                CounterType::PlusOnePlusOne,
+                1,
+                self.target.clone(),
+            )
+            .with_target_count(ChoiceCount::up_to(self.amount as usize))
+            .execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let primary = outcome.summary_projection();
+            let completion = super::complete_keyword_action(
+                game,
+                ctx,
+                KeywordActionEvent::new(
+                    KeywordActionKind::Support,
+                    ctx.controller,
+                    ctx.source,
+                    self.amount,
+                ),
+            )?;
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                primary,
+                [outcome, completion],
+            ))
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -1966,35 +1970,48 @@ impl EffectExecutor for AdaptEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let source_id = ctx.source;
-        if game.object(source_id).is_none() {
-            return Ok(EffectOutcome::target_invalid());
-        }
-        // "The next time target creature adapts this turn, it adapts as though
-        // it had no +1/+1 counters on it" is consumed by this adapt.
-        let turn = game.turn.turn_number;
-        let store = &mut game.turn_store.adapt_ignores_counters;
-        let ignores_counters = store.iter().any(|(id, t)| *id == source_id && *t == turn);
-        // Every already-active "next time" permission refers to this same
-        // adaptation; multiple resolutions do not bank later adaptations.
-        store.retain(|(id, t)| *t == turn && *id != source_id);
-        if !ignores_counters && game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
-            return Ok(EffectOutcome::count(0));
-        }
+        super::execute_compound(game, ctx, |game, ctx| {
+            let source_id = ctx.source;
+            if !game
+                .object(source_id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+                || game.is_phased_out(source_id)
+            {
+                return Ok(EffectOutcome::target_invalid());
+            }
+            // "The next time target creature adapts this turn, it adapts as though
+            // it had no +1/+1 counters on it" is consumed by this adapt.
+            let turn = game.turn.turn_number;
+            let store = &mut game.turn_store.adapt_ignores_counters;
+            let ignores_counters = store.iter().any(|(id, t)| *id == source_id && *t == turn);
+            // Every already-active "next time" permission refers to this same
+            // adaptation; multiple resolutions do not bank later adaptations.
+            store.retain(|(id, t)| *t == turn && *id != source_id);
+            if !ignores_counters && game.counter_count(source_id, CounterType::PlusOnePlusOne) > 0 {
+                return Ok(EffectOutcome::count(0));
+            }
 
-        if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
-            game.record_ui_effect_event(
-                "level_up",
-                Some(ctx.controller),
-                None,
-                vec![stable_id],
-                Some(i64::from(self.amount)),
-                Some("adapt".to_string()),
-            );
-        }
+            let counters = crate::effects::PutCountersEffect::on_source(
+                CounterType::PlusOnePlusOne,
+                self.amount,
+            )
+            .execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
+                game.record_ui_effect_event(
+                    "level_up",
+                    Some(ctx.controller),
+                    None,
+                    vec![stable_id],
+                    Some(i64::from(self.amount)),
+                    Some("adapt".to_string()),
+                );
+            }
 
-        crate::effects::PutCountersEffect::on_source(CounterType::PlusOnePlusOne, self.amount)
-            .execute_child(game, ctx)
+            Ok(counters)
+        })
     }
 }
 

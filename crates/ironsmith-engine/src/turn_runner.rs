@@ -3156,7 +3156,6 @@ impl TurnRunner {
         mut pending: PendingDrawRevealChoice,
     ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
         use crate::events::other::CardsDrawnEvent;
-        use crate::triggers::TriggerEvent;
 
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(pending.active_player);
@@ -3172,6 +3171,7 @@ impl TurnRunner {
             if game.hidden_identity_is_private(candidate.card_id) {
                 game.defer_hidden_automatic_draw_reveal(
                     crate::effects::cards::pending_hidden_automatic_draw_reveal(&candidate),
+                    pending.draw_event_provenance,
                 );
                 pending.next_candidate_index += 1;
                 continue;
@@ -3203,11 +3203,12 @@ impl TurnRunner {
             pending.next_candidate_index += 1;
         }
 
-        let event = TriggerEvent::new_with_provenance(
-            CardsDrawnEvent::new_with_step_context(
-                pending.active_player,
-                pending.drawn,
-                pending.is_first_draw,
+        let event = crate::effects::cards::draw_observation(
+            game,
+            pending.active_player,
+            pending.drawn,
+            pending.is_first_draw,
+            (
                 is_during_players_draw_step,
                 cards_previously_drawn_this_draw_step,
             ),

@@ -1,15 +1,17 @@
 //! DrawCards effect implementation.
 
 use crate::decision::DecisionMaker;
-use crate::decisions::context::{BooleanContext, ViewCardsContext};
+use crate::decisions::context::BooleanContext;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionContextCheckpoint, ExecutionError};
+#[cfg(test)]
+use crate::events::CardRevealedEvent;
 use crate::events::processing::{
-    TraitEventResult, ReplacementEventContext, process_trait_event_with_execution_context,
+    ReplacementEventContext, TraitEventResult, process_trait_event_with_execution_context,
 };
-use crate::events::{CardRevealedEvent, CardsDrawnEvent, Event};
+use crate::events::{CardsDrawnEvent, Event};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::provenance::ProvNodeId;
@@ -27,27 +29,40 @@ pub(crate) fn execute_scoped_draw_replacement_effects(
     replacement_controller: PlayerId,
     context: &ReplacementEventContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let replaced_player = crate::events::downcast_event::<crate::events::DrawEvent>(
-        context.event.inner(),
-    ).ok_or_else(|| ExecutionError::InternalError(
-        "draw replacement lost its draw event".into(),
-    ))?.player;
+    let replaced_player =
+        crate::events::downcast_event::<crate::events::DrawEvent>(context.event.inner())
+            .ok_or_else(|| {
+                ExecutionError::InternalError("draw replacement lost its draw event".into())
+            })?
+            .player;
     let mut outcome = crate::effects::replacement::execute_replacement_payload(
-        game, ctx, effects, replacement_source, replacement_controller, context, None,
+        game,
+        ctx,
+        effects,
+        replacement_source,
+        replacement_controller,
+        context,
+        None,
     )?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(EffectOutcome::count(0));
     }
-    let drawn_count = outcome.events.iter()
+    let drawn_count = outcome
+        .events
+        .iter()
         .filter_map(|event| event.downcast::<CardsDrawnEvent>())
         .filter(|event| event.player == replaced_player)
         .try_fold(0i64, |total, event| {
-            let amount = i64::try_from(event.amount()).map_err(|_| ExecutionError::InternalError(
-                "draw replacement outcome exceeds the supported count range".into(),
-            ))?;
-            total.checked_add(amount).ok_or_else(|| ExecutionError::InternalError(
-                "draw replacement outcome exceeds the supported count range".into(),
-            ))
+            let amount = i64::try_from(event.amount()).map_err(|_| {
+                ExecutionError::InternalError(
+                    "draw replacement outcome exceeds the supported count range".into(),
+                )
+            })?;
+            total.checked_add(amount).ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "draw replacement outcome exceeds the supported count range".into(),
+                )
+            })
         })?;
     outcome.value = crate::effect::OutcomeValue::Count(drawn_count);
     Ok(outcome)
@@ -138,27 +153,56 @@ pub(crate) fn emit_automatic_draw_reveal_event(
 ) -> TriggerEvent {
     for viewer_idx in 0..game.players.len() {
         let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-        let view_ctx = ViewCardsContext::new(
+        super::public_reveal_view(
+            game,
+            decision_maker,
             viewer,
             candidate.player_id,
-            Some(candidate.source_id),
+            candidate.source_id,
             candidate.zone,
+            &[candidate.card_id],
             "Reveal drawn card",
-        )
-        .with_public(true);
-        decision_maker.view_cards(game, viewer, &[candidate.card_id], &view_ctx);
+        );
     }
 
-    let provenance = game.provenance_graph_mut()
+    let provenance = game
+        .provenance_graph_mut()
         .alloc_child_event(provenance, crate::events::EventKind::CardRevealed);
+    super::public_reveal_observation(
+        candidate.player_id,
+        candidate.card_id,
+        candidate.zone,
+        candidate.source_id,
+        candidate.snapshot.clone(),
+        None,
+        provenance,
+    )
+}
+
+/// One immutable draw observation for effect and turn-based draw adapters.
+/// The physical draw owner supplies its occurrence provenance and step facts;
+/// delayed identity disclosure retains this receipt instead of rebuilding it.
+pub(crate) fn draw_observation(
+    game: &GameState,
+    player: PlayerId,
+    cards: Vec<ObjectId>,
+    is_first: bool,
+    step_context: (bool, u32),
+    provenance: ProvNodeId,
+) -> TriggerEvent {
+    let snapshots = cards
+        .iter()
+        .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
+        .collect();
     TriggerEvent::new_with_provenance(
-        CardRevealedEvent::new(
-            candidate.player_id,
-            candidate.card_id,
-            candidate.zone,
-            Some(candidate.source_id),
-            candidate.snapshot.clone(),
-        ),
+        CardsDrawnEvent::new_with_step_context(
+            player,
+            cards,
+            is_first,
+            step_context.0,
+            step_context.1,
+        )
+        .with_snapshots(snapshots),
         provenance,
     )
 }
@@ -239,7 +283,7 @@ pub(crate) fn automatic_reveal_events_for_draw(
             let pending = pending_hidden_automatic_draw_reveal(&candidate);
             match hidden_mode {
                 HiddenDrawRevealMode::Defer => {
-                    game.defer_hidden_automatic_draw_reveal(pending);
+                    game.defer_hidden_automatic_draw_reveal(pending, provenance);
                 }
                 HiddenDrawRevealMode::Inline => {
                     let Some(revealed) = game.reveal_private_hidden_cards_publicly(
@@ -363,29 +407,21 @@ fn finish_direct_draw_segment(
     draws_before: u32,
     hidden_mode: HiddenDrawRevealMode,
 ) -> Vec<TriggerEvent> {
-    if drawn.is_empty() { return Vec::new(); }
+    if drawn.is_empty() {
+        return Vec::new();
+    }
     // Every physical observation has its own identity. Reusing the proposal's
     // provenance lets a later added observation replace this staged draw.
-    let draw_provenance = game.provenance_graph_mut()
+    let draw_provenance = game
+        .provenance_graph_mut()
         .alloc_child_event(ctx.provenance, crate::events::EventKind::CardsDrawn);
-    let event = TriggerEvent::new_with_provenance(
-        CardsDrawnEvent::new_with_step_context(
-            player, std::mem::take(drawn), is_first, step_context.0, step_context.1,
-        ), draw_provenance,
-    );
-    let snapshots = event
-        .downcast::<CardsDrawnEvent>()
-        .expect("draw notification is typed")
-        .cards
-        .iter()
-        .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
-        .collect();
-    let event = event.with_inner_event(
-        event
-            .downcast::<CardsDrawnEvent>()
-            .expect("draw notification is typed")
-            .clone()
-            .with_snapshots(snapshots),
+    let event = draw_observation(
+        game,
+        player,
+        std::mem::take(drawn),
+        is_first,
+        step_context,
+        draw_provenance,
     );
     let draw = event
         .downcast::<CardsDrawnEvent>()
@@ -393,10 +429,17 @@ fn finish_direct_draw_segment(
     game.record_cards_drawn_in_current_draw_step(player, draw.amount());
     game.note_hidden_draw_for_reveal_window(&event);
     let reveals = automatic_reveal_events_for_draw(
-        game, player, &draw.cards, draws_before, &mut *ctx.decision_maker,
-        draw_provenance, hidden_mode,
+        game,
+        player,
+        &draw.cards,
+        draws_before,
+        &mut *ctx.decision_maker,
+        draw_provenance,
+        hidden_mode,
     );
-    let mut events = vec![event]; events.extend(reveals); events
+    let mut events = vec![event];
+    events.extend(reveals);
+    events
 }
 
 /// Commit an expanded draw's original result before its appended programs.
@@ -406,7 +449,13 @@ fn commit_expanded_draw_original(
     requested_player: PlayerId,
     result: TraitEventResult,
 ) -> Result<EffectOutcome, ExecutionError> {
-    commit_draw_original_with_reveal_mode(game, ctx, requested_player, result, HiddenDrawRevealMode::Inline)
+    commit_draw_original_with_reveal_mode(
+        game,
+        ctx,
+        requested_player,
+        result,
+        HiddenDrawRevealMode::Inline,
+    )
 }
 
 fn commit_draw_original_with_reveal_mode(
@@ -418,40 +467,77 @@ fn commit_draw_original_with_reveal_mode(
 ) -> Result<EffectOutcome, ExecutionError> {
     match result {
         TraitEventResult::Prevented => Ok(EffectOutcome::prevented()),
-        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
-            execute_scoped_draw_replacement_effects(game, ctx, &effects, source, controller, &context)
-        }
+        TraitEventResult::Replaced {
+            effects,
+            source,
+            controller,
+            context,
+            ..
+        } => execute_scoped_draw_replacement_effects(
+            game, ctx, &effects, source, controller, &context,
+        ),
         TraitEventResult::Proceed(event) | TraitEventResult::Modified(event) => {
             let draw = crate::events::downcast_event::<crate::events::DrawEvent>(event.inner())
-                .ok_or_else(|| ExecutionError::InternalError("draw replacement returned an incompatible event".into()))?;
+                .ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "draw replacement returned an incompatible event".into(),
+                    )
+                })?;
             let player = draw.player;
-            if !game.player(player).is_some_and(|player| player.is_in_game()) {
+            if !game
+                .player(player)
+                .is_some_and(|player| player.is_in_game())
+            {
                 return Err(ExecutionError::PlayerNotFound(player));
             }
-            let count = usize::try_from(draw.count).map_err(|_| ExecutionError::InternalError(
-                "resolved draw count exceeds supported range".into(),
-            ))?;
-            if !game.can_draw(player) { return Ok(EffectOutcome::count(0)); }
+            let count = usize::try_from(draw.count).map_err(|_| {
+                ExecutionError::InternalError("resolved draw count exceeds supported range".into())
+            })?;
+            if !game.can_draw(player) {
+                return Ok(EffectOutcome::count(0));
+            }
             let before = game.turn_store.turn_history.cards_drawn_by_player(player);
             let step = game.draw_step_context_for_player(player);
             let mut drawn = game.draw_cards_with_dm(player, count, &mut *ctx.decision_maker);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             let count = if player == requested_player {
-                i64::try_from(drawn.len()).map_err(|_| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?
-            } else { 0 };
+                i64::try_from(drawn.len()).map_err(|_| {
+                    ExecutionError::InternalError(
+                        "draw outcome exceeds supported count range".into(),
+                    )
+                })?
+            } else {
+                0
+            };
             let ids = drawn.clone();
             let events = finish_direct_draw_segment(
-                game, ctx, player, &mut drawn,
+                game,
+                ctx,
+                player,
+                &mut drawn,
                 draw.is_first_this_turn,
-                step, before, hidden_mode,
+                step,
+                before,
+                hidden_mode,
             );
-            Ok(EffectOutcome::count(count).with_result_objects(ids).with_events(events))
+            Ok(EffectOutcome::count(count)
+                .with_result_objects(ids)
+                .with_events(events))
         }
         TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
-            if ctx.decision_maker.awaiting_choice() { Ok(EffectOutcome::count(0)) }
-            else { Err(ExecutionError::InternalError("draw replacement suspended without a captured decision".into())) }
+            if ctx.decision_maker.awaiting_choice() {
+                Ok(EffectOutcome::count(0))
+            } else {
+                Err(ExecutionError::InternalError(
+                    "draw replacement suspended without a captured decision".into(),
+                ))
+            }
         }
-        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError("draw expansion did not flatten".into())),
+        TraitEventResult::Expanded { .. } => Err(ExecutionError::InternalError(
+            "draw expansion did not flatten".into(),
+        )),
     }
 }
 
@@ -463,20 +549,32 @@ pub(crate) fn execute_turn_draw_proposal(
     ctx: &mut ExecutionContext,
     player: PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    game.update_replacement_effects().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.update_replacement_effects()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     let before = game.turn_store.turn_history.cards_drawn_by_player(player);
     let (in_step, step_draws) = game.draw_step_context_for_player(player);
-    let event = Event::draw_in_instruction(player, 1, before == 0, true, in_step && step_draws == 0)
-        .with_provenance(ctx.provenance);
+    let event =
+        Event::draw_in_instruction(player, 1, before == 0, true, in_step && step_draws == 0)
+            .with_provenance(ctx.provenance);
     let result = process_trait_event_with_execution_context(game, event, ctx)?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
     let (original, programs) = result.into_expansion();
     let original = commit_draw_original_with_reveal_mode(
-        game, ctx, player, original, HiddenDrawRevealMode::Defer,
+        game,
+        ctx,
+        player,
+        original,
+        HiddenDrawRevealMode::Defer,
     )?;
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
     // Added instructions must observe the completed original draw's history.
-    for event in &original.events { game.stage_turn_history_event(event); }
+    for event in &original.events {
+        game.stage_turn_history_event(event);
+    }
     let completed = crate::effects::replacement::execute_deferred_replacement_programs(
         game, ctx, original, programs,
     )?;
@@ -542,7 +640,9 @@ fn execute_draw_instruction(
             is_during_players_draw_step && cards_previously_drawn_this_draw_step == 0,
         );
         let processed = process_trait_event_with_execution_context(
-            game, draw_event.with_provenance(ctx.provenance), ctx,
+            game,
+            draw_event.with_provenance(ctx.provenance),
+            ctx,
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
@@ -589,15 +689,26 @@ fn execute_draw_instruction(
             let completed = crate::effects::replacement::execute_deferred_replacement_programs(
                 game, ctx, original, programs,
             )?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            total_drawn = total_drawn.checked_add(completed.count_or_zero())
-                .ok_or_else(|| ExecutionError::InternalError("draw outcome exceeds supported count range".into()))?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            total_drawn = total_drawn
+                .checked_add(completed.count_or_zero())
+                .ok_or_else(|| {
+                    ExecutionError::InternalError(
+                        "draw outcome exceeds supported count range".into(),
+                    )
+                })?;
             events.extend(completed.events);
             replacement_facts.extend(completed.execution_facts);
             continue;
         }
         match processed {
-            TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("draw expansion did not flatten".into())),
+            TraitEventResult::Expanded { .. } => {
+                return Err(ExecutionError::InternalError(
+                    "draw expansion did not flatten".into(),
+                ));
+            }
             TraitEventResult::Prevented => continue,
             TraitEventResult::Replaced {
                 effects,
@@ -626,8 +737,7 @@ fn execute_draw_instruction(
                 replacement_facts.extend(replacement_outcome.execution_facts);
                 continue;
             }
-            TraitEventResult::NeedsChoice { .. }
-            | TraitEventResult::NeedsInteraction { .. } => {
+            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
                 // The real pending-input path returned before flattening.
                 // A completed malformed answer must not publish a partial draw.
                 return Err(ExecutionError::InternalError(
@@ -637,9 +747,11 @@ fn execute_draw_instruction(
             TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
                 let final_draw = Some(
                     crate::events::downcast_event::<crate::events::DrawEvent>(e.inner())
-                        .ok_or_else(|| ExecutionError::InternalError(
-                            "draw replacement returned an incompatible event".into(),
-                        ))?,
+                        .ok_or_else(|| {
+                            ExecutionError::InternalError(
+                                "draw replacement returned an incompatible event".into(),
+                            )
+                        })?,
                 );
                 let final_count = final_draw.unwrap().count;
                 // A redirect replacement ("instead that player skips that
@@ -667,29 +779,19 @@ fn execute_draw_instruction(
                     if drawn.is_empty() {
                         continue;
                     }
-                    let snapshots = drawn
-                        .iter()
-                        .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
-                        .collect();
-                    let event = TriggerEvent::new_with_provenance(
-                        CardsDrawnEvent::new_with_step_context(
-                            redirected_player,
-                            drawn,
-                            redirected_is_first,
-                            redirected_in_draw_step,
-                            redirected_previous,
-                        )
-                        .with_snapshots(snapshots),
+                    let event = draw_observation(
+                        game,
+                        redirected_player,
+                        drawn,
+                        redirected_is_first,
+                        (redirected_in_draw_step, redirected_previous),
                         ctx.provenance,
                     );
                     let drawn_count = event
                         .downcast::<CardsDrawnEvent>()
                         .map(CardsDrawnEvent::amount)
                         .unwrap_or(0);
-                    game.record_cards_drawn_in_current_draw_step(
-                        redirected_player,
-                        drawn_count,
-                    );
+                    game.record_cards_drawn_in_current_draw_step(redirected_player, drawn_count);
                     game.note_hidden_draw_for_reveal_window(&event);
                     original_draw_facts
                         .extend(crate::effects::outcome_recording::event_facts(game, &event));
@@ -766,12 +868,32 @@ fn execute_draw_instruction(
         )
     });
     let primary = EffectOutcome::count(0).with_execution_facts(original_draw_facts.clone());
-    let snapshots = crate::effects::outcome_recording::action_objects(&primary, crate::effect::PriorEffectAction::Drawn, None).unwrap_or_default();
-    let original_count = crate::effects::outcome_recording::action_objects(&primary, crate::effect::PriorEffectAction::Drawn, Some(&[player_id])).unwrap_or_default().len() as i64;
-    let ids = snapshots.iter().map(|snapshot| snapshot.object_id).collect::<Vec<_>>();
-    let original_events = events.iter().filter(|event| event.downcast::<CardsDrawnEvent>()
-        .is_some_and(|draw| draw.cards.iter().all(|id| ids.contains(id))))
-        .cloned().collect::<Vec<_>>();
+    let snapshots = crate::effects::outcome_recording::action_objects(
+        &primary,
+        crate::effect::PriorEffectAction::Drawn,
+        None,
+    )
+    .unwrap_or_default();
+    let original_count = crate::effects::outcome_recording::action_objects(
+        &primary,
+        crate::effect::PriorEffectAction::Drawn,
+        Some(&[player_id]),
+    )
+    .unwrap_or_default()
+    .len() as i64;
+    let ids = snapshots
+        .iter()
+        .map(|snapshot| snapshot.object_id)
+        .collect::<Vec<_>>();
+    let original_events = events
+        .iter()
+        .filter(|event| {
+            event
+                .downcast::<CardsDrawnEvent>()
+                .is_some_and(|draw| draw.cards.iter().all(|id| ids.contains(id)))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     let original = EffectOutcome::count(original_count)
         .with_result_objects(ids)
         .with_affected_object_memory(snapshots.clone())

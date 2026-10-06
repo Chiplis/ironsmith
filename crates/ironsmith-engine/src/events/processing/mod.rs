@@ -835,8 +835,8 @@ fn quantitative_event_has_been_removed(event: &Event) -> bool {
         // library remains replaceable under CR 614.11.
         || crate::events::downcast_event::<crate::events::DrawEvent>(event.inner())
             .is_some_and(|draw| draw.count == 0)
-        || crate::events::downcast_event::<crate::events::RemoveCountersEvent>(event.inner())
-            .is_some_and(|removal| removal.count == 0)
+        || crate::events::CounterRemovalEvent::from_event(event.inner())
+            .is_some_and(|removal| removal.count() == 0)
 }
 
 /// Process an event directly using trait-based matchers.
@@ -2576,6 +2576,22 @@ pub enum TraitEventResult {
 }
 
 impl TraitEventResult {
+    /// Whether this original still needs a replacement decision. Added
+    /// programs do not make a resolved original pending; they run later.
+    pub(crate) fn requires_replacement_input(&self) -> bool {
+        let mut original = self;
+        while let Self::Expanded {
+            original: nested, ..
+        } = original
+        {
+            original = nested;
+        }
+        matches!(
+            original,
+            Self::NeedsChoice { .. } | Self::NeedsInteraction { .. }
+        )
+    }
+
     /// Extract the original result without discarding added programs. Outer
     /// wrappers represent earlier additions; later continuation wrappers
     /// append to those programs in replacement-application order.
@@ -2802,6 +2818,11 @@ pub(crate) struct DestroyExecutionReceipt {
 }
 
 impl DestroyExecutionReceipt {
+    pub(crate) fn has_deferred_programs(&self) -> bool {
+        !self.programs.is_empty()
+            || self.zone_receipts.iter().any(|(_, receipt)| !receipt.programs.is_empty())
+    }
+
     fn terminal(
         permanent: ObjectId,
         result: DestroyOutcome,
@@ -3892,7 +3913,7 @@ pub(crate) fn commit_prepared_zone_change(
         }
     })();
     if result.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
     }
     if dm.awaiting_choice() {
         return result.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -3978,7 +3999,7 @@ pub(crate) fn prepare_zone_change_scoped(
         Ok(completed)
     })();
     if outcome.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, outcome.is_ok() && dm.awaiting_choice());
     }
     if dm.awaiting_choice() {
         return outcome.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4019,7 +4040,7 @@ pub(crate) fn prepare_zone_change_proposal_scoped(
         inherited_lookback,
     );
     if result.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
     }
     if dm.awaiting_choice() {
         return result.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4908,6 +4929,12 @@ pub(crate) struct PlayerLossReceipt {
     pub original: PlayerLossOutcome,
     programs: Vec<PreparedReplacementProgram>,
     payload_outcome: Option<crate::effect::EffectOutcome>,
+}
+
+impl PlayerLossReceipt {
+    pub(crate) fn has_deferred_programs(&self) -> bool {
+        !self.programs.is_empty()
+    }
 }
 
 /// Public loss operation: pending returns no committed verdict, and errors
@@ -6497,8 +6524,108 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
     dm: &mut dyn DecisionMaker,
     replacement_scope: &crate::effects::ReplacementExecutionContext,
 ) -> Result<Vec<ProcessedDamageResult>, DamageProcessingError> {
+    let scopes = vec![replacement_scope; events.len()];
+    process_simultaneous_damage_assignments_with_scopes(game, events, dm, &scopes)
+}
+
+/// Allocate prevention once across the complete batch, while each assignment
+/// retains its captured replacement scope. Results keep the same input order.
+#[must_use = "retain assignment results and their captured prevention follow-ups"]
+pub(crate) struct PreparedDamageProcessingBatch {
+    results: Vec<ProcessedDamageResult>,
+    follow_ups: Vec<CapturedPreventionFollowUps>,
+}
+impl PreparedDamageProcessingBatch {
+    fn empty() -> Self {
+        Self {
+            results: Vec::new(),
+            follow_ups: Vec::new(),
+        }
+    }
+    /// Every result has a matching slot, including an explicitly empty batch.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (Vec<ProcessedDamageResult>, Vec<CapturedPreventionFollowUps>) {
+        (self.results, self.follow_ups)
+    }
+}
+
+pub(crate) fn process_simultaneous_damage_assignments_with_scopes(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+) -> Result<Vec<ProcessedDamageResult>, DamageProcessingError> {
+    process_simultaneous_damage_assignments_with_completion(
+        game,
+        events,
+        dm,
+        replacement_scopes,
+        |game, dm, prepared| {
+            let (results, follow_ups) = prepared.into_parts();
+            let pending = follow_ups
+                .into_iter()
+                .flat_map(|batch| batch.pending)
+                .collect();
+            let follow_ups = CapturedPreventionFollowUps { pending };
+            if game
+                .effect_store
+                .prevention_effects
+                .follow_ups_are_deferred()
+            {
+                follow_ups.requeue(game);
+            } else {
+                follow_ups.complete(game, dm)?;
+            }
+            Ok(results)
+        },
+        Vec::new,
+    )
+}
+
+/// The same assignment/prevention owner can retain follow-ups for a prepared
+/// cohort without completing or requeuing them at this preparation boundary.
+pub(crate) fn prepare_simultaneous_damage_assignments_with_scopes(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+) -> Result<PreparedDamageProcessingBatch, DamageProcessingError> {
+    process_simultaneous_damage_assignments_with_completion(
+        game,
+        events,
+        dm,
+        replacement_scopes,
+        |_, _, prepared| Ok(prepared),
+        PreparedDamageProcessingBatch::empty,
+    )
+}
+
+fn process_simultaneous_damage_assignments_with_completion<R>(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+    complete: impl FnOnce(
+        &mut GameState,
+        &mut dyn DecisionMaker,
+        PreparedDamageProcessingBatch,
+    ) -> Result<R, DamageProcessingError>,
+    empty: impl FnOnce() -> R,
+) -> Result<R, DamageProcessingError> {
+    if replacement_scopes.len() != events.len() {
+        return Err(DamageProcessingError {
+            source: events
+                .first()
+                .map(|event| event.source)
+                .unwrap_or(ObjectId::from_raw(0)),
+            error: crate::effects::ExecutionError::InternalError(
+                "simultaneous damage lost an assignment replacement scope".into(),
+            ),
+        });
+    }
     if events.is_empty() || dm.awaiting_choice() {
-        return Ok(Vec::new());
+        return Ok(empty());
     }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
@@ -6515,7 +6642,7 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
         let allocations = collect_simultaneous_prevention_allocations(game, events, dm)?;
         if dm.awaiting_choice() {
             game.effect_store.trigger_matching_holds -= 1;
-            return Ok(Vec::new());
+            return Ok(PreparedDamageProcessingBatch::empty());
         }
         // CR 615.5: the batch's additional prevention effects happen after the
         // whole simultaneous damage event, so they are collected here.
@@ -6524,7 +6651,12 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
             .prevention_effects
             .begin_follow_up_deferral();
         let mut results = Vec::with_capacity(events.len());
+        let mut follow_up_owners = Vec::new();
         for (index, item) in events.iter().enumerate() {
+            let before = game
+                .effect_store
+                .prevention_effects
+                .pending_follow_up_count();
             results.push(
             process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
                 game,
@@ -6537,9 +6669,23 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
                 item.source_snapshot.as_ref(),
                 dm,
                 Some(&allocations[index]),
-                replacement_scope,
+                replacement_scopes[index],
             ).map_err(|error| DamageProcessingError { source: item.source, error })?,
         );
+            let after = game
+                .effect_store
+                .prevention_effects
+                .pending_follow_up_count();
+            let count = after
+                .checked_sub(before)
+                .ok_or_else(|| DamageProcessingError {
+                    source: item.source,
+                    error: crate::effects::ExecutionError::InternalError(
+                        "damage assignment consumed another assignment's prevention follow-ups"
+                            .into(),
+                    ),
+                })?;
+            follow_up_owners.extend(std::iter::repeat_n(index, count));
             if dm.awaiting_choice() {
                 break;
             }
@@ -6551,29 +6697,40 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
                 error,
             },
         )?;
-        let mut follow_ups = game
+        let pending = game
             .effect_store
             .prevention_effects
             .end_follow_up_deferral(follow_up_start);
-        dedupe_shield_counter_follow_ups(&mut follow_ups);
-        if game
-            .effect_store
-            .prevention_effects
-            .follow_ups_are_deferred()
-        {
-            for pending in follow_ups {
-                game.effect_store
-                    .prevention_effects
-                    .requeue_follow_up(pending);
-            }
-        } else {
-            execute_prevention_follow_ups(game, dm, follow_ups)?;
+        if pending.len() != follow_up_owners.len() {
+            return Err(DamageProcessingError {
+                source: events[0].source,
+                error: crate::effects::ExecutionError::InternalError(
+                    "simultaneous prevention follow-ups lost assignment ownership".into(),
+                ),
+            });
         }
-        Ok(results)
-    })();
+        let mut indexed = follow_up_owners
+            .into_iter()
+            .zip(pending)
+            .collect::<Vec<_>>();
+        dedupe_shield_counter_follow_ups(&mut indexed);
+        let mut follow_ups = (0..results.len())
+            .map(|_| CapturedPreventionFollowUps {
+                pending: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        for (index, pending) in indexed {
+            follow_ups[index].pending.push(pending);
+        }
+        Ok(PreparedDamageProcessingBatch {
+            results,
+            follow_ups,
+        })
+    })()
+    .and_then(|prepared| complete(game, dm, prepared));
     if dm.awaiting_choice() && result.is_ok() {
         game.restore_execution_checkpoint(checkpoint, true);
-        return Ok(Vec::new());
+        return Ok(empty());
     }
     if result.is_err() {
         game.restore_execution_checkpoint(checkpoint, false);
@@ -6584,7 +6741,7 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
 /// so its shield counter prevents all of it and only one shield counter is
 /// removed, however many sources dealt damage.
 fn dedupe_shield_counter_follow_ups(
-    follow_ups: &mut Vec<crate::prevention::PendingPreventionFollowUp>,
+    follow_ups: &mut Vec<(usize, crate::prevention::PendingPreventionFollowUp)>,
 ) {
     let shield_target = |pending: &crate::prevention::PendingPreventionFollowUp| {
         let [effect] = pending.follow_up.effects.as_slice() else {
@@ -6601,7 +6758,7 @@ fn dedupe_shield_counter_follow_ups(
         }
     };
     let mut seen: Vec<ObjectId> = Vec::new();
-    follow_ups.retain(|pending| match shield_target(pending) {
+    follow_ups.retain(|(_, pending)| match shield_target(pending) {
         Some(id) if seen.contains(&id) => false,
         Some(id) => {
             seen.push(id);
@@ -7006,40 +7163,109 @@ fn execute_pending_prevention_follow_ups(
         .effect_store
         .prevention_effects
         .take_pending_follow_ups();
-    execute_prevention_follow_ups(game, dm, pending)
+    CapturedPreventionFollowUps { pending }.complete(game, dm)
         .map(|_| ())
         .map_err(|failure| failure.error)
 }
 
-/// Commit one damage application before executing its additional prevention
-/// effects (CR 615.5). Nested damage owns only the follow-ups it produces.
-pub(crate) fn with_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
+/// Follow-ups owned by one completed prevention-deferral scope. Capture does
+/// not execute them; a staged action retains this batch until originals and
+/// observations finish. Consuming completion preserves their captured order.
+#[derive(Debug)]
+#[must_use = "retain prevention follow-ups until the owning damage action completes"]
+pub(crate) struct CapturedPreventionFollowUps {
+    pending: Vec<crate::prevention::PendingPreventionFollowUp>,
+}
+
+impl CapturedPreventionFollowUps {
+    /// Declare the authored owners before transferring this queue suffix.
+    /// This changes routing metadata only, never follow-up order or execution.
+    pub(crate) fn with_participants(mut self, scopes: Vec<crate::effects::EffectOutcomeScope>) -> Self {
+        for pending in &mut self.pending {
+            pending.participant_scopes = scopes.clone();
+        }
+        self
+    }
+    /// Transfer ownership back to the caller's still-open full-action scope.
+    /// Ordinary damage does this immediately after preparation, restoring the
+    /// original queue order before originals and added programs execute.
+    pub(crate) fn requeue(self, game: &mut GameState) {
+        debug_assert!(
+            game.effect_store
+                .prevention_effects
+                .follow_ups_are_deferred()
+        );
+        for pending in self.pending {
+            game.effect_store
+                .prevention_effects
+                .requeue_follow_up(pending);
+        }
+    }
+
+    pub(crate) fn complete(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+    ) -> Result<Vec<crate::effect::EffectOutcome>, DamageProcessingError> {
+        self.complete_with_outputs(game, dm).map(|outcomes| {
+            outcomes
+                .into_iter()
+                .map(crate::effects::CompletedEffectOutputs::into_outcome)
+                .collect()
+        })
+    }
+
+    pub(crate) fn complete_with_outputs(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+    ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, DamageProcessingError> {
+        if dm.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        execute_prevention_follow_ups_with_outputs(game, dm, self.pending)
+    }
+
+    fn complete_outputs(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+        mut original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, DamageProcessingError> {
+        let outcomes = if dm.awaiting_choice() {
+            Vec::new()
+        } else {
+            execute_prevention_follow_ups_with_owned_outputs(game, dm, self.pending)?
+        };
+        let aggregate = crate::effect::EffectOutcome::aggregate_replacement_outcomes(
+            original.outcome.clone(),
+            outcomes.iter().map(|(_, outputs)| outputs.outcome.clone()),
+        );
+        original
+            .shared
+            .extend(outcomes.into_iter().map(|(scopes, outputs)| {
+                crate::effects::SharedEffectOutcome {
+                    ownership: if scopes.is_empty() {
+                        crate::effects::SharedOutcomeOwnership::Batch
+                    } else {
+                        crate::effects::SharedOutcomeOwnership::Participants(scopes)
+                    },
+                    outputs,
+                }
+            }));
+        Ok(original.project_aggregate(aggregate))
+    }
+}
+
+/// Close this action's deferral scope and return its follow-ups without running
+/// any of them. Nested scopes retain only their own suffix of the pending queue.
+/// Failed or suspended actions discard their suffix; their caller owns replay
+/// and rollback, just as for the ordinary full-action deferral gateway.
+pub(crate) fn capture_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
     game: &mut GameState,
     dm: &mut dyn DecisionMaker,
     apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
-) -> Result<R, E> {
-    deferred_prevention_follow_ups(game, dm, apply_damage).map(|(result, _)| result)
-}
-
-pub(crate) fn with_deferred_prevention_follow_up_outcome<E: From<DamageProcessingError>>(
-    game: &mut GameState,
-    dm: &mut dyn DecisionMaker,
-    apply_damage: impl FnOnce(
-        &mut GameState,
-        &mut dyn DecisionMaker,
-    ) -> Result<crate::effect::EffectOutcome, E>,
-) -> Result<crate::effect::EffectOutcome, E> {
-    deferred_prevention_follow_ups(game, dm, apply_damage).map(|(mut outcome, events)| {
-        outcome.events.extend(events);
-        outcome
-    })
-}
-
-fn deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
-    game: &mut GameState,
-    dm: &mut dyn DecisionMaker,
-    apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
-) -> Result<(R, Vec<crate::triggers::TriggerEvent>), E> {
+) -> Result<(R, CapturedPreventionFollowUps), E> {
     let start = game
         .effect_store
         .prevention_effects
@@ -7049,20 +7275,61 @@ fn deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
         .effect_store
         .prevention_effects
         .end_follow_up_deferral(start);
-    let events = if result.is_ok() && !dm.awaiting_choice() {
-        execute_prevention_follow_ups(game, dm, pending).map_err(E::from)?
+    let pending = if result.is_ok() && !dm.awaiting_choice() {
+        pending
     } else {
         Vec::new()
     };
-    result.map(|result| (result, events))
+    result.map(|result| (result, CapturedPreventionFollowUps { pending }))
 }
 
-fn execute_prevention_follow_ups(
+/// Commit one damage application before executing its additional prevention
+/// effects (CR 615.5). Nested damage owns only the follow-ups it produces.
+pub(crate) fn with_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
+) -> Result<R, E> {
+    let (result, follow_ups) = capture_deferred_prevention_follow_ups(game, dm, apply_damage)?;
+    follow_ups.complete(game, dm).map_err(E::from)?;
+    Ok(result)
+}
+
+pub(crate) fn with_deferred_prevention_follow_up_outputs<E: From<DamageProcessingError>>(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    apply_damage: impl FnOnce(
+        &mut GameState,
+        &mut dyn DecisionMaker,
+    ) -> Result<crate::effects::CompletedEffectOutputs, E>,
+) -> Result<crate::effects::CompletedEffectOutputs, E> {
+    let (outcome, follow_ups) = capture_deferred_prevention_follow_ups(game, dm, apply_damage)?;
+    follow_ups
+        .complete_outputs(game, dm, outcome)
+        .map_err(E::from)
+}
+
+fn execute_prevention_follow_ups_with_outputs(
     game: &mut GameState,
     dm: &mut dyn DecisionMaker,
     pending: Vec<crate::prevention::PendingPreventionFollowUp>,
-) -> Result<Vec<crate::triggers::TriggerEvent>, DamageProcessingError> {
-    let mut events = Vec::new();
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, DamageProcessingError> {
+    execute_prevention_follow_ups_with_owned_outputs(game, dm, pending)
+        .map(|outputs| outputs.into_iter().map(|(_, outputs)| outputs).collect())
+}
+
+fn execute_prevention_follow_ups_with_owned_outputs(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    pending: Vec<crate::prevention::PendingPreventionFollowUp>,
+) -> Result<
+    Vec<(
+        Vec<crate::effects::EffectOutcomeScope>,
+        crate::effects::CompletedEffectOutputs,
+    )>,
+    DamageProcessingError,
+> {
+    let mut outcomes = Vec::new();
     for pending in pending {
         if dm.awaiting_choice() {
             break;
@@ -7113,23 +7380,21 @@ fn execute_prevention_follow_ups(
             exec_ctx.target_assignments = follow_up.target_assignments;
         }
         for effect in follow_up.effects {
-            let outcome =
-                crate::effects::execute_effect(game, &effect, &mut exec_ctx).map_err(|error| {
-                    DamageProcessingError {
-                        source: follow_up.source,
-                        error,
-                    }
+            let outcome = crate::effects::execute_effect_with_outputs(game, &effect, &mut exec_ctx)
+                .map_err(|error| DamageProcessingError {
+                    source: follow_up.source,
+                    error,
                 })?;
             if exec_ctx.decision_maker.awaiting_choice() {
-                return Ok(events);
+                return Ok(outcomes);
             }
-            for trigger_event in outcome.events {
+            for trigger_event in &outcome.outcome.events {
                 game.queue_trigger_event(trigger_event.provenance(), trigger_event.clone());
-                events.push(trigger_event);
             }
+            outcomes.push((pending.participant_scopes.clone(), outcome));
         }
     }
-    Ok(events)
+    Ok(outcomes)
 }
 
 /// Process a dies event using the new Event type.

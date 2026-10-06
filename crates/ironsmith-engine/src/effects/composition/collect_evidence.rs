@@ -14,7 +14,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::ObjectKind;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 pub type CollectEvidenceEffect = ironsmith_core::CollectEvidenceEffect;
@@ -145,23 +144,23 @@ impl EffectExecutor for CollectEvidenceEffect {
                 return Ok(EffectOutcome::count(0));
             }
             ctx.tagged_objects = tagged_before;
-            let event = TriggerEvent::new_with_provenance(
+            let mut outcome = EffectOutcome::aggregate(outcomes)
+                .with_execution_fact(ExecutionFact::ChosenObjects(ids));
+            // Collecting zero (including choosing no cards) is one completed
+            // action and triggers “whenever you collect evidence”.
+            outcome.set_value(OutcomeValue::Count(1));
+            outcome.set_status(crate::effect::OutcomeStatus::Succeeded);
+            super::complete_keyword_action_with_result(
+                game,
+                ctx,
+                outcome,
                 KeywordActionEvent::new(
                     KeywordActionKind::CollectEvidence,
                     ctx.controller,
                     ctx.source,
                     required,
                 ),
-                ctx.provenance,
-            );
-            let mut outcome = EffectOutcome::aggregate(outcomes)
-                .with_execution_fact(ExecutionFact::ChosenObjects(ids))
-                .with_event(event);
-            // Collecting zero (including choosing no cards) is one completed
-            // action and triggers “whenever you collect evidence”.
-            outcome.set_value(OutcomeValue::Count(1));
-            outcome.set_status(crate::effect::OutcomeStatus::Succeeded);
-            Ok(outcome)
+            )
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             game.restore_execution_checkpoint(
@@ -192,6 +191,15 @@ impl EffectExecutor for CollectEvidenceEffect {
     }
 }
 impl CostExecutableEffect for CollectEvidenceEffect {
+    fn payment_x_from_outcome(
+        &self,
+        _outcome: &EffectOutcome,
+        execution: &ExecutionContext,
+    ) -> Result<Option<u32>, CostValidationError> {
+        // Evidence may exceed the announced X; that does not redefine it.
+        Ok(execution.x_value)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,

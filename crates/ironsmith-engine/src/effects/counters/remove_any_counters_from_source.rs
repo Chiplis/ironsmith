@@ -3,7 +3,9 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, NumberSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{
+    CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -59,8 +61,14 @@ impl RemoveAnyCountersFromSourceEffect {
         Ok(if let Some(counter_type) = self.counter_type {
             obj.counters.get(&counter_type).copied().unwrap_or(0)
         } else {
-            obj.counters.values().copied().try_fold(0u32, |total, count|
-                total.checked_add(count).ok_or_else(|| "counter total exceeds the supported count range".to_string()))?
+            obj.counters
+                .values()
+                .copied()
+                .try_fold(0u32, |total, count| {
+                    total.checked_add(count).ok_or_else(|| {
+                        "counter total exceeds the supported count range".to_string()
+                    })
+                })?
         })
     }
 
@@ -108,15 +116,32 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = execute_source_counter_removal(self, game, ctx);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| execute_source_counter_removal(self, game, ctx),
+        );
+        // The shared transaction restores the action; keep this adapter's
+        // existing neutral suspension policy even if the child failed.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }
@@ -126,89 +151,241 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
     }
 }
 
+enum SourceCounterSelection {
+    Finished(EffectOutcome),
+    Chosen {
+        to_remove: u32,
+        selections: Vec<(CounterType, u32)>,
+    },
+}
+
+/// Select quantity and types once against the pre-action world. Ordinary
+/// execution preserves its sequential removals; payment captures these inputs.
+fn select_source_counter_removal(
+    effect: &RemoveAnyCountersFromSourceEffect,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<SourceCounterSelection, ExecutionError> {
+    let max_removable = effect
+        .max_removable(game, ctx.source)
+        .map_err(ExecutionError::Impossible)?;
+
+    let description = if effect.remove_all {
+        "Remove all matching counters"
+    } else if effect.display_x {
+        "Choose X counters to remove"
+    } else {
+        "Choose counters to remove"
+    };
+    let to_remove = if effect.remove_all {
+        max_removable
+    } else if effect.display_x
+        && let Some(x_value) = ctx.x_value
+    {
+        if x_value > max_removable {
+            return Err(ExecutionError::Impossible(format!(
+                "cannot remove X counters: X is {x_value}, but only {max_removable} counter(s) are available"
+            )));
+        }
+        x_value
+    } else {
+        let chosen = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            NumberSpec::up_to(ctx.source, max_removable, description),
+            FallbackStrategy::Maximum,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(SourceCounterSelection::Finished(EffectOutcome::count(0)));
+        }
+        chosen.min(max_removable)
+    };
+
+    if to_remove > 0 && game.is_phased_out(ctx.source) {
+        return Ok(SourceCounterSelection::Finished(EffectOutcome::impossible()));
+    }
+    let selections = if let Some(counter_type) = effect.counter_type {
+        vec![(counter_type, to_remove)]
+    } else {
+        let available_counters: Vec<(CounterType, u32)> = game
+            .object(ctx.source)
+            .map(|object| {
+                object
+                    .counters
+                    .iter()
+                    .filter(|(_, count)| **count > 0)
+                    .map(|(counter_type, count)| (*counter_type, *count))
+                    .collect()
+            })
+            .unwrap_or_default();
+        make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            CounterRemovalSpec::new(ctx.source, ctx.source, to_remove, available_counters),
+            FallbackStrategy::Maximum,
+        )
+    };
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(SourceCounterSelection::Finished(EffectOutcome::count(0)));
+    }
+    Ok(SourceCounterSelection::Chosen {
+        to_remove,
+        selections,
+    })
+}
+
 fn execute_source_counter_removal(
     effect: &RemoveAnyCountersFromSourceEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-        let max_removable = effect
-            .max_removable(game, ctx.source)
-            .map_err(ExecutionError::Impossible)?;
-
-        let description = if effect.remove_all {
-            "Remove all matching counters"
-        } else if effect.display_x {
-            "Choose X counters to remove"
-        } else {
-            "Choose counters to remove"
-        };
-        let to_remove = if effect.remove_all {
-            max_removable
-        } else if effect.display_x
-            && let Some(x_value) = ctx.x_value
-        {
-            if x_value > max_removable {
-                return Err(ExecutionError::Impossible(format!(
-                    "cannot remove X counters: X is {x_value}, but only {max_removable} counter(s) are available"
-                )));
-            }
-            x_value
-        } else {
-            let chosen = make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                NumberSpec::up_to(ctx.source, max_removable, description),
-                FallbackStrategy::Maximum,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            chosen.min(max_removable)
-        };
-
-        if to_remove > 0 && game.is_phased_out(ctx.source) { return Ok(EffectOutcome::impossible()); }
-        let selections = if let Some(counter_type) = effect.counter_type {
-            vec![(counter_type, to_remove)]
-        } else {
-            let available_counters: Vec<(CounterType, u32)> = game.object(ctx.source)
-                .map(|object| object.counters.iter().filter(|(_, count)| **count > 0)
-                    .map(|(counter_type, count)| (*counter_type, *count)).collect()).unwrap_or_default();
-            make_decision_with_fallback(game, &mut ctx.decision_maker, ctx.controller, Some(ctx.source),
-                CounterRemovalSpec::new(ctx.source, ctx.source, to_remove, available_counters), FallbackStrategy::Maximum)
-        };
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let mut selected_total = 0u32;
-        let mut removed_total = 0u64;
-        let mut outcomes = Vec::new();
-        for (counter_type, requested) in selections {
-            if selected_total >= to_remove { break; }
-            let amount = requested.min(to_remove - selected_total);
-            if amount == 0 { continue; }
-            let event = crate::events::Event::remove_counters(ctx.source, counter_type, amount)
-                .with_provenance(ctx.provenance);
-            let outcome = super::remove_counters::execute_counter_removal_event(game, ctx, event)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError(
-                "counter-removal outcome has an invalid count".into()))?;
-            removed_total = removed_total.checked_add(u64::from(removed)).ok_or_else(|| ExecutionError::InternalError(
-                "counter-removal total exceeds the supported count range".into()))?;
-            // Replacements can change the physical amount. The chosen budget
-            // counts authored actions, while the returned result counts removals.
-            selected_total += amount;
-            outcomes.push(outcome);
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let (to_remove, selections) = match select_source_counter_removal(effect, game, ctx)? {
+        SourceCounterSelection::Finished(outcome) => {
+            return Ok(CompletedEffectOutputs::aggregate_only(outcome));
         }
-        if selected_total != to_remove { return Err(ExecutionError::Impossible(
-            "counter-removal selection did not fulfill the chosen amount".into())); }
-        let count = i64::try_from(removed_total).map_err(|_| ExecutionError::InternalError(
-            "counter-removal total exceeds the supported outcome range".into()))?;
-        let mut outcome = EffectOutcome::aggregate(outcomes);
-        outcome.set_value(crate::effect::OutcomeValue::Count(count));
-        Ok(outcome)
+        SourceCounterSelection::Chosen {
+            to_remove,
+            selections,
+        } => (to_remove, selections),
+    };
+    let mut selected_total = 0u32;
+    let mut removed_total = 0u64;
+    let mut outcomes = Vec::new();
+    for (counter_type, requested) in selections {
+        if selected_total >= to_remove {
+            break;
+        }
+        let amount = requested.min(to_remove - selected_total);
+        if amount == 0 {
+            continue;
+        }
+        let event = crate::events::Event::remove_counters(ctx.source, counter_type, amount)
+            .with_provenance(ctx.provenance);
+        let outcome = super::execute_counter_removal_with_outputs(game, ctx, event)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let removed = u32::try_from(outcome.outcome.count_or_zero()).map_err(|_| {
+            ExecutionError::InternalError("counter-removal outcome has an invalid count".into())
+        })?;
+        removed_total = removed_total
+            .checked_add(u64::from(removed))
+            .ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "counter-removal total exceeds the supported count range".into(),
+                )
+            })?;
+        // Replacements can change the physical amount. The chosen budget
+        // counts authored actions, while the returned result counts removals.
+        selected_total += amount;
+        outcomes.push(outcome);
+    }
+    if selected_total != to_remove {
+        return Err(ExecutionError::Impossible(
+            "counter-removal selection did not fulfill the chosen amount".into(),
+        ));
+    }
+    let count = i64::try_from(removed_total).map_err(|_| {
+        ExecutionError::InternalError(
+            "counter-removal total exceeds the supported outcome range".into(),
+        )
+    })?;
+    let mut outcome = EffectOutcome::aggregate(outcomes.iter().map(|child| child.outcome.clone()));
+    outcome.set_value(crate::effect::OutcomeValue::Count(count));
+    let mut outputs =
+        CompletedEffectOutputs::aggregate_only(outcome.with_requested_amount(to_remove));
+    for child in outcomes {
+        outputs.retain_owned_child(child);
+    }
+    Ok(outputs)
 }
 
 impl CostExecutableEffect for RemoveAnyCountersFromSourceEffect {
+    fn supports_prepared_payment(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let (to_remove, selections) = match select_source_counter_removal(self, game, ctx)? {
+            SourceCounterSelection::Finished(outcome) => {
+                if !ctx.decision_maker.awaiting_choice() {
+                    return Err(ExecutionError::Impossible(
+                        "source counter payment cannot be prepared".into(),
+                    ));
+                }
+                return Ok(Box::new(super::placement::PreparedCounterCost::Finished(
+                    outcome,
+                )));
+            }
+            SourceCounterSelection::Chosen {
+                to_remove,
+                selections,
+            } => (to_remove, selections),
+        };
+        let mut selected_total = 0u32;
+        let mut events = Vec::new();
+        for (counter_type, requested) in selections {
+            if selected_total >= to_remove {
+                break;
+            }
+            let amount = requested.min(to_remove - selected_total);
+            if amount == 0 {
+                continue;
+            }
+            events.push(
+                crate::events::Event::remove_counters(ctx.source, counter_type, amount)
+                    .with_provenance(ctx.provenance),
+            );
+            selected_total += amount;
+        }
+        if selected_total != to_remove {
+            return Err(ExecutionError::Impossible(
+                "counter-removal selection did not fulfill the chosen amount".into(),
+            ));
+        }
+        super::capture_counter_payment_with_quantity(game, ctx, events)
+    }
+
+    fn accepts_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+    ) -> bool {
+        super::prepared_payment::accepts_counter_quantity_payment(proposal, self.counter_type)
+    }
+
+    fn payment_x_from_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+        _execution: &ExecutionContext,
+    ) -> Result<Option<u32>, crate::effects::CostValidationError> {
+        super::prepared_payment::counter_quantity_payment_x(proposal, self.counter_type)
+    }
+
+    fn validate_payment_outcome(
+        &self,
+        outcome: &EffectOutcome,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        super::prepared_payment::validate_counter_quantity_payment(outcome)
+    }
+
+    fn payment_x_from_outcome(
+        &self,
+        outcome: &EffectOutcome,
+        execution: &ExecutionContext,
+    ) -> Result<Option<u32>, CostValidationError> {
+        super::counter_cost_x_from_outcome(outcome, execution)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -220,7 +397,6 @@ impl CostExecutableEffect for RemoveAnyCountersFromSourceEffect {
             .map_err(CostValidationError::Other)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,7 +509,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod mixed_source_removal_replacement_tests {
     use super::*;
@@ -388,7 +563,6 @@ mod mixed_source_removal_replacement_tests {
     #[test]
     fn mixed_source_removal_retains_unaffected_group_after_prevention() { check_mixed(3); }
 }
-
 
 #[cfg(test)]
 mod mixed_removal_transaction_tests {
@@ -478,7 +652,6 @@ mod mixed_removal_transaction_tests {
     fn distributed_removal_failed_later_group_restores_instruction() {check_transaction(false,2);}
 }
 
-
 #[cfg(test)]
 mod distributed_removal_owner_tests {
     use super::*;
@@ -532,7 +705,6 @@ mod distributed_removal_owner_tests {
     #[test] fn distributed_mixed_removal_preserves_unaffected_group(){check_owner(2,false);}
     #[test] fn distributed_mixed_removal_executes_instead_and_unaffected_group(){check_owner(2,true);}
 }
-
 
 #[cfg(test)]
 mod removal_observation_identity_tests {

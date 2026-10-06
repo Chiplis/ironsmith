@@ -38,6 +38,31 @@ pub(crate) fn arrange_library_cards(
     game.set_player_library_order_with_audit(owner, order, reason);
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum LibraryCardPosition {
+    Top,
+    Bottom,
+    NthFromTop(usize),
+}
+
+/// Position a single exact identity. Batch adapters decide insertion order;
+/// this owner never shuffles or generates a zone-change observation.
+pub(crate) fn position_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    card: ObjectId,
+    position: LibraryCardPosition,
+    reason: &str,
+) {
+    match position {
+        LibraryCardPosition::Top => arrange_library_cards(game, owner, &[card], &[], reason),
+        LibraryCardPosition::Bottom => arrange_library_cards(game, owner, &[], &[card], reason),
+        LibraryCardPosition::NthFromTop(position) => {
+            game.move_library_card_to_nth_from_top(owner, card, position, reason);
+        }
+    }
+}
+
 /// Choose a permutation in top-to-bottom order. Invalid or partial answers
 /// retain the remaining identities in their original order.
 pub(crate) fn order_library_cards_top_to_bottom(

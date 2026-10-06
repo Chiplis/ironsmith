@@ -2,6 +2,7 @@ import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, LoaderCircle, RotateCcw, SlidersHorizontal } from "lucide-react";
 import usePaymentDraft from "@/hooks/usePaymentDraft";
+import useDecisionRollout from "@/hooks/useDecisionRollout";
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import ActionPopover from "@/components/overlays/ActionPopover";
 import { paymentDraftRows, paymentSourceOptions, sourceChoiceKey } from "@/lib/payment-draft";
@@ -97,11 +98,12 @@ function outputText(source) {
   return mana || sourceActionLabel(source);
 }
 
-export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null }) {
+export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = true, onSubmitActionChange = null, quickControls = null }) {
   const ui = useUiText();
   const { state, dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision } = useGame();
   const { setPreviewLinkedObjects, clearPreviewLinkedObjects, showAnchoredCardPreview } = useHover();
   const payment = state?.mana_payment || null;
+  const rolloutRef = useDecisionRollout(`${decision?.source_id ?? ''}|${Boolean(payment)}`, true);
   const sharedEditor = useManaPaymentEditor();
   const localEditor = usePaymentDraft({ payment, dispatch, cancelBackgroundDispatch, enabled: !sharedEditor });
   const editor = sharedEditor || localEditor;
@@ -180,7 +182,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
   const busyLabel = dirty ? ui('Updating payment…') : !payment.planning_complete && !editor.edited ? ui('Improving') : null;
   const costPips = payment.pips || payment.payment_pips || [];
   const canConfigureSources = sources.length > 0 || paymentSourceOptions(payment).length > 0;
-  return <div className="mana-payment-editor">
+  return <div ref={rolloutRef} className="mana-payment-editor">
     <div className="mana-payment-editor-header">
       <div className="mana-payment-editor-heading"><div className="mana-plan-eyebrow">{ui('Mana payment')}</div>{canConfigureSources && <button type="button" className="mana-payment-source-picker" disabled={!canAct || confirming} aria-label={ui('Advanced payment controls')} aria-expanded={menu?.mode === 'advanced'} onClick={openAdvancedMenu}><SlidersHorizontal size={15} /></button>}</div>
       <h3 className="mana-payment-editor-title"><PaymentCardName objectId={decision?.source_id} onInspect={showAnchoredCardPreview}>{payment.source_name || decision?.subject}</PaymentCardName></h3>
@@ -213,6 +215,7 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
         <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
+      {inlineSubmit ? quickControls : null}
       </div>
     </div>
     {menu?.anchor.isConnected && <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" collapseEquivalentActions={false} previewCards={false} highlightObjects fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui(menu.mode === 'advanced' ? 'Advanced payment controls' : 'Choose payment source')} />}

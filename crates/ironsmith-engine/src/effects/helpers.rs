@@ -700,13 +700,24 @@ fn resolve_effect_metric(
             })
             .sum(),
         EffectMetric::DamagePrevented => {
-            let receipts = outcome.execution_facts.iter().filter_map(|fact| match fact {
-                crate::effect::ExecutionFact::PreventedDamageReceipt { amount, .. } => Some(i64::from(*amount)),
-                _ => None,
-            }).collect::<Vec<_>>();
+            let receipts = outcome
+                .execution_facts
+                .iter()
+                .filter_map(|fact| match fact {
+                    crate::effect::ExecutionFact::PreventedDamageReceipt { amount, .. } => {
+                        Some(i64::from(*amount))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
             if receipts.is_empty() {
-                outcome.events_of_type::<crate::events::DamagePreventedEvent>().map(|event| i64::from(event.amount)).sum()
-            } else { receipts.into_iter().sum() }
+                outcome
+                    .events_of_type::<crate::events::DamagePreventedEvent>()
+                    .map(|event| i64::from(event.amount))
+                    .sum()
+            } else {
+                receipts.into_iter().sum()
+            }
         }
         EffectMetric::FirstPower => object_memory()
             .into_iter()
@@ -3068,17 +3079,23 @@ pub fn resolve_single_object_for_effect(
 /// is authoritative for the characteristics, and it alone suffices when no
 /// live object remains.
 ///
-/// Returns `None` only when neither a live object nor a tagged snapshot
-/// exists.
+/// A pending or empty source choice has no binding. Locked references may
+/// still resolve from tagged last known information after departure.
 pub(crate) fn resolve_effect_source_with_lki(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_for_effect(game, ctx, spec)
-        .ok()
-        .filter(|id| game.object(*id).is_some());
-    retain_effect_source_lki(game, ctx, spec, live)
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    let selected = resolve_single_object_for_effect(game, ctx, spec).ok();
+    if ctx.decision_maker.awaiting_choice()
+        || (selected.is_none() && !source_binding_is_locked(spec))
+    {
+        return None;
+    }
+    retain_effect_source_lki(game, ctx, spec, selected)
 }
 
 /// Immutable source specifications refer to announced/locked objects. Share
@@ -3088,23 +3105,65 @@ pub(crate) fn resolve_effect_source_from_spec_with_lki(
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_from_spec(game, spec, ctx)
-        .ok()
-        .filter(|id| game.object(*id).is_some());
-    retain_effect_source_lki(game, ctx, spec, live)
+    let selected = resolve_single_object_from_spec(game, spec, ctx).ok();
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    retain_effect_source_lki(game, ctx, spec, selected)
+}
+
+/// A bounded selection from tagged objects is a new source choice, even
+/// though its base specification names an existing collection. Keep the same
+/// capability contract for live LKI fallback and prepared source adapters.
+pub(crate) fn source_binding_is_locked(spec: &ChooseSpec) -> bool {
+    if spec.is_target() {
+        return true;
+    }
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => source_binding_is_locked(spec),
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _)
+            if matches!(inner.base(), ChooseSpec::Tagged(_)) =>
+        {
+            false
+        }
+        _ => matches!(
+            spec.base(),
+            ChooseSpec::Source
+                | ChooseSpec::SpecificObject(_)
+                | ChooseSpec::Tagged(_)
+                | ChooseSpec::Iterated
+        ),
+    }
 }
 
 fn retain_effect_source_lki(
     game: &GameState,
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
-    live: Option<ObjectId>,
+    selected: Option<ObjectId>,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
+    let live = selected.filter(|id| game.object(*id).is_some());
     let tagged = match spec.base() {
-        ChooseSpec::Tagged(tag) => ctx
-            .get_tagged(format!("__pre_move_history__{}", tag.as_str()))
-            .or_else(|| ctx.get_tagged(tag))
-            .cloned(),
+        ChooseSpec::Tagged(tag) => {
+            let history = ctx.get_tagged_all(format!("__pre_move_history__{}", tag.as_str()));
+            let current = ctx.get_tagged_all(tag);
+            let snapshots = history
+                .into_iter()
+                .flatten()
+                .chain(current.into_iter().flatten());
+            match selected {
+                Some(id) => snapshots
+                    .filter(|snapshot| {
+                        snapshot.object_id == id
+                            || game
+                                .object(id)
+                                .is_some_and(|object| object.stable_id == snapshot.stable_id)
+                    })
+                    .next(),
+                None => snapshots.into_iter().next(),
+            }
+            .cloned()
+        }
         _ => None,
     };
     let departed = tagged

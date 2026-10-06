@@ -1470,7 +1470,10 @@ export default function Workspace({
       dispatch(
         { type: "priority_action", action_index: liveAction.index, action_ref: liveAction.action_ref },
         liveAction.label,
-        { castingAction: liveAction }
+        // A lone provisional action is a request to cast the card, not an
+        // explicit choice to pay its normal cost. Let the engine offer any
+        // methods discovered after this gesture began.
+        { castingAction: requestedAction?.casting_method_chosen ? liveAction : null }
       );
     }
     clearPendingPlacement();
@@ -1891,6 +1894,7 @@ export default function Workspace({
             ? ui("Ways to play {0}", { 0: handActionMenu.cardName || ui("this card") })
             : null}
           onAction={(action) => {
+            const chosenAction = { ...action, casting_method_chosen: true };
             const plan = handActionMenu.keyboard && !handActionMenu.placementSlot
               ? handKeyboardCastPlan({ actions: [action], card: handActionMenu.card })
               : null;
@@ -1900,14 +1904,14 @@ export default function Workspace({
               // the mouse exactly as a single-option permanent does.
               startDrag(...keyboardPlacementDragArgs({
                 card: handActionMenu.card,
-                actions: [action],
+                actions: [chosenAction],
                 glowKind: handActionMenu.glowKind,
                 rect: handActionMenu.anchorRect,
               }));
               return;
             }
             triggerPriorityCardAction(
-              action,
+              chosenAction,
               handActionMenu.card,
               handActionMenu.placementSlot
             );

@@ -5,7 +5,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value_wide};
 use crate::effects::zones::apply_zone_change_with_additional_effects;
 use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{
-    CostExecutableEffect, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectCompletion,
+    CompletedEffectOutputs, CostExecutableEffect, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectCompletion,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
@@ -67,11 +67,27 @@ impl EffectExecutor for MillEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        execute_prepared_mill(prepare_mill(self, game, ctx)?, game, ctx, false)
-            .map(|commit| commit.outcome)
+        execute_prepared_mill_with_completion(
+            prepare_mill(self, game, ctx)?,
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            crate::effects::zones::finish_zone_change_receipts_with_outputs,
+        )
     }
 }
 
@@ -124,12 +140,44 @@ fn execute_prepared_mill(
     ctx: &mut ExecutionContext,
     defer_additions: bool,
 ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+    execute_prepared_mill_with_completion(
+        proposal,
+        game,
+        ctx,
+        || SimultaneousEffectCommit::finished(EffectOutcome::count(0)),
+        |game, ctx, outcome, receipts| {
+            crate::effects::zones::complete_movement_batch(
+                game,
+                ctx,
+                outcome,
+                receipts,
+                defer_additions,
+            )
+        },
+    )
+}
+
+fn execute_prepared_mill_with_completion<'a, R>(
+    proposal: MillProposal,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    pending: impl Fn() -> R,
+    complete: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        EffectOutcome,
+        Vec<(
+            ObjectId,
+            crate::events::processing::PreparedEventOutcome<
+                crate::effects::zones::AppliedZoneChange,
+            >,
+        )>,
+    ) -> Result<R, ExecutionError>,
+) -> Result<R, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+        return Ok(pending());
     }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
+    crate::effects::composition::execute_transaction(game, ctx, &pending, |game, ctx| {
         let player_id = proposal.player;
         let memories = proposal
             .cards
@@ -158,11 +206,11 @@ fn execute_prepared_mill(
             })
             .collect();
         let opened_batch = game.open_simultaneous_action();
-        crate::effects::zones::commit_zone_moves(
+        crate::effects::zones::commit_zone_moves_with_completion(
             game,
             ctx,
             moves,
-            defer_additions,
+            &pending,
             |game, ctx, receipts| {
                 let mut actual_mills = Vec::new();
                 let mut milled = Vec::new();
@@ -228,16 +276,9 @@ fn execute_prepared_mill(
                 };
                 Ok(original_outcome)
             },
+            complete,
         )
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-    }
-    if ctx.decision_maker.awaiting_choice() {
-        return result.map(|_| SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
-    }
-    result
+    })
 }
 
 impl CostExecutableEffect for MillEffect {

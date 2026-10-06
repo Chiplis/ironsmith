@@ -1,7 +1,8 @@
 //! One owner for every original combat damage/result assignment.
 use super::*;
 use crate::rules::damage::{
-    commit_prepared_damage_original, complete_damage_original, freeze_damage_original,
+    commit_prepared_damage_original_with_outputs, complete_observed_damage_original_with_outputs, freeze_damage_original,
+    observe_damage_original,
     prepare_processed_damage_assignment,
 };
 
@@ -20,8 +21,8 @@ struct Receipt {
     controller: PlayerId,
     snapshot: crate::snapshot::ObjectSnapshot,
     cause: crate::events::cause::EventCause,
-    damage: crate::rules::damage::DamageAssignmentReceipt,
-    toxic: Option<crate::effects::SimultaneousEffectCommit>,
+    damage: crate::rules::damage::DamageAssignmentReceipt<crate::effects::CompletedEffectOutputs>,
+    toxic: Option<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>>,
 }
 fn target(target: EventDamageTarget) -> DamageEventTarget {
     match target {
@@ -214,14 +215,16 @@ pub(super) fn commit_combat_damage_batch(
         } = original;
         let mut ctx = ExecutionContext::new(source, controller, &mut *dm).with_cause(cause.clone());
         ctx.source_snapshot = Some(snapshot.clone());
-        let damage = commit_prepared_damage_original(game, &mut ctx, damage)
+        let damage = commit_prepared_damage_original_with_outputs(game, &mut ctx, damage)
             .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
         let toxic = toxic
             .map(|prepared| {
-                crate::effects::counters::commit_prepared_counter_original(game, &mut ctx, prepared)
+                crate::effects::counters::commit_prepared_counter_original_with_outputs(
+                    game, &mut ctx, prepared,
+                )
             })
             .transpose()
             .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
@@ -268,12 +271,12 @@ pub(super) fn commit_combat_damage_batch(
                 .original
                 .consequence_outcome
                 .iter_mut()
-                .flat_map(|outcome| outcome.events.iter_mut())
+                .flat_map(|outcome| outcome.outcome.events.iter_mut())
                 .chain(
                     receipt
                         .toxic
                         .iter_mut()
-                        .flat_map(|toxic| toxic.outcome.events.iter_mut()),
+                        .flat_map(|toxic| toxic.outcome.outcome.events.iter_mut()),
                 )
             {
                 if matches!(
@@ -320,18 +323,20 @@ pub(super) fn commit_combat_damage_batch(
                         .original
                         .consequence_outcome
                         .iter_mut()
-                        .flat_map(|outcome| outcome.events.iter_mut())
+                        .flat_map(|outcome| outcome.outcome.events.iter_mut())
                         .chain(
                             receipt
                                 .toxic
                                 .iter_mut()
-                                .flat_map(|toxic| toxic.outcome.events.iter_mut()),
+                                .flat_map(|toxic| toxic.outcome.outcome.events.iter_mut()),
                         )
                 })
                 .chain(
                     lifelink_receipts
                         .iter_mut()
-                        .flat_map(|(_, _, _, _, receipt)| receipt.outcome.events.iter_mut()),
+                        .flat_map(|(_, _, _, _, receipt)| {
+                            receipt.outcome.outcome.events.iter_mut()
+                        }),
                 ),
         )
         .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
@@ -359,6 +364,46 @@ pub(super) fn commit_combat_damage_batch(
                 .map_err(|error| CombatDamageAssignmentError::execution(*source, error))?;
         }
     }
+    // Every continuation observes the complete original world before the first
+    // lifelink, damage or toxic continuation can run an added program.
+    for receipt in &mut receipts {
+        let mut ctx = ExecutionContext::new(receipt.source, receipt.controller, &mut *dm)
+            .with_cause(receipt.cause.clone());
+        ctx.source_snapshot = Some(receipt.snapshot.clone());
+        observe_damage_original(game, &mut ctx, &mut receipt.damage)
+            .map_err(|error| CombatDamageAssignmentError::execution(receipt.source, error))?;
+        if let Some(toxic) = &mut receipt.toxic
+            && let Some(completion) = &mut toxic.completion
+        {
+            crate::effects::composition::observe_original_completion(
+                game,
+                &mut ctx,
+                completion.as_mut(),
+                &mut toxic.outcome.outcome,
+            )
+            .map_err(|error| CombatDamageAssignmentError::execution(receipt.source, error))?;
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+    }
+    for (source, controller, _, snapshot, receipt) in &mut lifelink_receipts {
+        let mut ctx = ExecutionContext::new(*source, *controller, &mut *dm);
+        ctx.source_snapshot = snapshot.clone();
+        ctx.cause = crate::events::cause::EventCause::from_combat_damage(*source, *controller);
+        if let Some(completion) = &mut receipt.completion {
+            crate::effects::composition::observe_original_completion(
+                game,
+                &mut ctx,
+                completion.as_mut(),
+                &mut receipt.outcome.outcome,
+            )
+            .map_err(|error| CombatDamageAssignmentError::execution(*source, error))?;
+        }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+    }
     complete_combat_lifelink(game, &mut events, lifelink_receipts, dm)?;
     if dm.awaiting_choice() {
         return Ok(Vec::new());
@@ -375,27 +420,29 @@ pub(super) fn commit_combat_damage_batch(
         } = receipt;
         let mut ctx = ExecutionContext::new(source, controller, &mut *dm).with_cause(cause);
         ctx.source_snapshot = Some(snapshot);
-        let completed = complete_damage_original(game, &mut ctx, damage)
+        let completed = complete_observed_damage_original_with_outputs(game, &mut ctx, damage)
             .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
         append(
             &mut events[index].consequence_outcome,
-            completed.consequence_outcome,
+            completed
+                .consequence_outcome
+                .map(crate::effects::CompletedEffectOutputs::into_outcome),
         );
         if let Some(toxic) = toxic {
-            let outcome = if let Some(completion) = toxic.completion {
-                completion
-                    .complete(game, &mut ctx, toxic.outcome)
-                    .map_err(|error| CombatDamageAssignmentError::execution(source, error))?
-            } else {
-                toxic.outcome
-            };
+            let outputs = crate::effects::composition::complete_committed_original_with_outputs(
+                game, &mut ctx, toxic,
+            )
+            .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(Vec::new());
             }
-            append(&mut events[index].consequence_outcome, Some(outcome));
+            append(
+                &mut events[index].consequence_outcome,
+                Some(outputs.into_outcome()),
+            );
         }
     }
     finish_combat_damage_additions(game, &mut events, additions, dm)?;

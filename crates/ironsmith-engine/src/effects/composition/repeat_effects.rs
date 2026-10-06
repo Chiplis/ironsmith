@@ -1,68 +1,29 @@
 use crate::effect::{Effect, EffectOutcome, OutcomeStatus, OutcomeValue};
 use crate::effects::{EffectExecutor, SequenceEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::ZoneChangeEvent;
 use crate::filter::Comparison;
 use crate::game_state::GameState;
 use crate::resolve_value;
-use crate::triggers::TriggerEvent;
-use crate::zone::Zone;
 
 pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 
-fn coalesce_vote_token_entry_events(
-    game: &mut GameState,
-    pending_start: usize,
-    object_ids: &[crate::ids::ObjectId],
-    ctx: &ExecutionContext,
-) {
-    if object_ids.len() <= 1 {
-        return;
-    }
-
-    let removed = game.remove_pending_trigger_events_matching_from(pending_start, |event| {
-        event
-            .downcast::<ZoneChangeEvent>()
-            .is_some_and(|zone_change| {
-                zone_change.from == Zone::Command
-                    && zone_change.to == Zone::Battlefield
-                    && zone_change
-                        .objects
-                        .iter()
-                        .all(|object_id| object_ids.contains(object_id))
-            })
-    });
-    if removed.is_empty() {
-        return;
-    }
-
-    let cause = removed
-        .iter()
-        .find_map(|event| {
-            event
-                .downcast::<ZoneChangeEvent>()
-                .map(|zone_change| zone_change.cause.clone())
-        })
-        .unwrap_or_else(crate::events::EventCause::effect);
-    let snapshots = removed
-        .iter()
-        .filter_map(|event| event.downcast::<ZoneChangeEvent>())
-        .flat_map(|zone_change| zone_change.snapshots().iter().cloned())
-        .collect();
-    let event = ZoneChangeEvent::batch_with_snapshots(
-        object_ids.to_vec(),
-        Zone::Command,
-        Zone::Battlefield,
-        cause,
-        snapshots,
-    );
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(event, ctx.provenance),
-    );
-}
-
 impl EffectExecutor for RepeatEffectsEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effects
+            .iter()
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        Ok(Some(select_repetition_cursor(self, game, ctx)?))
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -93,165 +54,337 @@ impl EffectExecutor for RepeatEffectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // A repeated one-object choice over `DistinctPowers` means one choice
-        // from each power class, rather than N unconstrained choices from the
-        // same pool. Keep the selected objects accumulated under the original
-        // tag so a later "not chosen this way" filter sees the full set.
-        if let crate::effect::Value::DistinctPowers(power_filter) = self.count.unhinted()
-            && let [choice_effect] = self.effects.as_slice()
-            && let Some(choice) =
-                choice_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-            && choice.count.is_single()
-            && &choice.filter == power_filter
-        {
-            let powers =
-                crate::effects::helpers::distinct_power_values_for_filter(game, power_filter, ctx);
-            let mut selected = Vec::new();
-            let mut all_events = Vec::new();
-            let mut children = Vec::new();
-            ctx.clear_object_tag(&choice.tag);
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-            for power in powers {
-                let mut power_choice = choice.clone();
-                power_choice.filter.power = Some(Comparison::Equal(power));
-                let outcome = SequenceEffect::new(vec![Effect::new(power_choice)])
-                    .execute_child(game, ctx)?;
-                all_events.extend(outcome.events.clone());
-                children.push(outcome.clone());
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| execute_repeated_program(self, game, ctx),
+        )
+    }
+}
+
+/// Repetition counts are fixed when the authored program is entered. Draw
+/// continuations use this same selector rather than freezing later inputs.
+pub(crate) fn resolve_repeat_count(
+    game: &GameState,
+    count: &crate::effect::Value,
+    ctx: &ExecutionContext,
+) -> Result<usize, ExecutionError> {
+    Ok(resolve_value(game, count, ctx)?.max(0) as usize)
+}
+
+/// Result ownership is independent of the domain that schedules a repeated
+/// program. Keep each child's primary result and actual observations, while
+/// projecting the authored union and first terminal failure onto the parent.
+pub(crate) fn finish_repeated_sequence_outcomes(outcomes: Vec<EffectOutcome>) -> EffectOutcome {
+    let mut objects = Vec::new();
+    for outcome in &outcomes {
+        for object in outcome.objects().into_iter().flatten() {
+            if !objects.contains(object) {
+                objects.push(*object);
+            }
+        }
+    }
+    let failed = outcomes.iter().find(|outcome| outcome.status.is_failure());
+    let status = failed.map_or(OutcomeStatus::Succeeded, |outcome| outcome.status);
+    let value = if objects.is_empty() {
+        failed.map_or(OutcomeValue::None, |outcome| outcome.value.clone())
+    } else {
+        OutcomeValue::Objects(objects)
+    };
+    EffectOutcome::aggregate_with_primary_result(
+        EffectOutcome::with_details(status, value, Vec::new(), Vec::new()),
+        outcomes,
+    )
+}
+
+/// Each occurrence has a fresh team-operation set while retaining all claims
+/// made within that occurrence. Ordinary/staged programs and draw continuations
+/// restore the enclosing set through this same scope owner.
+pub(crate) struct RepetitionScope(std::collections::HashSet<(usize, usize, &'static str)>);
+impl RepetitionScope {
+    pub(crate) fn enter(ctx: &mut ExecutionContext) -> Self {
+        Self(std::mem::take(&mut ctx.shared_team_structure_operations))
+    }
+    pub(crate) fn leave(self, ctx: &mut ExecutionContext) {
+        ctx.shared_team_structure_operations = self.0;
+    }
+}
+
+/// A repetition yields a complete authored Sequence, so its target/result
+/// scopes remain owned by Sequence rather than by a flattened Repeat loop.
+enum RepetitionPlan {
+    Sequence {
+        body: Effect,
+        count: usize,
+    },
+    DistinctPowers {
+        choice: crate::effects::ChooseObjectsEffect,
+        powers: Vec<i32>,
+    },
+    MultipliedCreation {
+        instruction: Effect,
+        count: usize,
+    },
+}
+impl RepetitionPlan {
+    fn len(&self) -> usize {
+        match self {
+            Self::Sequence { count, .. } | Self::MultipliedCreation { count, .. } => *count,
+            Self::DistinctPowers { powers, .. } => powers.len(),
+        }
+    }
+    fn resets_team_operations(&self) -> bool {
+        !matches!(self, Self::DistinctPowers { .. })
+    }
+    fn child(&self, index: usize) -> (Effect, Vec<usize>) {
+        match self {
+            Self::Sequence { body, .. } => (body.clone(), vec![0, index]),
+            Self::DistinctPowers { choice, powers } => {
+                let mut choice = choice.clone();
+                choice.filter.power = Some(Comparison::Equal(powers[index]));
+                (
+                    Effect::new(SequenceEffect::new(vec![Effect::new(choice)])),
+                    vec![1, index],
+                )
+            }
+            Self::MultipliedCreation { instruction, .. } => (instruction.clone(), vec![2]),
+        }
+    }
+}
+
+fn select_repetition_cursor(
+    effect: &RepeatEffectsEffect,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Box<dyn crate::effects::ActionProgramCursor>, ExecutionError> {
+    // One choice per captured effective power class, retaining the union under
+    // the authored tag only when selection finishes or a child fails.
+    let plan = if let crate::effect::Value::DistinctPowers(filter) = effect.count.unhinted()
+        && let [child] = effect.effects.as_slice()
+        && let Some(choice) = child.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && choice.count.is_single()
+        && &choice.filter == filter
+    {
+        let powers = crate::effects::helpers::distinct_power_values_for_filter(game, filter, ctx);
+        ctx.clear_object_tag(&choice.tag);
+        RepetitionPlan::DistinctPowers {
+            choice: choice.clone(),
+            powers,
+        }
+    } else {
+        let count = resolve_repeat_count(game, &effect.count, ctx)?;
+        // A vote-count creation is one request multiplied before replacement
+        // processing. Other repetitions retain separate action identities.
+        if matches!(effect.count.unhinted(), crate::effect::Value::VoteCount(_))
+            && let [child] = effect.effects.as_slice()
+            && let Some(creation) = child.downcast_ref::<crate::effects::CreateTokenEffect>()
+        {
+            RepetitionPlan::MultipliedCreation {
+                instruction: crate::effects::tokens::multiplied_token_instruction(
+                    creation,
+                    count as u32,
+                ),
+                count: usize::from(count > 0),
+            }
+        } else {
+            RepetitionPlan::Sequence {
+                body: Effect::new(SequenceEffect::new(effect.effects.clone())),
+                count,
+            }
+        }
+    };
+    let mut outputs =
+        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+    outputs.projections_complete = plan.len() > 0;
+    Ok(Box::new(RepetitionCursor {
+        plan,
+        next: 0,
+        child_pending: false,
+        completed: None,
+        stopped: false,
+        previous_operations: None,
+        outputs,
+        outcomes: Vec::new(),
+        events: Vec::new(),
+        reported_cursor: 0,
+        selected: Vec::new(),
+    }))
+}
+
+struct RepetitionCursor {
+    plan: RepetitionPlan,
+    next: usize,
+    child_pending: bool,
+    completed: Option<EffectOutcome>,
+    stopped: bool,
+    previous_operations: Option<RepetitionScope>,
+    outputs: crate::effects::CompletedEffectOutputs,
+    outcomes: Vec<EffectOutcome>,
+    events: Vec<crate::events::RawEvent>,
+    reported_cursor: usize,
+    selected: Vec<crate::snapshot::ObjectSnapshot>,
+}
+impl std::fmt::Debug for RepetitionCursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RepetitionCursor")
+            .field("next", &self.next)
+            .field("count", &self.plan.len())
+            .field("stopped", &self.stopped)
+            .finish_non_exhaustive()
+    }
+}
+impl crate::effects::ActionProgramCursor for RepetitionCursor {
+    fn next_action(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if let Some(outcome) = self.completed.take() {
+            if let Some(operations) = self.previous_operations.take() {
+                operations.leave(ctx);
+            }
+            if let RepetitionPlan::DistinctPowers { choice, .. } = &self.plan {
                 if let Some(current) = ctx.get_tagged_all(&choice.tag) {
                     for snapshot in current {
-                        if !selected
+                        if !self
+                            .selected
                             .iter()
-                            .any(|existing: &crate::snapshot::ObjectSnapshot| {
-                                existing.object_id == snapshot.object_id
-                            })
+                            .any(|existing| existing.object_id == snapshot.object_id)
                         {
-                            selected.push(snapshot.clone());
+                            self.selected.push(snapshot.clone());
                         }
                     }
                 }
-                if outcome.status.is_failure() {
-                    ctx.set_tagged_objects(choice.tag.clone(), selected);
-                    return Ok(EffectOutcome::aggregate_with_primary_result(
-                        EffectOutcome::with_details(
-                            outcome.status,
-                            outcome.value,
-                            Vec::new(),
-                            Vec::new(),
-                        ),
-                        children,
-                    ));
-                }
             }
-
-            ctx.set_tagged_objects(choice.tag.clone(), selected);
-            return Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::with_details(
-                    OutcomeStatus::Succeeded,
-                    OutcomeValue::None,
-                    Vec::new(),
-                    Vec::new(),
-                ),
-                children,
+            self.stopped = outcome.status.is_failure();
+        }
+        if self.stopped || self.next >= self.plan.len() {
+            if let RepetitionPlan::DistinctPowers { choice, .. } = &self.plan {
+                ctx.set_tagged_objects(choice.tag.clone(), self.selected.clone());
+            }
+            return Ok(None);
+        }
+        if self.child_pending {
+            return Err(ExecutionError::InternalError(
+                "repetition advanced before its child completed".into(),
             ));
         }
-
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        let sequence = SequenceEffect::new(self.effects.clone());
-        let mut all_events = Vec::new();
-        let mut children = Vec::new();
-        let mut all_output_objects = Vec::new();
-        // A voter-independent "for each [option] vote, create a token" clause
-        // lowers to RepeatEffectsEffect rather than living inside VoteEffect.
-        // It is still one token-creation instruction, so all of those tokens
-        // enter as one event. Keyword actions such as investigate remain
-        // repeated actions and intentionally do not take this path.
-        let batch_vote_tokens = matches!(self.count.unhinted(), crate::effect::Value::VoteCount(_))
-            && matches!(
-                self.effects.as_slice(),
-                [effect]
-                    if effect
-                        .downcast_ref::<crate::effects::CreateTokenEffect>()
-                        .is_some()
-            );
-        let pending_token_event_start = game.effect_store.pending_trigger_events.len();
-        // Reported events before this index were matched at a boundary.
-        let mut reported_cursor = 0usize;
-
-        for repetition in 0..count {
-            // Each repetition is a later instruction (CR 608.2c); a batched
-            // vote-token creation is one event and stays together.
-            if repetition > 0
-                && !batch_vote_tokens
-                && crate::effects::match_triggers_at_instruction_boundary(
-                    game,
-                    ctx,
-                    None,
-                    all_events[reported_cursor..].iter(),
-                )
-            {
-                reported_cursor = all_events.len();
-            }
-            let previous_operations = std::mem::take(&mut ctx.shared_team_structure_operations);
-            let result = sequence.execute_child(game, ctx);
-            ctx.shared_team_structure_operations = previous_operations;
-            let outcome = result?;
-            all_events.extend(outcome.events.clone());
-            children.push(outcome.clone());
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if let Some(objects) = outcome.objects() {
-                for object in objects {
-                    if !all_output_objects.contains(object) {
-                        all_output_objects.push(*object);
-                    }
-                }
-            }
-            if outcome.status.is_failure() {
-                if batch_vote_tokens {
-                    coalesce_vote_token_entry_events(
-                        game,
-                        pending_token_event_start,
-                        &all_output_objects,
-                        ctx,
-                    );
-                }
-                let value = if all_output_objects.is_empty() {
-                    outcome.value
-                } else {
-                    OutcomeValue::Objects(all_output_objects)
-                };
-                return Ok(EffectOutcome::aggregate_with_primary_result(
-                    EffectOutcome::with_details(outcome.status, value, Vec::new(), Vec::new()),
-                    children,
-                ));
-            }
-        }
-
-        if batch_vote_tokens {
-            coalesce_vote_token_entry_events(
+        if matches!(self.plan, RepetitionPlan::Sequence { .. })
+            && self.next > 0
+            && crate::effects::match_triggers_at_instruction_boundary(
                 game,
-                pending_token_event_start,
-                &all_output_objects,
                 ctx,
-            );
+                None,
+                self.events[self.reported_cursor..].iter(),
+            )
+        {
+            self.reported_cursor = self.events.len();
         }
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::with_details(
-                OutcomeStatus::Succeeded,
-                if all_output_objects.is_empty() {
-                    OutcomeValue::None
-                } else {
-                    OutcomeValue::Objects(all_output_objects)
-                },
-                Vec::new(),
-                Vec::new(),
+        if self.plan.resets_team_operations() {
+            self.previous_operations = Some(RepetitionScope::enter(ctx));
+        }
+        let (effect, identity) = self.plan.child(self.next);
+        self.next += 1;
+        self.child_pending = true;
+        Ok(Some(crate::effects::ProgramAction {
+            native: None,
+            effect,
+            identity,
+            scope: crate::effects::ProgramActionScope::default(),
+        }))
+    }
+    fn accept_action(
+        &mut self,
+        child: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        if !self.child_pending || self.completed.is_some() {
+            return Err(ExecutionError::InternalError(
+                "unexpected repetition child acknowledgement".into(),
+            ));
+        }
+        self.child_pending = false;
+        let outcome = child.outcome.clone();
+        self.events.extend(outcome.events.clone());
+        self.outcomes.push(outcome.clone());
+        self.completed = Some(outcome);
+        self.outputs.retain_owned_child(child);
+        Ok(())
+    }
+    fn ends_action_unit(&self) -> bool {
+        self.child_pending
+    }
+    fn finish(self: Box<Self>) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        if self.child_pending || self.completed.is_some() || self.previous_operations.is_some() {
+            return Err(ExecutionError::InternalError(
+                "unfinished repetition program".into(),
+            ));
+        }
+        let primary = match &self.plan {
+            RepetitionPlan::Sequence { .. } => None,
+            RepetitionPlan::DistinctPowers { .. } => Some(
+                self.outcomes
+                    .iter()
+                    .find(|outcome| outcome.status.is_failure())
+                    .map_or_else(EffectOutcome::resolved, |outcome| {
+                        EffectOutcome::with_details(
+                            outcome.status,
+                            outcome.value.clone(),
+                            Vec::new(),
+                            Vec::new(),
+                        )
+                    }),
             ),
-            children,
+            RepetitionPlan::MultipliedCreation { .. } => Some(self.outcomes.first().map_or_else(
+                EffectOutcome::resolved,
+                |outcome| {
+                    let objects = outcome.objects().unwrap_or_default().to_vec();
+                    EffectOutcome::with_details(
+                        outcome.status,
+                        if objects.is_empty() {
+                            OutcomeValue::None
+                        } else {
+                            OutcomeValue::Objects(objects)
+                        },
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                },
+            )),
+        };
+        let aggregate = if let Some(primary) = primary {
+            EffectOutcome::aggregate_with_primary_result(primary, self.outcomes)
+        } else {
+            finish_repeated_sequence_outcomes(self.outcomes)
+        };
+        Ok(crate::effects::ProgramCompletion::new(
+            self.outputs.project_aggregate(aggregate),
         ))
     }
+}
+
+fn execute_repeated_program(
+    effect: &RepeatEffectsEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let cursor = select_repetition_cursor(effect, game, ctx)?;
+    super::action_program::execute_action_program_with_outputs(
+        cursor,
+        game,
+        ctx,
+        crate::effects::EffectExecutionPurpose::Action,
+    )
 }

@@ -1,5 +1,5 @@
 const MAINBOARD_MINIMUM = 60;
-const COMMANDER_MAINBOARD_SIZE = 99;
+const COMMANDER_DECK_SIZE = 100;
 const SIDEBOARD_MAXIMUM = 15;
 
 export class DeckCatalogImportError extends Error {
@@ -67,7 +67,7 @@ export function validateDeckCatalogEntry(entry, { format = entry?.format || "nor
   }
   if (sideboardCount > SIDEBOARD_MAXIMUM) errors.push("sideboard exceeds 15 cards");
   if (normalizedFormat === "commander") {
-    if (mainboardCount !== COMMANDER_MAINBOARD_SIZE) errors.push("Commander mainboard must contain 99 cards");
+    if (mainboardCount + commanderCount !== COMMANDER_DECK_SIZE) errors.push("Commander mainboard and commanders must total 100 cards");
     if (commanderCount < 1 || commanderCount > 2) errors.push("Commander must contain one or two commanders");
   } else if (mainboardCount < MAINBOARD_MINIMUM) {
     errors.push(`mainboard must contain at least ${MAINBOARD_MINIMUM} cards`);

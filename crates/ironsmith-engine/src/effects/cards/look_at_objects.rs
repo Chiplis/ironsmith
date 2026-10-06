@@ -1,5 +1,6 @@
 //! Look at objects matching a filter.
 
+#[cfg(test)]
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter_to_list, view_hidden_candidate_objects};
@@ -69,18 +70,22 @@ impl EffectExecutor for LookAtObjectsEffect {
             }
         }
         let description = format!("Look at {}", self.filter.description());
+        let mut observations = Vec::new();
         for subject in subjects {
             for viewer in &viewers {
                 for (zone, cards) in &groups {
-                    let view_ctx = ViewCardsContext::new(
+                    observations.push(super::look_at_cards(
+                        game,
+                        ctx,
                         *viewer,
                         subject,
-                        Some(ctx.source),
                         *zone,
+                        cards,
                         description.clone(),
-                    );
-                    ctx.decision_maker
-                        .view_cards(game, *viewer, cards, &view_ctx);
+                    ));
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                 }
             }
         }
@@ -95,9 +100,12 @@ impl EffectExecutor for LookAtObjectsEffect {
             })
             .map(|snapshot| Clone::clone(&snapshot))
             .collect::<Vec<_>>();
-        Ok(EffectOutcome::count(viewed.len() as i32)
-            .with_chosen_object_memory(memory.clone())
-            .with_affected_object_memory(memory))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::count(viewed.len() as i32)
+                .with_chosen_object_memory(memory.clone())
+                .with_affected_object_memory(memory),
+            observations,
+        ))
     }
 }
 

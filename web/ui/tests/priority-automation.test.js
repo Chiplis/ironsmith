@@ -10,6 +10,18 @@ import {
   priorityHoldReason,
 } from "../src/lib/priority-automation.js";
 
+test("unfunded timing candidates do not keep auto-pass held after analysis finishes", () => {
+  const options = {
+    autoPassEnabled: true, holdRule: "if_actions",
+    decision: { kind: "priority", player: 0, analysis_complete: true, actions: [
+      { kind: "pass_priority" }, { kind: "cast_spell", payment_proven: false },
+    ] },
+    currentState: { perspective: 0, phase: "FirstMain", stack_size: 0 },
+  };
+  assert.equal(priorityHoldReason(options), null);
+  assert.equal(priorityHoldReason({ ...options, decision: { ...options.decision, analysis_complete: false } }), "checking playable actions");
+});
+
 test("local priority with a stack item always holds for manual resolve", () => {
   const holdReason = priorityHoldReason({
     autoPassEnabled: true,

@@ -25,6 +25,61 @@ fn payment_disclosure_error(message: &str) -> JsValue {
 }
 
 impl WasmGame {
+    /// Reverse the payment's game actions while keeping the identities that
+    /// its signed commands have already made public. Map by stable identity:
+    /// a paid discard may have allocated a new zone object before failing.
+    fn retain_payment_disclosure_in_checkpoint(
+        &self,
+        checkpoint: &mut ReplayCheckpoint,
+        disclosed_game: &GameState,
+    ) {
+        // Opening identities may have loaded new registry definitions. Their
+        // CardIds survive with the disclosure and must not be allocated again.
+        checkpoint.id_counters.card = checkpoint.id_counters.card.max(snapshot_id_counters().card);
+        let mut disclosed = self.public_hand_disclosure_identities();
+        if let Some(committed) = self.payment_disclosure.as_ref() {
+            disclosed.extend(
+                committed
+                    .hand_objects
+                    .iter()
+                    .map(|id| (committed.payer, *id)),
+            );
+        }
+        for (owner, id) in disclosed {
+            let Some(original) = checkpoint.game.object(id) else {
+                continue;
+            };
+            let stable = original.stable_id;
+            let known = [
+                Some(disclosed_game),
+                self.pending_decision_game.as_deref(),
+                Some(&self.game),
+            ]
+            .into_iter()
+            .flatten()
+            .find_map(|game| {
+                let current = game.find_object_by_stable_id(stable)?;
+                let object = game.object(current)?;
+                (object.owner == owner && object.card.is_some()).then(|| {
+                    (
+                        object.to_card_definition(),
+                        game.hidden_card_info(current).cloned(),
+                    )
+                })
+            });
+            if let Some((definition, info)) = known {
+                if let Some(mut info) = info {
+                    info.zone = original.zone;
+                    checkpoint.game.set_hidden_card_info(id, info);
+                }
+                checkpoint
+                    .game
+                    .reveal_hidden_card_with_definition(id, &definition);
+            }
+            checkpoint.game.mark_hidden_cards_publicly_revealed(&[id]);
+        }
+    }
+
     fn finish_payment_disclosure(&mut self) {
         if self.payment_disclosure.take().is_some() {
             self.priority_epoch_undo_locked_by_disclosure = true;
@@ -218,7 +273,12 @@ impl WasmGame {
                         .object(*source)
                         .is_some_and(|object| object.zone == Zone::Hand),
                     _ => false,
-                })
+                }) || matches!(&command,
+                    UiCommand::PriorityAction { action_ref: Some(
+                        PriorityActionRef::ActivateAbility { source, .. }
+                        | PriorityActionRef::ActivateManaAbility { source, .. }
+                    ), .. } if self.game.object(ObjectId::from_raw(*source))
+                        .is_some_and(|object| object.zone == Zone::Hand))
             }
             DecisionContext::SelectObjects(objects) => {
                 self.payment_transaction_subject().is_some()

@@ -36,6 +36,7 @@ use crate::events::damage::DamageEvent;
 use crate::events::life::{LifeGainEvent, LifeLossEvent};
 use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent};
+#[cfg(test)]
 use crate::events::zones::EnterBattlefieldEvent;
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::{FilterContext, ObjectFilter};

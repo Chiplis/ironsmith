@@ -529,7 +529,7 @@ fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
             return None;
         };
         costs.iter().find_map(|cost| {
-            let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
+            let effect = cost.downcast_ref::<crate::costs::CostEffect>()?.effect();
             let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
             choose
                 .tag

@@ -10,7 +10,6 @@ use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
@@ -213,17 +212,17 @@ impl EffectExecutor for ScryEffect {
             apply_scry_arrangement(game, &arrangement);
 
             Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(arrangement.total_looked as i32).with_event(
-                    TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Scry,
-                            player_id,
-                            ctx.source,
-                            arrangement.total_looked as u32,
-                        ),
-                        ctx.provenance,
+                crate::effects::composition::complete_keyword_action_with_result(
+                    game,
+                    ctx,
+                    EffectOutcome::count(arrangement.total_looked as i32),
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Scry,
+                        player_id,
+                        ctx.source,
+                        arrangement.total_looked as u32,
                     ),
-                ),
+                )?,
                 [arrangement.observation],
             ))
         })
@@ -283,17 +282,17 @@ impl EffectExecutor for FatesealEffect {
             apply_scry_arrangement(game, &arrangement);
 
             Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(arrangement.total_looked as i32).with_event(
-                    TriggerEvent::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Fateseal,
-                            fatesealer,
-                            ctx.source,
-                            arrangement.total_looked as u32,
-                        ),
-                        ctx.provenance,
+                crate::effects::composition::complete_keyword_action_with_result(
+                    game,
+                    ctx,
+                    EffectOutcome::count(arrangement.total_looked as i32),
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Fateseal,
+                        fatesealer,
+                        ctx.source,
+                        arrangement.total_looked as u32,
                     ),
-                ),
+                )?,
                 [arrangement.observation],
             ))
         })
@@ -350,21 +349,23 @@ impl EffectExecutor for EachPlayerScryEffect {
                 .iter()
                 .map(|arrangement| arrangement.observation.clone())
                 .collect::<Vec<_>>();
-            let events = arrangements.into_iter().map(|arrangement| {
-                TriggerEvent::new_with_provenance(
+            let mut children = observations;
+            for arrangement in arrangements {
+                children.push(crate::effects::composition::complete_keyword_action(
+                    game,
+                    ctx,
                     KeywordActionEvent::new(
                         KeywordActionKind::Scry,
                         arrangement.player_id,
                         ctx.source,
                         arrangement.total_looked as u32,
                     ),
-                    ctx.provenance,
-                )
-            });
+                )?);
+            }
 
             Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(total).with_events(events),
-                observations,
+                EffectOutcome::count(total),
+                children,
             ))
         })
     }

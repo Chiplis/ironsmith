@@ -537,11 +537,18 @@ impl Effect {
             }
             return;
         }
-        if let Some(vote) = self.downcast_ref::<crate::effects::VoteEffect>()
-            && let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice
-        {
-            for option in options {
-                for effect in &option.effects_per_vote {
+        if let Some(vote) = self.downcast_ref::<crate::effects::VoteEffect>() {
+            if vote.payloads.is_empty()
+                && let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice
+            {
+                for option in options {
+                    for effect in &option.effects_per_vote {
+                        visitor(effect);
+                    }
+                }
+            }
+            for payload in &vote.payloads {
+                for effect in payload.effects() {
                     visitor(effect);
                 }
             }

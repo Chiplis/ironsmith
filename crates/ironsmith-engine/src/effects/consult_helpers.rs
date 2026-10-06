@@ -1,6 +1,6 @@
 use crate::decisions::context::{OrderContext, ViewCardsContext};
 use crate::effect::{EffectOutcome, ExecutionFact};
-use crate::effects::{ExecutionContext, ExecutionError};
+use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
@@ -37,18 +37,64 @@ impl LibraryConsultStopRule {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct LibraryConsultResult {
+#[derive(Debug, Clone)]
+pub struct LibraryConsultResult<Output = EffectOutcome> {
     pub exposed_snapshots: Vec<ObjectSnapshot>,
     pub matched_snapshots: Vec<ObjectSnapshot>,
     pub exposed_object_ids: Vec<ObjectId>,
     pub reveal_events: Vec<TriggerEvent>,
     /// Completed replacement observations retained by the owning consultation.
-    pub operation_outcomes: Vec<EffectOutcome>,
+    pub operation_outcomes: Vec<Output>,
+}
+
+impl<Output> Default for LibraryConsultResult<Output> {
+    fn default() -> Self {
+        Self {
+            exposed_snapshots: Vec::new(),
+            matched_snapshots: Vec::new(),
+            exposed_object_ids: Vec::new(),
+            reveal_events: Vec::new(),
+            operation_outcomes: Vec::new(),
+        }
+    }
 }
 
 impl LibraryConsultResult {
     pub fn attach_to_outcome(self, outcome: EffectOutcome) -> EffectOutcome {
+        let (original, operations) = self.bind_observations(outcome);
+        EffectOutcome::aggregate_with_primary_result(original, operations)
+    }
+}
+
+impl LibraryConsultResult<CompletedEffectOutputs> {
+    pub fn attach_to_outputs(self, outcome: EffectOutcome) -> CompletedEffectOutputs {
+        let (original, operations) = self.bind_observations(outcome);
+        let aggregate = EffectOutcome::aggregate_with_primary_result(
+            original,
+            operations.iter().map(|outputs| outputs.outcome.clone()),
+        );
+        let mut outputs = CompletedEffectOutputs::aggregate_only(aggregate);
+        outputs.retain_batch_children(operations);
+        outputs
+    }
+
+    fn into_scalar(self) -> LibraryConsultResult {
+        LibraryConsultResult {
+            exposed_snapshots: self.exposed_snapshots,
+            matched_snapshots: self.matched_snapshots,
+            exposed_object_ids: self.exposed_object_ids,
+            reveal_events: self.reveal_events,
+            operation_outcomes: self
+                .operation_outcomes
+                .into_iter()
+                .map(CompletedEffectOutputs::into_outcome)
+                .collect(),
+        }
+    }
+}
+
+impl<Output> LibraryConsultResult<Output> {
+    fn bind_observations(self, outcome: EffectOutcome) -> (EffectOutcome, Vec<Output>) {
         let exposed_memory = self
             .exposed_snapshots
             .iter()
@@ -73,7 +119,7 @@ impl LibraryConsultResult {
             outcome = outcome.with_execution_fact(ExecutionFact::ChosenObjects(matched_ids));
         }
         outcome = outcome.with_chosen_object_memory(matched_memory);
-        EffectOutcome::aggregate_with_primary_result(outcome, self.operation_outcomes)
+        (outcome, self.operation_outcomes)
     }
 }
 
@@ -85,131 +131,64 @@ pub fn execute_library_consult(
     stop_rule: LibraryConsultStopRule,
     all_tag: Option<&TagKey>,
     match_tag: Option<&TagKey>,
-    mut is_match: impl FnMut(&crate::object::Object, &GameState) -> bool,
+    is_match: impl FnMut(&crate::object::Object, &GameState) -> bool,
 ) -> Result<LibraryConsultResult, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(LibraryConsultResult::default());
-    }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let instruction = (|| -> Result<LibraryConsultResult, ExecutionError> {
-        if let Some(tag) = all_tag {
-            ctx.clear_object_tag(tag.as_str());
-        }
-        if let Some(tag) = match_tag {
-            ctx.clear_object_tag(tag.as_str());
-        }
+    execute_library_consult_with_outputs(
+        game, ctx, player, mode, stop_rule, all_tag, match_tag, is_match,
+    )
+    .map(LibraryConsultResult::into_scalar)
+}
 
-        let required_matches = stop_rule.required_matches() as usize;
-        let max_exposed = stop_rule.max_exposed();
-        if required_matches == 0 || max_exposed == Some(0) {
-            return Ok(LibraryConsultResult::default());
-        }
-
-        let mut result = LibraryConsultResult::default();
-        let mut matched_mana_value = 0u32;
-        let mut receipts = Vec::new();
-        let additional = ctx.additional_replacement_effects_snapshot();
-        let mut stalled_attempts = HashSet::new();
-
-        match mode {
-            LibraryConsultMode::Reveal => {
-                let reveal_context_amount = ctx
-                    .triggering_event
-                    .as_ref()
-                    .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
-                    .filter(|roll| !roll.is_planar)
-                    .and_then(|roll| i32::try_from(roll.result).ok())
-                    .or(ctx.event_value_amount);
-                let top_to_bottom: Vec<_> = game
-                    .player(player)
-                    .map(|library_owner| library_owner.library.iter().rev().copied().collect())
-                    .unwrap_or_default();
-
-                for object_id in top_to_bottom {
-                    let Some(object) = game.object(object_id) else {
-                        continue;
-                    };
-                    let snapshot = ObjectSnapshot::from_object(object, game);
-                    let mana_value = object
-                        .mana_cost
-                        .as_ref()
-                        .map_or(0, |cost| cost.mana_value());
-                    let matched = is_match(object, game);
-
-                    result.exposed_object_ids.push(object_id);
-                    result.exposed_snapshots.push(snapshot.clone());
-                    if matched {
-                        result.matched_snapshots.push(snapshot);
-                        matched_mana_value = matched_mana_value.saturating_add(mana_value);
-                        if result.matched_snapshots.len() >= required_matches
-                            || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold)
-                        {
-                            break;
-                        }
-                    }
-                    if max_exposed.is_some_and(|maximum| result.exposed_snapshots.len() >= maximum)
-                    {
-                        break;
-                    }
-                }
-
-                let mut reveal = crate::effects::cards::reveal_objects(
-                    game,
-                    ctx,
-                    result.exposed_snapshots.clone(),
-                    Some(player),
-                    "Reveal consulted cards",
-                    reveal_context_amount,
-                )?;
-                result.reveal_events.append(&mut reveal.events);
-                result.operation_outcomes.push(reveal);
+pub fn execute_library_consult_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: PlayerId,
+    mode: LibraryConsultMode,
+    stop_rule: LibraryConsultStopRule,
+    all_tag: Option<&TagKey>,
+    match_tag: Option<&TagKey>,
+    mut is_match: impl FnMut(&crate::object::Object, &GameState) -> bool,
+) -> Result<LibraryConsultResult<CompletedEffectOutputs>, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        LibraryConsultResult::default,
+        |game, ctx| {
+            if let Some(tag) = all_tag {
+                ctx.clear_object_tag(tag.as_str());
             }
-            LibraryConsultMode::Exile => {
-                loop {
-                    let Some(top_card_id) = game
-                        .player(player)
-                        .and_then(|library_owner| library_owner.library.last().copied())
-                    else {
-                        break;
-                    };
+            if let Some(tag) = match_tag {
+                ctx.clear_object_tag(tag.as_str());
+            }
 
-                    // One-shot prevention may leave the top card in place for a later attempt.
-                    // This temporary rejection boundary is deliberately not a claimed CR loop detector.
-                    // General repeated-state/optional-choice classification remains an open gate.
-                    let one_shots = game
-                        .effect_store
-                        .replacement_effects
-                        .one_shot_effects_snapshot();
-                    if !stalled_attempts.insert((top_card_id, one_shots)) {
-                        return Err(ExecutionError::InternalError("consultation made no progress; mandatory/optional loop classification required".into()));
-                    }
-                    let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
-                game, top_card_id, Zone::Library, Zone::Exile, ctx.cause.clone(), ctx, &additional,
-            )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(LibraryConsultResult::default());
-                    }
-                    let arrivals = match &receipt.original {
-                        crate::events::processing::EventOutcome::Proceed(change) => {
-                            change.new_object_ids.clone()
-                        }
-                        crate::events::processing::EventOutcome::Replaced => {
-                            let ids = game.take_zone_change_results(top_card_id);
-                            if !ids.is_empty() {
-                                game.record_zone_change_results(top_card_id, ids.clone());
-                            }
-                            ids
-                        }
-                        _ => Vec::new(),
-                    };
-                    receipts.push((top_card_id, receipt));
-                    let mut stop = false;
-                    for exiled_id in arrivals {
-                        let Some(object) = game
-                            .object(exiled_id)
-                            .filter(|object| object.zone == Zone::Exile)
-                        else {
+            let required_matches = stop_rule.required_matches() as usize;
+            let max_exposed = stop_rule.max_exposed();
+            if required_matches == 0 || max_exposed == Some(0) {
+                return Ok(LibraryConsultResult::default());
+            }
+
+            let mut result = LibraryConsultResult::default();
+            let mut matched_mana_value = 0u32;
+            let mut receipts = Vec::new();
+            let additional = ctx.additional_replacement_effects_snapshot();
+            let mut stalled_attempts = HashSet::new();
+
+            match mode {
+                LibraryConsultMode::Reveal => {
+                    let reveal_context_amount = ctx
+                        .triggering_event
+                        .as_ref()
+                        .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+                        .filter(|roll| !roll.is_planar)
+                        .and_then(|roll| i32::try_from(roll.result).ok())
+                        .or(ctx.event_value_amount);
+                    let top_to_bottom: Vec<_> = game
+                        .player(player)
+                        .map(|library_owner| library_owner.library.iter().rev().copied().collect())
+                        .unwrap_or_default();
+
+                    for object_id in top_to_bottom {
+                        let Some(object) = game.object(object_id) else {
                             continue;
                         };
                         let snapshot = ObjectSnapshot::from_object(object, game);
@@ -218,57 +197,139 @@ pub fn execute_library_consult(
                             .as_ref()
                             .map_or(0, |cost| cost.mana_value());
                         let matched = is_match(object, game);
-                        game.add_exiled_with_source_link(ctx.source, exiled_id);
-                        ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());
-                        result.exposed_object_ids.push(exiled_id);
+
+                        result.exposed_object_ids.push(object_id);
                         result.exposed_snapshots.push(snapshot.clone());
                         if matched {
                             result.matched_snapshots.push(snapshot);
                             matched_mana_value = matched_mana_value.saturating_add(mana_value);
-                            stop |= result.matched_snapshots.len() >= required_matches
-                                || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold);
+                            if result.matched_snapshots.len() >= required_matches
+                                || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold)
+                            {
+                                break;
+                            }
+                        }
+                        if max_exposed
+                            .is_some_and(|maximum| result.exposed_snapshots.len() >= maximum)
+                        {
+                            break;
                         }
                     }
-                    if stop {
-                        break;
-                    }
-                    if max_exposed.is_some_and(|maximum| result.exposed_snapshots.len() >= maximum)
-                    {
-                        break;
+
+                    let mut reveal = crate::effects::cards::reveal_objects(
+                        game,
+                        ctx,
+                        result.exposed_snapshots.clone(),
+                        Some(player),
+                        "Reveal consulted cards",
+                        reveal_context_amount,
+                    )?;
+                    result.reveal_events.append(&mut reveal.events);
+                    result
+                        .operation_outcomes
+                        .push(CompletedEffectOutputs::aggregate_only(reveal));
+                }
+                LibraryConsultMode::Exile => {
+                    loop {
+                        let Some(top_card_id) = game
+                            .player(player)
+                            .and_then(|library_owner| library_owner.library.last().copied())
+                        else {
+                            break;
+                        };
+
+                        // One-shot prevention may leave the top card in place for a later attempt.
+                        // This temporary rejection boundary is deliberately not a claimed CR loop detector.
+                        // General repeated-state/optional-choice classification remains an open gate.
+                        let one_shots = game
+                            .effect_store
+                            .replacement_effects
+                            .one_shot_effects_snapshot();
+                        if !stalled_attempts.insert((top_card_id, one_shots)) {
+                            return Err(ExecutionError::InternalError("consultation made no progress; mandatory/optional loop classification required".into()));
+                        }
+                        let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
+                game, top_card_id, Zone::Library, Zone::Exile, ctx.cause.clone(), ctx, &additional,
+            )?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(LibraryConsultResult::default());
+                        }
+                        let arrivals = match &receipt.original {
+                            crate::events::processing::EventOutcome::Proceed(change) => {
+                                change.new_object_ids.clone()
+                            }
+                            crate::events::processing::EventOutcome::Replaced => {
+                                let ids = game.take_zone_change_results(top_card_id);
+                                if !ids.is_empty() {
+                                    game.record_zone_change_results(top_card_id, ids.clone());
+                                }
+                                ids
+                            }
+                            _ => Vec::new(),
+                        };
+                        receipts.push((top_card_id, receipt));
+                        let mut stop = false;
+                        for exiled_id in arrivals {
+                            let Some(object) = game
+                                .object(exiled_id)
+                                .filter(|object| object.zone == Zone::Exile)
+                            else {
+                                continue;
+                            };
+                            let snapshot = ObjectSnapshot::from_object(object, game);
+                            let mana_value = object
+                                .mana_cost
+                                .as_ref()
+                                .map_or(0, |cost| cost.mana_value());
+                            let matched = is_match(object, game);
+                            game.add_exiled_with_source_link(ctx.source, exiled_id);
+                            ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());
+                            result.exposed_object_ids.push(exiled_id);
+                            result.exposed_snapshots.push(snapshot.clone());
+                            if matched {
+                                result.matched_snapshots.push(snapshot);
+                                matched_mana_value = matched_mana_value.saturating_add(mana_value);
+                                stop |= result.matched_snapshots.len() >= required_matches
+                                    || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold);
+                            }
+                        }
+                        if stop {
+                            break;
+                        }
+                        if max_exposed
+                            .is_some_and(|maximum| result.exposed_snapshots.len() >= maximum)
+                        {
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if let Some(tag) = all_tag
-            && !result.exposed_snapshots.is_empty()
-        {
-            ctx.set_tagged_objects(tag.clone(), result.exposed_snapshots.clone());
-        }
-        if let Some(tag) = match_tag
-            && !result.matched_snapshots.is_empty()
-        {
-            ctx.set_tagged_objects(tag.clone(), result.matched_snapshots.clone());
-        }
+            if let Some(tag) = all_tag
+                && !result.exposed_snapshots.is_empty()
+            {
+                ctx.set_tagged_objects(tag.clone(), result.exposed_snapshots.clone());
+            }
+            if let Some(tag) = match_tag
+                && !result.matched_snapshots.is_empty()
+            {
+                ctx.set_tagged_objects(tag.clone(), result.matched_snapshots.clone());
+            }
 
-        // All original consultation tags and source links precede additional programs.
-        let observations = crate::effects::zones::finish_zone_change_receipts(
-            game,
-            ctx,
-            EffectOutcome::resolved(),
-            receipts,
-        )?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(LibraryConsultResult::default());
-        }
-        result.operation_outcomes.push(observations);
-        Ok(result)
-    })();
-    if instruction.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-    }
-    instruction
+            // All original consultation tags and source links precede additional programs.
+            let observations = crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                game,
+                ctx,
+                EffectOutcome::resolved(),
+                receipts,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(LibraryConsultResult::default());
+            }
+            result.operation_outcomes.push(observations);
+            Ok(result)
+        },
+    )
 }
 
 pub fn move_tagged_remainder_to_library_bottom(
@@ -279,58 +340,80 @@ pub fn move_tagged_remainder_to_library_bottom(
     order: LibraryBottomOrder,
     chooser: PlayerId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
-    }
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let Some(tagged) = ctx.get_tagged_all(tag.as_str()).cloned() else {
-            return Ok(EffectOutcome::resolved());
-        };
-        let keep_ids = keep_tagged
-            .and_then(|keep| ctx.get_tagged_all(keep.as_str()).cloned())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|snapshot| snapshot.object_id)
-            .collect::<HashSet<_>>();
-        let mut owner_order = Vec::new();
-        let mut by_owner: HashMap<PlayerId, Vec<BottomCandidate>> = HashMap::new();
-        let mut selected = HashSet::new();
-        for snapshot in tagged {
-            if keep_ids.contains(&snapshot.object_id) || !selected.insert(snapshot.object_id) {
-                continue;
-            }
-            let Some(candidate) = BottomCandidate::from_snapshot(game, snapshot) else {
-                continue;
+    move_tagged_remainder_to_library_bottom_with_outputs(
+        game,
+        ctx,
+        tag,
+        keep_tagged,
+        order,
+        chooser,
+    )
+    .map(CompletedEffectOutputs::into_outcome)
+}
+
+pub fn move_tagged_remainder_to_library_bottom_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    tag: &TagKey,
+    keep_tagged: Option<&TagKey>,
+    order: LibraryBottomOrder,
+    chooser: PlayerId,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(tagged) = ctx.get_tagged_all(tag.as_str()).cloned() else {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved(),
+                ));
             };
-            if !by_owner.contains_key(&candidate.owner) {
-                owner_order.push(candidate.owner);
-            }
-            by_owner.entry(candidate.owner).or_default().push(candidate);
-        }
-        // Resolve all ordering choices before any member of the original instruction moves.
-        let mut ordered_groups = Vec::new();
-        for owner in owner_order {
-            let candidates = by_owner.remove(&owner).unwrap_or_default();
-            let ordered = order_bottom_candidates(game, ctx, chooser, &candidates, order);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            ordered_groups.push((owner, normalize_candidate_order(ordered, &candidates)));
-        }
-        let additional = ctx.additional_replacement_effects_snapshot();
-        let opened_batch = game.open_simultaneous_action();
-        let mut receipts = Vec::new();
-        let mut moved_ids = Vec::new();
-        for (owner, ordered) in ordered_groups {
-            let mut arrivals = HashMap::<ObjectId, Vec<ObjectId>>::new();
-            for candidate in &ordered {
-                if candidate.zone == Zone::Library {
-                    arrivals.insert(candidate.object_id, vec![candidate.object_id]);
+            let keep_ids = keep_tagged
+                .and_then(|keep| ctx.get_tagged_all(keep.as_str()).cloned())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|snapshot| snapshot.object_id)
+                .collect::<HashSet<_>>();
+            let mut owner_order = Vec::new();
+            let mut by_owner: HashMap<PlayerId, Vec<BottomCandidate>> = HashMap::new();
+            let mut selected = HashSet::new();
+            for snapshot in tagged {
+                if keep_ids.contains(&snapshot.object_id) || !selected.insert(snapshot.object_id) {
                     continue;
                 }
-                let receipt =
+                let Some(candidate) = BottomCandidate::from_snapshot(game, snapshot) else {
+                    continue;
+                };
+                if !by_owner.contains_key(&candidate.owner) {
+                    owner_order.push(candidate.owner);
+                }
+                by_owner.entry(candidate.owner).or_default().push(candidate);
+            }
+            // Resolve all ordering choices before any member of the original instruction moves.
+            let mut ordered_groups = Vec::new();
+            for owner in owner_order {
+                let candidates = by_owner.remove(&owner).unwrap_or_default();
+                let ordered = order_bottom_candidates(game, ctx, chooser, &candidates, order);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                ordered_groups.push((owner, normalize_candidate_order(ordered, &candidates)));
+            }
+            let additional = ctx.additional_replacement_effects_snapshot();
+            let opened_batch = game.open_simultaneous_action();
+            let mut receipts = Vec::new();
+            let mut moved_ids = Vec::new();
+            for (owner, ordered) in ordered_groups {
+                let mut arrivals = HashMap::<ObjectId, Vec<ObjectId>>::new();
+                for candidate in &ordered {
+                    if candidate.zone == Zone::Library {
+                        arrivals.insert(candidate.object_id, vec![candidate.object_id]);
+                        continue;
+                    }
+                    let receipt =
                     crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
                         game,
                         candidate.object_id,
@@ -340,75 +423,72 @@ pub fn move_tagged_remainder_to_library_bottom(
                         ctx,
                         &additional,
                     )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let ids = match &receipt.original {
-                    crate::events::processing::EventOutcome::Proceed(change) => {
-                        change.new_object_ids.clone()
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
                     }
-                    crate::events::processing::EventOutcome::Replaced => {
-                        let ids = game.take_zone_change_results(candidate.object_id);
-                        if !ids.is_empty() {
-                            game.record_zone_change_results(candidate.object_id, ids.clone());
+                    let ids = match &receipt.original {
+                        crate::events::processing::EventOutcome::Proceed(change) => {
+                            change.new_object_ids.clone()
                         }
-                        ids
-                    }
-                    _ => Vec::new(),
-                };
-                arrivals.insert(candidate.object_id, ids);
-                receipts.push((candidate.object_id, receipt));
+                        crate::events::processing::EventOutcome::Replaced => {
+                            let ids = game.take_zone_change_results(candidate.object_id);
+                            if !ids.is_empty() {
+                                game.record_zone_change_results(candidate.object_id, ids.clone());
+                            }
+                            ids
+                        }
+                        _ => Vec::new(),
+                    };
+                    arrivals.insert(candidate.object_id, ids);
+                    receipts.push((candidate.object_id, receipt));
+                }
+                let mut seen = HashSet::new();
+                let ordered_current_ids = ordered
+                    .iter()
+                    .flat_map(|candidate| {
+                        arrivals
+                            .get(&candidate.object_id)
+                            .into_iter()
+                            .flatten()
+                            .copied()
+                    })
+                    .filter(|id| {
+                        game.object(*id).is_some_and(|object| {
+                            object.zone == Zone::Library && object.owner == owner
+                        })
+                    })
+                    .filter(|id| seen.insert(*id))
+                    .collect::<Vec<_>>();
+                if ordered_current_ids.is_empty() {
+                    continue;
+                }
+                let top_to_bottom = ordered_current_ids
+                    .iter()
+                    .rev()
+                    .copied()
+                    .collect::<Vec<_>>();
+                crate::effects::cards::arrange_library_cards(
+                    game,
+                    owner,
+                    &[],
+                    &top_to_bottom,
+                    "consult effect put cards on bottom",
+                );
+                moved_ids.extend(ordered_current_ids);
             }
-            let mut seen = HashSet::new();
-            let ordered_current_ids = ordered
-                .iter()
-                .flat_map(|candidate| {
-                    arrivals
-                        .get(&candidate.object_id)
-                        .into_iter()
-                        .flatten()
-                        .copied()
-                })
-                .filter(|id| {
-                    game.object(*id)
-                        .is_some_and(|object| object.zone == Zone::Library && object.owner == owner)
-                })
-                .filter(|id| seen.insert(*id))
-                .collect::<Vec<_>>();
-            if ordered_current_ids.is_empty() {
-                continue;
-            }
-            let top_to_bottom = ordered_current_ids
-                .iter()
-                .rev()
-                .copied()
-                .collect::<Vec<_>>();
-            crate::effects::cards::arrange_library_cards(
-                game,
-                owner,
-                &[],
-                &top_to_bottom,
-                "consult effect put cards on bottom",
-            );
-            moved_ids.extend(ordered_current_ids);
-        }
-        game.close_simultaneous_action(opened_batch);
-        let original = if moved_ids.is_empty() {
-            EffectOutcome::resolved()
-        } else {
-            EffectOutcome::with_objects(moved_ids)
-        };
-        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, receipts)
-    })();
-    let pending = ctx.decision_maker.awaiting_choice();
-    if pending || instruction.is_err() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
-    }
-    if pending {
-        return instruction.map(|_| EffectOutcome::count(0));
-    }
-    instruction
+            game.close_simultaneous_action(opened_batch);
+            let original = if moved_ids.is_empty() {
+                EffectOutcome::resolved()
+            } else {
+                EffectOutcome::with_objects(moved_ids)
+            };
+            crate::effects::zones::finish_zone_change_receipts_with_outputs(
+                game, ctx, original, receipts,
+            )
+        },
+    )
 }
 
 #[derive(Debug, Clone)]

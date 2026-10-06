@@ -8,7 +8,83 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::replacement::ReplacementEffect;
 use crate::snapshot::ObjectSnapshot;
+use crate::target::ChooseSpec;
 use crate::zone::Zone;
+
+/// Resolve a movement's objects through the ordinary selection owners. Target
+/// counts constrain announcement; losing a target does not cancel the other
+/// legal objects at resolution. Intrinsic source/tag references retain their
+/// own identity resolution rather than becoming an unrelated target choice.
+pub(crate) fn resolve_zone_move_objects(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let resolution_spec = if spec.is_target() {
+        ChooseSpec::target(spec.base().clone())
+    } else {
+        spec.clone()
+    };
+    let mut objects = if spec.is_target() {
+        crate::effects::helpers::resolve_objects_from_spec(game, &resolution_spec, ctx)?
+    } else {
+        crate::effects::helpers::resolve_objects_for_effect(game, ctx, &resolution_spec)?
+    };
+    if spec.is_target() && matches!(spec.base(), ChooseSpec::Object(_)) {
+        objects.retain(|id| {
+            crate::effects::helpers::validate_target(
+                game,
+                &crate::effects::ResolvedTarget::Object(*id),
+                &resolution_spec,
+                ctx,
+            )
+        });
+    }
+    if spec.is_target()
+        && let Some(max) = spec.count().max
+    {
+        objects.truncate(max);
+    }
+    Ok(objects)
+}
+
+/// Observe only performed original movements before any additions. The action
+/// adapter owns its value/status and authored arrival work; replacement payloads
+/// retain their own subjects and are never projected as parent movements.
+pub(crate) fn observe_zone_move_originals(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipts: &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
+    snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
+    pending_start: usize,
+) -> Result<Vec<(ObjectId, AppliedZoneChange, ObjectSnapshot)>, ExecutionError> {
+    let mut originals = Vec::new();
+    let mut routes = Vec::new();
+    for (id, receipt) in receipts {
+        let EventOutcome::Proceed(change) = &receipt.original else {
+            continue;
+        };
+        if change.new_object_ids.is_empty() {
+            continue;
+        }
+        let snapshot = snapshots.get(id).cloned().ok_or_else(|| {
+            ExecutionError::InternalError("movement receipt has no original snapshot".into())
+        })?;
+        ctx.refresh_target_snapshot(snapshot.clone());
+        if snapshot.object_id == ctx.source {
+            ctx.refresh_source_snapshot(snapshot.clone());
+        }
+        let route = (snapshot.zone, change.final_zone);
+        if !routes.contains(&route) {
+            routes.push(route);
+        }
+        originals.push((*id, change.clone(), snapshot));
+    }
+    for (from, to) in routes {
+        group_zone_move_observations(game, ctx, pending_start, receipts, snapshots, from, to);
+    }
+    Ok(originals)
+}
 
 /// Façades select/configure moves; this request owns source identity and
 /// replacement-aware commitment. Entry and action-specific observations still
@@ -40,32 +116,126 @@ impl PreparedZoneMove {
         }
     }
 
+    /// Resolve replacements without committing this original. Selected
+    /// simultaneous instructions prepare every request before moving siblings.
+    fn prepare(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        additional: &[ReplacementEffect],
+    ) -> Result<
+        (
+            ObjectId,
+            PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
+        ),
+        ExecutionError,
+    > {
+        if !game
+            .object(self.object)
+            .is_some_and(|object| object.zone == self.from)
+        {
+            return Ok((
+                self.object,
+                PreparedEventOutcome {
+                    original: EventOutcome::NotApplicable,
+                    programs: Vec::new(),
+                },
+            ));
+        }
+        let scope = crate::events::processing::ReplacementEventContext::with_scope(
+            game,
+            crate::events::Event::zone_change(
+                self.object,
+                self.from,
+                self.to,
+                self.cause.clone(),
+                self.snapshot.clone(),
+            )
+            .with_provenance(ctx.provenance),
+            &ctx.replacement,
+        );
+        let prepared = crate::events::processing::prepare_zone_change_scoped(
+            game,
+            self.object,
+            self.from,
+            self.to,
+            self.cause,
+            &mut *ctx.decision_maker,
+            additional,
+            self.snapshot,
+            Some(&scope),
+            Vec::new(),
+            None,
+        )?;
+        Ok((self.object, prepared))
+    }
+
     pub(crate) fn commit(
         self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
         additional: &[ReplacementEffect],
     ) -> Result<PreparedEventOutcome<AppliedZoneChange>, ExecutionError> {
-        if !game
-            .object(self.object)
-            .is_some_and(|object| object.zone == self.from)
-        {
-            return Ok(PreparedEventOutcome {
-                original: EventOutcome::NotApplicable,
-                programs: Vec::new(),
-            });
-        }
-        super::commit_zone_move_request(
+        crate::effects::composition::execute_transaction(
             game,
-            self.object,
-            self.from,
-            self.to,
-            self.cause,
             ctx,
-            additional,
-            self.snapshot,
+            || PreparedEventOutcome {
+                original: EventOutcome::Prevented,
+                programs: Vec::new(),
+            },
+            |game, ctx| {
+                let (object, prepared) = self.prepare(game, ctx, additional)?;
+                super::commit_zone_change_proposal(game, object, prepared, &mut *ctx.decision_maker)
+            },
         )
     }
+}
+
+/// Shared replacement preparation for a selected movement instruction.
+/// The caller retains its compound checkpoint and action-specific completion;
+/// no original movement or added program runs between sibling proposals.
+pub(crate) fn prepare_zone_moves(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    requests: Vec<PreparedZoneMove>,
+) -> Result<
+    Vec<(
+        ObjectId,
+        PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
+    )>,
+    ExecutionError,
+> {
+    let additional = ctx.additional_replacement_effects_snapshot();
+    let mut prepared = Vec::with_capacity(requests.len());
+    for request in requests {
+        prepared.push(request.prepare(game, ctx, &additional)?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+    }
+    Ok(prepared)
+}
+
+/// Commit only retained zone proposals. Selection, replacements and added
+/// programs belong to the preparation and completion phases respectively.
+pub(super) fn commit_prepared_zone_moves(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    proposals: Vec<(
+        ObjectId,
+        PreparedEventOutcome<crate::events::processing::PreparedZoneChange>,
+    )>,
+) -> Result<Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>, ExecutionError> {
+    let mut receipts = Vec::with_capacity(proposals.len());
+    for (object, proposal) in proposals {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        let receipt =
+            super::commit_zone_change_proposal(game, object, proposal, &mut *ctx.decision_maker)?;
+        receipts.push((object, receipt));
+    }
+    Ok(receipts)
 }
 
 /// Commit a frozen set of ordinary moves, author arrival metadata once all
@@ -81,7 +251,34 @@ pub(crate) fn execute_zone_moves<'a>(
         &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    commit_zone_moves(game, ctx, moves, false, original).map(|commit| commit.outcome)
+    execute_zone_moves_with_outputs(game, ctx, moves, original)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// Ordinary execution retains the packets supplied by the movement completion
+/// owner without introducing a deferred stage or a second execution.
+pub(crate) fn execute_zone_moves_with_outputs<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    moves: Vec<PreparedZoneMove>,
+    original: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    commit_zone_moves_with_completion(
+        game,
+        ctx,
+        moves,
+        || {
+            crate::effects::CompletedEffectOutputs::aggregate_only(
+                crate::effect::EffectOutcome::count(0),
+            )
+        },
+        original,
+        super::finish_zone_change_receipts_with_outputs,
+    )
 }
 
 pub(crate) fn commit_zone_moves<'a>(
@@ -95,36 +292,64 @@ pub(crate) fn commit_zone_moves<'a>(
         &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-    let checkpoint = game.clone();
-    let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
-        let additional = ctx.additional_replacement_effects_snapshot();
-        let mut receipts = Vec::with_capacity(moves.len());
-        for request in moves {
-            let object = request.object;
-            receipts.push((object, request.commit(game, ctx, &additional)?));
+    commit_zone_moves_with_completion(
+        game,
+        ctx,
+        moves,
+        || {
+            crate::effects::SimultaneousEffectCommit::finished(crate::effect::EffectOutcome::count(
+                0,
+            ))
+        },
+        original,
+        |game, ctx, outcome, receipts| {
+            complete_movement_batch(game, ctx, outcome, receipts, deferred)
+        },
+    )
+}
+
+/// The movement owner determines originals once; the caller selects the
+/// ordinary retained completion or the existing deferred completion contract.
+pub(crate) fn commit_zone_moves_with_completion<'a, R>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    moves: Vec<PreparedZoneMove>,
+    pending: impl Fn() -> R,
+    original: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        &[(ObjectId, PreparedEventOutcome<AppliedZoneChange>)],
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+    complete: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        crate::effect::EffectOutcome,
+        Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
+    ) -> Result<R, ExecutionError>,
+) -> Result<R, ExecutionError> {
+    crate::effects::composition::execute_transaction(game, ctx, &pending, |game, ctx| {
+        let opened = moves.len() > 1 && game.open_simultaneous_action();
+        let pinned = moves.len() > 1
+            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
+        let result: Result<(_, _), ExecutionError> = (|| {
+            let proposals = prepare_zone_moves(game, ctx, moves)?;
+            let receipts = commit_prepared_zone_moves(game, ctx, proposals)?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effect::EffectOutcome::count(0),
-                ));
+                return Ok((crate::effect::EffectOutcome::count(0), Vec::new()));
             }
-        }
-        let original = original(game, ctx, &receipts)?;
+            let outcome = original(game, ctx, &receipts)?;
+            Ok((outcome, receipts))
+        })();
+        // Added programs are separate actions and observe the completed
+        // original world rather than inheriting this batch's look-back.
+        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
+        game.close_simultaneous_action(opened);
+        let (outcome, receipts) = result?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                crate::effect::EffectOutcome::count(0),
-            ));
+            return Ok(pending());
         }
-        complete_movement_batch(game, ctx, original, receipts, deferred)
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        game.restore_execution_checkpoint(
-            checkpoint,
-            result.is_ok() && ctx.decision_maker.awaiting_choice(),
-        );
-        context.restore(ctx);
-    }
-    result
+        complete(game, ctx, outcome, receipts)
+    })
 }
 
 /// Group actual original arrivals for a simultaneous zone instruction, using
@@ -141,9 +366,10 @@ pub(crate) fn group_zone_move_observations(
     let changes = receipts
         .iter()
         .filter_map(|(id, receipt)| match &receipt.original {
-            EventOutcome::Proceed(change) if change.final_zone == to => {
-                snapshots.get(id).map(|snapshot| (*id, change, snapshot))
-            }
+            EventOutcome::Proceed(change) if change.final_zone == to => snapshots
+                .get(id)
+                .filter(|snapshot| snapshot.zone == from)
+                .map(|snapshot| (*id, change, snapshot)),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -199,6 +425,7 @@ pub(crate) fn group_zone_move_observations(
 
 /// Shared completion owner for both ordinary moves and battlefield entries.
 struct MovementCompletion {
+    iterated_player: Option<crate::ids::PlayerId>,
     receipts: Option<Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>>,
     frozen: Option<super::FrozenZoneChangeReceipts>,
 }
@@ -216,12 +443,23 @@ impl crate::effects::SimultaneousEffectCompletion for MovementCompletion {
         ctx: &mut ExecutionContext,
         original: crate::effect::EffectOutcome,
     ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: crate::effect::EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let frozen = self.frozen.ok_or_else(|| {
             ExecutionError::InternalError(
                 "movement completion requires a frozen original batch".into(),
             )
         })?;
-        super::finish_zone_change_receipts_frozen(game, ctx, original, frozen)
+        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+            super::finish_zone_change_receipts_frozen_with_outputs(game, ctx, original, frozen)
+        })
     }
 }
 
@@ -237,6 +475,7 @@ pub(crate) fn complete_movement_batch(
         Ok(crate::effects::SimultaneousEffectCommit {
             outcome: original,
             completion: Some(Box::new(MovementCompletion {
+                iterated_player: ctx.iteration.iterated_player,
                 receipts: Some(receipts),
                 frozen: None,
             })),

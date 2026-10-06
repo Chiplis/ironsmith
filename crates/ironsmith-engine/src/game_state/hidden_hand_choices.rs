@@ -323,6 +323,25 @@ pub struct PendingAutomaticDrawReveal {
     pub optional: bool,
 }
 
+/// Late discovery from an opened card observes the original draw, rather than
+/// manufacturing another action with a new occurrence and lost draw context.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingDrawReveal {
+    pub player: PlayerId,
+    pub card: ObjectId,
+    pub event: crate::triggers::TriggerEvent,
+}
+
+/// A pending disclosure retains the observation policy of the action that
+/// scheduled it. Opening a hidden identity remains necessary even when setup
+/// suppresses history and triggers; postponement must not change that policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeferredAutomaticDrawReveal {
+    pub reveal: PendingAutomaticDrawReveal,
+    pub parent_provenance: crate::provenance::ProvNodeId,
+    pub observations_suppressed: bool,
+}
+
 /// Prefix of every obligation violation message. The peer front end treats
 /// failures carrying it as a detected cheat.
 pub const HIDDEN_IDENTITY_VIOLATION_PREFIX: &str = "Hidden identity obligation violated";
@@ -1600,7 +1619,7 @@ impl GameState {
 
     /// Record that `ids` were opened publicly on every peer. Only cards the
     /// mental-poker layer tracks are recorded.
-    pub(crate) fn mark_hidden_cards_publicly_revealed(&mut self, ids: &[ObjectId]) {
+    pub fn mark_hidden_cards_publicly_revealed(&mut self, ids: &[ObjectId]) {
         let tracked: Vec<ObjectId> = ids
             .iter()
             .copied()
@@ -1626,11 +1645,11 @@ impl GameState {
             .auxiliary_tracking
             .pending_hidden_draw_reveals
             .iter()
-            .any(|(_, card)| *card == id)
+            .any(|entry| entry.card == id)
         {
             self.auxiliary_tracking_mut()
                 .pending_hidden_draw_reveals
-                .retain(|(_, card)| *card != id);
+                .retain(|entry| entry.card != id);
         }
     }
 
@@ -1686,7 +1705,11 @@ impl GameState {
 
     /// Draw reveal windows not yet answered.
     pub fn pending_hidden_draw_reveals(&self) -> Vec<(PlayerId, ObjectId)> {
-        self.auxiliary_tracking.pending_hidden_draw_reveals.clone()
+        self.auxiliary_tracking
+            .pending_hidden_draw_reveals
+            .iter()
+            .map(|entry| (entry.player, entry.card))
+            .collect()
     }
 
     /// Open a draw reveal window for a hidden card drawn by an eligible player.
@@ -1699,6 +1722,9 @@ impl GameState {
         &mut self,
         event: &crate::triggers::TriggerEvent,
     ) {
+        if self.action_observations_suppressed() {
+            return;
+        }
         let Some(drawn) = event.downcast::<crate::events::other::CardsDrawnEvent>() else {
             return;
         };
@@ -1723,26 +1749,30 @@ impl GameState {
             .auxiliary_tracking
             .pending_hidden_draw_reveals
             .iter()
-            .any(|(_, pending)| *pending == card)
+            .any(|entry| entry.card == card)
         {
             return;
         }
         self.auxiliary_tracking_mut()
             .pending_hidden_draw_reveals
-            .push((drawn.player, card));
+            .push(PendingDrawReveal {
+                player: drawn.player,
+                card,
+                event: event.clone(),
+            });
     }
 
     /// Take the next unanswered draw reveal window whose card is still a
     /// hidden-tracked card in its owner's hand (private, or already opened
     /// publicly by another owner-answered reveal).
-    pub(crate) fn next_pending_hidden_draw_reveal(&mut self) -> Option<(PlayerId, ObjectId)> {
+    pub(crate) fn next_pending_hidden_draw_reveal(&mut self) -> Option<PendingDrawReveal> {
         loop {
             let next = self
                 .auxiliary_tracking
                 .pending_hidden_draw_reveals
                 .first()
-                .copied()?;
-            let (player, card) = next;
+                .cloned()?;
+            let (player, card) = (next.player, next.card);
             // A card another owner-answered reveal already opened publicly
             // (e.g. "reveal the first card you draw each turn") stays in the
             // window: its draw is re-checked without asking again.
@@ -1765,17 +1795,24 @@ impl GameState {
     pub(crate) fn defer_hidden_automatic_draw_reveal(
         &mut self,
         pending: PendingAutomaticDrawReveal,
+        parent_provenance: crate::provenance::ProvNodeId,
     ) {
         if self
             .auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
-            .contains(&pending)
+            .iter()
+            .any(|entry| entry.reveal == pending)
         {
             return;
         }
+        let deferred = DeferredAutomaticDrawReveal {
+            reveal: pending,
+            parent_provenance,
+            observations_suppressed: self.action_observations_suppressed(),
+        };
         self.auxiliary_tracking_mut()
             .pending_hidden_automatic_draw_reveals
-            .push(pending);
+            .push(deferred);
     }
 
     /// Take the next deferred automatic draw reveal whose card is still in
@@ -1783,7 +1820,7 @@ impl GameState {
     /// dropped (their object no longer exists). Symmetric across peers.
     pub(crate) fn next_pending_hidden_automatic_draw_reveal(
         &mut self,
-    ) -> Option<PendingAutomaticDrawReveal> {
+    ) -> Option<DeferredAutomaticDrawReveal> {
         loop {
             let next = self
                 .auxiliary_tracking
@@ -1791,8 +1828,10 @@ impl GameState {
                 .first()
                 .copied()?;
             let in_hand = self
-                .object(next.card)
-                .is_some_and(|object| object.zone == Zone::Hand && object.owner == next.player);
+                .object(next.reveal.card)
+                .is_some_and(|object| {
+                    object.zone == Zone::Hand && object.owner == next.reveal.player
+                });
             if in_hand {
                 return Some(next);
             }
@@ -1809,21 +1848,23 @@ impl GameState {
     ) {
         self.auxiliary_tracking_mut()
             .pending_hidden_automatic_draw_reveals
-            .retain(|entry| entry != pending);
+            .retain(|entry| entry.reveal != *pending);
     }
 
     /// Deferred automatic draw reveals not yet answered.
     pub fn pending_hidden_automatic_draw_reveals(&self) -> Vec<PendingAutomaticDrawReveal> {
         self.auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
-            .clone()
+            .iter()
+            .map(|entry| entry.reveal)
+            .collect()
     }
 
     /// Close the draw reveal window for `card`.
     pub(crate) fn finish_pending_hidden_draw_reveal(&mut self, card: ObjectId) {
         self.auxiliary_tracking_mut()
             .pending_hidden_draw_reveals
-            .retain(|(_, pending)| *pending != card);
+            .retain(|entry| entry.card != card);
     }
 
     /// Settle the pool of a random choice among hand cards matching `filter`

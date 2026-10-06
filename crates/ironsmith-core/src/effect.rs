@@ -5835,9 +5835,31 @@ pub enum VoteChoice<E> {
     },
 }
 
+/// Authored instructions following one vote, in their original order.
+/// Voter-dependent instructions retain vote occurrences (including extra
+/// votes); other instructions compose ordinary effect programs.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum VotePayload<E> {
+    ForEachVote { option: String, effects: Vec<E> },
+    Effects(Vec<E>),
+}
+
+impl<E> VotePayload<E> {
+    pub fn effects(&self) -> &[E] {
+        match self {
+            Self::ForEachVote { effects, .. } | Self::Effects(effects) => effects,
+        }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct VoteEffect<E> {
+    /// Ordered named-vote payload program, replacing option-local bodies.
+    /// Empty for older artifacts and manually authored option-local payloads.
+    #[cfg_attr(feature = "serde", serde(default = "Vec::new"))]
+    pub payloads: Vec<VotePayload<E>>,
     pub choice: VoteChoice<E>,
     pub controller_extra_votes: u32,
     pub controller_optional_extra_votes: u32,
@@ -5851,6 +5873,7 @@ pub struct VoteEffect<E> {
 impl<E> VoteEffect<E> {
     pub fn new(options: Vec<VoteOption<E>>, controller_extra_votes: u32) -> Self {
         Self {
+            payloads: Vec::new(),
             choice: VoteChoice::NamedOptions(options),
             controller_extra_votes,
             controller_optional_extra_votes: 0,
@@ -5865,6 +5888,7 @@ impl<E> VoteEffect<E> {
         controller_optional_extra_votes: u32,
     ) -> Self {
         Self {
+            payloads: Vec::new(),
             choice: VoteChoice::NamedOptions(options),
             controller_extra_votes,
             controller_optional_extra_votes,
@@ -5891,6 +5915,7 @@ impl<E> VoteEffect<E> {
         controller_extra_votes: u32,
     ) -> Self {
         Self {
+            payloads: Vec::new(),
             choice: VoteChoice::Objects { filter, count },
             controller_extra_votes,
             controller_optional_extra_votes: 0,
@@ -5920,6 +5945,7 @@ impl<E> VoteEffect<E> {
         controller_optional_extra_votes: u32,
     ) -> Self {
         Self {
+            payloads: Vec::new(),
             choice: VoteChoice::Objects { filter, count },
             controller_extra_votes,
             controller_optional_extra_votes,
@@ -5943,6 +5969,7 @@ impl<E> VoteEffect<E> {
         controller_optional_extra_votes: u32,
     ) -> Self {
         Self {
+            payloads: Vec::new(),
             choice: VoteChoice::Players {
                 filter,
                 exclude_voter,
@@ -5960,6 +5987,11 @@ impl<E> VoteEffect<E> {
 
     pub fn councils_dilemma(options: Vec<VoteOption<E>>) -> Self {
         Self::with_optional_extra(options, 0, 1).starting_with_controller(true)
+    }
+
+    pub fn with_payloads(mut self, payloads: Vec<VotePayload<E>>) -> Self {
+        self.payloads = payloads;
+        self
     }
 
     pub fn with_secret(mut self, secret: bool) -> Self {

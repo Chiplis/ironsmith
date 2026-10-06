@@ -1,12 +1,12 @@
 //! Exile effect implementation.
 
+use super::movement_instruction::{SelectedZoneMovement, ZoneMovementInstruction};
 use crate::color::{Color, ColorSet};
-use crate::effect::{EffectOutcome, OutcomeStatus};
-use crate::effects::helpers::{
-    ObjectApplyResultPolicy, apply_single_target_object_from_context, apply_to_selected_objects,
-};
+use crate::effect::EffectOutcome;
+use crate::effects::CompletedEffectOutputs;
+
 use crate::effects::{CostExecutableEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
@@ -15,8 +15,6 @@ use crate::object_query::for_each_candidate_id_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
-
-use super::{apply_zone_change_with_context_and_additional_effects, take_recorded_zone_change};
 
 /// Effect that exiles permanents.
 ///
@@ -35,91 +33,6 @@ use super::{apply_zone_change_with_context_and_additional_effects, take_recorded
 /// let effect = ExileEffect::all(ObjectFilter::creature());
 /// ```
 pub type ExileEffect = ironsmith_core::ExileEffect;
-
-type ExileZoneReceipts = Vec<(
-    crate::ids::ObjectId,
-    crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>,
-)>;
-
-fn exile_object(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    object_id: crate::ids::ObjectId,
-    face_down: bool,
-    source_controller_may_look: bool,
-    receipts: &mut ExileZoneReceipts,
-) -> Result<Option<OutcomeStatus>, ExecutionError> {
-    if let Some(obj) = game.object(object_id) {
-        let from_zone = obj.zone;
-        let requested_zone = ctx
-            .simultaneous_zone_destination(object_id)
-            .unwrap_or(Zone::Exile);
-        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-        let result = apply_zone_change_with_context_and_additional_effects(
-            game,
-            object_id,
-            from_zone,
-            requested_zone,
-            ctx.cause.clone(),
-            ctx,
-            &additional_effects,
-        )?;
-
-        let original = result.original.clone();
-        receipts.push((object_id, result));
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(None);
-        }
-        match original {
-            EventOutcome::Prevented => return Ok(Some(crate::effect::OutcomeStatus::Prevented)),
-            EventOutcome::Proceed(result) => {
-                if !result.new_object_ids.is_empty() {
-                    ctx.refresh_target_snapshot(pre_snapshot.clone());
-                    if pre_snapshot.object_id == ctx.source {
-                        ctx.refresh_source_snapshot(pre_snapshot.clone());
-                    }
-                }
-                if result.final_zone == Zone::Exile {
-                    for &new_id in &result.new_object_ids {
-                        if face_down {
-                            game.set_face_down(new_id);
-                            if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
-                                for &viewer in viewers {
-                                    game.grant_face_down_exile_view(new_id, viewer);
-                                }
-                            }
-                        }
-                        game.add_exiled_with_source_link(ctx.source, new_id);
-                        if source_controller_may_look {
-                            game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
-                        }
-                        if let Some(object) = game.object(new_id) {
-                            ctx.tag_source_exiled_result(ObjectSnapshot::from_object(object, game));
-                        }
-                    }
-                }
-                return Ok(None);
-            }
-            EventOutcome::Replaced => return Ok(Some(crate::effect::OutcomeStatus::Replaced)),
-            EventOutcome::NotApplicable => {
-                return Ok(Some(crate::effect::OutcomeStatus::TargetInvalid));
-            }
-        }
-    }
-    Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
-}
-
-fn uses_ctx_targets(effect: &ExileEffect) -> bool {
-    matches!(
-        effect.spec.base(),
-        ChooseSpec::Object(_)
-            | ChooseSpec::Player(_)
-            | ChooseSpec::AnyTarget
-            | ChooseSpec::AnyOtherTarget
-    )
-}
 
 fn fixed_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilter, u32)> {
     let ChooseSpec::Object(filter) = effect.spec.base() else {
@@ -204,14 +117,14 @@ fn matching_cost_candidates(
 }
 
 impl EffectExecutor for ExileEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.spec)
+    }
+
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Exiled)
     }
     fn supports_simultaneous_player_action(&self) -> bool {
-        // Exiling the objects selected for the iterated player is choice-free
-        // once the surrounding effect has established that player.  Defer
-        // the actual move until the batch commits so the normal zone-change
-        // replacement and tagging machinery remains authoritative.
         true
     }
 
@@ -220,10 +133,10 @@ impl EffectExecutor for ExileEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+        Ok(super::movement_instruction::prepare_movement_instruction(
+            self.clone(),
+            ctx,
+        ))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
@@ -235,351 +148,16 @@ impl EffectExecutor for ExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let retained_self = matches!(self.spec.base(), ChooseSpec::Source)
-            .then(|| {
-                game.object(ctx.source)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
-            })
-            .flatten();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let mut receipts: ExileZoneReceipts = Vec::new();
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let pending_start = game.effect_store.pending_trigger_events.len();
-            // CR 603.10a: a multi-object exile shares one pre-event look-back.
-            let pinned_lookback = (!self.spec.is_single()
-                || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
-                && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-            let outcome = (|| -> Result<EffectOutcome, ExecutionError> {
-                // Handle targeted effects with special single-target behavior
-                // BUT skip for special specs (Tagged, Source, SpecificObject) which don't use ctx.targets
-                if self.spec.is_target() && uses_ctx_targets(self) {
-                    let count = self.spec.count();
-                    if count.is_single() {
-                        let pre_memory = ctx.targets.iter().find_map(|target| match target {
-                            ResolvedTarget::Object(object_id) => {
-                                ObjectSnapshot::from_object_id(game, *object_id)
-                            }
-                            ResolvedTarget::Player(_) => None,
-                        });
-                        let outcome = apply_single_target_object_from_context(
-                            game,
-                            ctx,
-                            |game, ctx, object_id| {
-                                exile_object(
-                                    game,
-                                    ctx,
-                                    object_id,
-                                    self.face_down,
-                                    self.source_controller_may_look,
-                                    &mut receipts,
-                                )
-                            },
-                        )?;
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-                        // Reflexive follow-ups such as "when a creature card is
-                        // exiled this way" inspect the moved object's LKI. The
-                        // generic single-target helper only preserves the status, so
-                        // restore the pre-zone-change memory here for successful and
-                        // replaced exiles.
-                        if matches!(
-                            outcome.status,
-                            OutcomeStatus::Succeeded | OutcomeStatus::Replaced
-                        ) {
-                            if let Some(memory) = pre_memory {
-                                let result_ids = receipts
-                                    .iter()
-                                    .find(|(id, _)| *id == memory.object_id)
-                                    .and_then(|(_, receipt)| match &receipt.original {
-                                        EventOutcome::Proceed(change) => {
-                                            Some(change.new_object_ids.clone())
-                                        }
-                                        _ => None,
-                                    })
-                                    .or_else(|| {
-                                        take_recorded_zone_change(game, memory.object_id)
-                                            .map(|change| change.new_object_ids)
-                                    })
-                                    .unwrap_or_default();
-                                return Ok(outcome
-                                    .with_result_objects(result_ids)
-                                    .with_affected_object_memory(vec![memory]));
-                            }
-                        }
-                        return Ok(outcome);
-                    }
-                    // Multi-target with count - handle "any number" specially
-                    if count.min == 0 {
-                        // "any number" effects - 0 targets is valid
-                        let mut exiled_count = 0;
-                        let mut affected_ids = Vec::new();
-                        let mut affected_memory = Vec::new();
-                        // Inside a per-player iteration the announced targets belong
-                        // to different players, so this iteration may only exile the
-                        // ones its own filter accepts — and never more than the
-                        // authored maximum.
-                        let selected = {
-                            let mut selected = if let ChooseSpec::Object(filter) = self.spec.base()
-                            {
-                                let filter_ctx = ctx.filter_context(game);
-                                // Target legality already checked the relative "other"
-                                // restriction. Rechecking it against the announced set
-                                // would exclude every selected target from itself.
-                                let mut filter = filter.clone();
-                                filter.other = false;
-                                ctx.targets
-                                    .iter()
-                                    .filter(|target| match target {
-                                        ResolvedTarget::Object(object_id) => {
-                                            game.object(*object_id).is_some_and(|object| {
-                                                filter.matches(object, &filter_ctx, game)
-                                            })
-                                        }
-                                        ResolvedTarget::Player(_) => false,
-                                    })
-                                    .cloned()
-                                    .collect::<Vec<_>>()
-                            } else {
-                                ctx.targets.clone()
-                            };
-                            if let Some(max) = count.max {
-                                selected.truncate(max);
-                            }
-                            selected
-                        };
-                        for target in selected {
-                            if let ResolvedTarget::Object(object_id) = target {
-                                let pre_memory = ObjectSnapshot::from_object_id(game, object_id);
-                                let status = exile_object(
-                                    game,
-                                    ctx,
-                                    object_id,
-                                    self.face_down,
-                                    self.source_controller_may_look,
-                                    &mut receipts,
-                                )?;
-                                if ctx.decision_maker.awaiting_choice() {
-                                    return Ok(EffectOutcome::count(0));
-                                }
-                                match status {
-                                    None => {
-                                        exiled_count += 1;
-                                        if let Some(memory) = pre_memory.as_ref() {
-                                            affected_memory.push(memory.clone());
-                                        }
-                                        if let Some(result) =
-                                            take_recorded_zone_change(game, object_id)
-                                        {
-                                            affected_ids.extend(result.new_object_ids);
-                                        }
-                                    }
-                                    Some(OutcomeStatus::Replaced) => {
-                                        if let Some(memory) = pre_memory.as_ref() {
-                                            affected_memory.push(memory.clone());
-                                        }
-                                        if let Some(result) =
-                                            take_recorded_zone_change(game, object_id)
-                                        {
-                                            affected_ids.extend(result.new_object_ids);
-                                        }
-                                    }
-                                    Some(_) => {}
-                                }
-                            }
-                        }
-                        return Ok(EffectOutcome::count(exiled_count)
-                            .with_result_objects(affected_ids.clone())
-                            .with_affected_objects(affected_ids)
-                            .with_affected_object_memory(affected_memory));
-                    }
-                }
-
-                // For all/non-targeted effects and special specs (Tagged, Source, etc.),
-                // count successful moves to exile.
-                let mut affected_ids = Vec::new();
-                let mut affected_memory = Vec::new();
-                let mut moved_source = None;
-                let apply_result = match apply_to_selected_objects(
-                    game,
-                    ctx,
-                    &self.spec,
-                    ObjectApplyResultPolicy::CountApplied,
-                    |game, ctx, object_id| {
-                        let Some(obj) = game.object(object_id) else {
-                            return Ok(false);
-                        };
-                        let from_zone = obj.zone;
-                        let requested_zone = ctx
-                            .simultaneous_zone_destination(object_id)
-                            .unwrap_or(Zone::Exile);
-                        let pre_snapshot =
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                        let additional_effects = ctx.additional_replacement_effects_snapshot();
-                        let receipt = apply_zone_change_with_context_and_additional_effects(
-                            game,
-                            object_id,
-                            from_zone,
-                            requested_zone,
-                            ctx.cause.clone(),
-                            ctx,
-                            &additional_effects,
-                        )?;
-                        let original = receipt.original.clone();
-                        receipts.push((object_id, receipt));
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(false);
-                        }
-                        match original {
-                            EventOutcome::Proceed(result) => {
-                                if !result.new_object_ids.is_empty() {
-                                    ctx.refresh_target_snapshot(pre_snapshot.clone());
-                                    if pre_snapshot.object_id == ctx.source {
-                                        ctx.refresh_source_snapshot(pre_snapshot.clone());
-                                        if matches!(self.spec.base(), ChooseSpec::Source) {
-                                            moved_source = result.new_object_ids.first().copied();
-                                        }
-                                    }
-                                    affected_memory.push(Clone::clone(&pre_snapshot));
-                                    affected_ids.extend(result.new_object_ids.iter().copied());
-                                    for &new_id in &result.new_object_ids {
-                                        if self.face_down && result.final_zone == Zone::Exile {
-                                            game.set_face_down(new_id);
-                                            if let Some(viewers) =
-                                                ctx.face_down_exile_viewers_for(object_id)
-                                            {
-                                                for &viewer in viewers {
-                                                    game.grant_face_down_exile_view(new_id, viewer);
-                                                }
-                                            }
-                                        }
-                                        if result.final_zone == Zone::Exile {
-                                            game.add_exiled_with_source_link(ctx.source, new_id);
-                                            if self.source_controller_may_look {
-                                                game.grant_face_down_exile_source_controller_view(
-                                                    new_id, ctx.source,
-                                                );
-                                            }
-                                            if let Some(object) = game.object(new_id) {
-                                                ctx.tag_source_exiled_result(
-                                                    ObjectSnapshot::from_object(object, game),
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Ok(true)
-                                } else {
-                                    Ok(false)
-                                }
-                            }
-                            EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
-                            EventOutcome::Replaced => {
-                                affected_memory.push(Clone::clone(&pre_snapshot));
-                                if let Some(result) = take_recorded_zone_change(game, object_id) {
-                                    affected_ids.extend(result.new_object_ids);
-                                }
-                                Ok(false)
-                            }
-                        }
-                    },
-                ) {
-                    Ok(result) => result,
-                    Err(ExecutionError::InvalidTarget) => {
-                        return Ok(EffectOutcome::target_invalid());
-                    }
-                    Err(error) => return Err(error),
-                };
-
-                // An explicit self-exile in this resolution exports its new identity
-                // to subsequent instructions (e.g. "return it transformed"). Do not
-                // follow unrelated zone changes that happened before resolution.
-                if let Some(new_source) = moved_source {
-                    ctx.source = new_source;
-                }
-                Ok(apply_result
-                    .outcome
-                    .with_affected_objects(affected_ids)
-                    .with_affected_object_memory(affected_memory))
-            })();
-            crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
-            // A single exile instruction moves its selected objects simultaneously.
-            // Keep the original event payloads and their per-object replacement
-            // outcomes, while giving this instruction a unique grouping identity.
-            if let Ok(result) = &outcome {
-                let selected: Vec<_> = result
-                    .affected_object_memory()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|memory| memory.object_id)
-                    .collect();
-                if selected.len() > 1 {
-                    let batch = game
-                        .provenance_graph_mut()
-                        .alloc_root_event(crate::events::EventKind::ZoneChange);
-                    let pending_start =
-                        pending_start.min(game.effect_store.pending_trigger_events.len());
-                    for event in &mut game.effect_store.pending_trigger_events[pending_start..] {
-                        // Events already stamped by the pinned simultaneous
-                        // action keep its identity.
-                        if event.simultaneous_batch().is_none()
-                            && event
-                                .downcast::<crate::events::ZoneChangeEvent>()
-                                .is_some_and(|change| {
-                                    if change.snapshots().is_empty() {
-                                        change.objects.iter().all(|id| selected.contains(id))
-                                    } else {
-                                        change
-                                            .snapshots()
-                                            .iter()
-                                            .all(|snapshot| selected.contains(&snapshot.object_id))
-                                    }
-                                })
-                        {
-                            *event = event.clone().with_simultaneous_batch(batch);
-                        }
-                    }
-                }
-            }
-            let mut original = outcome?;
-            // Bind follow-ups to the exact zone-change receipts, including optional
-            // target groups whose generic helper does not retain arrival IDs.
-            let result_ids: Vec<_> = receipts
-                .iter()
-                .flat_map(|(_, receipt)| match &receipt.original {
-                    EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-                    _ => Vec::new(),
-                })
-                .collect();
-            if !result_ids.is_empty() {
-                original = original.with_result_objects(result_ids);
-            }
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if let Some(before) = retained_self.as_ref() {
-                // CR 118.11: the legal exile cost remains paid if replacement or
-                // prevention changes the action. Bind only its receipt-result
-                // incarnation (or the retained original when nothing moved), never
-                // whichever later object happens to share this stable card id.
-                let after = original
-                    .affected_objects()
-                    .unwrap_or_default()
-                    .iter()
-                    .filter_map(|id| game.object(*id))
-                    .find(|object| object.stable_id == before.stable_id)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
-                    .unwrap_or_else(|| before.clone());
-                ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![after]);
-            }
-            super::finish_zone_change_receipts(game, ctx, original, receipts)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        super::movement_instruction::execute_movement_instruction(self.clone(), game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -669,6 +247,142 @@ impl EffectExecutor for ExileEffect {
     }
 }
 
+impl ZoneMovementInstruction for ExileEffect {
+    fn select(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SelectedZoneMovement, ExecutionError> {
+        let retained_self = matches!(self.spec.base(), ChooseSpec::Source)
+            .then(|| ObjectSnapshot::from_object_id(game, ctx.source))
+            .flatten();
+        let objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
+            Ok(objects) => objects,
+            Err(ExecutionError::InvalidTarget) => {
+                return Ok(SelectedZoneMovement::Finished(
+                    if self.spec.count().min == 0 {
+                        EffectOutcome::count(0)
+                    } else {
+                        EffectOutcome::target_invalid()
+                    },
+                ));
+            }
+            Err(error) => return Err(error),
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(SelectedZoneMovement::Finished(EffectOutcome::count(0)));
+        }
+        let snapshots = objects
+            .iter()
+            .filter_map(|id| {
+                ObjectSnapshot::from_object_id(game, *id).map(|snapshot| (*id, snapshot))
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        let requests = objects
+            .into_iter()
+            .filter_map(|id| {
+                snapshots.get(&id).map(|snapshot| {
+                    super::PreparedZoneMove::capture(
+                        game,
+                        id,
+                        snapshot.zone,
+                        ctx.simultaneous_zone_destination(id).unwrap_or(Zone::Exile),
+                        ctx.cause.clone(),
+                        Some(snapshot.clone()),
+                    )
+                })
+            })
+            .collect();
+
+        let effect = self.clone();
+        Ok(SelectedZoneMovement::moves(
+            requests,
+            move |game, ctx, receipts, pending_start| {
+                let originals = super::observe_zone_move_originals(
+                    game,
+                    ctx,
+                    receipts,
+                    &snapshots,
+                    pending_start,
+                )?;
+                let mut affected = Vec::new();
+                let mut memories = Vec::new();
+                let mut moved_source = None;
+                for (id, change, snapshot) in &originals {
+                    affected.extend(change.new_object_ids.iter().copied());
+                    memories.push(snapshot.clone());
+                    // Explicit self-exile exports its exact successor to later
+                    // instructions; unrelated same-card incarnations do not qualify.
+                    if matches!(effect.spec.base(), ChooseSpec::Source) && *id == ctx.source {
+                        moved_source = change.new_object_id;
+                    }
+                    if change.final_zone != Zone::Exile {
+                        continue;
+                    }
+                    for &new_id in &change.new_object_ids {
+                        if effect.face_down {
+                            game.set_face_down(new_id);
+                            if let Some(viewers) = ctx.face_down_exile_viewers_for(*id) {
+                                for &viewer in viewers {
+                                    game.grant_face_down_exile_view(new_id, viewer);
+                                }
+                            }
+                        }
+                        game.add_exiled_with_source_link(ctx.source, new_id);
+                        if effect.source_controller_may_look {
+                            game.grant_face_down_exile_source_controller_view(new_id, ctx.source);
+                        }
+                        if let Some(object) = game.object(new_id) {
+                            ctx.tag_source_exiled_result(ObjectSnapshot::from_object(object, game));
+                        }
+                    }
+                }
+                if let Some(before) = retained_self.as_ref() {
+                    // A legally started cost remains paid when its original is
+                    // replaced/prevented. This binding follows only the receipt's
+                    // successors; it is independent of the parent Exiled result.
+                    let after = receipts
+                        .iter()
+                        .find(|(id, _)| *id == before.object_id)
+                        .map(|(id, receipt)| super::movement_arrivals(game, *id, receipt))
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|id| game.object(id))
+                        .find(|object| object.stable_id == before.stable_id)
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                        .unwrap_or_else(|| before.clone());
+                    ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_SELF_TAG, vec![after]);
+                }
+                if let Some(new_source) = moved_source {
+                    ctx.source = new_source;
+                }
+                let outcome = if effect.spec.is_target()
+                    && effect.spec.is_single()
+                    && matches!(
+                        effect.spec.base(),
+                        ChooseSpec::Object(_)
+                            | ChooseSpec::Player(_)
+                            | ChooseSpec::AnyTarget
+                            | ChooseSpec::AnyOtherTarget
+                    ) {
+                    match receipts.first().map(|(_, receipt)| &receipt.original) {
+                        Some(EventOutcome::Proceed(_)) => EffectOutcome::resolved(),
+                        Some(EventOutcome::Prevented) => EffectOutcome::prevented(),
+                        Some(EventOutcome::Replaced) => EffectOutcome::replaced(),
+                        Some(EventOutcome::NotApplicable) | None => EffectOutcome::target_invalid(),
+                    }
+                } else {
+                    EffectOutcome::count(originals.len() as i32)
+                };
+                Ok(outcome
+                    .with_result_objects(affected.clone())
+                    .with_affected_objects(affected)
+                    .with_affected_object_memory(memories))
+            },
+        ))
+    }
+}
+
 impl CostExecutableEffect for ExileEffect {
     fn can_execute_as_cost(
         &self,
@@ -693,7 +407,6 @@ impl CostExecutableEffect for ExileEffect {
         ))
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

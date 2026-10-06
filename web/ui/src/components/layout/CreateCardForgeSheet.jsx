@@ -4,6 +4,7 @@ import { Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lu
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
+import { hideEmptyDefinitionFields } from "@/lib/compiled-definition-display";
 import {
   customCardArtUrl,
   resolveScryfallImageUrl,
@@ -368,14 +369,37 @@ function CompilePanel({ face, previewError, busy }) {
             {(face?.compiledText?.length || 0) > 0 ? face.compiledText.join("\n") : ui("No compiled spell text")}
           </div>
         </div>
-        <div className="grid gap-1.5">
-          <div className="card-forge-section-label">{ui("Compiled Abilities")}</div>
-          <div className="card-forge-codeblock">
-            {(face?.compiledAbilities?.length || 0) > 0
-              ? face.compiledAbilities.join("\n")
-              : ui("No compiled abilities")}
-          </div>
-        </div>
+      </div>
+    </section>
+  );
+}
+
+function CompiledAbilitiesPanel({ face, previewError, busy }) {
+  const ui = useUiText();
+  const [showEmptyValues, setShowEmptyValues] = useState(false);
+  const rawCompilation = face?.rawCompilation || "";
+  const displayedDefinition = showEmptyValues
+    ? rawCompilation
+    : hideEmptyDefinitionFields(rawCompilation);
+  return (
+    <section className="card-forge-panel card-forge-abilities-panel">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="card-forge-section-label">{ui("Compiled Abilities")}</div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <Checkbox
+            checked={showEmptyValues}
+            onCheckedChange={(checked) => setShowEmptyValues(checked === true)}
+            aria-label={ui("Show empty values")}
+          />
+          {ui("Show empty values")}
+        </label>
+      </div>
+      <div className="card-forge-codeblock">
+        {previewError
+          ? ui(previewError)
+          : busy && !face
+            ? ui("Preparing preview...")
+            : displayedDefinition || ui("No compiled abilities")}
       </div>
     </section>
   );
@@ -976,6 +1000,7 @@ export default function CreateCardForgeSheet({
 
               <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
             </div>
+            <CompiledAbilitiesPanel face={previewFace} previewError={previewError} busy={previewLoading} />
           </div>
 
           <div className="card-forge-footer">

@@ -4573,111 +4573,20 @@ pub(crate) fn can_cast_with_alternative_with_context(
     true
 }
 
-fn choose_cost_tag(cost: &crate::costs::Cost) -> Option<crate::tag::TagKey> {
-    cost.effect_ref()
-        .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-        .map(|choose| choose.tag.clone())
-}
-
-fn tagged_dependency_satisfied_by_prior_cost(
-    cost: &crate::costs::Cost,
-    available_tags: &[crate::tag::TagKey],
-) -> bool {
-    // The consumer pays with exactly the objects an earlier choice cost
-    // selects; that choice already validated their availability.
-    crate::cost::cost_consumed_choice_tag(cost).is_some_and(|tag| available_tags.contains(&tag))
-}
-
 pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,
     costs: Vec<crate::costs::Cost>,
 ) -> bool {
-    let check_ctx = crate::costs::CostCheckContext::new(source, player)
-        .with_reason(crate::costs::PaymentReason::CastSpell);
-    let mut available_tags = Vec::new();
-    let mut discard_slots = Vec::new();
-
-    for (idx, cost) in costs.iter().enumerate() {
-        if let crate::costs::CostProcessingMode::DiscardCards { count, filter } =
-            cost.processing_mode()
-        {
-            let candidates = crate::costs::legal_discard_cost_cards(game, player, source, &filter);
-            if candidates.len() < count as usize {
-                return false;
-            }
-            discard_slots.extend(std::iter::repeat_n(candidates, count as usize));
-        }
-        if game
-            .validate_cost_for_payment_reason(player, source, cost, check_ctx.reason)
-            .is_err()
-        {
-            return false;
-        }
-
-        // A choice immediately consumed by the next component is checked as a
-        // pair with a representative selection, so the consumer sees the tag.
-        if crate::cost::tagged_choice_pair_at(&costs, idx).is_some()
-            && !crate::cost::tagged_choice_pair_is_payable(
-                game,
-                player,
-                source,
-                &costs,
-                idx,
-                check_ctx.reason,
-                None,
-            )
-        {
-            return false;
-        }
-
-        if crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_err()
-            && !tagged_dependency_satisfied_by_prior_cost(cost, &available_tags)
-        {
-            return false;
-        }
-
-        if let Some(tag) = choose_cost_tag(cost)
-            && !available_tags.iter().any(|available| available == &tag)
-        {
-            available_tags.push(tag);
-        }
-    }
-
-    distinct_discard_assignment_exists(&discard_slots)
-}
-
-/// Match each required discard to a different card. Reassigning earlier slots
-/// avoids rejecting payable costs merely because their filters overlap.
-fn distinct_discard_assignment_exists(slots: &[Vec<ObjectId>]) -> bool {
-    fn assign(
-        slot: usize,
-        slots: &[Vec<ObjectId>],
-        owners: &mut std::collections::HashMap<ObjectId, usize>,
-        visited: &mut std::collections::HashSet<ObjectId>,
-    ) -> bool {
-        for &card in &slots[slot] {
-            if !visited.insert(card) {
-                continue;
-            }
-            let previous = owners.get(&card).copied();
-            if previous.is_none_or(|other| assign(other, slots, owners, visited)) {
-                owners.insert(card, slot);
-                return true;
-            }
-        }
-        false
-    }
-    let mut owners = std::collections::HashMap::new();
-    (0..slots.len()).all(|slot| {
-        assign(
-            slot,
-            slots,
-            &mut owners,
-            &mut std::collections::HashSet::new(),
-        )
-    })
+    crate::cost::can_pay_cost_with_reason(
+        game,
+        source,
+        player,
+        &crate::cost::TotalCost::from_costs(costs),
+        crate::costs::PaymentReason::CastSpell,
+    )
+    .is_ok()
 }
 
 /// Check if a spell can be cast with an alternative cost from hand (e.g., Force of Will).
@@ -8056,7 +7965,6 @@ pub(crate) fn compute_potential_mana_with_view(
     view: &DerivedGameView<'_>,
 ) -> crate::player::ManaPool {
     use crate::ability::AbilityKind;
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
 
     // Start with current mana pool
     let mut potential = game
@@ -8097,98 +8005,20 @@ pub(crate) fn compute_potential_mana_with_view(
             if mana_ability.has_tap_cost() && !game.can_activate_tap_abilities_of(perm_id) {
                 continue;
             }
-            // Do a simple non-recursive check for whether this mana ability
-            // could be activated. We intentionally skip mana cost checks here
-            // to avoid infinite recursion (mana ability with mana cost would
-            // call compute_potential_mana again).
-            let simple_taplike_costs_only = mana_ability.mana_cost.costs().iter().all(|cost| {
-                cost.processing_mode().is_mana_payment()
-                    || cost.requires_tap()
-                    || cost.requires_untap()
-            });
-
-            let can_activate = if simple_taplike_costs_only {
-                mana_ability.mana_cost.costs().iter().all(|cost| {
-                    if cost.requires_tap() {
-                        return !game.is_tapped(perm_id)
-                            && (!view
-                                .object_has_card_type(perm_id, crate::types::CardType::Creature)
-                                || !game.is_summoning_sick(perm_id)
-                                || view.object_has_haste_for_activation(perm_id));
-                    }
-                    if cost.requires_untap() {
-                        return game.is_tapped(perm_id)
-                            && (!view
-                                .object_has_card_type(perm_id, crate::types::CardType::Creature)
-                                || !game.is_summoning_sick(perm_id)
-                                || view.object_has_haste_for_activation(perm_id));
-                    }
-                    true
-                })
-            } else {
-                let ctx = CostCheckContext::new(perm_id, player)
-                    .with_reason(crate::costs::PaymentReason::ActivateManaAbility);
-                let components = mana_ability.mana_cost.costs();
-                let mut idx = 0usize;
-                let mut payable = true;
-                while idx < components.len() {
-                    let cost = if let Some(choose) =
-                        components[idx].effect_ref().and_then(|effect| {
-                            effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
-                        })
-                        && let Some(next) = components.get(idx + 1)
-                        && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
-                    {
-                        idx += 2;
-                        match step {
-                            crate::game_loop::ActivationCostStep::Cost(cost)
-                            | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
-                            crate::game_loop::ActivationCostStep::CardChoice(choice) => {
-                                activation_card_cost_choice_cost(&choice).clone()
-                            }
-                        }
-                    } else if crate::cost::tagged_choice_pair_at(&components, idx).is_some() {
-                        let paired = crate::cost::tagged_choice_pair_is_payable(
-                            game,
-                            player,
-                            perm_id,
-                            &components,
-                            idx,
-                            ctx.reason,
-                            None,
-                        );
-                        idx += 2;
-                        if !paired {
-                            payable = false;
-                            break;
-                        }
-                        continue;
-                    } else {
-                        let cost = components[idx].clone();
-                        idx += 1;
-                        cost
-                    };
-
-                    // Skip mana cost check to avoid recursion - we only check
-                    // non-mana costs like tap, life, sacrifice.
-                    if cost.processing_mode().is_mana_payment() {
-                        continue;
-                    }
-
-                    if game
-                        .validate_cost_for_payment_reason(player, perm_id, &cost, ctx.reason)
-                        .is_err()
-                    {
-                        payable = false;
-                        break;
-                    }
-                    if can_pay_with_check_context(&*cost.0, game, &ctx).is_err() {
-                        payable = false;
-                        break;
-                    }
-                }
-                payable
-            };
+            // Source discovery assumes mana funding to avoid recursing into
+            // itself; all non-mana dependencies still use the shared owner.
+            let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+            let mut execution =
+                crate::effects::ExecutionContext::new(perm_id, player, &mut decision_maker);
+            let can_activate = crate::special_actions::can_pay_non_mana_parts_of_cost_in_context(
+                game,
+                player,
+                perm_id,
+                &mana_ability.mana_cost,
+                crate::costs::PaymentReason::ActivateManaAbility,
+                &mut execution,
+            )
+            .is_ok();
 
             // Also check activation condition if present
             let condition_met = mana_ability
@@ -8219,27 +8049,13 @@ pub(crate) fn compute_potential_mana_with_view(
     potential
 }
 
-fn activation_card_cost_choice_cost(
-    choice: &crate::game_loop::ActivationCardCostChoice,
-) -> &crate::costs::Cost {
-    match choice {
-        crate::game_loop::ActivationCardCostChoice::Discard { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone { cost, .. } => cost,
-    }
-}
-
 pub(crate) fn simple_battlefield_mana_ability_output(
     game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
     ability_index: usize,
     ability: &crate::ability::Ability,
-    view: &DerivedGameView<'_>,
+    _view: &DerivedGameView<'_>,
 ) -> Option<Vec<ManaSymbol>> {
     use crate::ability::AbilityKind;
 
@@ -8271,29 +8087,18 @@ pub(crate) fn simple_battlefield_mana_ability_output(
         return None;
     }
 
-    for cost in mana_ability.mana_cost.costs() {
-        if cost.requires_tap() {
-            if game.is_tapped(permanent_id) {
-                return None;
-            }
-            if view.object_has_card_type(permanent_id, crate::types::CardType::Creature)
-                && game.is_summoning_sick(permanent_id)
-                && !view.object_has_haste_for_activation(permanent_id)
-            {
-                return None;
-            }
-        }
-        if cost.requires_untap() && !game.is_tapped(permanent_id) {
-            return None;
-        }
-        if cost.requires_untap()
-            && view.object_has_card_type(permanent_id, crate::types::CardType::Creature)
-            && game.is_summoning_sick(permanent_id)
-            && !view.object_has_haste_for_activation(permanent_id)
-        {
-            return None;
-        }
-    }
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut execution =
+        crate::effects::ExecutionContext::new(permanent_id, player, &mut decision_maker);
+    crate::special_actions::can_pay_non_mana_parts_of_cost_in_context(
+        game,
+        player,
+        permanent_id,
+        &mana_ability.mana_cost,
+        crate::costs::PaymentReason::ActivateManaAbility,
+        &mut execution,
+    )
+    .ok()?;
 
     if let Some(condition) = &mana_ability.activation_condition
         && !check_mana_ability_condition_for_potential(

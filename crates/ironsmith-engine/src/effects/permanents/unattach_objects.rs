@@ -12,6 +12,10 @@ use crate::target::ChooseSpec;
 pub use ironsmith_core::UnattachObjectsEffect;
 
 impl EffectExecutor for UnattachObjectsEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.objects)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

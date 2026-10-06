@@ -1,20 +1,16 @@
-//! Heal marked damage from a permanent (CR 701.69a).
+//! Heal marked damage by composing removal with the keyword-action envelope.
 
-use crate::effect::{Effect, EffectOutcome};
-use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+#[cfg(test)]
+use crate::effect::Effect;
+use crate::effect::EffectOutcome;
+use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_single_object_for_effect};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_execution_context,
-};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 
 pub use ironsmith_core::HealDamageEffect;
-
-use crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects;
 
 impl EffectExecutor for HealDamageEffect {
     fn execute(
@@ -22,75 +18,65 @@ impl EffectExecutor for HealDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-        let Some(target) = game.object(target_id) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(target, game);
-        let controller = snapshot.controller;
-        let marked = game.damage_on(target_id);
-        let requested = match &self.amount {
-            Some(amount) => resolve_value(game, amount, ctx)?.max(0) as u32,
-            None => marked,
-        };
-        let healed = marked.min(requested);
-        if healed == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let would_event = Event::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Heal, controller, target_id, healed)
-                .with_snapshot(Some(snapshot.clone())),
-            ctx.provenance,
-        );
-        let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
-        crate::effects::replacement::execute_event_expansion_with_bindings(game, ctx, replacement_result, |game, ctx, original| {
-        match original {
-            TraitEventResult::Replaced {
-                effects, source, controller, context, ..
-            } => {
-                return execute_keyword_action_replacement_effects(
-                    game, ctx, effects, source, controller, &context, Some(snapshot),
-                );
-            }
-            TraitEventResult::Prevented => return Ok(EffectOutcome::prevented()),
-            TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let target = resolve_single_object_for_effect(game, ctx, &self.target)?;
+            let Some(object) = game.object(target) else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            let snapshot =
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+            let marked = game.damage_on(target);
+            let requested = match &self.amount {
+                Some(amount) => resolve_bounded_nonnegative_u32(game, amount, ctx, marked)?,
+                None => marked,
+            };
+            if ctx.decision_maker.awaiting_choice() || requested == 0 {
                 return Ok(EffectOutcome::count(0));
             }
-            TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
-            TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("keyword commit received an unflattened result".into())),
-        }
-
-        game.set_damage_marked(target_id, marked - healed);
-        let event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Heal, controller, target_id, healed)
-                .with_snapshot(Some(snapshot)),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::count(healed as i32)
-            .with_affected_objects_from_game(game, vec![target_id])
-            .with_event(event))
-        }, |_, context, _| {
-            let action = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
-                .filter(|action| action.action == KeywordActionKind::Heal)
-                .ok_or_else(|| ExecutionError::InternalError("heal addition captured an incompatible event".into()))?;
-            let object_tags = action.snapshot.as_ref().map(|snapshot| vec![
-                ("__it__".to_owned(), vec![snapshot.clone()]),
-                ("it".to_owned(), vec![snapshot.clone()]),
-            ]).unwrap_or_default();
-            Ok(crate::effects::replacement::ReplacementProgramBindings { targets: None, object_tags })
+            // The healed permanent performs Heal; it is also its subject.
+            let action = KeywordActionEvent::new(
+                KeywordActionKind::Heal,
+                snapshot.controller,
+                target,
+                requested,
+            )
+            .with_snapshot(Some(snapshot));
+            crate::effects::composition::execute_keyword_action(
+                game,
+                ctx,
+                Event::new_with_provenance(action, ctx.provenance),
+                crate::effects::composition::KeywordActionOutput::Body,
+                crate::effects::composition::KeywordActionAmount::BodyMagnitude,
+                |game, ctx, action| {
+                    let removed =
+                        super::remove_marked_damage(game, ctx, action.source, Some(action.amount))?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    let healed = removed.instruction_result().count_or_zero().max(0) as u32;
+                    if healed == 0 {
+                        return Ok(removed);
+                    }
+                    let mut completed = action.clone().with_amount(healed);
+                    completed.snapshot = removed
+                        .instruction_result()
+                        .affected_object_memory()
+                        .and_then(|objects| {
+                            objects
+                                .iter()
+                                .find(|object| object.object_id == action.source)
+                        })
+                        .cloned()
+                        .or_else(|| action.snapshot.clone());
+                    let notification =
+                        crate::effects::composition::complete_keyword_action(game, ctx, completed)?;
+                    Ok(EffectOutcome::aggregate_with_primary_result(
+                        removed.summary_projection(),
+                        [removed, notification],
+                    ))
+                },
+            )
         })
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending { return Ok(EffectOutcome::count(0)); }
-        result
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

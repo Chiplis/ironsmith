@@ -67,7 +67,7 @@ pub use state_trigger::StateTriggerEvent;
 pub use transformed::TransformedEvent;
 pub use turned_face_up::TurnedFaceUpEvent;
 mod lifecycle_snapshot;
-pub(crate) use lifecycle_snapshot::freeze_completed_lifecycle_events;
+pub(crate) use lifecycle_snapshot::{freeze_completed_lifecycle_events, retain_departed_lifecycle_snapshots};
 
 mod monarch_changed;
 pub use monarch_changed::MonarchChangedEvent;

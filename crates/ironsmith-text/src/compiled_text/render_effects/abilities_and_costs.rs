@@ -914,7 +914,7 @@ fn sacrifice_cost_copy_reference_noun(
     costs.iter().find_map(|cost| {
         let cost_effect = cost.downcast_ref::<crate::costs::CostEffect>()?;
         let tagged = cost_effect
-            .effect
+            .effect()
             .downcast_ref::<crate::effects::TaggedEffect>()?;
         if !choose_spec_references_exact_tag(target, &tagged.tag) {
             return None;

@@ -3,7 +3,10 @@ use crate::ids::{ObjectId, PlayerId};
 
 /// Stable identifier for a provenance graph node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(feature="serialization",derive(serde::Serialize,serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 pub struct ProvNodeId(u64);
 
 impl ProvNodeId {
@@ -14,7 +17,10 @@ impl ProvNodeId {
 
 /// Semantic type of a provenance graph node.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
 pub enum ProvenanceNodeKind {
     RootEvent {
@@ -36,12 +42,25 @@ pub enum ProvenanceNodeKind {
 
 /// One node in the provenance graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
 #[cfg_attr(feature = "serialization", serde(deny_unknown_fields))]
 pub struct ProvenanceNode {
     pub id: ProvNodeId,
     pub parent: Option<ProvNodeId>,
     pub kind: ProvenanceNodeKind,
+    /// Branch-preserved allocation identity. A rolled-back numeric id can be
+    /// reused, but a receipt from that abandoned allocation cannot authorize it.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    completion_witness: std::sync::Arc<()>,
+}
+
+impl ProvenanceNode {
+    pub(crate) fn completion_witness(&self) -> std::sync::Arc<()> {
+        self.completion_witness.clone()
+    }
 }
 
 /// In-memory provenance graph for the current game.
@@ -50,7 +69,6 @@ pub struct ProvenanceGraph {
     next_id: u64,
     nodes: im::Vector<ProvenanceNode>,
 }
-
 
 impl ProvenanceGraph {
     pub fn new() -> Self {
@@ -117,7 +135,12 @@ impl ProvenanceGraph {
             .checked_add(1)
             .expect("provenance node id overflow");
         let id = ProvNodeId(self.next_id);
-        self.nodes.push_back(ProvenanceNode { id, parent, kind });
+        self.nodes.push_back(ProvenanceNode {
+            id,
+            parent,
+            kind,
+            completion_witness: std::sync::Arc::new(()),
+        });
         id
     }
 }

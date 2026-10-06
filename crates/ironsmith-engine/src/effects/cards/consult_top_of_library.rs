@@ -1,3 +1,4 @@
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{EffectExecutor, consult_helpers::*};
@@ -12,6 +13,15 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let player = resolve_player_filter(game, &self.player, ctx)?;
         let filter_ctx = ctx.filter_context(game);
         let stop_rule = match (&self.stop_rule, &self.max_exposed) {
@@ -31,7 +41,7 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
             }
         };
 
-        let result = execute_library_consult(
+        let result = execute_library_consult_with_outputs(
             game,
             ctx,
             player,
@@ -43,10 +53,10 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
         )?;
 
         if result.exposed_object_ids.is_empty() {
-            Ok(EffectOutcome::count(0))
+            Ok(result.attach_to_outputs(EffectOutcome::count(0)))
         } else {
             let objects = result.exposed_object_ids.clone();
-            Ok(result.attach_to_outcome(EffectOutcome::with_objects(objects)))
+            Ok(result.attach_to_outputs(EffectOutcome::with_objects(objects)))
         }
     }
 }

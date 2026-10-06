@@ -15,7 +15,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 use std::collections::HashMap;
 
@@ -159,7 +158,7 @@ fn should_put_revealed_card_on_bottom(
 
 fn move_revealed_cards_to_bottom(game: &mut GameState, cards_to_bottom: &[(PlayerId, ObjectId)]) {
     for (player, card) in cards_to_bottom {
-        game.move_library_card_to_bottom(*player, *card, "clash card put on bottom");
+        super::arrange_library_cards(game, *player, &[], &[*card], "clash card put on bottom");
     }
 }
 
@@ -185,92 +184,90 @@ impl EffectExecutor for ClashEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let opponents = in_game_opponents(game, ctx.controller);
-        let Some(opponent) = choose_opponent(game, ctx, &opponents, self.opponent_mode) else {
-            return Ok(EffectOutcome::count(0));
-        };
-        // Later clauses ("Otherwise, that player ...") refer back to the
-        // opponent this clash was performed with.
-        ctx.set_tagged_players(ironsmith_core::CLASH_OPPONENT_TAG, vec![opponent]);
-
-        let controller_card = top_card(game, ctx.controller);
-        let opponent_card = top_card(game, opponent);
-        let clash_winner = controller_wins_clash(
-            card_mana_value(game, controller_card),
-            card_mana_value(game, opponent_card),
-        )
-        .then_some(ctx.controller)
-        .or_else(|| {
-            let controller_mv = card_mana_value(game, controller_card);
-            let opponent_mv = card_mana_value(game, opponent_card);
-            match (controller_mv, opponent_mv) {
-                (Some(left), Some(right)) if right > left => Some(opponent),
-                (None, Some(_)) => Some(opponent),
-                _ => None,
-            }
-        });
-
-        let mut events = Vec::new();
-        let mut reveals = Vec::new();
-        for (player, card) in [(ctx.controller, controller_card), (opponent, opponent_card)] {
-            if let Some(card) = card {
-                let cards = ObjectSnapshot::from_object_id(game, card)
-                    .into_iter()
-                    .collect();
-                reveals.push(super::reveal_objects(
-                    game,
-                    ctx,
-                    cards,
-                    Some(player),
-                    "Reveal the top card of a library",
-                    None,
-                )?);
-            }
-        }
-
-        let mut cards_to_bottom = Vec::new();
-        for player in clashing_players_in_apnap_order(game, ctx.controller, opponent) {
-            let card = if player == ctx.controller {
-                controller_card
-            } else {
-                opponent_card
+        super::execute_library_instruction_atomically(game, ctx, |game, ctx| {
+            let opponents = in_game_opponents(game, ctx.controller);
+            let Some(opponent) = choose_opponent(game, ctx, &opponents, self.opponent_mode) else {
+                return Ok(EffectOutcome::count(0));
             };
-            let Some(card) = card else {
-                continue;
-            };
-            if should_put_revealed_card_on_bottom(game, ctx, player, card) {
-                if ctx.decision_maker.awaiting_choice() {
+            // Later clauses ("Otherwise, that player ...") refer back to the
+            // opponent this clash was performed with.
+            ctx.set_tagged_players(ironsmith_core::CLASH_OPPONENT_TAG, vec![opponent]);
+
+            let controller_card = top_card(game, ctx.controller);
+            let opponent_card = top_card(game, opponent);
+            let clash_winner = controller_wins_clash(
+                card_mana_value(game, controller_card),
+                card_mana_value(game, opponent_card),
+            )
+            .then_some(ctx.controller)
+            .or_else(|| {
+                let controller_mv = card_mana_value(game, controller_card);
+                let opponent_mv = card_mana_value(game, opponent_card);
+                match (controller_mv, opponent_mv) {
+                    (Some(left), Some(right)) if right > left => Some(opponent),
+                    (None, Some(_)) => Some(opponent),
+                    _ => None,
+                }
+            });
+
+            let mut reveals = Vec::new();
+            for (player, card) in [(ctx.controller, controller_card), (opponent, opponent_card)] {
+                if let Some(card) = card {
+                    let cards = ObjectSnapshot::from_object_id(game, card)
+                        .into_iter()
+                        .collect();
+                    reveals.push(super::reveal_objects(
+                        game,
+                        ctx,
+                        cards,
+                        Some(player),
+                        "Reveal the top card of a library",
+                        None,
+                    )?);
+                }
+            }
+
+            let mut cards_to_bottom = Vec::new();
+            for player in clashing_players_in_apnap_order(game, ctx.controller, opponent) {
+                let card = if player == ctx.controller {
+                    controller_card
+                } else {
+                    opponent_card
+                };
+                let Some(card) = card else {
+                    continue;
+                };
+                if should_put_revealed_card_on_bottom(game, ctx, player, card) {
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    cards_to_bottom.push((player, card));
+                } else if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
-                cards_to_bottom.push((player, card));
-            } else if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
             }
-        }
 
-        move_revealed_cards_to_bottom(game, &cards_to_bottom);
+            move_revealed_cards_to_bottom(game, &cards_to_bottom);
 
-        let player_tags = winner_tags(clash_winner);
-        events.push(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Clash, ctx.controller, ctx.source, 1)
-                .with_player_tags(player_tags.clone()),
-            ctx.provenance,
-        ));
-        events.push(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Clash, opponent, ctx.source, 1)
-                .with_player_tags(player_tags),
-            ctx.provenance,
-        ));
+            let player_tags = winner_tags(clash_winner);
+            for player in [ctx.controller, opponent] {
+                reveals.push(crate::effects::composition::complete_keyword_action(
+                    game,
+                    ctx,
+                    KeywordActionEvent::new(KeywordActionKind::Clash, player, ctx.source, 1)
+                        .with_player_tags(player_tags.clone()),
+                )?);
+            }
 
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            EffectOutcome::count(if clash_winner == Some(ctx.controller) {
-                1
-            } else {
-                0
-            })
-            .with_events(events),
-            reveals,
-        ))
+            Ok(EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(if clash_winner == Some(ctx.controller) {
+                    1
+                } else {
+                    0
+                }),
+                reveals,
+            ))
+        })
     }
 }
 

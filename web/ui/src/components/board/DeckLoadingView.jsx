@@ -242,9 +242,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       });
   }, [actionBusy, setStatus, ui]);
 
-  const handleCatalogSelect = useCallback(({ deckText, deckName, name, archetype }) => {
+  const handleCatalogSelect = useCallback(({ deckText, commanderText, deckName, name, archetype }) => {
     const target = visiblePlayers.length ? Math.min(catalogTargetIndex, visiblePlayers.length - 1) : 0;
-    const importedText = stripDeckHeader(deckText);
+    const importedText = [stripDeckHeader(deckText), ...(commanderText ? ["Commander", commanderText] : [])].join("\n\n");
     const importedName = String(deckName || name || archetype || "").trim();
     const nextTexts = [...texts];
     nextTexts[target] = importedText;
@@ -311,11 +311,16 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
   const lobbyDeckOptions = useMemo(
     () => texts
-      .map((text, index) => ({
-        id: `editor-${index}`,
-        label: `${deckLabels[index] || ui("Deck {0}", { 0: index + 1 })} (${players[index]?.name || ui("Player {0}", { 0: index + 1 })})`,
-        deckText: String(text || ""),
-      }))
+      .map((text, index) => {
+        const deckText = String(text || "");
+        const commanderSection = deckText.match(/(?:^|\n)Commanders?\s*\n([\s\S]*?)(?=\n(?:Deck|Sideboard)\s*(?:\n|$)|$)/i);
+        return {
+          id: `editor-${index}`,
+          label: `${deckLabels[index] || ui("Deck {0}", { 0: index + 1 })} (${players[index]?.name || ui("Player {0}", { 0: index + 1 })})`,
+          deckText: commanderSection ? deckText.replace(commanderSection[0], "") : deckText,
+          commanderText: commanderSection?.[1]?.trim() || "",
+        };
+      })
       .filter((option) => option.deckText.trim()),
     [deckLabels, players, texts, ui],
   );

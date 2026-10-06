@@ -279,15 +279,6 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         // order alongside its controller's other triggers; its targets are
         // chosen then (CR 603.3d). Remember what it needs from this
         // resolution and queue it.
-        let id = game.effect_store.next_reflexive_trigger_id;
-        game.effect_store.next_reflexive_trigger_id += 1;
-        let trigger_identity = {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            "reflexive_trigger".hash(&mut hasher);
-            id.hash(&mut hasher);
-            crate::triggers::TriggerIdentity(hasher.finish())
-        };
         let (source_stable_id, source_name, source_snapshot) =
             if let Some(source) = game.object(ctx.source) {
                 (
@@ -312,55 +303,36 @@ impl EffectExecutor for ReflexiveTriggerEffect {
                     None,
                 )
             };
-        let pending = PendingReflexiveTrigger {
-            trigger_identity,
-            source: ctx.source,
-            controller: ctx.controller,
-            effects: self.effects.clone(),
-            choices: self.choices.clone(),
-            tagged_objects: tagged_objects.clone(),
-            tagged_players: ctx.tagged_players.clone(),
-            effect_outcomes: ctx.effect_outcomes.clone(),
-            targets: ctx.targets.clone(),
-            x_value: reflexive_x,
-            iteration: ctx.iteration,
-            combat: ctx.combat,
-            triggering_event: ctx.triggering_event.clone(),
-            event_value_amount: ctx.event_value_amount,
-            optional_costs_paid: ctx.optional_costs_paid.clone(),
-            source_snapshot: source_snapshot.clone(),
-        };
-        game.effect_store.pending_reflexive_triggers.push(pending);
-
         let triggering_event = ctx.triggering_event.clone().unwrap_or_else(|| {
             crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::StateTriggerEvent::new(ctx.source),
                 ctx.provenance,
             )
         });
-        game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
-            source: ctx.source,
-            controller: ctx.controller,
-            x_value: reflexive_x,
-            event_value_amount: ctx.event_value_amount,
-            ability: crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::custom(
-                    REFLEXIVE_TRIGGER_ID,
-                    "When you do".to_string(),
-                ),
-                effects: crate::resolution::ResolutionProgram::from_effects(self.effects.clone()),
-                choices: Vec::new(),
-                intervening_if: None,
-                presentation_label: None,
-            },
+        register_reflexive_trigger(
+            game,
             triggering_event,
             source_stable_id,
             source_name,
-            source_snapshot,
-            tagged_objects,
-            source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
-            trigger_identity,
-        }]);
+            |trigger_identity| PendingReflexiveTrigger {
+                trigger_identity,
+                source: ctx.source,
+                controller: ctx.controller,
+                effects: self.effects.clone(),
+                choices: self.choices.clone(),
+                tagged_objects: tagged_objects.clone(),
+                tagged_players: ctx.tagged_players.clone(),
+                effect_outcomes: ctx.effect_outcomes.clone(),
+                targets: ctx.targets.clone(),
+                x_value: reflexive_x,
+                iteration: ctx.iteration,
+                combat: ctx.combat,
+                triggering_event: ctx.triggering_event.clone(),
+                event_value_amount: ctx.event_value_amount,
+                optional_costs_paid: ctx.optional_costs_paid.clone(),
+                source_snapshot: source_snapshot.clone(),
+            },
+        );
         Ok(EffectOutcome::count(1))
     }
 }
@@ -394,15 +366,6 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     fallback_snapshot: Option<ObjectSnapshot>,
 ) {
-    let id = game.effect_store.next_reflexive_trigger_id;
-    game.effect_store.next_reflexive_trigger_id += 1;
-    let trigger_identity = {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        "reflexive_trigger".hash(&mut hasher);
-        id.hash(&mut hasher);
-        crate::triggers::TriggerIdentity(hasher.finish())
-    };
     let fallback_snapshot = fallback_snapshot.or_else(|| {
         game.turn_store
             .turn_history
@@ -431,9 +394,19 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
                 ),
             },
         };
-    game.effect_store
-        .pending_reflexive_triggers
-        .push(PendingReflexiveTrigger {
+    let provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::StateTrigger);
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::StateTriggerEvent::new(source),
+        provenance,
+    );
+    register_reflexive_trigger(
+        game,
+        triggering_event,
+        source_stable_id,
+        source_name,
+        |trigger_identity| PendingReflexiveTrigger {
             trigger_identity,
             source,
             controller,
@@ -450,25 +423,39 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
             event_value_amount: None,
             optional_costs_paid: Default::default(),
             source_snapshot: source_snapshot.clone(),
-        });
-    let provenance = game
-        .provenance_graph_mut()
-        .alloc_root_event(crate::events::EventKind::StateTrigger);
-    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
-        crate::events::StateTriggerEvent::new(source),
-        provenance,
+        },
     );
-    game.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
-        source,
-        controller,
-        x_value: None,
-        event_value_amount: None,
+}
+
+/// Register one reflexive occurrence and its deferred publication together.
+/// Adapters freeze their source policy and inherited context before this owner;
+/// choices remain in the pending context until APNAP stack placement.
+fn register_reflexive_trigger(
+    game: &mut GameState,
+    triggering_event: crate::triggers::TriggerEvent,
+    source_stable_id: crate::ids::StableId,
+    source_name: String,
+    capture: impl FnOnce(crate::triggers::TriggerIdentity) -> PendingReflexiveTrigger,
+) {
+    use std::hash::{Hash, Hasher};
+    let id = game.effect_store.next_reflexive_trigger_id;
+    game.effect_store.next_reflexive_trigger_id += 1;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "reflexive_trigger".hash(&mut hasher);
+    id.hash(&mut hasher);
+    let trigger_identity = crate::triggers::TriggerIdentity(hasher.finish());
+    let pending = capture(trigger_identity);
+    let entry = crate::triggers::TriggeredAbilityEntry {
+        source: pending.source,
+        controller: pending.controller,
+        x_value: pending.x_value,
+        event_value_amount: pending.event_value_amount,
         ability: crate::ability::TriggeredAbility {
             trigger: crate::triggers::Trigger::custom(
                 REFLEXIVE_TRIGGER_ID,
                 "When you do".to_string(),
             ),
-            effects: crate::resolution::ResolutionProgram::from_effects(effects),
+            effects: crate::resolution::ResolutionProgram::from_effects(pending.effects.clone()),
             choices: Vec::new(),
             intervening_if: None,
             presentation_label: None,
@@ -476,11 +463,13 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
         triggering_event,
         source_stable_id,
         source_name,
-        source_snapshot,
-        tagged_objects,
+        source_snapshot: pending.source_snapshot.clone(),
+        tagged_objects: pending.tagged_objects.clone(),
         source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
         trigger_identity,
-    }]);
+    };
+    game.effect_store.pending_reflexive_triggers.push(pending);
+    game.defer_trigger_entries([entry]);
 }
 
 /// Custom trigger id for queued reflexive triggered abilities.
@@ -626,7 +615,6 @@ pub(crate) fn reflexive_trigger_stack_entry(
     }
     Some(Some(entry))
 }
-
 #[cfg(test)]
 mod tests {
     #[cfg(ironsmith_runtime_parser_tests)]

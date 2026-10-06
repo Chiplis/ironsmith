@@ -1028,6 +1028,7 @@ impl SnapshotJsEncodingCache {
         )?;
         self.set_serde(&object, "phase", &snapshot.phase)?;
         self.set_serde(&object, "step", &snapshot.step)?;
+        self.set_serde(&object, "combat_damage_step", &snapshot.combat_damage_step)?;
         self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
         self.set_serde(&object, "stack_preview", &snapshot.stack_preview)?;
         self.set_serde(&object, "stack_objects", &snapshot.stack_objects)?;
@@ -2358,6 +2359,7 @@ pub(super) struct GameSnapshot {
     pub(super) priority_team_players: Vec<u8>,
     pub(super) phase: String,
     pub(super) step: Option<String>,
+    pub(super) combat_damage_step: Option<&'static str>,
     pub(super) stack_size: usize,
     pub(super) subgame_depth: usize,
     pub(super) subgame_starting_procedure_pending: bool,
@@ -3245,6 +3247,7 @@ impl GameSnapshot {
                 .collect(),
             phase: game.turn.phase.to_string(),
             step: game.turn.step.map(|step| step.to_string()),
+            combat_damage_step: None,
             stack_size,
             subgame_depth: game.subgame_depth(),
             subgame_starting_procedure_pending: game.subgame_starting_procedure_pending(),
@@ -3370,14 +3373,16 @@ pub(super) fn build_object_details_snapshot(
         &obj.subtypes,
     );
 
-    let current = (obj.zone == Zone::Battlefield)
-        .then(|| game.calculated_characteristics(id))
-        .flatten();
-    let abilities = if let Some(current) = current.as_ref() {
+    let current = game.current_characteristics(id);
+    let abilities = if let Some(current) = current
+        .as_ref()
+        .filter(|_| obj.zone == Zone::Battlefield)
+    {
         current_ability_surface_texts_for_battlefield(game, obj, Some(current))
     } else {
-        let current_abilities = game
-            .current_abilities(id)
+        let current_abilities = current
+            .as_ref()
+            .map(|current| current.abilities.to_vec())
             .unwrap_or_else(|| obj.abilities_vec());
         ironsmith::runtime_display::object_ability_surface_texts(
             obj,
@@ -3385,16 +3390,32 @@ pub(super) fn build_object_details_snapshot(
             definition,
         )
     };
-    let oracle_text = if abilities.is_empty() {
-        obj.compiled_card_text.to_string()
+    // Ability labels are not the complete text box: spells also have effect
+    // text, and cards can have alternative casting instructions. Use the
+    // layered rules surface, preserving copies and actual ability loss.
+    let compiled_text = if let Some(current) = current.as_ref() {
+        if current.abilities.as_slice() == obj.abilities.as_slice() {
+            let lines = current
+                .compiled_card_text
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            if lines.is_empty() && current.compiled_card_text == obj.compiled_card_text {
+                printed_compiled_text
+            } else {
+                lines
+            }
+        } else {
+            // An empty surface here is real ability loss, not a request to
+            // restore the original card's rules through the printed fallback.
+            current_ability_surface_texts_for_battlefield(game, obj, Some(current))
+        }
     } else {
-        abilities.join("\n")
-    };
-    let compiled_text = if abilities.is_empty() {
         printed_compiled_text
-    } else {
-        abilities.clone()
     };
+    let oracle_text = compiled_text.join("\n");
 
     Some(ObjectDetailsSnapshot {
         id: obj.id.0,
@@ -3550,6 +3571,201 @@ mod tests {
             .subtypes(vec![Subtype::Bear])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build()
+    }
+
+    #[test]
+    fn inspector_rules_keep_inactive_conditional_abilities_in_every_zone() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "Rhox Pummeler",
+            "Type: Creature — Rhino Soldier\nPower/Toughness: 6/3\nThis creature enters with a shield counter on it.\nThis creature has trample as long as it has a shield counter on it.",
+            false,
+        ).unwrap();
+        for zone in [Zone::Hand, Zone::Stack, Zone::Battlefield, Zone::Graveyard] {
+            let id = game.create_object_from_definition(&definition, alice, zone);
+            game.object_mut(id)
+                .unwrap()
+                .remove_counters(CounterType::Shield, u32::MAX);
+            let inactive = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+            assert!(
+                inactive
+                    .compiled_text
+                    .iter()
+                    .any(|line| line.contains("shield counter") && line.contains("trample")),
+                "inactive conditional rule must remain in {zone:?}: {:?}",
+                inactive.compiled_text
+            );
+            if zone == Zone::Battlefield {
+                assert!(!game.current_has_static_ability_id(
+                    id,
+                    ironsmith::static_abilities::StaticAbilityId::Trample
+                ));
+                game.object_mut(id)
+                    .unwrap()
+                    .add_counters(CounterType::Shield, 1);
+                assert!(game.current_has_static_ability_id(
+                    id,
+                    ironsmith::static_abilities::StaticAbilityId::Trample
+                ));
+                let active = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+                assert!(
+                    active
+                        .compiled_text
+                        .iter()
+                        .any(|line| line.contains("shield counter") && line.contains("trample"))
+                );
+                game.object_mut(id)
+                    .unwrap()
+                    .remove_counters(CounterType::Shield, 1);
+                assert!(!game.current_has_static_ability_id(
+                    id,
+                    ironsmith::static_abilities::StaticAbilityId::Trample
+                ));
+                assert_eq!(
+                    build_object_details_snapshot(&game, id, Some(&definition))
+                        .unwrap()
+                        .compiled_text,
+                    inactive.compiled_text
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inspector_rules_keep_conditional_stats_but_honor_actual_ability_loss() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "Nimble Mongoose",
+            "Type: Creature — Mongoose\nPower/Toughness: 1/1\nShroud\nThis creature gets +2/+2 as long as there are seven or more cards in your graveyard.",
+            false,
+        ).unwrap();
+        let id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let before = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+        assert_eq!(before.power, Some(1));
+        assert!(
+            before
+                .compiled_text
+                .iter()
+                .any(|line| line.contains("seven") || line.contains("7")),
+            "{:?}",
+            before.compiled_text
+        );
+        for _ in 0..7 {
+            game.create_object_from_card(&test_bears_card(), alice, Zone::Graveyard);
+        }
+        let active = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+        assert_eq!(active.power, Some(3));
+        assert!(
+            active
+                .compiled_text
+                .iter()
+                .any(|line| line.contains("+2/+2"))
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                id,
+                alice,
+                EffectTarget::Specific(id),
+                Modification::RemoveAllAbilities,
+            ));
+        let blank = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+        assert!(
+            blank.compiled_text.is_empty(),
+            "actual ability loss must not restore printed rules: {:?}",
+            blank.compiled_text
+        );
+        assert!(blank.oracle_text.is_empty());
+    }
+
+    #[test]
+    fn inspector_rules_keep_spell_effects_alongside_uncounterability() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "Supreme Verdict",
+            "Type: Sorcery\nThis spell can't be countered.\nDestroy all creatures.",
+            false,
+        )
+        .unwrap();
+        for zone in [Zone::Hand, Zone::Stack, Zone::Graveyard] {
+            let id = game.create_object_from_definition(&definition, alice, zone);
+            let details = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+            assert!(
+                details
+                    .compiled_text
+                    .iter()
+                    .any(|line| line.contains("can't be countered")),
+                "{:?}",
+                details.compiled_text
+            );
+            assert!(
+                details
+                    .compiled_text
+                    .iter()
+                    .any(|line| line.contains("Destroy all creatures")),
+                "spell effects must survive alongside static abilities in {zone:?}: {:?}",
+                details.compiled_text
+            );
+            assert_eq!(details.oracle_text, details.compiled_text.join("\n"));
+        }
+    }
+
+    #[test]
+    fn inspector_rules_follow_copies_instead_of_restoring_original_text() {
+        let _guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(
+            "Rules Copy Fixture",
+            "Type: Creature\nPower/Toughness: 1/1\nFlying",
+            false,
+        )
+        .unwrap();
+        let id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let donor = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        let values = ironsmith::snapshot::CopiableValues::from_object(game.object(donor).unwrap());
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                id,
+                alice,
+                EffectTarget::Specific(id),
+                Modification::CopyOf {
+                    target_id: donor,
+                    copiable_values: Box::new(values),
+                    preserve_source_abilities: false,
+                    name_override: None,
+                    name_override_surface: None,
+                    add_supertypes: Vec::new(),
+                },
+            ));
+        let copied = build_object_details_snapshot(&game, id, Some(&definition)).unwrap();
+        assert_eq!(copied.name, "Grizzly Bears");
+        assert!(
+            copied.compiled_text.is_empty(),
+            "a vanilla copy must not regain the original Flying text: {:?}",
+            copied.compiled_text
+        );
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                id,
+                alice,
+                EffectTarget::Specific(id),
+                Modification::AddAbility(StaticAbility::lifelink()),
+            ));
+        assert_eq!(
+            build_object_details_snapshot(&game, id, Some(&definition))
+                .unwrap()
+                .compiled_text,
+            vec!["Lifelink"]
+        );
     }
 
     fn add_native_escape_to_object(game: &mut GameState, id: ironsmith::ids::ObjectId) {

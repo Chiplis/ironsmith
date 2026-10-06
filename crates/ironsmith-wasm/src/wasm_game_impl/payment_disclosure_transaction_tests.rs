@@ -34,6 +34,69 @@ impl ironsmith::effects::CostExecutableEffect for TransientPaymentFault {
     }
 }
 
+#[derive(Clone, Debug)]
+struct FaultingDiscardCost {
+    discard: ironsmith::effect::Effect,
+    failing: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+impl ironsmith::effects::EffectExecutor for FaultingDiscardCost {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ironsmith::effects::EffectContext,
+    ) -> Result<ironsmith::effect::EffectOutcome, ironsmith::effects::ExecutionError> {
+        ironsmith::effects::EffectExecutor::execute(
+            &ironsmith::effects::SequenceEffect::new(vec![
+                self.discard.clone(),
+                ironsmith::effect::Effect::new(TransientPaymentFault(self.failing.clone())),
+            ]),
+            game,
+            ctx,
+        )
+    }
+    fn as_cost_executable(&self) -> Option<&dyn ironsmith::effects::CostExecutableEffect> {
+        Some(self)
+    }
+    fn cost_description(&self) -> Option<String> {
+        Some("Discard a card, then complete payment".into())
+    }
+}
+impl ironsmith::effects::CostExecutableEffect for FaultingDiscardCost {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        payer: PlayerId,
+    ) -> Result<(), ironsmith::effects::CostValidationError> {
+        ironsmith::effects::CostExecutableEffect::can_execute_as_cost(
+            self.discard.0.as_cost_executable().unwrap(), game, source, payer,
+        )
+    }
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        payer: PlayerId,
+        reason: ironsmith::costs::PaymentReason,
+    ) -> Result<(), ironsmith::effects::CostValidationError> {
+        ironsmith::effects::CostExecutableEffect::can_execute_as_cost_with_reason(
+            self.discard.0.as_cost_executable().unwrap(), game, source, payer, reason,
+        )
+    }
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ironsmith::effects::EffectContext,
+        reason: ironsmith::costs::PaymentReason,
+    ) -> Result<(), ironsmith::effects::CostValidationError> {
+        self.discard
+            .0
+            .as_cost_executable()
+            .unwrap()
+            .can_execute_as_cost_with_context(game, ctx, reason)
+    }
+}
+
 fn disclosure_command(wasm: &mut WasmGame, command: UiCommand) -> Result<JsValue, JsValue> {
     wasm.dispatch_typed_command(command, 0.0)
 }
@@ -122,12 +185,13 @@ fn payment_disclosure_transaction_retries_same_choice_without_double_payment_or_
                         .is_some()
                     {
                         return ironsmith::costs::Cost::try_effect(ironsmith::effect::Effect::new(
-                            ironsmith::effects::SequenceEffect::new(vec![
-                                effect.clone(),
-                                ironsmith::effect::Effect::new(TransientPaymentFault(
-                                    failing.clone(),
-                                )),
-                            ]),
+                            // Sequence's standalone preflight binds unannounced
+                            // X to zero. Keep the printed discard validator so
+                            // the injected fault only changes live execution.
+                            FaultingDiscardCost {
+                                discard: effect.clone(),
+                                failing: failing.clone(),
+                            },
                         ))
                         .unwrap();
                     }
@@ -442,4 +506,105 @@ fn payment_disclosure_transaction_rejects_stale_plan_and_illegal_source_then_acc
     assert!(!wasm.game.is_tapped(opponent_land));
     assert!(wasm.payment_disclosure.is_none());
     assert!(!wasm.is_cancelable());
+}
+
+#[test]
+fn payment_disclosure_unpayable_cycling_rolls_back_without_retry_lock() {
+    let _guard = crate::test_id_counter_guard();
+    let (mut wasm, _) = manual_payment_fixture();
+    let alice = PlayerId(0);
+    let definition = ironsmith_registry_test::compile_to_runtime_definition(
+        "Cycling payment",
+        "Cycling {2}",
+        false,
+    )
+    .unwrap();
+    let card = wasm
+        .game
+        .create_object_from_definition(&definition, alice, Zone::Hand);
+    payment_disclosure_track_hand(&mut wasm, card, 0);
+    let ability_index = definition
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_)))
+        .unwrap();
+    let action = LegalAction::ActivateAbility {
+        source: card,
+        ability_index,
+    };
+    wasm.pending_decision = Some(DecisionContext::Priority(
+        PriorityContext::new(&wasm.game, alice, vec![action]).unwrap(),
+    ));
+    let before_hand = wasm.game.player(alice).unwrap().hand.clone();
+    let before_pool = wasm.game.player(alice).unwrap().mana_pool.clone();
+    disclosure_command(
+        &mut wasm,
+        UiCommand::PriorityAction {
+            action_index: Some(0),
+            action_ref: None,
+        },
+    )
+    .expect("an unpayable cycling announcement must synchronize a rollback, not fail dispatch");
+    assert!(
+        wasm.payment_disclosure.is_none(),
+        "a rules rollback must not demand an impossible retry"
+    );
+    assert!(wasm.priority_state.pending_activation.is_none());
+    assert_eq!(wasm.game.player(alice).unwrap().hand, before_hand);
+    assert_eq!(wasm.game.player(alice).unwrap().mana_pool, before_pool);
+    assert!(wasm.game.stack.is_empty());
+    assert!(wasm.game.is_publicly_revealed_hidden_card(card));
+    assert!(matches!(
+        wasm.pending_decision,
+        Some(DecisionContext::Priority(_))
+    ));
+    disclosure_priority_matching(&mut wasm, |action| {
+        matches!(action, LegalAction::PassPriority)
+    });
+}
+
+#[test]
+fn payment_disclosure_rules_rollback_keeps_opened_identity_and_commitment_on_peer() {
+    let _guard = crate::test_id_counter_guard();
+    let (mut wasm, source) = manual_payment_fixture();
+    let alice = PlayerId(0);
+    let definition = ironsmith_registry_test::cards::definitions::ornithopter();
+    let card =
+        wasm.game
+            .create_hidden_card_placeholder(alice, Zone::Hand, 3, "encrypted-position".into());
+    let checkpoint = wasm.capture_replay_checkpoint();
+    wasm.game
+        .reveal_hidden_card_with_definition(card, &definition)
+        .unwrap();
+    let mut info = wasm.game.hidden_card_info(card).unwrap().clone();
+    info.origin_slot = Some(3);
+    info.origin_commitment = Some("encrypted-position".into());
+    info.slot = 9;
+    info.commitment = "opened-deck-slot".into();
+    wasm.game.set_hidden_card_info(card, info.clone());
+    wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
+        source,
+        payer: alice,
+        hand_objects: [card].into_iter().collect(),
+        required_retry: None,
+    });
+    let disclosed = wasm.game.clone();
+    // Model the engine's own automatic cost rollback, which restores an older
+    // placeholder before the session restores its action boundary.
+    wasm.restore_replay_checkpoint(&checkpoint);
+    wasm.rollback_live_action_chain_to_checkpoint(
+        checkpoint,
+        &ironsmith::game_loop::GameLoopError::ActionCancelled("cost became unpayable".into()),
+        &disclosed,
+    )
+    .unwrap();
+    assert_eq!(wasm.game.object(card).unwrap().name.as_str(), "Ornithopter");
+    assert_eq!(wasm.game.object(card).unwrap().zone, Zone::Hand);
+    assert_eq!(wasm.game.hidden_card_info(card).unwrap(), &info);
+    assert!(wasm.game.is_publicly_revealed_hidden_card(card));
+    assert!(wasm.payment_disclosure.is_none());
+    assert!(
+        !wasm.is_cancelable(),
+        "there is no completed action to undo across this disclosure"
+    );
 }

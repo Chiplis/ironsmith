@@ -320,7 +320,9 @@ pub struct PendingRemoveCountersAmongChoice {
     pub cost: crate::effects::RemoveAnyCountersAmongEffect,
     pub distribution_ready: bool,
     pub allocations: std::collections::VecDeque<(ObjectId, u32)>,
-    pub removed_total: u32,
+    /// Authored selections, retained while removal replacements await a choice.
+    pub selected_removals: Vec<(ObjectId, crate::CounterType, u32)>,
+    pub selected_total: u32,
 }
 
 /// One CR 601.2d/602.2b division waiting to be announced.

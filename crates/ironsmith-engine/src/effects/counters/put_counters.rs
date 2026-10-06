@@ -42,13 +42,12 @@ impl EffectExecutor for PutCountersEffect {
     fn prepare_simultaneous_player_action(
         &self,
         _game: &GameState,
-        ctx: &mut ExecutionContext,
+        _ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Counter placement on determined objects involves no choices; defer to commit so the
-        // whole each-player action lands as one batch.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
+        Ok(Box::new(CounterInstructionProposal {
+            effect: self.clone(),
+            input: None,
+            prepared: Vec::new(),
         }))
     }
 
@@ -61,227 +60,77 @@ impl EffectExecutor for PutCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let zero_amount = matches!(self.amount, Value::Fixed(0));
-            // Handle Source target specially (for abilities like level-up that target themselves).
-            let target_ids = match self.target.base() {
-                ChooseSpec::Object(filter)
-                    if ctx.cause.cause_type == crate::events::cause::CauseType::Cost
-                        || (ctx.optional_action
-                            && self.completion_action
-                                == Some(crate::events::KeywordActionKind::Blight)) =>
-                {
-                    let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-                    let candidates: Vec<_> = game
-                        .battlefield
-                        .iter()
-                        .copied()
-                        .filter(|id| {
-                            !game.is_phased_out(*id)
-                                && (zero_amount
-                                    || game.can_have_counter_type_placed(*id, self.counter_type))
-                                && game
-                                    .object(*id)
-                                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
-                        })
-                        .collect();
-                    if candidates.is_empty() {
-                        return Err(ExecutionError::Impossible(
-                            "no valid object for counter cost".into(),
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let (mut requests, count) = match resolve_counter_inputs(self, game, ctx)? {
+                    CounterInputPlan::Pending => {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
                         ));
                     }
-                    let spec = crate::decisions::specs::ChooseObjectsSpec::new(
-                        ctx.source,
-                        "Choose a creature to receive counters",
-                        candidates,
-                        1,
-                        Some(1),
-                    );
-                    crate::decisions::make_decision(
-                        game,
-                        ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                    )
-                }
-                ChooseSpec::Source => vec![ctx.source],
-                _ => match resolve_objects_for_effect(game, ctx, &self.target) {
-                    Ok(objects) if !objects.is_empty() => objects,
-                    _ => {
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
-                        }
-                        // No target chosen (valid for "up to" effects).
-                        let count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
-                        return Ok(counter_action_completed(
+                    CounterInputPlan::Finished { outcome, count } => {
+                        return counter_action_completed_outputs(
                             self,
+                            game,
                             ctx,
-                            EffectOutcome::resolved(),
+                            crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
                             count,
-                        ));
+                        );
                     }
-                },
-            };
-
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let max_count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
-            let amount_is_up_to = self
-                .amount
-                .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo);
-            let count = if amount_is_up_to {
-                let description = format!(
-                    "Choose how many {} counters to put",
-                    self.counter_type.description()
-                );
-                let spec = NumberSpec::up_to(ctx.source, max_count, description);
-                let chosen = make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    spec,
-                    FallbackStrategy::Maximum,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                chosen.min(max_count)
-            } else {
-                max_count
-            };
-            if count == 0 {
-                let outcome = counter_action_completed(self, ctx, EffectOutcome::count(0), 0);
-                return Ok(if amount_is_up_to {
-                    outcome.with_execution_fact(ExecutionFact::ChosenNumber(0))
-                } else {
-                    outcome
-                });
-            }
-
-            // CR 601.2d / 603.3d: the controller announces how distributed
-            // counters are divided (at least one per target) when the targets
-            // are chosen. A share announced for a target that has since become
-            // illegal is lost (CR 608.2b). Without an announced division (a
-            // non-targeted "distribute among" or a trigger whose division wasn't
-            // announced) the controller divides them now.
-            let distributed_counts: Option<Vec<(ObjectId, u32)>> = if self.distributed {
-                let announced = if self.target.is_target() {
-                    ctx.take_target_distribution(&self.target)
-                } else {
-                    None
+                    CounterInputPlan::Placements { requests, count } => (requests, count),
                 };
-                let division: Vec<(Target, u32)> = if let Some(announced) = announced {
-                    announced.allocations
-                } else if target_ids.len() == 1 {
-                    vec![(Target::Object(target_ids[0]), count)]
+                // Freeze every original before deferred additions. Grouping
+                // notifications alone does not make sequential mutations simultaneous.
+                let outcomes = if requests.len() > 1 {
+                    super::execute_counter_batch_with_outputs(game, ctx, requests)?
+                } else if let Some(event) = requests.pop() {
+                    vec![super::execute_counter_placement_with_outputs(
+                        game, ctx, event,
+                    )?]
                 } else {
-                    let min_per_target =
-                        if self.target.is_target() && count as usize >= target_ids.len() {
-                            1
-                        } else {
-                            0
-                        };
-                    let spec = DistributeSpec::new(
-                        ctx.source,
-                        count,
-                        target_ids.iter().copied().map(Target::Object).collect(),
-                        min_per_target,
-                    );
-                    let division = make_decision_with_fallback(
-                        game,
-                        &mut ctx.decision_maker,
-                        ctx.controller,
-                        Some(ctx.source),
-                        spec,
-                        FallbackStrategy::Maximum,
-                    );
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    division
+                    Vec::new()
                 };
-                // Keep the allocations in target order so counters land in the
-                // same order on every peer; never place more than the total.
-                let mut remaining = count;
-                let mut allocations: Vec<(ObjectId, u32)> = Vec::new();
-                for target_id in &target_ids {
-                    let share: u32 = division
-                        .iter()
-                        .filter(|(target, _)| *target == Target::Object(*target_id))
-                        .map(|(_, amount)| *amount)
-                        .sum();
-                    let share = share.min(remaining);
-                    remaining -= share;
-                    allocations.push((*target_id, share));
-                }
-                Some(allocations)
-            } else {
-                None
-            };
-
-            let mut outcomes = Vec::with_capacity(target_ids.len());
-            // Counters put on several objects by one instruction are one event
-            // for "one or more ... on one or more ..." triggers (CR 603.2c).
-            let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
-            for target_id in target_ids {
-                let assigned_count = distributed_counts
-                    .as_ref()
-                    .map(|allocations| {
-                        allocations
-                            .iter()
-                            .find(|(id, _)| *id == target_id)
-                            .map_or(0, |(_, amount)| *amount)
-                    })
-                    .unwrap_or(count);
-                if assigned_count == 0 {
-                    continue;
-                }
-                let event = crate::events::Event::put_counters(
-                    target_id,
-                    self.counter_type,
-                    assigned_count,
-                    ctx.cause.clone(),
-                )
-                .with_provenance(ctx.provenance);
-                let mut outcome = super::execute_counter_placement(game, ctx, event)?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
-                for event in &mut outcome.events {
-                    if event.kind() == crate::events::EventKind::MarkersChanged {
-                        let batch = *counter_batch.get_or_insert_with(|| {
-                            game.alloc_child_event_provenance(
-                                ctx.provenance,
-                                crate::events::EventKind::MarkersChanged,
-                            )
-                        });
-                        *event = event.clone().with_simultaneous_batch(batch);
-                    }
-                }
-                outcomes.push(outcome);
-            }
 
-            let outcome = EffectOutcome::aggregate_summing_counts(outcomes);
-            Ok(counter_action_completed(self, ctx, outcome, count))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+                let outcome = EffectOutcome::aggregate_summing_counts(
+                    outcomes.iter().map(|outputs| outputs.outcome.clone()),
+                );
+                let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
+                for child in outcomes {
+                    outputs.retain_owned_child(child);
+                }
+                counter_action_completed_outputs(self, game, ctx, outputs, count)
+            },
+        );
+        // Preserve this adapter's existing neutral result for a suspended child,
+        // including a child that failed after opening its decision. The shared
+        // transaction owns rollback; an ordinary failure still propagates.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }
@@ -330,14 +179,461 @@ impl EffectExecutor for PutCountersEffect {
     }
 }
 
-fn counter_action_completed(
+enum CounterInputPlan {
+    Pending,
+    Finished {
+        outcome: EffectOutcome,
+        count: u32,
+    },
+    Placements {
+        requests: Vec<crate::events::Event>,
+        count: u32,
+    },
+}
+
+/// Resolve authored choices and allocations once, before placement originals.
+fn resolve_counter_inputs(
     effect: &PutCountersEffect,
-    ctx: &ExecutionContext,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<CounterInputPlan, ExecutionError> {
+    let zero_amount = matches!(effect.amount, Value::Fixed(0));
+    // Handle Source target specially (for abilities like level-up that target themselves).
+    let target_ids = match effect.target.base() {
+        ChooseSpec::Object(filter)
+            if ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+                || (ctx.optional_action
+                    && effect.completion_action
+                        == Some(crate::events::KeywordActionKind::Blight)) =>
+        {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            let candidates: Vec<_> = game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|id| {
+                    !game.is_phased_out(*id)
+                        && (zero_amount
+                            || game.can_have_counter_type_placed(*id, effect.counter_type))
+                        && game
+                            .object(*id)
+                            .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                })
+                .collect();
+            if candidates.is_empty() {
+                return Err(ExecutionError::Impossible(
+                    "no valid object for counter cost".into(),
+                ));
+            }
+            let spec = crate::decisions::specs::ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose a creature to receive counters",
+                candidates,
+                1,
+                Some(1),
+            );
+            crate::decisions::make_decision(
+                game,
+                ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+            )
+        }
+        ChooseSpec::Source => vec![ctx.source],
+        _ => match resolve_objects_for_effect(game, ctx, &effect.target) {
+            Ok(objects) if !objects.is_empty() => objects,
+            _ => {
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CounterInputPlan::Pending);
+                }
+                // No target chosen (valid for "up to" effects).
+                let count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
+                return Ok(CounterInputPlan::Finished {
+                    outcome: EffectOutcome::resolved(),
+                    count,
+                });
+            }
+        },
+    };
+
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CounterInputPlan::Pending);
+    }
+    let max_count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
+    let amount_is_up_to = effect
+        .amount
+        .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo);
+    let count = if amount_is_up_to {
+        let description = format!(
+            "Choose how many {} counters to put",
+            effect.counter_type.description()
+        );
+        let spec = NumberSpec::up_to(ctx.source, max_count, description);
+        let chosen = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            spec,
+            FallbackStrategy::Maximum,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CounterInputPlan::Pending);
+        }
+        chosen.min(max_count)
+    } else {
+        max_count
+    };
+    if count == 0 {
+        let outcome = if amount_is_up_to {
+            EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0))
+        } else {
+            EffectOutcome::count(0)
+        };
+        return Ok(CounterInputPlan::Finished { outcome, count: 0 });
+    }
+
+    // CR 601.2d / 603.3d: the controller announces how distributed
+    // counters are divided (at least one per target) when the targets
+    // are chosen. A share announced for a target that has since become
+    // illegal is lost (CR 608.2b). Without an announced division (a
+    // non-targeted "distribute among" or a trigger whose division wasn't
+    // announced) the controller divides them now.
+    let distributed_counts: Option<Vec<(ObjectId, u32)>> = if effect.distributed {
+        let announced = if effect.target.is_target() {
+            ctx.take_target_distribution(&effect.target)
+        } else {
+            None
+        };
+        let division: Vec<(Target, u32)> = if let Some(announced) = announced {
+            announced.allocations
+        } else if target_ids.len() == 1 {
+            vec![(Target::Object(target_ids[0]), count)]
+        } else {
+            let min_per_target = if effect.target.is_target() && count as usize >= target_ids.len()
+            {
+                1
+            } else {
+                0
+            };
+            let spec = DistributeSpec::new(
+                ctx.source,
+                count,
+                target_ids.iter().copied().map(Target::Object).collect(),
+                min_per_target,
+            );
+            let division = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CounterInputPlan::Pending);
+            }
+            division
+        };
+        // Keep the allocations in target order so counters land in the
+        // same order on every peer; never place more than the total.
+        let mut remaining = count;
+        let mut allocations: Vec<(ObjectId, u32)> = Vec::new();
+        for target_id in &target_ids {
+            let share: u32 = division
+                .iter()
+                .filter(|(target, _)| *target == Target::Object(*target_id))
+                .map(|(_, amount)| *amount)
+                .sum();
+            let share = share.min(remaining);
+            remaining -= share;
+            allocations.push((*target_id, share));
+        }
+        Some(allocations)
+    } else {
+        None
+    };
+
+    let mut requests = Vec::with_capacity(target_ids.len());
+    for target_id in target_ids {
+        let assigned_count = distributed_counts
+            .as_ref()
+            .map(|allocations| {
+                allocations
+                    .iter()
+                    .find(|(id, _)| *id == target_id)
+                    .map_or(0, |(_, amount)| *amount)
+            })
+            .unwrap_or(count);
+        if assigned_count == 0 {
+            continue;
+        }
+        let event = crate::events::Event::put_counters(
+            target_id,
+            effect.counter_type,
+            assigned_count,
+            ctx.cause.clone(),
+        )
+        .with_provenance(ctx.provenance);
+        requests.push(event);
+    }
+    Ok(CounterInputPlan::Placements { requests, count })
+}
+
+struct CounterInstructionProposal {
+    effect: PutCountersEffect,
+    input: Option<CounterInputPlan>,
+    prepared: Vec<Option<super::prepared_placement::PreparedCounterPlacement>>,
+}
+
+impl std::fmt::Debug for CounterInstructionProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CounterInstructionProposal")
+            .field("effect", &self.effect)
+            .finish_non_exhaustive()
+    }
+}
+
+struct CounterInstructionCompletion {
+    effect: PutCountersEffect,
+    count: u32,
+    batch: Option<crate::provenance::ProvNodeId>,
+    inner: Option<Box<dyn crate::effects::SimultaneousEffectCompletion>>,
+}
+
+impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompletion {
+    fn observe_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        if let Some(inner) = &mut self.inner {
+            inner.observe_original(game, ctx, original)?;
+        }
+        Ok(())
+    }
+
+    fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.inner {
+            inner.freeze(game)?;
+        }
+        Ok(())
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let outputs = if let Some(inner) = self.inner {
+            inner.complete_with_outputs(game, ctx, original)?
+        } else {
+            crate::effects::CompletedEffectOutputs::aggregate_only(original)
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        counter_action_completed_outputs_in_group(
+            &self.effect,
+            game,
+            ctx,
+            outputs,
+            self.count,
+            self.batch,
+        )
+    }
+}
+
+impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if self.input.is_none() || matches!(self.input, Some(CounterInputPlan::Pending)) {
+            self.input = Some(resolve_counter_inputs(&self.effect, game, ctx)?);
+            if let Some(CounterInputPlan::Placements { requests, .. }) = &self.input {
+                self.prepared = requests.iter().map(|_| None).collect();
+            }
+        }
+        if let Some(CounterInputPlan::Placements { requests, .. }) = &self.input {
+            for (request, prepared) in requests.iter().zip(&mut self.prepared) {
+                if !prepared
+                    .as_ref()
+                    .is_some_and(|original| !original.requires_replacement_input())
+                {
+                    *prepared = Some(super::prepare_counter_placement(
+                        game,
+                        ctx,
+                        request.clone(),
+                    )?);
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let (mut receipt, count) = match self.input.take() {
+            Some(CounterInputPlan::Finished { outcome, count }) => (
+                crate::effects::SimultaneousEffectCommit::finished(
+                    crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+                ),
+                count,
+            ),
+            Some(CounterInputPlan::Placements { requests, count }) => {
+                let grouped = requests.len() > 1;
+                let mut batch = None;
+                let mut receipts = Vec::with_capacity(self.prepared.len());
+                for prepared in self.prepared {
+                    let prepared = prepared.ok_or_else(|| {
+                        ExecutionError::InternalError("counter original was not prepared".into())
+                    })?;
+                    let mut receipt =
+                        super::commit_prepared_counter_original_with_outputs(game, ctx, prepared)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                            crate::effects::CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ),
+                        ));
+                    }
+                    if grouped {
+                        super::placement::group_counter_placement_events(
+                            game,
+                            ctx,
+                            &mut receipt.outcome.outcome.events,
+                            &mut batch,
+                        );
+                    }
+                    receipts.push(receipt);
+                }
+                (
+                    crate::effects::composition::compose_original_commits_with_projection_outputs(
+                        receipts,
+                        Box::new(EffectOutcome::aggregate_summing_counts),
+                    ),
+                    count,
+                )
+            }
+            _ => {
+                return Err(ExecutionError::InternalError(
+                    "counter inputs were not prepared".into(),
+                ));
+            }
+        };
+        if self.effect.completion_action.is_some() {
+            receipt.completion = Some(Box::new(CounterInstructionCompletion {
+                effect: self.effect,
+                count,
+                batch: game.simultaneous_action_batch(),
+                inner: receipt.completion.take(),
+            }));
+        }
+        Ok(receipt)
+    }
+    fn commit(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            self.prepare_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let simultaneous = matches!(&self.input, Some(CounterInputPlan::Placements { requests, .. }) if requests.len() > 1);
+            crate::effects::composition::complete_prepared_original_with_grouping(
+                self,
+                game,
+                ctx,
+                simultaneous,
+            )
+        })
+    }
+}
+
+fn counter_action_completed_outputs(
+    effect: &PutCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outputs: crate::effects::CompletedEffectOutputs,
+    amount: u32,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let batch = game.simultaneous_action_batch();
+    counter_action_completed_outputs_in_group(effect, game, ctx, outputs, amount, batch)
+}
+
+fn counter_action_completed_in_group(
+    effect: &PutCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
     outcome: EffectOutcome,
     amount: u32,
-) -> EffectOutcome {
+    batch: Option<crate::provenance::ProvNodeId>,
+) -> Result<EffectOutcome, ExecutionError> {
+    counter_action_completed_outputs_in_group(
+        effect,
+        game,
+        ctx,
+        crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+        amount,
+        batch,
+    )
+    .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+fn counter_action_completed_outputs_in_group(
+    effect: &PutCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outputs: crate::effects::CompletedEffectOutputs,
+    amount: u32,
+    batch: Option<crate::provenance::ProvNodeId>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if let Some(action) = effect.completion_action {
-        outcome.with_event(crate::triggers::TriggerEvent::new_with_provenance(
+        let mut event = crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::KeywordActionEvent::new(
                 action,
                 ctx.iteration.iterated_player.unwrap_or(ctx.controller),
@@ -345,9 +641,21 @@ fn counter_action_completed(
                 amount,
             ),
             ctx.provenance,
-        ))
+        );
+        if let Some(batch) = batch {
+            event = event.with_simultaneous_batch(batch);
+        }
+        let completion = crate::effects::composition::publish_keyword_action_completion_receipt(
+            game, ctx, event,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        Ok(outputs.append_batch_completion_outputs(completion))
     } else {
-        outcome
+        Ok(outputs)
     }
 }
 

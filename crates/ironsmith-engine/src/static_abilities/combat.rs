@@ -8,8 +8,6 @@ use crate::decision::DecisionMaker;
 use crate::effect::Restriction;
 use crate::effect::RestrictionExt as _;
 use crate::effects::EffectExecutor;
-use crate::events::permanents::SacrificeEvent;
-use crate::events::processing::{EventOutcome, process_zone_change};
 use crate::events::{EventKind, KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{CantEffectTracker, GameState};
@@ -851,70 +849,123 @@ impl StaticAbilityKind for EnlistAttack {
         trigger_queue: &mut crate::triggers::TriggerQueue,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Option<Result<(), String>> {
-        let prompt = self.selection_context(game, source, controller, attacking_creatures);
-        let selected = decision_maker.decide_objects(game, &prompt);
-        if selected.is_empty() {
-            return Some(Ok(()));
-        }
-        if selected.len() != 1 || !prompt.candidates.iter().any(|item| item.id == selected[0]) {
-            return Some(Err("Invalid creature selected for enlist".to_string()));
-        }
-
-        let enlisted = selected[0];
-        let enlisted_snapshot = game.object(enlisted).map(|object| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-        });
-        let source_object = game.object(source).cloned();
-        let (Some(enlisted_snapshot), Some(source_object)) = (enlisted_snapshot, source_object)
-        else {
-            return Some(Err(
-                "Enlist source or chosen creature left the battlefield".to_string()
+        let mut ctx = crate::effects::ExecutionContext::new(source, controller, decision_maker)
+            .with_cause(crate::events::cause::EventCause::from_cost(
+                source, controller,
             ));
-        };
+        ctx.mana.payment_reason = Some(crate::costs::PaymentReason::Other);
+        let completed = crate::effects::composition::execute_transaction(
+            game,
+            &mut ctx,
+            || None,
+            |game, ctx| {
+                let prompt = self.selection_context(game, source, controller, attacking_creatures);
+                let selected = ctx.decision_maker.decide_objects(game, &prompt);
+                if ctx.decision_maker.awaiting_choice() || selected.is_empty() {
+                    return Ok(None);
+                }
+                if selected.len() != 1
+                    || !prompt.candidates.iter().any(|item| item.id == selected[0])
+                {
+                    return Err("Invalid creature selected for enlist".to_string());
+                }
 
-        game.tap(enlisted);
-        let provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(EventKind::PermanentTapped);
-        let tap_event = TriggerEvent::new_with_provenance(
-            crate::events::PermanentTappedEvent::capture(game, enlisted, Some(controller))
-                .with_before_snapshot(enlisted_snapshot.clone()),
-            provenance,
+                let enlisted = selected[0];
+                let source_object = game.object(source).cloned().ok_or_else(|| {
+                    "Enlist source or chosen creature left the battlefield".to_string()
+                })?;
+                ctx.source_snapshot =
+                    Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+                        &source_object,
+                        game,
+                    ));
+                ctx.provenance = game
+                    .provenance_graph_mut()
+                    .alloc_root_event(EventKind::PermanentTapped);
+                let taps = crate::effects::permanents::tap_cost_objects_with_outputs(
+                    game,
+                    ctx,
+                    &[enlisted],
+                )
+                .map_err(|error| error.to_string())?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                let enlisted_snapshot = taps
+                    .outcome
+                    .affected_object_memory()
+                    .and_then(|snapshots| snapshots.first())
+                    .cloned()
+                    .ok_or_else(|| {
+                        "Enlist payment has no tapped creature observation".to_string()
+                    })?;
+                let tagged_objects = std::collections::HashMap::from([(
+                    crate::tag::TagKey::from("enlisted_creature"),
+                    vec![enlisted_snapshot],
+                )]);
+                let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+                    &source_object,
+                    game,
+                );
+                let enlist_provenance = game
+                    .provenance_graph_mut()
+                    .alloc_root_event(EventKind::KeywordAction);
+                let combat_phase = game.turn_store.combat_phases_started_this_turn;
+                let completion =
+                    crate::effects::composition::publish_keyword_action_completion_receipt(
+                        game,
+                        ctx,
+                        TriggerEvent::new_with_provenance(
+                            KeywordActionEvent::new(
+                                KeywordActionKind::Enlist,
+                                controller,
+                                source,
+                                1,
+                            )
+                            .with_snapshot(Some(source_snapshot.clone()))
+                            .with_object_tags(tagged_objects.clone())
+                            .with_combat_phase(combat_phase),
+                            enlist_provenance,
+                        ),
+                    )
+                    .map_err(|error| error.to_string())?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                let enlist_event = completion.outcome.events.first().cloned().ok_or_else(|| {
+                    "Enlist payment has no completed keyword observation".to_string()
+                })?;
+                let receipt = taps.append_batch_completion_outputs(completion);
+                let linked_trigger = TriggeredAbilityEntry {
+                    source,
+                    controller,
+                    x_value: source_object.x_value,
+                    event_value_amount: None,
+                    ability: self.linked_trigger.clone(),
+                    triggering_event: enlist_event,
+                    source_stable_id: source_object.stable_id,
+                    source_name: source_object.name.to_string(),
+                    source_snapshot: Some(source_snapshot),
+                    tagged_objects,
+                    source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
+                    trigger_identity: crate::triggers::compute_trigger_identity(
+                        &self.linked_trigger,
+                    ),
+                };
+                Ok(Some((receipt, linked_trigger)))
+            },
         );
-        game.queue_trigger_event(provenance, tap_event.clone());
-
-        let tagged_objects = std::collections::HashMap::from([(
-            crate::tag::TagKey::from("enlisted_creature"),
-            vec![enlisted_snapshot],
-        )]);
-        let source_snapshot =
-            ObjectSnapshot::from_object_with_calculated_characteristics(&source_object, game);
-        let enlist_provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(EventKind::KeywordAction);
-        let enlist_event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Enlist, controller, source, 1)
-                .with_snapshot(Some(source_snapshot.clone()))
-                .with_object_tags(tagged_objects.clone())
-                .with_combat_phase(game.turn_store.combat_phases_started_this_turn),
-            enlist_provenance,
-        );
-        game.queue_trigger_event(enlist_provenance, enlist_event.clone());
-        trigger_queue.add(TriggeredAbilityEntry {
-            source,
-            controller,
-            x_value: source_object.x_value,
-            event_value_amount: None,
-            ability: self.linked_trigger.clone(),
-            triggering_event: enlist_event,
-            source_stable_id: source_object.stable_id,
-            source_name: source_object.name.to_string(),
-            source_snapshot: Some(source_snapshot),
-            tagged_objects,
-            source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
-            trigger_identity: crate::triggers::compute_trigger_identity(&self.linked_trigger),
-        });
-        Some(Ok(()))
+        match completed {
+            Ok(Some((receipt, linked_trigger))) => {
+                for event in receipt.outcome.events {
+                    game.queue_trigger_event(event.provenance(), event);
+                }
+                trigger_queue.add(linked_trigger);
+                Some(Ok(()))
+            }
+            Ok(None) => Some(Ok(())),
+            Err(error) => Some(Err(error)),
+        }
     }
 }
 
@@ -2169,27 +2220,51 @@ impl CantAttackUnlessCondition {
         }
     }
 
-    fn eligible_permanents_for_controller(
-        game: &GameState,
-        controller: PlayerId,
-        filter: &ObjectFilter,
-        require_sacrificable: bool,
-    ) -> Vec<ObjectId> {
-        let mut battlefield_filter = filter.clone();
-        battlefield_filter.zone = Some(Zone::Battlefield);
-        let filter_ctx = crate::target::FilterContext::default();
-
-        game.battlefield
-            .iter()
-            .copied()
-            .filter(|&id| {
-                game.object(id).is_some_and(|obj| {
-                    game.controller_of(obj) == controller
-                        && battlefield_filter.matches(obj, &filter_ctx, game)
-                        && (!require_sacrificable || game.can_be_sacrificed(id))
-                })
-            })
-            .collect()
+    /// Describe the payment as ordinary composable cost instructions. The
+    /// declaration owner supplies ordering, replay and its actual chooser.
+    fn non_mana_attack_cost_program(
+        condition: &AttackCostCondition,
+    ) -> Option<crate::cost::TotalCost> {
+        match condition {
+            AttackCostCondition::SacrificePermanents { filter, count } => Some(if *count == 0 {
+                crate::cost::TotalCost::free()
+            } else {
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::effect(
+                    crate::effects::SacrificeEffect::you(
+                        filter.clone().in_zone(Zone::Battlefield),
+                        *count,
+                    ),
+                ))
+            }),
+            AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => {
+                if *count == 0 {
+                    return Some(crate::cost::TotalCost::free());
+                }
+                let mut candidates = ObjectFilter::default()
+                    .in_zone(Zone::Battlefield)
+                    .you_control();
+                candidates
+                    .any_of
+                    .push(filter.clone().in_zone(Zone::Battlefield));
+                let tag = crate::tag::TagKey::from("attack_cost_returned");
+                // Selection and its consumer are one payment unit; other
+                // combat costs may be reordered around this unit, not inside it.
+                Some(crate::cost::TotalCost::from_cost(
+                    crate::costs::Cost::effect(crate::effects::SequenceEffect::new(vec![
+                        crate::effect::Effect::choose_objects(
+                            candidates,
+                            crate::effect::ChoiceCount::exactly(*count as usize),
+                            crate::target::PlayerFilter::You,
+                            tag.clone(),
+                        ),
+                        crate::effect::Effect::new(crate::effects::ReturnToHandEffect::with_spec(
+                            crate::target::ChooseSpec::Tagged(tag),
+                        )),
+                    ])),
+                ))
+            }
+            AttackCostCondition::PayGenericPerSourceCounter { .. } => None,
+        }
     }
 
     fn can_pay_attack_cost_now(
@@ -2200,14 +2275,20 @@ impl CantAttackUnlessCondition {
     ) -> Option<bool> {
         match &self.condition {
             CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
-                AttackCostCondition::SacrificePermanents { filter, count } => Some(
-                    Self::eligible_permanents_for_controller(game, controller, filter, true).len()
-                        >= *count as usize,
-                ),
-                AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => Some(
-                    Self::eligible_permanents_for_controller(game, controller, filter, false).len()
-                        >= *count as usize,
-                ),
+                AttackCostCondition::SacrificePermanents { .. }
+                | AttackCostCondition::ReturnPermanentsToOwnersHand { .. } => {
+                    let program = Self::non_mana_attack_cost_program(cost)?;
+                    Some(
+                        crate::cost::can_pay_cost_with_reason(
+                            game,
+                            source,
+                            controller,
+                            &program,
+                            crate::costs::PaymentReason::Other,
+                        )
+                        .is_ok(),
+                    )
+                }
                 AttackCostCondition::PayGenericPerSourceCounter { .. } => {
                     Some(game.object(source).is_some())
                 }
@@ -2245,6 +2326,7 @@ impl CantAttackUnlessCondition {
         }
     }
 
+    #[cfg(test)]
     fn pay_sacrifice_attack_cost(
         game: &mut GameState,
         source: ObjectId,
@@ -2252,9 +2334,24 @@ impl CantAttackUnlessCondition {
         count: u32,
         filter: &ObjectFilter,
     ) -> Result<(), String> {
-        Self::pay_zone_attack_cost(game, source, controller, count, filter, true)
+        let program =
+            Self::non_mana_attack_cost_program(&AttackCostCondition::SacrificePermanents {
+                filter: filter.clone(),
+                count,
+            })
+            .expect("sacrifice cost has a composed program");
+        crate::special_actions::pay_total_cost_with_choice(
+            game,
+            controller,
+            source,
+            &program,
+            crate::costs::PaymentReason::Other,
+            &mut crate::decision::SelectFirstDecisionMaker,
+        )
+        .map_err(|error| error.to_string())
     }
 
+    #[cfg(test)]
     fn pay_return_permanents_attack_cost(
         game: &mut GameState,
         source: ObjectId,
@@ -2262,133 +2359,24 @@ impl CantAttackUnlessCondition {
         filter: &ObjectFilter,
         count: u32,
     ) -> Result<(), String> {
-        Self::pay_zone_attack_cost(game, source, controller, count, filter, false)
-    }
-
-    fn pay_zone_attack_cost(
-        game: &mut GameState,
-        source: ObjectId,
-        controller: PlayerId,
-        count: u32,
-        filter: &ObjectFilter,
-        sacrifice: bool,
-    ) -> Result<(), String> {
-        let checkpoint = game.clone();
-        let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let result = (|| {
-            let candidates =
-                Self::eligible_permanents_for_controller(game, controller, filter, sacrifice);
-            if candidates.len() < count as usize {
-                return Err("Cannot pay required attack cost".to_string());
-            }
-            let chosen = candidates
-                .into_iter()
-                .take(count as usize)
-                .collect::<Vec<_>>();
-            let cause = crate::events::cause::EventCause::from_cost(source, controller);
-            if sacrifice
-                && chosen
-                    .iter()
-                    .any(|id| !game.can_be_sacrificed_with_cause(*id, &cause))
-            {
-                return Err("Cannot pay required attack cost".to_string());
-            }
-            let destination = if sacrifice {
-                Zone::Graveyard
-            } else {
-                Zone::Hand
-            };
-            let mut prepared = Vec::new();
-            for id in chosen {
-                let snapshot = game.object(id).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                });
-                let proposal = process_zone_change(
-                    game,
-                    id,
-                    Zone::Battlefield,
-                    destination,
-                    cause.clone(),
-                    &mut dm,
-                )
-                .map_err(|error| error.to_string())?;
-                if dm.awaiting_choice() {
-                    return Err("Awaiting attack cost replacement".to_string());
-                }
-                prepared.push((id, snapshot, proposal));
-            }
-            let mut receipts = Vec::new();
-            for (id, snapshot, proposal) in prepared {
-                let receipt =
-                    crate::effects::zones::commit_zone_change_proposal(game, id, proposal, &mut dm)
-                        .map_err(|error| error.to_string())?;
-                if dm.awaiting_choice() {
-                    return Err("Awaiting attack cost commitment".to_string());
-                }
-                if sacrifice
-                    && matches!(&receipt.original, EventOutcome::Proceed(change) if !change.new_object_ids.is_empty())
-                {
-                    let player = snapshot
-                        .as_ref()
-                        .map(|snapshot| snapshot.controller)
-                        .or(Some(controller));
-                    game.queue_trigger_event(
-                        crate::provenance::ProvNodeId::default(),
-                        TriggerEvent::new_with_provenance(
-                            SacrificeEvent::new(id, Some(source)).with_snapshot(snapshot, player),
-                            crate::provenance::ProvNodeId::default(),
-                        ),
-                    );
-                }
-                receipts.push((id, receipt));
-            }
-            // Legally started payments remain paid through prevention,
-            // redirection and replacement; performed events are separate.
-            let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm)
-                .with_cause(cause);
-            let mut outcome = crate::effects::zones::finish_zone_change_receipts(
-                game,
-                &mut ctx,
-                crate::effect::EffectOutcome::resolved(),
-                receipts,
-            )
-            .map_err(|error| error.to_string())?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Err("Awaiting attack cost added program".to_string());
-            }
-            crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-            for event in outcome.events {
-                game.queue_trigger_event(event.provenance(), event);
-            }
-            Ok(())
-        })();
-        if result.is_err() || dm.awaiting_choice() {
-            *game = checkpoint;
-        }
-        result
-    }
-
-    fn pay_non_mana_attack_cost_now(
-        &self,
-        game: &mut GameState,
-        source: ObjectId,
-        controller: PlayerId,
-    ) -> Option<Result<(), String>> {
-        match &self.condition {
-            CantAttackUnlessConditionSpec::AttackCost(cost) => match cost {
-                AttackCostCondition::SacrificePermanents { filter, count } => Some(
-                    Self::pay_sacrifice_attack_cost(game, source, controller, *count, filter),
-                ),
-                AttackCostCondition::ReturnPermanentsToOwnersHand { filter, count } => {
-                    Some(Self::pay_return_permanents_attack_cost(
-                        game, source, controller, filter, *count,
-                    ))
-                }
-                AttackCostCondition::PayGenericPerSourceCounter { .. } => Some(Ok(())),
+        let program = Self::non_mana_attack_cost_program(
+            &AttackCostCondition::ReturnPermanentsToOwnersHand {
+                filter: filter.clone(),
+                count,
             },
-            _ => None,
-        }
+        )
+        .expect("return cost has a composed program");
+        crate::special_actions::pay_total_cost_with_choice(
+            game,
+            controller,
+            source,
+            &program,
+            crate::costs::PaymentReason::Other,
+            &mut crate::decision::SelectFirstDecisionMaker,
+        )
+        .map_err(|error| error.to_string())
     }
+
 }
 
 impl StaticAbilityKind for CantAttackUnlessCondition {
@@ -2496,13 +2484,20 @@ impl StaticAbilityKind for CantAttackUnlessCondition {
         self.attack_generic_mana_requirement(game, source, controller)
     }
 
-    fn pay_non_mana_attack_cost(
+    fn self_attack_cost_for_declaration(
         &self,
-        game: &mut GameState,
+        _game: &GameState,
         source: ObjectId,
-        controller: PlayerId,
-    ) -> Option<Result<(), String>> {
-        self.pay_non_mana_attack_cost_now(game, source, controller)
+        _controller: PlayerId,
+        attacker: ObjectId,
+    ) -> Option<crate::cost::TotalCost> {
+        if source != attacker {
+            return None;
+        }
+        let CantAttackUnlessConditionSpec::AttackCost(cost) = &self.condition else {
+            return None;
+        };
+        Self::non_mana_attack_cost_program(cost)
     }
 }
 

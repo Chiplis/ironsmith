@@ -1,3 +1,5 @@
+import { priorityStepKey } from '@/lib/priority-stops';
+import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import useUiText from "@/i18n/useUiText";
 import { LOOK_DONE_EVENT } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +10,7 @@ import { useChosenObjectIds } from "@/context/ObjectSelectionContext";
 import SelectionCheckBadge from "@/components/cards/SelectionCheckBadge";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
 import { Button } from "@/components/ui/button";
+import SurrenderConfirmation from "@/components/decisions/SurrenderConfirmation";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import DecisionSummary from "@/components/decisions/DecisionSummary";
 import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
@@ -17,6 +20,7 @@ import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/P
 import RematchMainButton from "@/components/decisions/RematchMainButton";
 import useRematchMainAction from "@/hooks/useRematchMainAction";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
+import useDecisionRollout from "@/hooks/useDecisionRollout";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
@@ -1343,7 +1347,7 @@ function MobileDecisionDock({
   orientation = "horizontal",
 }) {
   const ui = useUiText();
-  const { state, multiplayer, playerAccentOverrides } = useGame();
+  const { state, multiplayer, playerAccentOverrides, postActionPriorityWindow } = useGame();
   const decision = useMemo(
     () => presentOptionalReplacementDecision(state?.decision || null),
     [state?.decision],
@@ -1360,9 +1364,11 @@ function MobileDecisionDock({
   const primaryText = safeInlineLabel(primaryLabel, "Continue");
   const primaryAdvanceText = safeInlineLabel(primaryAdvanceLabel);
   const subtitleText = safeInlineLabel(subtitle);
+  const rolloutRef = useDecisionRollout(`${decision?.kind}|${decision?.source_id ?? ''}`);
 
   return (
     <div
+      ref={rolloutRef}
       className={cn(
         "mobile-decision-dock",
         inline && "mobile-decision-dock--inline",
@@ -1403,6 +1409,9 @@ function MobileDecisionDock({
           </div>
         )}
         <PeerWaitPopover peerWait={peerWait}>
+          {postActionPriorityWindow && decision?.kind === "priority" && !peerWaiting ? (
+            <PriorityHoldButton className="mobile-decision-primary-button" disabled={peerWaitLocked || effectivePrimaryDisabled} />
+          ) : (
           <Button
             type="button"
             variant="ghost"
@@ -1436,7 +1445,8 @@ function MobileDecisionDock({
                 ) : null}
               </>
             )}
-          </Button>
+          </Button>          )}
+
         </PeerWaitPopover>
       </div>
     </div>
@@ -1461,6 +1471,7 @@ export function MobileDecisionSheet({
   bodyClassName = "",
 }) {
   const ui = useUiText();
+  const rolloutRef = useDecisionRollout(`${eyebrow}|${title}`);
   const resolvedHeaderTrailing = headerTrailing || (onClose ? (
     <MobileDecisionCloseButton
       label={ui(closeLabel)}
@@ -1479,6 +1490,7 @@ export function MobileDecisionSheet({
       ) : null}
       <div className={cn("mobile-decision-sheet-shell", inline && "mobile-decision-sheet-shell--inline")}>
         <section
+          ref={rolloutRef}
           className={cn(
             "mobile-decision-sheet",
             inline && "mobile-decision-sheet--inline",
@@ -1758,7 +1770,7 @@ function MobileBattleDecisionLayer({
         ? "Resolve"
         : hasCustomPassLabel
           ? passAction.label
-          : priorityAdvanceButtonLabel(state?.phase, state?.step, stackSize, t)
+          : priorityAdvanceButtonLabel(state?.phase, priorityStepKey(state), stackSize, t)
     )
     : passAdvanceLabel;
   const objectNameById = useMemo(
@@ -1819,7 +1831,7 @@ function MobileBattleDecisionLayer({
     if (stackSize > 0) {
       return ui("Resolve {0}", { 0: stackSize });
     }
-    return nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize, t);
+    return nextPriorityAdvanceLabel(state?.phase, priorityStepKey(state), stackSize, t);
   }, [hasCustomPassLabel, stackSize, state?.phase, state?.step, toolbarDecisionSummary, t, ui]);
 
   const triggerPriorityAction = useCallback(
@@ -2460,6 +2472,7 @@ function PriorityBar({
     multiplayer,
     playerAccentOverrides,
     startResolveAll,
+    postActionPriorityWindow,
   } = useGame();
   const [decisionToolbarSearchTarget, setDecisionToolbarSearchTarget] = useState(null);
   const {
@@ -2523,7 +2536,7 @@ function PriorityBar({
     : (
       hasCustomPassLabel
         ? passAction.label
-        : priorityAdvanceButtonLabel(state?.phase, state?.step, stackSize, t)
+        : priorityAdvanceButtonLabel(state?.phase, priorityStepKey(state), stackSize, t)
     );
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
@@ -2557,6 +2570,7 @@ function PriorityBar({
   });
   const decisionDetailsExpanded = decisionDetailsState.identity !== decisionIdentity
     || decisionDetailsState.expanded;
+  const rolloutRef = useDecisionRollout(decisionIdentity, true);
   const rawViewedCards = state?.viewed_cards || null;
   const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
@@ -2800,7 +2814,9 @@ function PriorityBar({
       type="button"
       variant="ghost"
       size="sm"
-      className={cn("decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] shrink-0 self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide", ported && "topbar-ported-decision-button")}
+      className={cn("decision-neon-button decision-neon-button--danger decision-cancel-button h-full min-w-[82px] shrink-0 self-stretch rounded-none px-2 text-[clamp(10px,0.82vw,13px)] font-bold uppercase tracking-wide", ported && "topbar-ported-decision-button", dockSubmitFooter && !decisionDetailsExpanded && "decision-cancel-button--compact")}
+      aria-label={t("decision.cancel")}
+      title={t("decision.cancel")}
       disabled={!canCancelDecision}
       onPointerDown={(event) => {
         if (!canCancelDecision || event.button !== 0) return;
@@ -2812,7 +2828,7 @@ function PriorityBar({
         cancelDecision();
       }}
     >
-      {t("decision.cancel")}
+      {dockSubmitFooter && !decisionDetailsExpanded ? <X size={15} aria-hidden="true" /> : t("decision.cancel")}
     </Button>
   );
   const renderExpandedPrimaryControl = (ported = false, belowToolbar = false) => (
@@ -2995,6 +3011,7 @@ function PriorityBar({
         >
         {!replaceMiddleControls ? <ManaPaymentTab manaPayment={manaPayment} anchorRect={inline ? manaTabAnchorRect : null} /> : null}
         <div
+          ref={rolloutRef}
           className={cn(
             "priority-inline-panel pointer-events-auto relative flex h-full w-full flex-col py-0",
             isPriorityDecision && "priority-inline-panel--segmented",
@@ -3003,7 +3020,6 @@ function PriorityBar({
           )}
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
         >
-          {isPriorityDecision ? quickControls : null}
           {isPriorityDecision ? (
             showViewedCardsStep ? (
               <div
@@ -3060,6 +3076,9 @@ function PriorityBar({
                       data-local-action={localDecisionButton ? "true" : "false"}
                     >
                       <PeerWaitPopover peerWait={peerWait}>
+                        {postActionPriorityWindow && canAct && !peerWaiting ? (
+                          <PriorityHoldButton className="h-full w-full rounded-none px-3 text-[14px] font-bold uppercase" disabled={peerWaitLocked} />
+                        ) : (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -3077,9 +3096,10 @@ function PriorityBar({
                           ) : (
                             <span className="sr-only">{ui(passCurrentLabel)}</span>
                           )}
-                        </Button>
+                        </Button>                        )}
+
                       </PeerWaitPopover>
-                      {!peerWaiting && (
+                      {!peerWaiting && !postActionPriorityWindow && (
                         <div className="action-strip-main-text-stack absolute left-2 top-2 z-20">
                           <div className="action-strip-main-title-row">
                             <ActionStripMainTitleText>{ui(passCurrentLabel)}</ActionStripMainTitleText>
@@ -3196,8 +3216,8 @@ function PriorityBar({
                     "decision-primary-controls flex min-w-0 shrink-0 items-stretch gap-2",
                     manaPayment ? "max-w-[360px]" : "max-w-[320px]"
                   )}>
-                    {!decisionSubmitPortalHost && !submitInFooter ? quickControls : null}
                     {!decisionSubmitPortalHost && !submitInFooter ? renderExpandedPrimaryControl(false) : null}
+                    {!decisionSubmitPortalHost && !submitInFooter ? quickControls : null}
                     {manaPayment && secondarySubmitAction ? (
                       <Button
                         type="button"
@@ -3371,12 +3391,13 @@ function PriorityBar({
               </div>
               {submitInFooter ? (
                 <div className="action-strip-submit-row decision-stack-footer">
-                  {quickControls}
                   {renderExpandedPrimaryControl(false, true)}
+                  {quickControls}
                 </div>
               ) : null}
             </div>
           )}
+          {isPriorityDecision ? quickControls : null}
         </div>
         </div>
       </>
@@ -3394,7 +3415,7 @@ function PriorityBar({
       style={anchoredStyle || undefined}
     >
       <ManaPaymentTab manaPayment={manaPayment} />
-      <div className={cn(
+      <div ref={rolloutRef} className={cn(
         "priority-inline-panel pointer-events-auto relative py-0",
         compactLandscapeViewport ? "px-0" : "px-2"
       )}>
@@ -3786,6 +3807,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
   const [combatActionState, setCombatActionState] = useState({ key: "", action: null });
   const [combatPanelState, setCombatPanelState] = useState({ key: "", minimized: false });
   const combatPanelMinimized = combatPanelState.key === decisionIdentity && combatPanelState.minimized;
+  const rolloutRef = useDecisionRollout(decisionIdentity, true);
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
   const rawPeerWait = multiplayer?.peerWait || null;
   const peerWait = useDeferredPeerWait(rawPeerWait);
@@ -3834,7 +3856,7 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
       <div className={inline
         ? "pointer-events-none absolute inset-0 z-[120] flex items-stretch"
         : "pointer-events-none fixed left-2 bottom-[148px] z-[120] w-[min(96vw,740px)]"}>
-        <div className="priority-inline-panel combat-decision-panel pointer-events-auto"
+        <div ref={rolloutRef} className="priority-inline-panel combat-decision-panel pointer-events-auto"
           data-replaces-middle-controls={replaceMiddleControls ? "true" : "false"}
           data-minimized={combatPanelMinimized ? "true" : "false"}
           style={anchoredStyle || undefined}>
@@ -3861,8 +3883,8 @@ function CombatBar({ anchor = null, inline = false, replaceMiddleControls = fals
               </button>
             </div>
             <div className="combat-decision-actions">
-              {quickControls}
               {!topbarHost ? primaryControl : null}
+              {quickControls}
               {canCancelDecision ? <Button type="button" variant="ghost" size="sm"
                 className="decision-neon-button decision-neon-button--danger decision-cancel-button h-10 shrink-0 rounded-none px-3 font-bold uppercase"
                 onClick={() => cancelDecision()}>{t("decision.cancel")}</Button> : null}
@@ -3972,12 +3994,23 @@ export default function DecisionPopupLayer({
   dockSubmitFooter = false,
   quickControls = null,
 }) {
-  const { state } = useGame();
+  const { state, surrenderRequested } = useGame();
   const decision = useMemo(
     () => presentOptionalReplacementDecision(state?.decision || null),
     [state?.decision],
   );
   const canAct = !!decision && samePlayerId(state?.perspective, decision.player);
+
+  if (surrenderRequested && !state?.game_over) {
+    const confirmation = <SurrenderConfirmation />;
+    if (mobileBattle) {
+      return renderMobileBattlePortal(
+        <div className="mobile-decision-dock mobile-decision-dock--inline pointer-events-auto">{confirmation}</div>,
+        mobileBattlePortalTarget
+      );
+    }
+    return <div className="priority-inline-panel pointer-events-auto h-full w-full">{confirmation}</div>;
+  }
 
   if (!decision) {
     return (

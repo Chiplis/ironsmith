@@ -18,6 +18,8 @@ pub struct BecameMonstrousEvent {
     pub controller: PlayerId,
     /// The N value from the monstrosity ability (number of +1/+1 counters)
     pub n: u32,
+    /// Completed characteristics of the permanent before a later instruction.
+    pub snapshot: Option<ObjectSnapshot>,
 }
 
 impl BecameMonstrousEvent {
@@ -27,7 +29,12 @@ impl BecameMonstrousEvent {
             creature,
             controller,
             n,
+            snapshot: None,
         }
+    }
+    pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        self.snapshot = snapshot;
+        self
     }
 }
 
@@ -65,10 +72,9 @@ impl GameEventType for BecameMonstrousEvent {
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
-        None
+        self.snapshot.as_ref()
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -376,18 +376,79 @@ fn capture_ids(
 struct RecordedProposal {
     inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
     action: Option<PriorEffectAction>,
+    sealed_records: Vec<ExecutionFact>,
+}
+
+/// Queue evidence belongs to the phase's instruction, even when preparation
+/// precedes commitment. Always close the capture on errors and suspension.
+fn capture_proposal_records<T>(
+    game: &mut GameState,
+    body: impl FnOnce(&mut GameState) -> T,
+) -> (T, Vec<ExecutionFact>) {
+    game.effect_store
+        .instruction_result_records
+        .push(Vec::new());
+    let result = body(game);
+    let recorded = game
+        .effect_store
+        .instruction_result_records
+        .pop()
+        .unwrap_or_default();
+    (result, recorded)
 }
 
 pub(crate) fn record_proposal(
     inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
     action: Option<PriorEffectAction>,
 ) -> Box<dyn crate::effects::SimultaneousEffectProposal> {
-    Box::new(RecordedProposal { inner, action })
+    Box::new(RecordedProposal {
+        inner,
+        action,
+        sealed_records: Vec::new(),
+    })
 }
 
 impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        self.inner.damage_action_inputs()
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, crate::effects::ExecutionError> {
+        let mut binding = self.inner.bind_damage_action(game, ctx, owner)?;
+        if !ctx.decision_maker.awaiting_choice() {
+            complete_outcome(
+                game,
+                self.action,
+                Some(ctx.controller),
+                &mut binding.outcome,
+                Vec::new(),
+            );
+        }
+        Ok(binding)
+    }
     fn declared_life_payment(&self) -> Option<(PlayerId, u32)> {
         self.inner.declared_life_payment()
+    }
+
+    fn has_simultaneous_originals(&self) -> bool {
+        self.inner.has_simultaneous_originals()
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.inner.nominal_payment_quantity()
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.inner.declared_payment_resources()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
+        self.inner.declared_life_payments()
     }
 
     fn prepare_original(
@@ -398,28 +459,52 @@ impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
         self.inner.prepare_original(game, ctx)
     }
 
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        let (result, recorded) =
+            capture_proposal_records(game, |game| self.inner.seal_original(game, ctx));
+        self.sealed_records.extend(recorded);
+        result
+    }
+
     fn commit_original(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut crate::effects::ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, crate::effects::ExecutionError> {
-        game.effect_store
-            .instruction_result_records
-            .push(Vec::new());
-        let mut result = self.inner.commit_original(game, ctx);
-        let recorded = game
-            .effect_store
-            .instruction_result_records
-            .pop()
-            .unwrap_or_default();
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        crate::effects::ExecutionError,
+    > {
+        let Self {
+            inner,
+            action,
+            sealed_records,
+        } = *self;
+        let (mut result, recorded) =
+            capture_proposal_records(game, |game| inner.commit_original_with_outputs(game, ctx));
+        let mut phase_records = sealed_records;
+        phase_records.extend(recorded);
+        let recorded = phase_records;
         if let Ok(committed) = &mut result {
             if !ctx.decision_maker.awaiting_choice() {
-                let had_result_memory = committed.outcome.result_object_memory().is_some();
+                let had_result_memory = committed.outcome.outcome.result_object_memory().is_some();
                 complete_outcome(
                     game,
-                    self.action,
+                    action,
                     Some(ctx.controller),
-                    &mut committed.outcome,
+                    &mut committed.outcome.outcome,
                     recorded,
                 );
                 if let Some(completion) = committed.completion.take() {
@@ -427,14 +512,15 @@ impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
                     // characteristics must wait until every simultaneous
                     // original commits and the completed entry view freezes.
                     if !had_result_memory {
-                        clear_result_memory(&mut committed.outcome);
+                        clear_result_memory(&mut committed.outcome.outcome);
                     }
                     committed.completion = Some(Box::new(RecordedCompletion {
                         inner: completion,
-                        action: self.action,
+                        action: action,
                         actor: ctx.controller,
                     }));
                 }
+                committed.outcome.synchronize_observations();
             }
         }
         result
@@ -445,18 +531,18 @@ impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
         game: &mut GameState,
         ctx: &mut crate::effects::ExecutionContext,
     ) -> Result<EffectOutcome, crate::effects::ExecutionError> {
-        game.effect_store
-            .instruction_result_records
-            .push(Vec::new());
-        let mut result = self.inner.commit(game, ctx);
-        let recorded = game
-            .effect_store
-            .instruction_result_records
-            .pop()
-            .unwrap_or_default();
+        let Self {
+            inner,
+            action,
+            sealed_records,
+        } = *self;
+        let (mut result, recorded) = capture_proposal_records(game, |game| inner.commit(game, ctx));
+        let mut phase_records = sealed_records;
+        phase_records.extend(recorded);
+        let recorded = phase_records;
         if let Ok(outcome) = &mut result {
             if !ctx.decision_maker.awaiting_choice() {
-                complete_outcome(game, self.action, Some(ctx.controller), outcome, recorded);
+                complete_outcome(game, action, Some(ctx.controller), outcome, recorded);
             }
         }
         result
@@ -469,6 +555,15 @@ struct RecordedCompletion {
     actor: PlayerId,
 }
 impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
+    fn observe_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: &mut EffectOutcome,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        self.inner.observe_original(game, ctx, original)
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
         self.inner.freeze(game)
     }
@@ -476,8 +571,19 @@ impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut crate::effects::ExecutionContext,
-        mut original: EffectOutcome,
+        original: EffectOutcome,
     ) -> Result<EffectOutcome, crate::effects::ExecutionError> {
+        self.complete_with_outputs(game, ctx, original)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn complete_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
+        let mut original = original;
         complete_outcome(
             game,
             self.action,
@@ -485,7 +591,7 @@ impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
             &mut original,
             Vec::new(),
         );
-        self.inner.complete(game, ctx, original)
+        self.inner.complete_with_outputs(game, ctx, original)
     }
 }
 

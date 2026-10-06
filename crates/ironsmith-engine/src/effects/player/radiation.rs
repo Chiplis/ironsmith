@@ -1,7 +1,9 @@
 //! Resolution of the inherent triggered ability associated with rad counters (CR 728.1).
 
 use crate::effect::EffectOutcome;
-use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError, MillEffect};
+use crate::effects::{
+    CompletedEffectOutputs, EffectExecutor, ExecutionContext, ExecutionError, MillEffect,
+};
 use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -24,40 +26,48 @@ impl EffectExecutor for RadiationEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.resolve(game, ctx);
-        if ctx.decision_maker.awaiting_choice() || result.is_err() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context.restore(ctx);
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| self.resolve_with_outputs(game, ctx),
+        )
     }
 }
 
 impl RadiationEffect {
-    fn resolve(
+    fn resolve_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let player = ctx.controller;
         let rad_count = game
             .player(player)
             .map_or(0, |player| player.counter_count(CounterType::Rad));
         if rad_count == 0 {
-            return Ok(EffectOutcome::resolved());
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
         }
 
-        let outcome =
-            MillEffect::new(rad_count, PlayerFilter::Specific(player)).execute_child(game, ctx)?;
+        let outcome = MillEffect::new(rad_count, PlayerFilter::Specific(player))
+            .execute_child_with_outputs(game, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         let nonland_cards_milled = outcome
+            .outcome
             .instruction_result()
             .affected_object_memory()
             .map_or(0, |memory| {
@@ -67,11 +77,11 @@ impl RadiationEffect {
                     .count()
             });
 
-        let primary = outcome.summary_projection();
+        let primary = outcome.outcome.summary_projection();
         let mut outcomes = vec![outcome];
         for _ in 0..nonland_cards_milled {
             // CR 614.1a: the radiation life loss is a life-loss event.
-            let mut loss = crate::effects::life::life_change::execute_life_change(
+            let loss = crate::effects::life::life_change::execute_life_change_with_outputs(
                 game,
                 ctx,
                 crate::events::Event::new_with_provenance(
@@ -80,19 +90,37 @@ impl RadiationEffect {
                 ),
             )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
-            if let Some((_, event)) =
-                game.remove_player_counters_with_source(player, CounterType::Rad, 1, None, None)
-            {
-                loss.events.push(event);
+            let removal = crate::effects::counters::execute_player_counter_removal_with_outputs(
+                game,
+                ctx,
+                player,
+                CounterType::Rad,
+                1,
+                None,
+                None,
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             outcomes.push(loss);
+            outcomes.push(removal);
         }
 
-        Ok(EffectOutcome::aggregate_with_primary_result(
-            primary, outcomes,
-        ))
+        let outcome = EffectOutcome::aggregate_with_primary_result(
+            primary,
+            outcomes.iter().map(|child| child.outcome.clone()),
+        );
+        let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
+        for child in outcomes {
+            outputs.retain_owned_child(child);
+        }
+        Ok(outputs)
     }
 }
 

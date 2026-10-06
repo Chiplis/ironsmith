@@ -46,6 +46,7 @@ const STEP_KEYS = {
   declareattackersstep: "DeclareAttackers",
   declareblockers: "DeclareBlockers",
   declareblockersstep: "DeclareBlockers",
+  firststrikedamage: "FirstStrikeDamage",
   combatdamage: "CombatDamage",
   combatdamagestep: "CombatDamage",
   endcombat: "EndCombat",
@@ -71,6 +72,7 @@ const STEP_LABELS = {
   BeginCombat: "Begin Combat",
   DeclareAttackers: "Declare Attackers",
   DeclareBlockers: "Declare Blockers",
+  FirstStrikeDamage: "First-Strike Damage",
   CombatDamage: "Combat Damage",
   EndCombat: "End Combat",
   End: "End",
@@ -105,6 +107,7 @@ export function normalizePhaseStep(phase, step) {
     normalizedStep === "BeginCombat" ||
     normalizedStep === "DeclareAttackers" ||
     normalizedStep === "DeclareBlockers" ||
+    normalizedStep === "FirstStrikeDamage" ||
     normalizedStep === "CombatDamage" ||
     normalizedStep === "EndCombat"
   )
@@ -127,6 +130,7 @@ export function nextPriorityAdvanceLabel(phase, step, stackSize, t = null) {
     case "BeginCombat": return translatedLabel(t, "game.advance.attackers", "Attackers");
     case "DeclareAttackers": return translatedLabel(t, "game.advance.blockers", "Blockers");
     case "DeclareBlockers": return translatedLabel(t, "game.advance.damage", "Damage");
+    case "FirstStrikeDamage": return translatedLabel(t, "game.advance.damage", "Damage");
     case "CombatDamage": return translatedLabel(t, "game.step.EndCombat", "End Combat");
     case "EndCombat": return translatedLabel(t, "game.advance.main2", "Post-Main");
     case "End": return translatedLabel(t, "game.step.Cleanup", "Cleanup");
@@ -171,6 +175,7 @@ export function priorityPassButtonColor(phase, step, stackSize) {
     case "DeclareAttackers":
       return "blue";
     case "DeclareBlockers":
+    case "FirstStrikeDamage":
     case "CombatDamage":
       return "orange";
     default:

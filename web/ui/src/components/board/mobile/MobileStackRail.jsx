@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import StackCard from "@/components/cards/StackCard";
 import useNewCards from "@/hooks/useNewCards";
+import useStackPresence from "@/hooks/useStackPresence";
 import useMobileLongPress from "@/hooks/useMobileLongPress";
 import { cn } from "@/lib/utils";
 import { stackEntryRenderKeys } from "@/lib/stack-targets";
@@ -40,6 +41,9 @@ function MobileStackRailEntry({
         isFocused && "mobile-mtga-stack-rail-entry--focused"
       )}
       data-arrow-anchor="stack"
+      data-leaving={entry.__leaving ? "true" : undefined}
+      inert={entry.__leaving || undefined}
+      aria-hidden={entry.__leaving || undefined}
       data-object-id={entry?.id}
       data-card-name={entry?.name || `Object#${entry?.id}`}
       onPointerDown={longPress.onPointerDown}
@@ -52,7 +56,8 @@ function MobileStackRailEntry({
       <StackCard
         entry={entry}
         isNew={isNew}
-        isActive={isFocused}
+        isLeaving={entry.__leaving}
+        isActive={!entry.__leaving && isFocused}
         className="mobile-mtga-stack-rail-card"
         entryMotion="mobile-stack"
         variant="compact"
@@ -135,15 +140,20 @@ export default function MobileStackRail({
     [objects]
   );
   const { newIds } = useNewCards(stackIds);
+  const displayedEntries = useStackPresence(objects.map((entry, index) => ({
+    ...entry,
+    __railVisible: index < RAIL_VISIBLE_LIMIT,
+  })));
   const [browserOpen, setBrowserOpen] = useState(false);
 
-  if (!objects.length) return null;
+  if (!displayedEntries.length) return null;
 
   // getVisibleStackObjects is already top-first (index 0 is the top / resolving
   // object — see getVisibleTopStackObject), matching the desktop panels.
   const topFirst = objects;
-  const visible = topFirst.slice(0, RAIL_VISIBLE_LIMIT);
-  const overflow = topFirst.length - visible.length;
+  const visibleKeys = new Set(stackIds.slice(0, RAIL_VISIBLE_LIMIT).map(key => `live-${key}`));
+  const visible = displayedEntries.filter(entry => entry.__leaving ? entry.__railVisible : visibleKeys.has(entry.__timeline_key));
+  const overflow = Math.max(0, topFirst.length - RAIL_VISIBLE_LIMIT);
 
   return (
     <>
@@ -152,11 +162,11 @@ export default function MobileStackRail({
         data-stack-preview-anchor="true"
         aria-label={ui("Stack ({0} item{1})", { 0: objects.length, 1: objects.length === 1 ? "" : "s" })}
       >
-        {visible.map((entry, index) => (
+        {visible.map((entry) => (
           <MobileStackRailEntry
-            key={stackIds[index]}
+            key={entry.__timeline_key}
             entry={entry}
-            isNew={newIds.has(stackIds[index])}
+            isNew={!entry.__leaving && newIds.has(entry.__timeline_key.slice(5))}
             isFocused={focusedStackObjectId != null && String(focusedStackObjectId) === String(entry.id)}
             onFocus={onFocusStackObject}
             onLongPressInspect={onInspect}
