@@ -1187,6 +1187,7 @@ fn parse_complete_miracle_cost_grant_line(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     if super::combat_requirements::owns_combat_requirement_line(tokens) {
         return super::combat_requirements::parse_combat_requirement_static_line(tokens);
     }

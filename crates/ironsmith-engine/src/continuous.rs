@@ -1104,6 +1104,7 @@ impl Modification {
         self,
         game: &crate::game_state::GameState,
         chooser_source: ObjectId,
+        static_grant: bool,
     ) -> Self {
         match self {
             Modification::AddAbility(ability) => {
@@ -1111,6 +1112,7 @@ impl Modification {
                     &ability,
                     game,
                     chooser_source,
+                    static_grant,
                 ) {
                     Some(bound) => Modification::AddAbility(bound),
                     None => Modification::AddAbility(ability),
@@ -1122,6 +1124,7 @@ impl Modification {
                         static_ability,
                         game,
                         chooser_source,
+                        static_grant,
                     )
                 {
                     ability.kind = crate::ability::AbilityKind::Static(bound);
@@ -5769,7 +5772,9 @@ pub(crate) fn static_ability_matches_variant_selector(
             }
             match ability.protection_from() {
                 Some(crate::ability::ProtectionFrom::Color(colors)) => !colors.is_empty(),
-                Some(crate::ability::ProtectionFrom::AllColors) => true,
+                Some(crate::ability::ProtectionFrom::AllColors
+                    | crate::ability::ProtectionFrom::OwnColors
+                    | crate::ability::ProtectionFrom::ColorsAmong { .. }) => true,
                 _ => false,
             }
         }

@@ -1179,6 +1179,7 @@ fn parse_attached_quoted_ability_grant(
 pub fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
     let Some(has) = attached_grammar::parse_enchanted_has_tokens(tokens) else {
         return Ok(None);

@@ -277,9 +277,16 @@ fn read_keyword_actions(
                 )),
             ))]));
         }
-        return Ok(Some(
-            actions.into_iter().map(GrantedAbilityAst::from).collect(),
-        ));
+        return Ok(Some(actions.into_iter().map(|action| {
+            if !authored_as_quoted_ability
+                && let KeywordAction::ProtectionFromColorsAmong(filter) = &action
+            {
+                return GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
+                    StaticAbility::protection(crate::ability::ProtectionFrom::ColorsAmongAtResolution(filter.clone())),
+                )));
+            }
+            GrantedAbilityAst::from(action)
+        }).collect()));
     }
     Ok(None)
 }

@@ -5,7 +5,7 @@ use winnow::token::any;
 use crate::color::Color;
 use crate::mana::ManaSymbol;
 
-use super::super::lexer::{OwnedLexToken, TokenWordView};
+use super::super::lexer::{OwnedLexToken, TokenKind, TokenWordView};
 use super::{leaf, primitives};
 
 const ADD_MANA_THAT_COLOR_AMOUNT_PREFIX: &[&str] =
@@ -213,6 +213,22 @@ pub fn parse_any_color_among_span(tokens: &[OwnedLexToken]) -> Option<AnyColorAm
     let filter_token = view.token_start_indices().get(filter_word).copied()?;
     let filter_tokens = trim_commas(&tokens[filter_token..]);
     (!filter_tokens.is_empty()).then_some(AnyColorAmongSpan { filter_tokens })
+}
+
+/// A granted ability's "this creature" refers to the creature that has the
+/// ability, not the permanent granting it. Keep that source reference typed.
+pub fn parse_any_of_source_colors_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::SourceReferenceSurface> {
+    let words = TokenWordView::new(tokens).word_refs();
+    let body = if tokens.last().is_some_and(|token| token.kind == TokenKind::Period) {
+        &tokens[..tokens.len() - 1]
+    } else { tokens };
+    if body.iter().any(|token| token.as_word().is_none()) { return None; }
+    let reference = words
+        .strip_prefix(&["one", "mana", "of", "any", "of"])?
+        .strip_suffix(&["colors"])?;
+    crate::util::source_reference_surface_for_possessive_words(reference)
 }
 
 /// "{U}{U}, {U}{R}, or {R}{R}" / "{B}{B} or {G}{G}": alternatives of one or

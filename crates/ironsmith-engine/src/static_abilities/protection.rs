@@ -107,6 +107,9 @@ impl StaticAbilityKind for Protection {
                     format!("Protection from {}", described)
                 }
             }
+            ProtectionFrom::OwnColors => "Protection from each of its colors".to_string(),
+            ProtectionFrom::ColorsAmong { filter, .. } | ProtectionFrom::ColorsAmongAtResolution(filter) => format!(
+                "Protection from each color among {}", describe_protection_mana_value_scope(filter)),
             ProtectionFrom::AllColors => "Protection from all colors".to_string(),
             ProtectionFrom::Colorless => "Protection from colorless".to_string(),
             ProtectionFrom::Everything => "Protection from everything".to_string(),
@@ -179,6 +182,20 @@ impl StaticAbilityKind for Protection {
         game: &crate::game_state::GameState,
         ctx: &mut crate::effects::ExecutionContext<'_>,
     ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
+            let context = ctx.filter_context(game);
+            let mut colors = crate::color::ColorSet::new();
+            for &id in &game.battlefield {
+                if game.is_phased_out(id) { continue; }
+                let Some(chars) = game.try_current_characteristics(id)
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? else { continue; };
+                if game.object(id).is_some_and(|object| {
+                    use crate::filter::ObjectFilterExt as _;
+                    filter.matches(object, &context, game)
+                }) { colors = colors.union(chars.colors); }
+            }
+            return Ok(Some(super::StaticAbility::protection(ProtectionFrom::Color(colors))));
+        }
         let ProtectionFrom::ColorsOf(spec) = &self.from else {
             return Ok(None);
         };
@@ -232,7 +249,9 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         if ctx.source != Some(target) || damage.amount == 0 {
             return false;
         }
-        let subject = if let Some(object) = ctx.game.object(damage.source) {
+        let subject = if let Some(object) = ctx.game.object(damage.source)
+            && !ctx.game.is_phased_out(damage.source)
+        {
             crate::filter::ObjectSubject::Live(object)
         } else if let Some(snapshot) = ctx
             .event_source_snapshot
@@ -240,18 +259,25 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         {
             crate::filter::ObjectSubject::Snapshot(snapshot)
         } else {
-            // Parity protection needs the damaging source's mana value.
-            // A missing choice is a complete nonmatch; a chosen quality with
-            // missing exact source evidence must stop checked resolution.
-            if let ProtectionFrom::Permanents(filter) = &self.0
-                && let Some(parity) = filter.mana_value_parity
-            {
-                use crate::filter::ParityRequirementRuntimeExt as _;
-                if parity.resolve(ctx.game, Some(target)).is_some() {
-                    ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
-                        "mana-value protection requires the exact damage source or its last-known snapshot".into(),
-                    ));
+            // Every source-dependent quality needs actual characteristics.
+            // An absent object with no retained snapshot is incomplete
+            // evidence, never permission to damage through protection.
+            let needs_evidence = match &self.0 {
+                ProtectionFrom::Everything => return true,
+                ProtectionFrom::Color(colors) => !colors.is_empty(),
+                ProtectionFrom::ColorsOf(_) | ProtectionFrom::ColorsAmongAtResolution(_) => false,
+                ProtectionFrom::ChosenColor => ctx.game.chosen_color(target).is_some(),
+                ProtectionFrom::ChosenPlayer => ctx.game.chosen_player(target).is_some(),
+                ProtectionFrom::Permanents(filter) if filter.mana_value_parity.is_some() => {
+                    use crate::filter::ParityRequirementRuntimeExt as _;
+                    filter.mana_value_parity.and_then(|parity| parity.resolve(ctx.game, Some(target))).is_some()
                 }
+                _ => true,
+            };
+            if needs_evidence {
+                ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "protection requires the exact damage source or its last-known snapshot".into(),
+                ));
             }
             return false;
         };
@@ -299,6 +325,12 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     }
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
+    }
+    if *filter == ObjectFilter::default().monocolored() {
+        return "monocolored".to_string();
+    }
+    if *filter == ObjectFilter::default().with_supertype(crate::types::Supertype::Snow) {
+        return "snow".to_string();
     }
     if *filter == ObjectFilter::default().multicolored() {
         return "multicolored".to_string();
@@ -714,7 +746,17 @@ pub(crate) fn bind_chosen_protection_qualities(
     ability: &super::StaticAbility,
     game: &crate::game_state::GameState,
     chooser_source: crate::ids::ObjectId,
+    static_grant: bool,
 ) -> Option<super::StaticAbility> {
+    if static_grant
+        && let Some(ProtectionFrom::ColorsAmong { filter, reference_source: None }) = ability.protection_from()
+    {
+        // Bind the exact granting object, not a controller snapshot or the
+        // receiving creature. Later control and population changes are live.
+        return Some(super::StaticAbility::protection(ProtectionFrom::ColorsAmong {
+            filter: filter.clone(), reference_source: Some(chooser_source),
+        }));
+    }
     // "Protection from the chosen color" granted by a spell or another
     // permanent (Brave the Elements, Ward Sliver): the color is the one
     // chosen for the granting object, not for the protected creature.

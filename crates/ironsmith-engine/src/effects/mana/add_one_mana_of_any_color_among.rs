@@ -1,6 +1,6 @@
 //! Add one mana of a color found among objects matching a filter.
 
-use super::add_mana_of_colors_among::colors_among_filter;
+use super::add_mana_of_colors_among::{colors_among_filter, colors_among_for_execution};
 use super::choice_helpers::{
     choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
 };
@@ -30,7 +30,7 @@ impl EffectExecutor for AddOneManaOfAnyColorAmongEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let symbols = colors_among_filter(game, &self.filter, ctx.source, player_id);
+        let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
         let colors = symbols
             .iter()
             .filter_map(|symbol| color_for_symbol(*symbol))

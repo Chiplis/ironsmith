@@ -185,6 +185,16 @@ pub fn apply_keyword_action(
         KeywordAction::Bushido(amount) => builder.bushido(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),
         KeywordAction::ProtectionFrom(colors) => builder.protection_from(colors),
+        KeywordAction::ProtectionFromOwnColors => builder.with_ability(
+            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::protection(
+                crate::ability::ProtectionFrom::OwnColors,
+            )),
+        ),
+        KeywordAction::ProtectionFromColorsAmong(filter) => builder.with_ability(
+            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::protection(
+                crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
+            )),
+        ),
         KeywordAction::ProtectionFromAllColors => {
             builder.with_ability(crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::protection(

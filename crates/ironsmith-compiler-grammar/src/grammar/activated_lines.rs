@@ -214,7 +214,9 @@ fn mana_clause_needs_general_effect(words: &[&str]) -> bool {
     let has_any_combination = word_phrase_present(words, &["any", "combination", "of"]);
     let has_any_choice = has_any_combination
         || (word_present(words, "any")
-            && (word_present(words, "color") || word_present(words, "type")));
+            && (word_present(words, "color")
+                || word_present(words, "colors")
+                || word_present(words, "type")));
     let uses_commander_identity = word_present(words, "identity")
         && (word_present(words, "commander") || word_present(words, "commanders"));
 

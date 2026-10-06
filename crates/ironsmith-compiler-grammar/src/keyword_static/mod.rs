@@ -2101,6 +2101,7 @@ fn parse_complete_attached_restriction_quoted_activation(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_attached_restriction_quoted_activation(tokens)? {
         return Ok(Some(abilities));
     }

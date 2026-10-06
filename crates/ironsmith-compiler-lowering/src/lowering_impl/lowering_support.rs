@@ -4539,6 +4539,12 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
         )),
+        KeywordAction::ProtectionFromOwnColors => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::OwnColors,
+        )),
+        KeywordAction::ProtectionFromColorsAmong(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
+        )),
         KeywordAction::ProtectionFromAllColors => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::AllColors,
         )),

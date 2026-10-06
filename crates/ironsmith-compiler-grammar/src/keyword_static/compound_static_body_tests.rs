@@ -187,3 +187,78 @@ fn miracle_grant_readers_share_the_whole_derived_cost_and_hand_subject() {
         }
     }
 }
+
+#[test]
+fn complete_protection_lists_and_live_color_scopes_share_keyword_owners() {
+    for (text, count) in [
+        ("Protection from monocolored", 1),
+        ("Protection from snow", 1),
+        ("Protection from blue, from black, and from red", 3),
+        ("Protection from Vampires, from Werewolves, and from Zombies", 3),
+        ("Protection from each of its colors", 1),
+        ("Protection from each color among permanents you control", 1),
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let chain = crate::clause_support::parse_protection_chain(&tokens).unwrap();
+        assert_eq!(chain.len(), count, "{text}");
+        assert_eq!(parse_ability_line(&tokens), Some(chain), "{text}");
+    }
+    let tokens = crate::lexer::lex_line("Protection from snow", 0).unwrap();
+    assert_eq!(crate::clause_support::parse_protection_chain(&tokens), Some(vec![
+        KeywordAction::ProtectionFromFilter(ObjectFilter::default().with_supertype(crate::types::Supertype::Snow))]));
+    let own = parse("Each creature has protection from each of its colors.");
+    assert!(!own.is_empty());
+    let population = parse("This creature has protection from each color among permanents you control.");
+    assert!(!population.is_empty());
+    let pledge = parse("Enchanted creature has protection from each color among permanents you control. This effect doesn't remove this Aura.");
+    assert_eq!(pledge.len(), 2);
+    assert!(pledge.iter().any(|ability| matches!(ability, StaticAbilityAst::AttachedKeywordActionGrant {
+        action: KeywordAction::ProtectionFromColorsAmong(_), .. })));
+    assert!(pledge.iter().any(|ability| matches!(ability, StaticAbilityAst::Static(rule)
+        if rule.id() == crate::static_abilities::StaticAbilityId::ProtectionDoesntRemoveThisAura)));
+}
+
+#[test]
+fn protection_qualities_consume_symbols_separators_and_all_tail_words() {
+    for text in [
+        "Protection from monocolored {R}", "Protection from snow:",
+        "Protection from blue, from {R} black, and from red", "Protection from blue, and, from black",
+        "Protection from blue from black", "Protection from red and", "Protection from red,",
+        "Protection from snow nonsense", "Protection from monocolored nonsense",
+        "Protection from each of its colors {R}", "Protection from each color among permanents you control:",
+        "Protection from each color among permanents you control nonsense",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(crate::clause_support::parse_protection_chain(&tokens).is_none(), "{text}");
+    }
+}
+
+#[test]
+fn raw_protection_grant_delimiters_and_quoted_continuous_context_cannot_be_trimmed_away() {
+    for text in [
+        "Each creature has protection from each of its colors,",
+        "Each creature has , protection from each of its colors.",
+        "Each creature has flying, protection from each of its colors,.",
+        "This creature has protection from each color among permanents you control,.",
+        "Enchanted creature has protection from each color among permanents you control,. This effect doesn't remove this Aura.",
+        "Creatures have \"This creature has protection from each color among permanents you control.\"",
+        "Creatures have flying and \"This creature has protection from each color among permanents you control.\"",
+        "Enchanted creature has \"This creature has protection from each color among permanents you control.\"",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(crate::clause_support::validate_protection_static_line(&tokens).is_err(), "{text}");
+        for result in [parse_filter_has_granted_ability_line(&tokens),
+            parse_granted_keyword_static_line(&tokens), parse_enchanted_creature_has_line(&tokens)] {
+            assert!(result.is_err(), "raw grant reader must reject {text}");
+        }
+    }
+    for text in [
+        "If this creature has flying, target creature gains \"This creature has protection from each color among permanents you control.\" until end of turn.",
+        "{T}: Target creature gains \"This creature has protection from each color among permanents you control.\" until end of turn.",
+        "Whenever this creature attacks, target creature gains \"This creature has protection from each color among permanents you control.\" until end of turn.",
+        "Human creatures you control have \"{T}: Add one mana of any of this creature's colors.\"",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        assert!(crate::clause_support::validate_protection_static_line(&tokens).is_ok(), "{text}");
+    }
+}

@@ -22,6 +22,7 @@ pub fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
         return Some(vec![action]);
     }
 
+    if let Some(result) = crate::clause_support::parse_protection_keyword_line(tokens) { return result; }
     let segments = split_lexed_slices_on_commas_or_semicolons(tokens);
     let mut actions = Vec::new();
 

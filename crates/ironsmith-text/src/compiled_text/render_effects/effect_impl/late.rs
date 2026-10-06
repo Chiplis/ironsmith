@@ -2756,6 +2756,15 @@
                 describe_add_mana_destination_suffix(&add_any_color_among.player)
             );
         }
+        if add_any_color_among.filter.is_source_only() {
+            let source = add_any_color_among.filter.source_surface.as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            return format!(
+                "Add one mana of any of {source}'s colors{}",
+                describe_add_mana_destination_suffix(&add_any_color_among.player)
+            );
+        }
         return format!(
             "Add one mana of any color among {}{}",
             pluralize_noun_phrase(&describe_for_each_filter(&add_any_color_among.filter)),
