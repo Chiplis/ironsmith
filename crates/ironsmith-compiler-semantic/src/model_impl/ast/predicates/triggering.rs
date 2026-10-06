@@ -33,4 +33,5 @@ pub enum TriggeringPredicateAst {
     TriggeringSpellWasKicked,
     YouChoseAnotherRingBearer,
     TriggeringEventCausedBy { controller: PlayerFilter, effect_like_only: bool },
+    CombatParticipant(ironsmith_core::CombatParticipantCondition),
 }

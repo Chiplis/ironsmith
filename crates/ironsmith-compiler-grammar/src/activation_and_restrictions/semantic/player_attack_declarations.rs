@@ -43,6 +43,13 @@ pub(super) fn parse_player_attack_declaration(
         return Ok(None);
     };
     let recipient = &words[verb + 1..];
+    if recipient.is_empty() {
+        return Ok(Some(TriggerSpec::PlayerAttackDeclaration {
+            attacker,
+            defender: PlayerFilter::Any,
+            grouping: PlayerAttackGrouping::AttackerAnyTarget,
+        }));
+    }
     let (recipient, grouping) =
         if let Some(rest) = recipient.strip_prefix(&["one", "or", "more", "of"]) {
             (rest, PlayerAttackGrouping::Attacker)

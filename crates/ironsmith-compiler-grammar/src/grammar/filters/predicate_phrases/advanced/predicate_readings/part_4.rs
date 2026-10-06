@@ -66,6 +66,9 @@ pub(super) fn read_combat_turn_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
+    if let Some(predicate) = combat_participants::parse(predicate_tokens) {
+        return Ok(Some(predicate));
+    }
     if let Some(predicate) = parse_combat_turn_predicate(predicate_tokens) {
         return Ok(Some(predicate));
     }

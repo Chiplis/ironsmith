@@ -2241,6 +2241,22 @@ pub enum Condition {
     /// Current-turn activations of this exact resolving ability acquisition.
     /// Appended to preserve existing serialized condition discriminants.
     ThisAbilityActivatedThisTurnAtLeast(u32),
+    /// Combat participant identities come from the triggering declaration;
+    /// current combat roles, life and poison are checked again on resolution.
+    CombatParticipant(CombatParticipantCondition),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum CombatParticipantCondition {
+    YouAreDefendingPlayer,
+    /// Past tense: the retained declaring player attacked you or a
+    /// planeswalker you controlled when that declaration completed.
+    AttackingPlayerAttackedYouOrYourPlaneswalker,
+    /// Present tense: the retained declaring player is not attacking you now.
+    AttackingPlayerIsNotAttackingYou,
+    AnyAttackedPlayerIsPoisoned,
+    TriggeringCreatureAttacksMostLifePlayer,
 }
 
 #[cfg(test)]

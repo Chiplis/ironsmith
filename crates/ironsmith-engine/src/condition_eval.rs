@@ -1,4 +1,5 @@
 mod context;
+mod combat_participants;
 use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
@@ -6000,6 +6001,7 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
+        Condition::CombatParticipant(condition) => combat_participants::evaluate(game, *condition, ctx),
         Condition::YouChoseAnotherRingBearer => Ok(shared.triggering_event
             .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
             .filter(|event| event.action == crate::events::KeywordActionKind::RingTemptsYou && event.player == shared.controller)

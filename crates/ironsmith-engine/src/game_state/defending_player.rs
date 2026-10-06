@@ -6,6 +6,23 @@ use crate::effects::ExecutionError;
 use crate::ids::{ObjectId, PlayerId};
 
 impl GameState {
+    /// Current target of the exact attacking tenure retained by an event.
+    /// A later attack by the same ObjectId is a different tenure.
+    pub(crate) fn active_attack_target_for_reference(&self, reference: DefendingPlayerReference)
+        -> Result<Option<&AttackTarget>, ExecutionError>
+    {
+        let DefendingPlayerReference::Attacker { attacker, role } = reference else {
+            return Err(ExecutionError::IncompleteEvidence(
+                "current attacking predicate requires the exact retained attacking tenure".into()));
+        };
+        self.combat_transients.attacking_roles.get(role.0)
+            .filter(|record| record.attacker == attacker)
+            .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "current attacking predicate has no retained attacking tenure".into()))?;
+        Ok((self.combat_transients.current_attacking_roles.get(&attacker) == Some(&role))
+            .then(|| self.current_attack_target_across_lanes(attacker)).flatten())
+    }
+
     /// Capture before replacement programs or combat removal discard evidence.
     pub(crate) fn retain_attacking_role(&mut self, attacker: ObjectId, target: &AttackTarget)
         -> DefendingPlayerReference

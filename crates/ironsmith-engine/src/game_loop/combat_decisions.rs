@@ -1100,15 +1100,28 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             })
             .collect();
     let mut attack_events = Vec::with_capacity(total_attackers);
+    let participants: std::sync::Arc<[crate::events::combat::DeclaredAttackParticipant]> =
+        surviving_declarations.iter().map(|prepared_decl| {
+            let decl = &prepared_decl.declaration;
+            let defending_player = crate::combat_state::defending_player_for_attack_target(game, &decl.target)
+                .ok_or_else(|| GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                    "completed attack declaration has no defending player".into())))?;
+            Ok(crate::events::combat::DeclaredAttackParticipant {
+                creature: decl.creature,
+                controller: prepared_decl.controller,
+                target: AttackEventTarget::from(&decl.target),
+                defending_player,
+            })
+        }).collect::<Result<Vec<_>, GameLoopError>>()?.into();
     let mut attacked_player_pairs = Vec::new();
-    for prepared_decl in surviving_declarations {
+    for (prepared_decl, participant) in surviving_declarations.into_iter().zip(participants.iter()) {
         let decl = &prepared_decl.declaration;
 
         let event_target = AttackEventTarget::from(&decl.target);
-        if let crate::combat_state::AttackTarget::Player(defender) = decl.target
-            && !attacked_player_pairs.contains(&(prepared_decl.controller, defender))
-        {
-            attacked_player_pairs.push((prepared_decl.controller, defender));
+        let pair = (prepared_decl.controller, participant.defending_player,
+            matches!(decl.target, crate::combat_state::AttackTarget::Player(_)));
+        if !attacked_player_pairs.contains(&pair) {
+            attacked_player_pairs.push(pair);
         }
 
         let event_provenance = game
@@ -1127,10 +1140,9 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         let reference = game.retain_attacking_role(decl.creature, &decl.target);
         attack_events.push(event.with_defending_player_reference(reference));
     }
-    // CR 508.3b/e: player-level conditions observe declarations, not every
-    // creature and not objects entering already attacking. Freeze both roles
-    // before any attack trigger can change control or remove a participant.
-    for (attacker, defender) in attacked_player_pairs {
+    // CR 508.3b/e: typed target category keeps a player attack distinct from
+    // attacking their planeswalker or a Battle they protect.
+    for (attacker, defender, directly_attacked_player) in attacked_player_pairs {
         let provenance = game.provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::PlayerAttackDeclaration);
         attack_events.push(TriggerEvent::new_with_provenance(
@@ -1139,6 +1151,8 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
                 defender,
                 turn_number: game.turn.turn_number,
                 combat_phase: game.turn_store.combat_phases_started_this_turn,
+                directly_attacked_player,
+                declaration: Some(participants.clone()),
             },
             provenance,
         ));

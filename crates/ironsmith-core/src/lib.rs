@@ -259,7 +259,7 @@ pub use trigger_model::{
 };
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
-    AttachmentConditionHost, Condition, ConditionConjunction, DeathHistoryControllerSurface,
+    AttachmentConditionHost, Condition, CombatParticipantCondition, ConditionConjunction, DeathHistoryControllerSurface,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
     PriorEffectMetricQuery, ColorChoiceReference, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,

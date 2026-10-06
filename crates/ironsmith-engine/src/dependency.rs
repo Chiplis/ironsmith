@@ -2115,6 +2115,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasEnduringStory { .. }
         | C::SourceIsRingBearer { .. }
         | C::YouChoseAnotherRingBearer
+        | C::CombatParticipant(_)
         | C::PlayerRingTemptedThisGameOrMore { .. }
         | C::PlayerCommittedCrimeThisTurn { .. }
         | C::PlayerRolledResultThisTurn { .. }

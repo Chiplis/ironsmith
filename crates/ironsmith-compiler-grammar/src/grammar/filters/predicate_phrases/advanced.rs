@@ -12,6 +12,9 @@ mod phase_step_gates;
 #[path = "advanced/attack_power.rs"]
 mod attack_power;
 
+#[path = "advanced/combat_participants.rs"]
+mod combat_participants;
+
 #[path = "advanced/damage_history.rs"]
 mod damage_history;
 
@@ -5838,6 +5841,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     } else {
         tokens
     };
+    if let Some(predicate) = combat_participants::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
     if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {
         return Ok(predicate);
     }

@@ -21,6 +21,10 @@ pub enum PlayerAttackGrouping {
     Defender,
     /// One event for each separately declared attacking/defending player pair.
     Pair,
+    /// One event per player declaring attackers, including declarations only
+    /// against planeswalkers or battles. Existing groupings require a direct
+    /// player attack (CR 508.3b/e).
+    AttackerAnyTarget,
 }
 
 /// Oracle surface for an end-step trigger whose runtime player filter is Any.
