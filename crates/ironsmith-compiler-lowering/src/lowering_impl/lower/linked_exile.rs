@@ -221,3 +221,83 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
         spec.linked_exile_pair = Some(pair);
     }
 }
+
+
+fn simple_linked_activation(ability: &crate::ability::ActivatedAbility) -> bool {
+    ability.choices.is_empty()
+        && ability.mana_cost.as_all().is_some_and(|costs| costs.iter().all(|cost|
+            matches!(cost, crate::costs::Cost::Mana(_) | crate::costs::Cost::Tap)))
+        && ability.effects.segments.len() == 1
+        && ability.effects.segments[0].self_replacements.is_empty()
+}
+
+fn draw_then_private_hand_exile(program: &ResolutionProgram) -> bool {
+    let effects = program.all_effects();
+    if effects.len() != 3 { return false; }
+    let Some(draw) = crate::compile_support::effect_without_result_tags(effects[0])
+        .downcast_ref::<crate::effects::DrawCardsEffect>() else { return false; };
+    if draw.count != Value::Fixed(1) || draw.player != crate::target::PlayerFilter::You { return false; }
+    let hand = ResolutionProgram::from_effects(effects[1..].iter().map(|effect| (*effect).clone()).collect());
+    matches!(static_exile_producer(&hand), Some(StaticExileProducer::FaceDownHandChoice))
+        && effects[1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some_and(|choice| choice.chooser == crate::target::PlayerFilter::You)
+}
+
+fn single_paired_return(program: &ResolutionProgram) -> bool {
+    let effects = program.all_effects();
+    if effects.len() != 1 { return false; }
+    let Some(returned) = crate::compile_support::effect_without_result_tags(effects[0])
+        .downcast_ref::<crate::effects::ReturnToHandEffect>() else { return false; };
+    if returned.spec.is_target() || !returned.spec.count().is_single()
+        || !matches!(returned.spec.unhinted(), ChooseSpec::WithCount(_, _)) { return false; }
+    let ChooseSpec::Object(filter) = returned.spec.base() else { return false; };
+    if filter.zone != Some(crate::zone::Zone::Exile) || filter.tagged_constraints.len() != 1
+        || filter.tagged_constraints[0].tag.as_str() != ironsmith_core::SOURCE_EXILED_TAG
+        || filter.tagged_constraints[0].relation != crate::target::TaggedOpbjectRelation::IsTaggedObject { return false; }
+    let mut filter = filter.clone(); filter.zone = None; filter.tagged_constraints.clear();
+    filter == crate::target::ObjectFilter::default()
+}
+
+/// One typed draw/hand-exile producer, one inspector, and one singular return
+/// form a complete linked family. Costs are limited to mana and tapping the
+/// source; no extra producer, alternative scope or executable child is ignored.
+pub(super) fn bind_private_return_linked_exile(definition: &mut CardDefinition) {
+    use ironsmith_core::StaticAbilityPayload;
+    if definition.abilities.len() != 3 || definition.spell_effect.is_some()
+        || !definition.alternative_casts.is_empty() || !definition.optional_costs.is_empty()
+        || definition.additional_cost.has_non_mana_costs()
+        || definition.additional_cost.dynamic_mana_cost().is_some()
+        || definition.additional_cost.as_one_of().is_some() { return; }
+    let (mut producer, mut consumer, mut inspector) = (None, None, None);
+    for (slot, ability) in definition.abilities.iter().enumerate() {
+        match &ability.kind {
+            AbilityKind::Static(ability) if matches!(ability.payload, StaticAbilityPayload::LookAtSourceExiledCards { .. }) => {
+                if inspector.replace(slot).is_some() { return; }
+            }
+            AbilityKind::Activated(ability) if simple_linked_activation(ability) => {
+                if draw_then_private_hand_exile(&ability.effects) {
+                    if producer.replace(slot).is_some() { return; }
+                } else if single_paired_return(&ability.effects) {
+                    if consumer.replace(slot).is_some() { return; }
+                } else { return; }
+            }
+            _ => return,
+        }
+    }
+    let (Some(producer), Some(consumer), Some(inspector)) = (producer, consumer, inspector) else { return; };
+    if let AbilityKind::Activated(ability) = &mut definition.abilities[producer].kind {
+        let mut segments = ability.effects.segments.clone();
+        let Some(exile) = segments[0].default_effects[2].downcast_ref::<crate::effects::ExileEffect>() else { return; };
+        let mut exile = exile.clone(); exile.exclude_prior_zone_viewers = true;
+        segments[0].default_effects[2] = Effect::new(exile); ability.effects.replace_segments(segments);
+    }
+    let Ok(bytes) = serde_json::to_vec(&definition.abilities) else { return; };
+    let pair = ironsmith_core::LinkedExilePair {
+        definition: ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()), pair: producer as u32,
+    };
+    for slot in [producer, consumer] {
+        if let AbilityKind::Activated(ability) = &mut definition.abilities[slot].kind { ability.effects.linked_exile_pair = Some(pair); }
+    }
+    if let AbilityKind::Static(ability) = &mut definition.abilities[inspector].kind
+        && let StaticAbilityPayload::LookAtSourceExiledCards { pair: member, .. } = &mut ability.payload { *member = Some(pair); }
+}

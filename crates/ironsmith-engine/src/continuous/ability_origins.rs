@@ -19,6 +19,7 @@ pub struct ContinuousAbilityOrigin {
 #[derive(Debug, Clone)]
 pub struct AbilityEffectOrigin {
     source: ObjectId,
+    replaces_rules_text: bool,
     registration_id: Option<super::ContinuousEffectId>,
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
@@ -74,6 +75,8 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
     fn from(effect: &ContinuousEffect) -> Self {
         Self {
             source: effect.source,
+            replaces_rules_text: matches!(effect.modification,
+                super::Modification::CopyOf { .. } | super::Modification::SetTextBox(_)),
             registration_id: effect.registration_id,
             generated_by: effect.originating_ability.clone(),
             timestamp: effect.timestamp,
@@ -114,6 +117,18 @@ pub enum AbilityOrigin {
 }
 
 impl AbilityOrigin {
+    /// Copy and text-box replacement define the object's text. Ordinary
+    /// grants, borrowed abilities, counters and intrinsic rules do not (612.3).
+    pub(crate) fn is_rules_text(&self) -> bool {
+        match self {
+            Self::Printed(_) => true,
+            Self::Effect { effect, .. } => effect.replaces_rules_text,
+            Self::IntrinsicBasicLandMana(_) | Self::IntrinsicStartingCounters(_)
+            | Self::Temporary(_) | Self::Counter { .. } | Self::Level { .. }
+            | Self::Borrowed { .. } => false,
+        }
+    }
+
     /// Independent grants materialized before the layer loop. Text/copy
     /// replacement must not erase them; ordinary layer-six clearing still can.
     pub(crate) fn is_independent_early_grant(&self) -> bool {
@@ -218,6 +233,20 @@ impl CalculatedAbilities {
         });
         self.origins = retained;
     }
+    /// Transform definitions atomically while keeping every acquisition and
+    /// generating occurrence paired with its original slot.
+    pub(crate) fn try_map_rules_text<E>(
+        &mut self,
+        mut map: impl FnMut(&Ability) -> Result<Ability, E>,
+    ) -> Result<(), E> {
+        let mut definitions = self.definitions.to_vec();
+        for (definition, origin) in definitions.iter_mut().zip(&self.origins) {
+            if origin.is_rules_text() { *definition = map(definition)?; }
+        }
+        self.definitions = definitions.into();
+        Ok(())
+    }
+
     pub fn clear(&mut self) {
         self.definitions.clear();
         self.origins.clear();

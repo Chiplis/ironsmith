@@ -2054,6 +2054,15 @@ pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Optio
     None
 }
 
+/// Result tags wrap an instruction without changing its executable action.
+/// Semantic inventories share this helper instead of reading wrapper labels.
+pub fn effect_without_result_tags(mut effect: &Effect) -> &Effect {
+    while let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        effect = &tagged.effect;
+    }
+    effect
+}
+
 pub fn tag_object_target_effect(
     effect: Effect,
     spec: &ChooseSpec,

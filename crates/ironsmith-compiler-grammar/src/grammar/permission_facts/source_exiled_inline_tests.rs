@@ -74,3 +74,13 @@ fn private_inspection_and_play_share_one_complete_source_antecedent() {
         assert!(parse_look_and_play_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none());
     }
 }
+
+#[test]
+fn standalone_inspector_requires_its_own_complete_sentence() {
+    assert!(parse_look_source_exiled_tokens(&lex_line("You may look at cards exiled with this creature.", 0).unwrap()).is_some());
+    for line in [
+        "You may look at cards exiled with this creature this turn.",
+        "You may look at cards exiled with that creature.",
+        "You may look at cards exiled with this creature, and you may play lands and cast spells from among those cards.",
+    ] { assert!(parse_look_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none()); }
+}

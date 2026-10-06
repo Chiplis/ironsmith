@@ -4514,6 +4514,7 @@ impl GameState {
             abilities: Vec::new().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+            text_change_error: None,
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: None,
             controller: owner,
@@ -4778,12 +4779,13 @@ impl GameState {
                         .collect::<Vec<_>>()
                         .into(),
                     numeric_range_error: None,
+                    text_change_error: None,
                     ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),
                 });
 
-        if chars.numeric_range_error.is_some() {
+        if chars.numeric_range_error.is_some() || chars.text_change_error.is_some() {
             return None;
         }
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
@@ -5796,6 +5798,7 @@ impl GameState {
         match modification {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::CopyStaticAbilityVariants { .. }
             // Restriction modifications materialize as cant-relevant static

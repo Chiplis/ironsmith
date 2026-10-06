@@ -286,6 +286,7 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
@@ -309,6 +310,7 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
@@ -330,6 +332,7 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities

@@ -430,11 +430,7 @@ fn normalize_cross_segment_plural_coordinated_result_references(
 /// aggregate outcome of that loop, then move that collection and shuffle once
 /// for each distinct controller represented by the original tagged result.
 fn unwrap_iterated_collection_result_tag(effect: &Effect) -> &Effect {
-    let mut current = effect;
-    while let Some(tagged) = current.downcast_ref::<crate::effects::TaggedEffect>() {
-        current = &tagged.effect;
-    }
-    current
+    super::effect_without_result_tags(effect)
 }
 
 fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Effect> {

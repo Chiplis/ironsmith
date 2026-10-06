@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "2e281a3cc92cc846de5955dd0a9f5c12d9e28afc",
+  "source_implementation_commit": "50bf0de5a5f0670cabac42c0af987515f9a8c80c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1181,
-    "additional_proposed_compile_entries": 1186,
+    "additional_proposed_unique_cards": 1182,
+    "additional_proposed_compile_entries": 1187,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1181,
+    "source_proposals_excluding_identified_runtime_gaps": 1182,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4855,9 +4855,15 @@
         "Checked color-word, basic-land-type-word and creature-type-word pairs reject invalid families and identical substitutions at construction/deserialization. No-occurrence choices remain allowed."
       ],
       "remaining_blockers": [
-        "Real layer-3 and dependency application, current/captured spell and ability programs, authored-word roles, complete legal target domains and all twelve secondary bodies."
+        "Complete current/captured spell and ability program owners and checked historical evidence; authored-word roles and complete target domains; intrinsic basic-land mana provenance; all twelve complete bodies and secondary abilities."
       ],
-      "source_coverage_count": 0
+      "source_coverage_count": 0,
+      "owner_prerequisite_commits": [
+        "de5d2c2b2185380ef17baec021112d5396a36da7",
+        "f312526650a2806f8469dbb6046e1c1c98a02837"
+      ],
+      "integrated_owner_prerequisite_commit": "50bf0de5a5f0670cabac42c0af987515f9a8c80c",
+      "owner_source_review": "Bounded layer-three and dependency transformation, exact authored origin preservation, and checked discovery admission independently reviewed; no full-card admission."
     },
     {
       "id": "filtered-evasion-complete-bodies",
@@ -4882,6 +4888,26 @@
         "Full scry, Coven trigger-versus-activation timing, optional graveyard exile, chosen-color hexproof, paid abilities, Power-up discounts/cancellation/once limit and the complete token maximum-blocker body are covered by independent direct/artifact/native scenarios."
       ],
       "report": "architecture/card-failure-filtered-evasion-bodies.md"
+    },
+    {
+      "id": "linked-exile-bane-broker-complete-body",
+      "stage": 88,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Bane Alley Broker"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "2c70dc1180ca6b283f80a674487b291ca24db12d",
+      "integrated_source_commit": "50bf0de5a5f0670cabac42c0af987515f9a8c80c",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete-body review, appended enum correction and clean additive union inspection.",
+      "semantic_scope": [
+        "Standalone exact-pair inspection grants no play authority; singular returns use captured acquisition ownership and known-empty pools rather than stale source-wide tags.",
+        "Real draw/exile and UB/tap return payments, card-owner destination, copied pending activations after blink, native recovery, missing-evidence rejection and canonical rendering retain their complete owners.",
+        "Printed/acquired identities and existing payload ordinals are preserved. Durable inspection remains separate from source-scoped play; future face-down exile pile shuffling remains the explicit shared dependency."
+      ],
+      "report": "architecture/card-failure-linked-exile-bane-broker.md"
     }
   ],
   "cards": [
@@ -7110,10 +7136,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "linked-exile-static-play-permissions"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-exile-static-play-permissions",
+        "linked-exile-bane-broker-complete-body"
       ]
     },
     {

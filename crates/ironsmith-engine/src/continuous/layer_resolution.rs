@@ -336,8 +336,9 @@ pub(super) fn calculate_with_layers(
                     chars.controller = effect.controller;
                 }
                 Modification::ChangeText { .. } => {
-                    // Text changes are handled separately.
+                    // Legacy wire vocabulary. New instructions use RewriteText.
                 }
+                Modification::RewriteText(change) => text_changes::apply_text_change(&mut chars, *change, object),
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
                     replace_rules_text_abilities(
@@ -1104,6 +1105,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::ChangeController(_)
             | Modification::ChangeControllerToEffectController
             | Modification::ChangeText { .. }
+            | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }

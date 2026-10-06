@@ -1518,6 +1518,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
         Modification::SwitchPowerToughness => {
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
+        Modification::RewriteText(change) => crate::continuous::text_changes::apply_text_change(chars, *change, object),
         Modification::ChangeText { .. }
         | Modification::SetTextBox(_)
         | Modification::SetName(_)
@@ -1782,6 +1783,7 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
             && matches!(
                 effect.modification,
                 Modification::ChangeText { .. }
+                    | Modification::RewriteText(_)
                     | Modification::SetTextBox(_)
                     | Modification::SetName(_)
                     | Modification::InsertNameWords { .. }
@@ -2609,6 +2611,10 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
         || match modification {
             Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
             Modification::ChangeController(_) | Modification::ChangeControllerToEffectController => filter.controller.is_some(),
+            Modification::RewriteText(change) => {
+                filter_uses_ability_characteristics(filter)
+                    || (change.changes_type_words() && filter_uses_type_characteristics(filter))
+            }
             Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
                 filter_uses_ability_characteristics(filter)
             }
@@ -2765,6 +2771,7 @@ fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
 }
 
 fn modification_can_change_type_characteristics(modification: &Modification) -> bool {
+    if let Modification::RewriteText(change) = modification { return change.changes_type_words(); }
     matches!(
         modification,
         Modification::CopyOf { .. }
@@ -3448,6 +3455,7 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                text_change_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -3511,6 +3519,7 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                text_change_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3640,6 +3649,7 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                text_change_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3828,6 +3838,7 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                text_change_error: None,
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -4060,6 +4071,7 @@ mod tests {
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+            text_change_error: None,
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: object.aura_attach_filter_owned(),
             controller: object.owner,

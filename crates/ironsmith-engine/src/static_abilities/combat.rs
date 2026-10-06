@@ -1137,6 +1137,13 @@ impl Landwalk {
 }
 
 impl StaticAbilityKind for Landwalk {
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let kind = crate::continuous::text_changes::rewrite_landwalk_words(self.kind, change);
+        Ok((kind != self.kind).then(|| super::StaticAbility::new(Self { kind })))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Landwalk
     }

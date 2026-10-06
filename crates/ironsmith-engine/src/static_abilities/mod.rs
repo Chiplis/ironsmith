@@ -340,6 +340,17 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// Exact shared model of an immutable native ability's current fields.
     /// Unrepresented semantics remain an explicit codec boundary; neither id
     /// nor display text alone is sufficient to reconstruct a parameterized model.
+    /// Return a rewritten definition, or None when this modeled definition
+    /// contains no affected authored words. Native semantic owners override
+    /// this method; absence of a model is an explicit unsupported domain.
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let model = self.compiled_model().ok_or(
+            crate::continuous::text_changes::TextChangeDomainError::StaticAbility(self.id()))?;
+        crate::continuous::text_changes::rewrite_static_model(model, change)
+    }
+
     fn canonical_model(&self) -> Option<CompiledStaticAbility> {
         self.compiled_model().cloned()
     }
@@ -1577,6 +1588,18 @@ impl StaticAbility {
     }
 
     /// Return the identity of this constructed ability instance.
+    /// Text changes alter this definition, not the occurrence that acquired
+    /// it. Linked abilities and static discovery continue to identify it by
+    /// the same immutable instance ID; old clones retain their original text.
+    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
+        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        match self.0.rewrite_text_words(change)? {
+            None => Ok(self.clone()),
+            Some(mut rewritten) => { rewritten.1 = self.1; Ok(rewritten) },
+        }
+    }
+
     pub fn instance_id(&self) -> StaticAbilityInstanceId {
         self.1
     }
@@ -1727,6 +1750,10 @@ impl StaticAbility {
 
     pub fn compiled_model(&self) -> Option<&CompiledStaticAbility> {
         self.0.compiled_model()
+    }
+
+    pub fn source_exiled_inspection_pair(&self) -> Option<Option<ironsmith_core::LinkedExilePair>> {
+        self.compiled_model()?.source_exiled_inspection_pair()
     }
 
     pub fn canonical_model(&self) -> Option<CompiledStaticAbility> {

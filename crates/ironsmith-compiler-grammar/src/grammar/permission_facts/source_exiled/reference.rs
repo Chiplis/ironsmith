@@ -129,3 +129,12 @@ pub fn parse_look_and_play_source_exiled_tokens(
     ]), primitives::sentence_end()).void(), "paired exile inspection and play permission")?;
     Some(reference)
 }
+
+
+pub fn parse_look_source_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "look", "at", "cards"]))?;
+    let ((owned_by_you, reference), tail) = primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you { return None; }
+    primitives::probe_all(tail, primitives::sentence_end(), "standalone paired exile inspection")?;
+    Some(reference)
+}

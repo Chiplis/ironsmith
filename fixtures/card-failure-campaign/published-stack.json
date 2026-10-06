@@ -1207,6 +1207,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/852"
+    },
+    {
+      "stage": 87,
+      "branch": "fix/card-failures-87-evasion-and-linked-bodies",
+      "base": "fix/card-failures-86-first-draw-and-private-exile",
+      "source_integration_commit": "3b0b27470d01e0f056a6088a6baa5bea47e5195e",
+      "remote_commit": "d299301ad26afd98c017f1b83fd838be6d702623",
+      "tree": "6d5b398cfc323466aa72f271795d7d577bcc7fca",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 853,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/853"
     }
   ]
 }

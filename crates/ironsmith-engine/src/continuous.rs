@@ -33,6 +33,7 @@ pub use ability_origins::{
     AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin,
 };
 mod layer_resolution;
+pub mod text_changes;
 pub(crate) mod value_context;
 use layer_resolution::*;
 pub(crate) use layer_resolution::{bind_effect_controller_to_layer_frame, resolve_value_direct};
@@ -757,6 +758,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// CR305.7 rules-text/copy ability loss caused by setting basic land types.
     /// Other continuous grants survive; appended for serialized ordinal stability.
     RemoveLandRulesTextAbilities,
+
+    /// CR 612.2 replacement of authored color/type words in layer 3.
+    /// Appended to preserve the existing serialized variant ordinals.
+    RewriteText(ironsmith_core::TextChange),
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -794,6 +799,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 ContinuousModification::ChangeControllerToEffectController
             }
             Self::ChangeText { from, to } => ContinuousModification::ChangeText { from, to },
+            Self::RewriteText(change) => ContinuousModification::RewriteText(change),
             Self::SetTextBox(value) => ContinuousModification::SetTextBox(text(value)?),
             Self::SetName(value) => ContinuousModification::SetName(value),
             Self::InsertNameWords {
@@ -1014,6 +1020,7 @@ impl Modification {
                 Self::restriction(RestrictionKind::DoesntUntap)
             }
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
+            ironsmith_core::CompiledContinuousModification::RewriteText(change) => Self::RewriteText(change),
             ironsmith_core::CompiledContinuousModification::RemoveAllAbilities => {
                 Self::RemoveAllAbilities
             }
@@ -1032,6 +1039,7 @@ impl Modification {
             | Modification::ChangeControllerToEffectController => Layer::Control,
 
             Modification::ChangeText { .. }
+            | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. } => Layer::Text,
@@ -2064,6 +2072,7 @@ pub struct CalculatedCharacteristics {
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
+    pub(crate) text_change_error: Option<text_changes::TextChangeDomainError>,
     pub name: SharedStr,
     /// A second current split-card name, cleared when layer 1 replaces names.
     pub alternate_name: Option<String>,
@@ -2106,6 +2115,9 @@ impl CalculatedCharacteristics {
     pub(crate) fn validate_numeric_range(
         &self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if let Some(error) = &self.text_change_error {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(error.clone()));
+        }
         if let Some((resource, value)) = self.numeric_range_error {
             Err(
                 crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
@@ -2437,6 +2449,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         abilities: abilities.clone().into(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
+        text_change_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
@@ -3645,7 +3658,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, object);
             calc_guard.update(&chars);
         }
     }
@@ -3782,7 +3795,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, object);
             calc_guard.update(&chars);
         }
 
@@ -3792,13 +3805,14 @@ pub fn text_box_characteristics_with_effects(
         }
     }
 
+    if chars.text_change_error.is_some() { return None; }
     Some(chars)
 }
 
 fn apply_text_box_modification_to_chars(
     effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
-    _objects: &ObjectMap,
+    object: &Object,
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
@@ -3827,6 +3841,7 @@ fn apply_text_box_modification_to_chars(
             chars.controller = effect.controller;
         }
         Modification::ChangeText { .. } => {}
+        Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
@@ -5951,8 +5966,9 @@ fn apply_modification_to_chars(
             chars.controller = effect.controller;
         }
         Modification::ChangeText { .. } => {
-            // Text changes are handled separately.
+            // Legacy wire vocabulary. New instructions use RewriteText.
         }
+        Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();

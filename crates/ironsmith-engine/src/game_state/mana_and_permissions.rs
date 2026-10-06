@@ -827,6 +827,7 @@ impl GameState {
         match modification {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
             | Modification::SetTextBox(_) => true,
             Modification::AddAbility(static_ability) => {
                 Self::is_cast_or_activate_payment_restriction(static_ability)
@@ -936,6 +937,7 @@ impl GameState {
         match modification {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetAbilities(_)
             | Modification::CopyStaticAbilityVariants { .. }
@@ -1076,6 +1078,7 @@ impl GameState {
         match modification {
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
             | Modification::SetTextBox(_) => true,
             Modification::AddAbility(static_ability) => static_ability.id() == ability_id,
             Modification::AddAbilityGeneric(ability) => {
@@ -3934,6 +3937,7 @@ impl GameState {
             // existing list even when it only sets static abilities.
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetAbilities(_)
             | Modification::CopyTriggeredAbilities { .. }

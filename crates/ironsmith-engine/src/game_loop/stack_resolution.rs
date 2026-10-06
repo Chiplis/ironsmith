@@ -1213,8 +1213,11 @@ fn resolve_stack_entry_full_inner(
             .entry(crate::tag::CHOSEN_OBJECTS_TAG.into())
             .or_insert_with(|| vec![chosen.clone()]);
     }
-    let source_exiled = game
-        .get_exiled_with_source_links(execution_source)
+    let linked = match &entry.linked_exile_owner {
+        Some(owner) => game.linked_exile_pair_members(owner).map_err(GameLoopError::ExecutionFailed)?,
+        None => game.get_exiled_with_source_links(execution_source),
+    };
+    let source_exiled = linked
         .iter()
         .filter_map(|id| {
             game.object(*id).map(|obj| {
@@ -1242,7 +1245,7 @@ fn resolve_stack_entry_full_inner(
                             .any(|linked| linked.object_id == snapshot.object_id)
                     })
             });
-    if !source_exiled.is_empty() && !keeps_captured_subset {
+    if (entry.linked_exile_owner.is_some() || !source_exiled.is_empty()) && !keeps_captured_subset {
         tagged_objects.insert(source_exiled_tag, source_exiled);
     }
     if !tagged_objects.is_empty() {

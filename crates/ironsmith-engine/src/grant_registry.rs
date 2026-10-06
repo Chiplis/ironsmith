@@ -1704,7 +1704,8 @@ impl GrantRegistry {
                 let Some(origin) = characteristics.abilities.origin(slot).cloned() else {
                     if source_is_battlefield && ability.functions_in(&source.zone)
                         && let AbilityKind::Static(ability) = &ability.kind
-                        && ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some())
+                        && (ability.source_exiled_inspection_pair().is_some()
+                            || ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some()))
                     {
                         game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
                             "linked static permission omitted its rules-text acquisition; native recovery or replay required".into()));
@@ -1719,6 +1720,14 @@ impl GrantRegistry {
                     continue;
                 };
                 if !s.is_active(game, source_id) {
+                    continue;
+                }
+                if let Some(pair) = s.source_exiled_inspection_pair() {
+                    if !source_is_battlefield || !ability.functions_in(&source.zone) { continue; }
+                    match linked_exile_targets_for_identity(game, pair, &permission_identity) {
+                        Ok(members) => inspection.extend(members.into_iter().map(|member| (member, controller))),
+                        Err(error) => game.record_token_resource_failure(&error),
+                    }
                     continue;
                 }
                 let Some(spec) = s.grant_spec() else {
@@ -1912,14 +1921,22 @@ fn static_linked_exile_targets(
                 "linked private inspection requires a proven complete paired-card pool".into()));
         }
     }
+    linked_exile_targets_for_identity(game, spec.linked_exile_pair, identity).map(Some)
+}
+
+fn linked_exile_targets_for_identity(
+    game: &crate::GameState,
+    pair: Option<ironsmith_core::LinkedExilePair>,
+    identity: &GrantPermissionIdentity,
+) -> Result<Vec<ObjectId>, crate::effects::ExecutionError> {
     let owner = match identity {
         GrantPermissionIdentity::Static { source, origin, .. } =>
-            crate::linked_exile::LinkedExileOwner::capture(*source, spec.linked_exile_pair, Some(origin)),
+            crate::linked_exile::LinkedExileOwner::capture(*source, pair, Some(origin)),
         _ => None,
     }.ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
         "linked static permission has no proven definition/acquisition pair; native recovery or replay required".into()))?;
-    Ok(Some(game.linked_exile_pair_members(&owner)?.iter().copied().filter(|member|
-        game.object(*member).is_some_and(|object| object.zone == Zone::Exile)).collect()))
+    Ok(game.linked_exile_pair_members(&owner)?.iter().copied().filter(|member|
+        game.object(*member).is_some_and(|object| object.zone == Zone::Exile)).collect())
 }
 
 fn grant_filter_context(

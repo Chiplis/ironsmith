@@ -959,6 +959,7 @@ fn modification_may_affect_untap(modification: &crate::continuous::Modification)
         // Text rewrites can introduce arbitrary static abilities.
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_) => true,
         // Materializes StaticAbility::doesnt_untap() in calculated
         // characteristics (see apply path in continuous.rs).

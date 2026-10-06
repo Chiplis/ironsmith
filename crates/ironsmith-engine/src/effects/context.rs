@@ -1648,8 +1648,14 @@ impl<'a> ExecutionContext<'a> {
             ironsmith_core::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into(),
             attacking,
         );
-        let source_exiled = game
-            .get_exiled_with_source_links(self.source)
+        let linked = match &self.linked_exile_owner {
+            Some(owner) => match game.linked_exile_pair_members(owner) {
+                Ok(members) => members,
+                Err(error) => { game.record_token_resource_failure(&error); &[] }
+            },
+            None => game.get_exiled_with_source_links(self.source),
+        };
+        let source_exiled = linked
             .iter()
             .filter_map(|id| {
                 game.object(*id).map(|obj| {
@@ -1657,7 +1663,8 @@ impl<'a> ExecutionContext<'a> {
                 })
             })
             .collect::<Vec<_>>();
-        if !source_exiled.is_empty() {
+        if self.linked_exile_owner.is_some() || !source_exiled.is_empty() {
+            // A known empty pair must replace any stale source-wide tag.
             tagged_objects.insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
         }
         let mut target_objects = target_objects;

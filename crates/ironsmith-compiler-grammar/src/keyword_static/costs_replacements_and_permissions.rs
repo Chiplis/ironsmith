@@ -4468,6 +4468,9 @@ pub fn parse_source_exiled_play_life_cost_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(reference) = crate::grammar::permission_facts::source_exiled::parse_look_source_exiled_tokens(tokens) {
+        return Ok(Some(vec![StaticAbility::look_at_source_exiled_cards(reference.surface)]));
+    }
     let inspected = crate::grammar::permission_facts::source_exiled::parse_look_and_play_source_exiled_tokens(tokens);
     let may_look = inspected.is_some();
     if let Some(reference) = inspected.or_else(|| crate::grammar::permission_facts::source_exiled::

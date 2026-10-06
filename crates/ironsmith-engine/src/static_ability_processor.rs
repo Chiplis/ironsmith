@@ -765,6 +765,7 @@ impl Default for StaticEffectDiscoveryLimits {
 /// engine computation boundary, not a Magic dependency cycle or game result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticEffectDiscoveryError {
+    TextChangeDomain(crate::continuous::text_changes::TextChangeDomainError),
     RoundLimit { maximum: usize, generated_effects: usize },
     EffectLimit { maximum: usize, completed_rounds: usize },
     MissingGeneratingOrigin { host: ObjectId },
@@ -777,6 +778,7 @@ pub enum StaticEffectDiscoveryError {
 impl std::fmt::Display for StaticEffectDiscoveryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::TextChangeDomain(error) => write!(f, "text-changing model domain is incomplete: {error}"),
             Self::RoundLimit { maximum, generated_effects } => write!(f,
                 "static-effect discovery did not converge within {maximum} rounds ({generated_effects} generated effects)"),
             Self::EffectLimit { maximum, completed_rounds } => write!(f,
@@ -910,7 +912,9 @@ pub fn try_generate_continuous_effects_from_static_abilities(
                 .any(|effect| effect.modification.layer() == Layer::PowerToughness)
                 || game.objects_map().values().any(|object|
                     object.counters.iter().any(|(counter, count)| *count != 0 && counter.pt_delta().is_some()));
-            if has_pt {
+            let has_text_rewrite = registered.iter().chain(effects.iter())
+                .any(|effect| matches!(effect.modification, Modification::RewriteText(_)));
+            if has_pt || has_text_rewrite {
                 let mut complete = registered.clone(); complete.extend(effects.iter().cloned());
                 validate_final_pt_characteristics(game, &complete)?;
             }
@@ -2724,4 +2728,34 @@ fn controller_bound_grant_prefix_preserves_control_dependency_order() {
     assert_eq!(game.object(grantor).unwrap().owner, charlie);
 }
 
+}
+
+
+#[test]
+fn typed_text_domain_failure_is_checked_without_a_power_toughness_effect() {
+    use crate::{card::CardBuilder, ids::{CardId, PlayerId}, types::CardType};
+    #[derive(Debug, Clone)]
+    struct UnmodeledWords;
+    impl crate::effects::EffectExecutor for UnmodeledWords {
+        fn execute(&self, _: &mut GameState, _: &mut crate::effects::ExecutionContext)
+            -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
+        { Ok(crate::effect::EffectOutcome::resolved()) }
+    }
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let controller = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Unmodeled text witness")
+        .card_types(vec![CardType::Creature]).build();
+    let id = game.create_object_from_card(&card, controller, Zone::Battlefield);
+    game.object_mut(id).unwrap().abilities = std::sync::Arc::new(vec![crate::ability::Ability::activated(
+        crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords)])]);
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+        id, controller, vec![id], Modification::RewriteText(
+            ironsmith_core::TextChange::color(crate::color::Color::Red, crate::color::Color::Blue).unwrap())));
+    let revision = game.effect_store.continuous_effects.revision();
+    assert!(matches!(try_generate_continuous_effects_from_static_abilities(&game, Default::default()),
+        Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert!(matches!(game.update_static_ability_effects(), Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert!(matches!(game.continuous_query_snapshot(), Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert!(!game.continuous_state_is_clean_public());
 }

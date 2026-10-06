@@ -1504,6 +1504,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ForetellSpecialActionModifier { generic_reduction: u32, any_players_turn: bool },
     ExtraCoinIgnoreOne { player: PlayerFilter },
     FirstCoinBatchHeadsWin { player: PlayerFilter },
+    /// Appended to preserve all previously published payload variant ordinals.
+    /// This source's controller may inspect its exact linked exile members.
+    /// Presence with no pair is explicitly unresolved, never source-wide.
+    LookAtSourceExiledCards {
+        pair: Option<crate::LinkedExilePair>,
+        source: SourceReferenceSurface,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1925,6 +1932,9 @@ where
             }
             StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbilityPayload::PlayerSkipsDrawStep { player }
+            }
+            StaticAbilityPayload::LookAtSourceExiledCards { pair, source } => {
+                StaticAbilityPayload::LookAtSourceExiledCards { pair, source }
             }
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
@@ -6199,6 +6209,24 @@ impl<
             payload: StaticAbilityPayload::PlayersSkipUpkeep { player },
         }
     }
+    pub fn look_at_source_exiled_cards(source: SourceReferenceSurface) -> Self {
+        Self {
+            id: Some(StaticAbilityId::LookAtSourceExiledCards),
+            label: format!("You may look at cards exiled with {}", source.display_text()),
+            payload: StaticAbilityPayload::LookAtSourceExiledCards { pair: None, source },
+        }
+    }
+
+    /// The outer option identifies a standalone inspector; an absent inner
+    /// pair is an unresolved semantic scope and requires explicit recovery.
+    pub fn source_exiled_inspection_pair(&self) -> Option<Option<crate::LinkedExilePair>> {
+        match &self.payload {
+            StaticAbilityPayload::LookAtSourceExiledCards { pair, .. } => Some(*pair),
+            StaticAbilityPayload::Conditional { ability, .. } => ability.source_exiled_inspection_pair(),
+            _ => None,
+        }
+    }
+
     pub fn player_skips_draw_step(player: PlayerFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::PlayerSkipsDrawStep),

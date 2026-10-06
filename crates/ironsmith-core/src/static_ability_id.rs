@@ -395,6 +395,8 @@ pub enum StaticAbilityId {
     ForetellSpecialActionModifier,
     ExtraCoinIgnoreOne,
     FirstCoinBatchHeadsWin,
+    /// Standalone paired private inspection; appended for wire compatibility.
+    LookAtSourceExiledCards,
 }
 
 impl StaticAbilityId {
@@ -701,6 +703,7 @@ impl StaticAbilityId {
             | SpellManaSpendingRestriction
             | ExtraCoinIgnoreOne
             | FirstCoinBatchHeadsWin
+            | LookAtSourceExiledCards
             | ExtraDieIgnoreLowest
             | RedirectMatchingDamage
             | AddLifeGainReplacement

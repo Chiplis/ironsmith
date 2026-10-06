@@ -76,6 +76,13 @@ fn describe_color_set(colors: crate::color::ColorSet) -> String {
 }
 
 impl StaticAbilityKind for Protection {
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let from = crate::continuous::text_changes::rewrite_protection_words(&self.from, change)?;
+        Ok((from != self.from).then(|| super::StaticAbility::new(Self { from })))
+    }
+
     // Protection is queried directly by targeting, blocking, attachment and
     // damage prevention. It does not emit continuous effects.
     fn may_generate_continuous_effects(&self) -> bool {
