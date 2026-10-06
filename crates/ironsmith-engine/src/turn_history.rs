@@ -1292,6 +1292,26 @@ impl TurnHistory {
         })
     }
 
+    /// Retained declaration events outlive removal from combat, but not the
+    /// exact object incarnation or combat phase. Missing phase evidence cannot
+    /// silently turn an earlier combat into the current one.
+    pub fn creature_attacked_or_blocked_in_combat(&self, creature: ObjectId, combat_phase: u32) -> Option<bool> {
+        let mut missing_phase = false;
+        for record in self.projected_records() {
+            let phase = if let Some(event) = record.event.downcast::<CreatureAttackedEvent>() {
+                (event.attacker == creature).then_some(event.combat_phase)
+            } else if let Some(event) = record.event.downcast::<CreatureBlockedEvent>() {
+                (event.blocker == creature).then_some(event.combat_phase)
+            } else { None };
+            match phase {
+                Some(Some(phase)) if phase == combat_phase => return Some(true),
+                Some(None) => missing_phase = true,
+                _ => {}
+            }
+        }
+        (!missing_phase).then_some(false)
+    }
+
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
         self.projected_records().any(|record| {
             record

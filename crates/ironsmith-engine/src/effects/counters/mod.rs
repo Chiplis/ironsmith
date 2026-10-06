@@ -21,7 +21,7 @@ mod remove_up_to_counters;
 
 pub use double_counters::DoubleCountersEffect;
 pub(crate) use player_counter_placement::execute_player_counter_placement;
-pub(crate) use object_counter_placement::execute_object_counter_placement;
+pub(crate) use object_counter_placement::{execute_object_counter_placement, execute_object_counter_placement_with_limit};
 pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect;
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;

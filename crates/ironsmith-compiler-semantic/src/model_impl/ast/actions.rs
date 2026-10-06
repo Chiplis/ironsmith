@@ -2263,6 +2263,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .finish(),
             Self::Counters(CounterActionAst::PutCounters {
+                maximum_total,
                 counter_type,
                 count,
                 target,
@@ -2270,6 +2271,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 distributed,
             }) => f
                 .debug_struct("PutCounters")
+                .field("maximum_total", maximum_total)
                 .field("counter_type", counter_type)
                 .field("count", count)
                 .field("target", target)

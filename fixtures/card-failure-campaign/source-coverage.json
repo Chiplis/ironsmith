@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "a76415a276647b1f23e530cee567e7b47e899b45",
+  "source_implementation_commit": "dcfd43f07094b7a048905c7f17678d474e8b229a",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1155,
-    "additional_proposed_compile_entries": 1160,
+    "additional_proposed_unique_cards": 1160,
+    "additional_proposed_compile_entries": 1165,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1155,
+    "source_proposals_excluding_identified_runtime_gaps": 1160,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4596,12 +4596,7 @@
         "Shield Dancer",
         "Soltari Guerrillas"
       ],
-      "partial_entries": [
-        {
-          "card_name": "Hazduhr the Abbot",
-          "remaining_blocker": "Shared finite next-X redirection must let the affected player allocate the budget across simultaneous current damage proposals; input-order consumption is insufficient. Separate correction and review remain active."
-        }
-      ],
+      "partial_entries": [],
       "implementation_commit": "ef48b541abf1d198ac895c0ab807cde305bdfddf",
       "integrated_source_commit": "a76415a276647b1f23e530cee567e7b47e899b45",
       "tests": "authored_not_run",
@@ -4617,7 +4612,53 @@
       "report": "reports/card-failure-campaign/bounded-damage-redirection/source-review.md",
       "corrective_source_commits": [
         "f65569b89478686c20d76b0a61d0fffb7a0a2da3"
+      ],
+      "completed_by_later_family": {
+        "Hazduhr the Abbot": "finite-simultaneous-damage-budget-allocation"
+      }
+    },
+    {
+      "id": "clockwork-combat-and-counter-ceilings",
+      "stage": 83,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/clockwork_counter_bodies.json.fixture",
+      "baseline_entries": [
+        "Clockwork Avian",
+        "Clockwork Beast",
+        "Clockwork Steed",
+        "Clockwork Swarm"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "9044482e490b3c66f89bf22655406b06f3f7ab6e",
+      "integrated_source_commit": "ccc620c570aa4e9b82a8988666d3f69f500ace5d",
+      "tests": "authored_not_run",
+      "source_review": "Independent full twenty-seven-file source review and additive counter/redirection/face-down union check at ccc620c570aa4e9b82a8988666d3f69f500ace5d. Independent direct runtime and serialized artifact routes are authored.",
+      "semantic_scope": [
+        "Exact retained attack/block declaration identity and combat occurrence distinguish this combat from earlier extra combats and prior incarnations. Missing phase evidence fails explicitly.",
+        "The refill ceiling belongs to this placement only, applies after replacement modifiers, preserves preexisting excess and does not limit other abilities.",
+        "Complete entry counters, upkeep-only X/tap activation, optional zero, live headroom, replacement doubling, pending/error rollback, Flying and blocker exclusions remain represented."
       ]
+    },
+    {
+      "id": "finite-simultaneous-damage-budget-allocation",
+      "stage": 83,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/bounded_damage_redirection.json.fixture",
+      "baseline_entries": [
+        "Hazduhr the Abbot"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "ca130346ee8be51e150599f183c8f66aed6d53e1",
+      "integrated_source_commit": "dcfd43f07094b7a048905c7f17678d474e8b229a",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete allocator/body review and additive Clockwork/redirection union inspection at 5c659d660. The paid body scenario is d9494e6b8; report closure is 767e61342.",
+      "semantic_scope": [
+        "Affected players allocate finite prevention/redirection budgets across current simultaneous proposals without forcing replacement order. Live amounts/recipients, separate shields and split histories determine eligibility and consumption.",
+        "Stable ephemeral replacement identities survive refresh; enclosing checkpoints restore budget, histories and game/context state on pending/error.",
+        "Hazduhr retains actual X/tap payment, target/white-creature control restrictions, chosen source allocation under control changes, and original damage receipts."
+      ],
+      "rules_source": "https://magic.wizards.com/en/news/feature/time-spiral-remastered-release-notes-2021-03-23",
+      "rules_scope": "Outrider en-Kor ruling explicitly supports choosing which simultaneous source is redirected and independent choices for multiple shields."
     }
   ],
   "cards": [
@@ -9626,8 +9667,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "clockwork-combat-and-counter-ceilings"
+      ]
     },
     {
       "card_name": "Clockwork Beast",
@@ -9636,8 +9679,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "clockwork-combat-and-counter-ceilings"
+      ]
     },
     {
       "card_name": "Clockwork Steed",
@@ -9646,8 +9691,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "clockwork-combat-and-counter-ceilings"
+      ]
     },
     {
       "card_name": "Clockwork Swarm",
@@ -9656,8 +9703,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "clockwork-combat-and-counter-ceilings"
+      ]
     },
     {
       "card_name": "Cloister Gargoyle",
@@ -17754,10 +17803,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "bounded-next-time-damage-redirection"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "bounded-next-time-damage-redirection",
+        "finite-simultaneous-damage-budget-allocation"
       ]
     },
     {

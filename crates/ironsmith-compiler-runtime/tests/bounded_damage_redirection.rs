@@ -61,7 +61,7 @@ fn spell(game: &mut GameState, owner: PlayerId) -> ObjectId {
     game.create_object_from_card(&card, owner, Zone::Stack)
 }
 #[derive(Default)]
-struct Choices { targets: Vec<Target>, x: u32 }
+struct Choices { targets: Vec<Target>, x: u32, redirect_allocations: Vec<u32>, allocation_players: Vec<PlayerId> }
 impl DecisionMaker for Choices {
     fn decide_targets(&mut self, _: &GameState, context: &TargetsContext) -> Vec<Target> {
         assert_eq!(context.requirements.len(), self.targets.len());
@@ -73,7 +73,13 @@ impl DecisionMaker for Choices {
         SelectFirstDecisionMaker.decide_objects(game, context)
     }
     fn decide_number(&mut self, game: &GameState, context: &NumberContext) -> u32 {
-        if context.is_x_value { self.x } else { SelectFirstDecisionMaker.decide_number(game, context) }
+        if context.is_x_value { self.x }
+        else if context.description.starts_with("Choose how much redirected damage from ") {
+            self.allocation_players.push(context.player);
+            let chosen = self.redirect_allocations.remove(0);
+            assert!(chosen >= context.min && chosen <= context.max);
+            chosen
+        } else { SelectFirstDecisionMaker.decide_number(game, context) }
     }
     fn decide_options(&mut self, game: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
         SelectFirstDecisionMaker.decide_options(game, context)
@@ -86,7 +92,7 @@ fn activate(game: &mut GameState, source: ObjectId, definition: &CardDefinition,
     let index = definition.abilities.iter().position(|ability| matches!(&ability.kind, AbilityKind::Activated(_))).unwrap();
     let controller = game.current_controller(source).unwrap();
     game.turn.priority_player = Some(controller);
-    let mut decisions = Choices { targets, x };
+    let mut decisions = Choices { targets, x, ..Default::default() };
     let mut state = PriorityLoopState::new(game.players.len()); let mut queue = TriggerQueue::new();
     let mut progress = apply_priority_response_with_dm(game, &mut queue, &mut state,
         &PriorityResponse::PriorityAction(LegalAction::ActivateAbility { source, ability_index: index }), &mut decisions).unwrap();
@@ -325,6 +331,36 @@ fn rendered_damage_source_and_legacy_source_controller_scopes_reparse_semantical
             (ironsmith::effects::RedirectNextTimeDamageSource::Target(a), ironsmith::effects::RedirectNextTimeDamageSource::Target(b)) => assert_eq!(a.base(), b.base(), "{rendered}"),
             (ironsmith::effects::RedirectNextTimeDamageSource::Filter(a), ironsmith::effects::RedirectNextTimeDamageSource::Filter(b)) => assert_eq!(a, b, "{rendered}"),
             _ => panic!("source identity class changed: {rendered}"),
+        }
+    }
+}
+
+#[test]
+fn hazduhr_allocates_its_paid_budget_by_the_affected_players_choice_of_simultaneous_source() {
+    for definition in definitions("Hazduhr the Abbot") {
+        for choose_first in [false, true] {
+            let mut game = game(); let shield = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            game.remove_summoning_sickness(shield);
+            let protected = creature(&mut game, A); let first = creature(&mut game, B); let second = creature(&mut game, C);
+            activate(&mut game, shield, &definition, vec![Target::Object(protected)], 3);
+            game.set_current_controller(protected, C).unwrap();
+            let mut decisions = Choices { redirect_allocations: vec![if choose_first { 3 } else { 0 }], ..Default::default() };
+            let mut ctx = ExecutionContext::new(shield, A, &mut decisions);
+            let outcome = ironsmith::effects::DealDamageBySourcesEffect::new(
+                vec![ChooseSpec::SpecificObject(first), ChooseSpec::SpecificObject(second)],
+                3.into(), ChooseSpec::SpecificObject(protected),
+            ).with_unpreventable(true).execute(&mut game, &mut ctx).unwrap();
+            assert_eq!(outcome.count_or_zero(), 6);
+            assert_eq!(game.damage_on(shield), 3); assert_eq!(game.damage_on(protected), 3);
+            let chosen = if choose_first { first } else { second };
+            let other = if choose_first { second } else { first };
+            let receipts: Vec<_> = outcome.events.iter().filter_map(|e| e.downcast::<DamageEvent>()).collect();
+            assert_eq!(receipts.iter().filter(|e| e.source == chosen && e.target == DamageTarget::Object(shield)).map(|e| e.amount).sum::<u32>(), 3);
+            assert_eq!(receipts.iter().filter(|e| e.source == other && e.target == DamageTarget::Object(protected)).map(|e| e.amount).sum::<u32>(), 3);
+            assert_eq!(receipts.iter().map(|e| e.amount).sum::<u32>(), 6, "no original damage receipt is replayed");
+            assert_eq!(decisions.allocation_players, vec![C]);
+            assert!(decisions.redirect_allocations.is_empty());
+            assert_eq!(replacements(&mut game, &[event(first, DamageTarget::Object(protected), 2, false)])[0], vec![(DamageTarget::Object(protected), 2)]);
         }
     }
 }

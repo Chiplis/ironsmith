@@ -1137,6 +1137,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/847"
+    },
+    {
+      "stage": 82,
+      "branch": "fix/card-failures-82-bounded-damage-redirection",
+      "base": "fix/card-failures-81-ordinary-face-down",
+      "source_integration_commit": "e608b86143db9fd10fd1115c784af98e2c29c964",
+      "remote_commit": "0393efafb0851a8c27f7044c4e4f3990a4828cb8",
+      "tree": "659facaab1876fb799fae6588171e7c960b4dc04",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 848,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/848"
     }
   ]
 }

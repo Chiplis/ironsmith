@@ -722,6 +722,7 @@ fn parse_unless_put_counters_clause_as_cost(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    maximum_total: None,
                     counter_type,
                     count: Value::Fixed(count),
                     target,

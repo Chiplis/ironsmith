@@ -5652,6 +5652,7 @@ fn parse_composable_typed_statements(
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
                             action:
                                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                                    maximum_total: None,
                                     counter_type: crate::object::CounterType::PlusOnePlusOne,
                                     count,
                                     target,
@@ -5663,6 +5664,7 @@ fn parse_composable_typed_statements(
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
                             action:
                                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                                    maximum_total: None,
                                     counter_type: source_counter_type,
                                     count: Value::Fixed(1),
                                     target: TargetAst::Source(_),
@@ -6712,6 +6714,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
     };
     let (
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+            maximum_total: None,
             counter_type: crate::object::CounterType::PlusOnePlusOne,
             count,
             target: first_target,
@@ -6719,6 +6722,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
             distributed: false,
         }),
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+            maximum_total: None,
             counter_type: source_counter_type,
             count: Value::Fixed(1),
             target: TargetAst::Source(_),

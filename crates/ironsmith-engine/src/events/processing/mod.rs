@@ -14,6 +14,7 @@
 //! - "Damage can't be prevented"
 
 mod application;
+mod simultaneous_redirect_budget;
 
 #[cfg(test)]
 pub(crate) use application::hand_replacement_choice_candidates;
@@ -6701,7 +6702,12 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
         let pending_event_start = game.effect_store.pending_trigger_events.len();
         // The prevention events of this batch are coalesced below.
         game.effect_store.trigger_matching_holds += 1;
-        let allocations = collect_simultaneous_prevention_allocations(game, events, dm)?;
+        let schedule_redirect_budget = simultaneous_redirect_budget::needed(game);
+        let allocations = if schedule_redirect_budget {
+            Vec::new()
+        } else {
+            collect_simultaneous_prevention_allocations(game, events, dm)?
+        };
         if dm.awaiting_choice() {
             game.effect_store.trigger_matching_holds -= 1;
             return Ok(Vec::new());
@@ -6715,27 +6721,32 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
         game.effect_store
             .replacement_effects
             .begin_damage_occurrence();
-        let mut results = Vec::with_capacity(events.len());
-        for (index, item) in events.iter().enumerate() {
-            results.push(
-            process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
-                game,
-                item.source,
-                item.target,
-                item.amount,
-                item.is_combat,
-                item.unpreventable,
-                item.cause.clone(),
-                item.source_snapshot.as_ref(),
-                dm,
-                Some(&allocations[index]),
-                replacement_scope,
-            ).map_err(|error| DamageProcessingError { source: item.source, error })?,
-        );
-            if dm.awaiting_choice() {
-                break;
+        let results = if schedule_redirect_budget {
+            simultaneous_redirect_budget::process(game, events, dm, replacement_scope)?
+        } else {
+            let mut results = Vec::with_capacity(events.len());
+            for (index, item) in events.iter().enumerate() {
+                results.push(
+                process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+                    game,
+                    item.source,
+                    item.target,
+                    item.amount,
+                    item.is_combat,
+                    item.unpreventable,
+                    item.cause.clone(),
+                    item.source_snapshot.as_ref(),
+                    dm,
+                    Some(&allocations[index]),
+                    replacement_scope,
+                ).map_err(|error| DamageProcessingError { source: item.source, error })?,
+            );
+                if dm.awaiting_choice() {
+                    break;
+                }
             }
-        }
+            results
+        };
         // All matching siblings have now seen the same registrations. Later
         // damage from a prevention follow-up starts a separate occurrence.
         game.effect_store
@@ -6948,25 +6959,16 @@ pub(crate) fn process_damage_assignments_with_event_with_source_snapshot_opts_wi
 }
 
 #[allow(clippy::too_many_arguments)]
-fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+fn prepare_damage_proposal(
     game: &mut GameState,
-    source: crate::ids::ObjectId,
+    source: ObjectId,
     target: DamageTarget,
     amount: u32,
     is_combat: bool,
     unpreventable: bool,
     cause: crate::events::cause::EventCause,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    dm: &mut dyn DecisionMaker,
-    batch_allocation: Option<&PreventionBatchAllocation>,
-    replacement_scope: &crate::effects::ReplacementExecutionContext,
-) -> Result<ProcessedDamageResult, crate::effects::ExecutionError> {
-    use crate::events::{DamageEvent, downcast_event};
-
-    game.update_cant_effects();
-    game.update_replacement_effects()
-        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-
+) -> Event {
     // Check if damage can be prevented
     let can_prevent =
         !unpreventable && game.can_prevent_damage_from(source, is_combat, source_snapshot);
@@ -6987,8 +6989,16 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     };
     // Process through the trait-based system, retaining event provenance for
     // replacement-generated effect execution.
-    let event = game.ensure_event_provenance(event);
-    let event_provenance = event.provenance();
+    game.ensure_event_provenance(event)
+}
+
+fn damage_additional_replacements(
+    game: &GameState,
+    target: DamageTarget,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    batch_allocation: Option<&PreventionBatchAllocation>,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
+) -> Vec<ReplacementEffect> {
     // CR 615.12 still applies prevention effects to unpreventable damage. They
     // prevent zero, retain their shield capacity, and perform additional parts.
     let mut prevention_effects =
@@ -7000,6 +7010,34 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     let mut additional = replacement_scope.additional_replacement_effects.clone();
     assign_ephemeral_effect_ids(&mut additional, u64::MAX / 2);
     prevention_effects.extend(additional);
+    prevention_effects
+}
+
+#[allow(clippy::too_many_arguments)]
+fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    unpreventable: bool,
+    cause: crate::events::cause::EventCause,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    dm: &mut dyn DecisionMaker,
+    batch_allocation: Option<&PreventionBatchAllocation>,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
+) -> Result<ProcessedDamageResult, crate::effects::ExecutionError> {
+    game.update_cant_effects();
+    game.update_replacement_effects()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+
+    let event = prepare_damage_proposal(
+        game, source, target, amount, is_combat, unpreventable, cause.clone(), source_snapshot,
+    );
+    let event_provenance = event.provenance();
+    let prevention_effects = damage_additional_replacements(
+        game, target, source_snapshot, batch_allocation, replacement_scope,
+    );
     game.effect_store
         .prevention_effects
         .begin_follow_up_replacement_scope(replacement_scope);
@@ -7035,6 +7073,26 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
             programs: Vec::new(),
         });
     }
+
+    finish_processed_damage_result(
+        game, source, cause, source_snapshot, event_provenance, dm,
+        replacement_scope, result, processing_state,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_processed_damage_result(
+    game: &mut GameState,
+    source: ObjectId,
+    cause: crate::events::cause::EventCause,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    event_provenance: crate::provenance::ProvNodeId,
+    dm: &mut dyn DecisionMaker,
+    replacement_scope: &crate::effects::ReplacementExecutionContext,
+    result: TraitEventResult,
+    processing_state: TraitEventProcessingState,
+) -> Result<ProcessedDamageResult, crate::effects::ExecutionError> {
+    use crate::events::{DamageEvent, downcast_event};
 
     let (result, mut programs) = result.into_expansion();
     let mut assignments = Vec::new();

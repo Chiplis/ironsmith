@@ -1521,6 +1521,9 @@ impl UntapEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCountersEffect {
+    /// Only this placement is capped; other abilities may exceed the total.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub maximum_total: Option<u32>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub completion_action: Option<crate::event_model::KeywordActionKind>,
     pub counter_type: crate::counter::CounterType,
@@ -1547,6 +1550,11 @@ impl DoubleCountersEffect {
 }
 
 impl PutCountersEffect {
+    pub fn with_maximum_total(mut self, maximum: u32) -> Self {
+        self.maximum_total = Some(maximum);
+        self
+    }
+
     pub fn with_completion_action(mut self, action: crate::event_model::KeywordActionKind) -> Self {
         self.completion_action = Some(action);
         self
@@ -1558,6 +1566,7 @@ impl PutCountersEffect {
         target: ChooseSpec,
     ) -> Self {
         Self {
+            maximum_total: None,
             completion_action: None,
             counter_type,
             amount: amount.into(),

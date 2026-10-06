@@ -2536,7 +2536,7 @@ pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
         .or_else(|| attack_power::parse_attacked_with_total_power(tokens))
         .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
-        .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))
+        .or_else(|| parse_source_attacked_or_blocked_window_shape(tokens))
 }
 
 /// Negative attack-history gates share the same turn-history predicates as
@@ -2705,7 +2705,7 @@ pub(super) fn parse_you_attacked_with_exactly_other_creatures_shape(
     ))
 }
 
-pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
+pub(super) fn parse_source_attacked_or_blocked_window_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
@@ -2727,6 +2727,14 @@ pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
+    if surface::exact(window_clause, &["this", "combat"]) {
+        // Bare "it" can name a different object; keep that unresolved shape
+        // strict until an object-relative combat-window predicate exists.
+        if surface::exact(subject_clause, &["it"]) { return None; }
+        return Some(PredicateAst::Source(
+            SourcePredicateAst::SourceAttackedOrBlockedThisCombat,
+        ));
+    }
     if !is_this_turn_clause(window_clause) {
         return None;
     }

@@ -4767,6 +4767,14 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
             .unwrap_or(false)),
+        Condition::SourceAttackedOrBlockedThisCombat => {
+            if ctx.is_cast_time() { return Ok(false); }
+            game.turn_store.turn_history.creature_attacked_or_blocked_in_combat(
+                ctx.source, game.turn_store.combat_phases_started_this_turn,
+            ).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "the source's combat declaration has no retained combat phase".into(),
+            ))
+        }
         Condition::SourceAttackedOrBlockedThisTurn => {
             if ctx.is_cast_time() {
                 return Ok(false);

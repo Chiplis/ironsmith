@@ -2380,6 +2380,10 @@ fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTe
             "If this creature attacked or blocked this turn",
             PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn),
         ),
+        (
+            "If this creature attacked or blocked this combat",
+            PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat),
+        ),
     ] {
         let tokens = lex_line(text, 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);

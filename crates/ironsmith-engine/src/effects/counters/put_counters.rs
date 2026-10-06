@@ -133,7 +133,14 @@ impl EffectExecutor for PutCountersEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            let max_count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
+            let mut max_count = resolve_nonnegative_u32(game, &self.amount, ctx)?;
+            if let Some(maximum) = self.maximum_total {
+                // A shared choice must be legal for every recipient. Recheck
+                // the same ceiling after replacement modifiers at commitment.
+                for target in &target_ids {
+                    max_count = max_count.min(maximum.saturating_sub(game.counter_count(*target, self.counter_type)));
+                }
+            }
             let amount_is_up_to = self
                 .amount
                 .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo);
@@ -252,7 +259,9 @@ impl EffectExecutor for PutCountersEffect {
                     ctx.cause.clone(),
                 )
                 .with_provenance(ctx.provenance);
-                let mut outcome = super::execute_object_counter_placement(game, ctx, event)?;
+                let mut outcome = super::execute_object_counter_placement_with_limit(
+                    game, ctx, event, self.maximum_total,
+                )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }

@@ -705,6 +705,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn) => {
             Condition::SourceCameUnderYourControlThisTurn
         }
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat) => {
+            Condition::SourceAttackedOrBlockedThisCombat
+        }
         PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn) => {
             Condition::SourceAttackedOrBlockedThisTurn
         }

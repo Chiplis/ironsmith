@@ -328,6 +328,7 @@ impl PredicateAst {
             | PredicateAst::Source(SourcePredicateAst::SourceSuspected)
             | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat)
             | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
                 ..
             })

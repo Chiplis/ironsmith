@@ -2235,6 +2235,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceCameUnderYourControlThisTurn
         | C::SourceCameUnderYourControlSinceYourLastUpkeep
         | C::SourceAttackedOrBlockedThisTurn
+        | C::SourceAttackedOrBlockedThisCombat
         | C::SourceIsUntapped
         | C::SourceIsAttacking
         | C::SourceIsBlocking

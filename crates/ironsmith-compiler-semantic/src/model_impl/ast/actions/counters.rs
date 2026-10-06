@@ -10,6 +10,7 @@ pub enum CounterActionAst {
         target: TargetAst,
     },
     PutCounters {
+        maximum_total: Option<u32>,
         counter_type: CounterType,
         count: Value,
         target: TargetAst,

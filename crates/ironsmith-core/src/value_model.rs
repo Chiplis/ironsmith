@@ -2171,6 +2171,8 @@ pub enum Condition {
     /// fact rather than a counter so counter effects can't change it.
     SourceCameUnderYourControlSinceYourLastUpkeep,
     SourceAttackedOrBlockedThisTurn,
+    /// An actual declaration by this exact object in the current combat.
+    SourceAttackedOrBlockedThisCombat,
     SourceIsUntapped,
     SourceIsAttacking,
     SourceIsBlocking,

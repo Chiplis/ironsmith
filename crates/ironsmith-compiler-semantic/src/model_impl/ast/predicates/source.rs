@@ -40,6 +40,8 @@ pub enum SourcePredicateAst {
     SourceSuspected,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
+    /// An actual declaration by this exact object in the current combat.
+    SourceAttackedOrBlockedThisCombat,
     SourceInGraveyardWithCardsAbove {
         filter: ObjectFilter,
         count: u32,

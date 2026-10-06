@@ -5334,6 +5334,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                maximum_total: None,
                 counter_type,
                 count,
                 target,

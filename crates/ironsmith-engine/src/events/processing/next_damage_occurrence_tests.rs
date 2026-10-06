@@ -322,3 +322,317 @@ fn source_controller_redirection_uses_exact_departure_lki_before_stale_event_sna
         assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
     }
 }
+
+fn finite_redirect(
+    game: &mut GameState,
+    shield: ObjectId,
+    protected: PlayerId,
+    destination: PlayerId,
+    amount: u32,
+) -> ReplacementEffectId {
+    game.effect_store.replacement_effects.add_one_shot_effect(
+        ReplacementEffect::with_matcher(
+            shield, protected, DamageToPlayerMatcher::new(PlayerFilter::Specific(protected)),
+            ReplacementAction::RedirectDamageAmount {
+                target: RedirectTarget::ToPlayer(destination), which: RedirectWhich::First, amount,
+            },
+        ),
+    )
+}
+
+struct AllocateBudget {
+    prefer: &'static str,
+    values: std::collections::VecDeque<u32>,
+    offered: Vec<(PlayerId, u32, u32)>,
+    pause: bool,
+    invalid: bool,
+    pending: bool,
+}
+impl AllocateBudget {
+    fn new(prefer: &'static str, values: impl IntoIterator<Item = u32>) -> Self {
+        Self {
+            prefer, values: values.into_iter().collect(), offered: Vec::new(),
+            pause: false, invalid: false, pending: false,
+        }
+    }
+}
+impl DecisionMaker for AllocateBudget {
+    fn decide_options(
+        &mut self,
+        _: &GameState,
+        context: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        vec![context.options.iter().find(|option| option.description.starts_with(self.prefer))
+            .unwrap_or(&context.options[0]).index]
+    }
+    fn decide_number(
+        &mut self,
+        _: &GameState,
+        context: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        assert!(context.description.starts_with("Choose how much redirected damage")
+            || context.description.starts_with("Choose how much prevented damage"));
+        self.offered.push((context.player, context.min, context.max));
+        if self.pause {
+            self.pending = true;
+            return context.min;
+        }
+        if self.invalid {
+            return context.max + 1;
+        }
+        self.values.pop_front().expect("unexpected damage allocation")
+    }
+    fn awaiting_choice(&self) -> bool { self.pending }
+}
+
+fn damage_to(result: &ProcessedDamageResult, player: PlayerId) -> u32 {
+    result.assignments.iter().filter(|assignment| assignment.target == DamageTarget::Player(player))
+        .map(|assignment| assignment.amount).sum()
+}
+
+#[test]
+fn finite_redirect_can_choose_either_simultaneous_source_even_when_damage_is_unpreventable() {
+    for first_amount in [0, 3] {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let first = creature(&mut game, alice, "First source");
+        let second = creature(&mut game, alice, "Second source");
+        let shield = creature(&mut game, bob, "Redirect shield");
+        let id = finite_redirect(&mut game, shield, bob, carol, 3);
+        let mut events = [assignment(first, bob, 3), assignment(second, bob, 3)];
+        for event in &mut events { event.unpreventable = true; }
+        let mut dm = AllocateBudget::new("Redirect shield", [first_amount]);
+        let result = process_simultaneous_damage_assignments_with_event_with_dm(
+            &mut game, &events, &mut dm,
+        ).unwrap();
+        assert_eq!(dm.offered, vec![(bob, 0, 3)]);
+        assert_eq!(damage_to(&result[0], carol), first_amount);
+        assert_eq!(damage_to(&result[0], bob), 3 - first_amount);
+        assert_eq!(damage_to(&result[1], carol), 3 - first_amount);
+        assert_eq!(damage_to(&result[1], bob), first_amount);
+        assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
+    }
+}
+
+#[test]
+fn finite_redirect_allocation_uses_chosen_post_multiplier_amounts() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let shield = creature(&mut game, bob, "Redirect shield");
+    let amplifier = creature(&mut game, bob, "Amplifier");
+    finite_redirect(&mut game, shield, bob, carol, 3);
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        amplifier, bob, DamageToPlayerMatcher::new(PlayerFilter::Specific(bob)),
+        ReplacementAction::Modify(EventModification::Multiply(2)),
+    ));
+    let mut dm = AllocateBudget::new("Amplifier", [1]);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 1), assignment(second, bob, 1)], &mut dm,
+    ).unwrap();
+    assert_eq!(dm.offered, vec![(bob, 1, 2)], "raw total 2 was below the 3-point budget");
+    assert_eq!((damage_to(&result[0], carol), damage_to(&result[0], bob)), (1, 1));
+    assert_eq!((damage_to(&result[1], carol), damage_to(&result[1], bob)), (2, 0));
+}
+
+#[test]
+fn finite_redirect_rechecks_eligibility_after_another_redirect_changes_the_recipient() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let shield = creature(&mut game, bob, "Redirect shield");
+    let detour = creature(&mut game, bob, "Detour");
+    finite_redirect(&mut game, shield, bob, alice, 2);
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        detour, bob, DamageFromSourceMatcher::new(ObjectFilter::specific(first)),
+        ReplacementAction::Redirect { target: RedirectTarget::ToPlayer(carol), which: RedirectWhich::First },
+    ));
+    let mut dm = AllocateBudget::new("Detour", []);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 3), assignment(second, bob, 3)], &mut dm,
+    ).unwrap();
+    assert!(dm.offered.is_empty(), "only the still-protected source is eligible");
+    assert_eq!((damage_to(&result[0], carol), damage_to(&result[0], alice)), (3, 0));
+    assert_eq!((damage_to(&result[1], alice), damage_to(&result[1], bob)), (2, 1));
+}
+
+#[test]
+fn multiple_finite_redirects_allocate_against_remaining_source_fragments_without_double_spending() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let shield_a = creature(&mut game, bob, "First shield");
+    let shield_b = creature(&mut game, bob, "Second shield");
+    let a = finite_redirect(&mut game, shield_a, bob, alice, 2);
+    let b = finite_redirect(&mut game, shield_b, bob, carol, 2);
+    let mut dm = AllocateBudget::new("First shield", [1, 0]);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 3), assignment(second, bob, 3)], &mut dm,
+    ).unwrap();
+    assert_eq!(dm.offered, vec![(bob, 0, 2), (bob, 0, 2)]);
+    assert_eq!((damage_to(&result[0], alice), damage_to(&result[0], bob), damage_to(&result[0], carol)), (1, 2, 0));
+    assert_eq!((damage_to(&result[1], alice), damage_to(&result[1], bob), damage_to(&result[1], carol)), (1, 0, 2));
+    assert!(game.effect_store.replacement_effects.get_effect(a).is_none());
+    assert!(game.effect_store.replacement_effects.get_effect(b).is_none());
+}
+
+#[test]
+fn redirect_allocation_pause_or_invalid_answer_restores_earlier_replacement_consumption() {
+    for pause in [false, true] {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let first = creature(&mut game, alice, "First source");
+        let second = creature(&mut game, alice, "Second source");
+        let shield = creature(&mut game, bob, "Redirect shield");
+        let amplifier = creature(&mut game, bob, "Amplifier");
+        let budget = finite_redirect(&mut game, shield, bob, carol, 3);
+        let earlier = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            amplifier, bob, DamageFromSourceMatcher::new(ObjectFilter::specific(first)),
+            ReplacementAction::Modify(EventModification::Multiply(2)),
+        ));
+        let mut dm = AllocateBudget::new("Amplifier", []);
+        dm.pause = pause;
+        dm.invalid = !pause;
+        let events = [assignment(first, bob, 2), assignment(second, bob, 2)];
+        let outcome = process_simultaneous_damage_assignments_with_event_with_dm(&mut game, &events, &mut dm);
+        if pause {
+            assert!(outcome.unwrap().is_empty());
+            assert!(dm.pending);
+        } else {
+            assert!(outcome.is_err());
+        }
+        assert!(game.effect_store.replacement_effects.get_effect(earlier).is_some());
+        assert!(matches!(game.effect_store.replacement_effects.get_effect(budget).unwrap().replacement,
+            ReplacementAction::RedirectDamageAmount { amount: 3, .. }));
+        let mut replay = AllocateBudget::new("Amplifier", [1]);
+        let result = process_simultaneous_damage_assignments_with_event_with_dm(&mut game, &events, &mut replay).unwrap();
+        assert_eq!((damage_to(&result[0], carol), damage_to(&result[0], bob)), (1, 3));
+        assert_eq!((damage_to(&result[1], carol), damage_to(&result[1], bob)), (2, 0));
+        assert!(game.effect_store.replacement_effects.get_effect(earlier).is_none());
+        assert!(game.effect_store.replacement_effects.get_effect(budget).is_none());
+    }
+}
+
+#[test]
+fn partially_used_redirect_keeps_its_budget_for_the_next_simultaneous_occurrence() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let shield = creature(&mut game, bob, "Redirect shield");
+    let id = finite_redirect(&mut game, shield, bob, carol, 3);
+    process_simultaneous_damage_assignments_with_event(&mut game, &[assignment(first, bob, 1)]).unwrap();
+    assert!(matches!(game.effect_store.replacement_effects.get_effect(id).unwrap().replacement,
+        ReplacementAction::RedirectDamageAmount { amount: 2, .. }));
+    let mut dm = AllocateBudget::new("Redirect shield", [0]);
+    let later = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 1), assignment(second, bob, 3)], &mut dm,
+    ).unwrap();
+    assert_eq!((damage_to(&later[0], carol), damage_to(&later[0], bob)), (0, 1));
+    assert_eq!((damage_to(&later[1], carol), damage_to(&later[1], bob)), (2, 1));
+    assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
+}
+
+#[test]
+fn redirected_recipient_discovers_its_shield_counter_without_reusing_an_ephemeral_identity() {
+    for unpreventable in [false, true] {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = creature(&mut game, alice, "First source");
+        let second = creature(&mut game, alice, "Second source");
+        let recipient = creature(&mut game, bob, "Shielded redirect recipient");
+        game.object_mut(recipient).unwrap().counters.insert(CounterType::Shield, 1);
+        let budget = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                recipient, bob, DamageToPlayerMatcher::new(PlayerFilter::Specific(bob)),
+                ReplacementAction::RedirectDamageAmount {
+                    target: RedirectTarget::ToObject(recipient), which: RedirectWhich::First, amount: 4,
+                },
+            ),
+        );
+        let mut events = [assignment(first, bob, 3), assignment(second, bob, 3)];
+        for event in &mut events { event.unpreventable = unpreventable; }
+        let mut dm = AllocateBudget::new("Shielded redirect recipient", [1]);
+        let results = process_simultaneous_damage_assignments_with_event_with_dm(
+            &mut game, &events, &mut dm,
+        ).unwrap();
+        assert_eq!(damage_to(&results[0], bob), 2);
+        assert_eq!(damage_to(&results[1], bob), 0);
+        let redirected = results.iter().flat_map(|result| &result.assignments)
+            .filter(|assignment| assignment.target == DamageTarget::Object(recipient))
+            .map(|assignment| assignment.amount).sum::<u32>();
+        assert_eq!(redirected, if unpreventable { 4 } else { 0 });
+        assert_eq!(game.counter_count(recipient, CounterType::Shield), 0,
+            "one simultaneous damage event removes exactly one shield counter");
+        assert!(game.effect_store.replacement_effects.get_effect(budget).is_none());
+    }
+}
+
+#[test]
+fn finite_prevention_and_redirection_allocate_in_the_chosen_replacement_order() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let prevention = creature(&mut game, bob, "Prevention shield");
+    let redirection = creature(&mut game, bob, "Redirect shield");
+    let prevent_id = game.effect_store.prevention_effects.add_shield(
+        crate::prevention::PreventionShield::prevent_next_n(
+            prevention, bob, crate::prevention::PreventionTarget::Player(bob), 1,
+        ),
+    );
+    let redirect_id = finite_redirect(&mut game, redirection, bob, carol, 2);
+    let mut dm = AllocateBudget::new("Prevention shield", [0, 1]);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 2), assignment(second, bob, 2)], &mut dm,
+    ).unwrap();
+    assert_eq!(dm.offered, vec![(bob, 0, 1), (bob, 1, 2)]);
+    assert_eq!((damage_to(&result[0], carol), damage_to(&result[0], bob)), (1, 1));
+    assert_eq!((damage_to(&result[1], carol), damage_to(&result[1], bob)), (1, 0));
+    assert_eq!(game.effect_store.prevention_effects.prevented_by_shield(prevent_id), 1);
+    assert!(game.effect_store.replacement_effects.get_effect(redirect_id).is_none());
+}
+
+#[test]
+fn later_damage_multiplier_does_not_spend_redirect_capacity_twice() {
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let first = creature(&mut game, alice, "First source");
+    let second = creature(&mut game, alice, "Second source");
+    let shield = creature(&mut game, bob, "Redirect shield");
+    let amplifier = creature(&mut game, bob, "Amplifier");
+    let id = finite_redirect(&mut game, shield, bob, carol, 3);
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        amplifier, bob, DamageFromSourceMatcher::new(ObjectFilter::creature()),
+        ReplacementAction::Modify(EventModification::Multiply(2)),
+    ));
+    let mut dm = AllocateBudget::new("Redirect shield", []);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &[assignment(first, bob, 1), assignment(second, bob, 1)], &mut dm,
+    ).unwrap();
+    assert!(dm.offered.is_empty());
+    assert_eq!(damage_to(&result[0], carol), 2);
+    assert_eq!(damage_to(&result[1], carol), 2);
+    assert!(matches!(game.effect_store.replacement_effects.get_effect(id).unwrap().replacement,
+        ReplacementAction::RedirectDamageAmount { amount: 1, .. }));
+}

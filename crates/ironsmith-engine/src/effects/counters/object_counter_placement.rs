@@ -19,6 +19,17 @@ pub(crate) fn execute_object_counter_placement(
     ctx: &mut ExecutionContext,
     event: Event,
 ) -> Result<EffectOutcome, ExecutionError> {
+    execute_object_counter_placement_with_limit(game, ctx, event, None)
+}
+
+/// The resulting-total restriction belongs to this instruction and recipient,
+/// including modifiers to its proposed event. It never removes existing counters.
+pub(crate) fn execute_object_counter_placement_with_limit(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: Event,
+    maximum_total: Option<u32>,
+) -> Result<EffectOutcome, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
@@ -37,6 +48,7 @@ pub(crate) fn execute_object_counter_placement(
                 "object counter placement requires an object".into(),
             ));
         };
+        let limit = maximum_total.map(|maximum| (object, proposed.counter_type, maximum));
         if proposed.count == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -62,7 +74,7 @@ pub(crate) fn execute_object_counter_placement(
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        commit_object_counter_placement(game, ctx, processed)
+        commit_object_counter_placement_limited(game, ctx, processed, None, limit)
     })();
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
@@ -74,22 +86,22 @@ pub(crate) fn execute_object_counter_placement(
     result
 }
 
-fn commit_object_counter_placement(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    processed: TraitEventResult,
-) -> Result<EffectOutcome, ExecutionError> {
-    commit_object_counter_placement_with_frame(game,ctx,processed,None)
-}
-
 pub(super) fn commit_object_counter_placement_with_frame(
     game: &mut GameState, ctx: &mut ExecutionContext, processed: TraitEventResult,
     before: Option<&GameState>,
 ) -> Result<EffectOutcome, ExecutionError> {
+    commit_object_counter_placement_limited(game, ctx, processed, before, None)
+}
+
+fn commit_object_counter_placement_limited(
+    game: &mut GameState, ctx: &mut ExecutionContext, processed: TraitEventResult,
+    before: Option<&GameState>,
+    limit: Option<(crate::ids::ObjectId, crate::object::CounterType, u32)>,
+) -> Result<EffectOutcome, ExecutionError> {
     match processed {
         expanded @ TraitEventResult::Expanded { .. } =>
             crate::effects::replacement::execute_event_expansion_with_targets(
-                game, ctx, expanded, |game,ctx,result|commit_object_counter_placement_with_frame(game,ctx,result,before),
+                game, ctx, expanded, |game,ctx,result|commit_object_counter_placement_limited(game,ctx,result,before,limit),
                 |_game, context, _original_outcome| {
                     let captured = downcast_event::<PutCountersEvent>(context.event.inner())
                         .ok_or_else(|| ExecutionError::InternalError("added counter program lost its captured event".into()))?;
@@ -115,7 +127,15 @@ pub(super) fn commit_object_counter_placement_with_frame(
                 return Ok(prevented());
             }
             let before = game.counter_count(object, resolved.counter_type);
-            before.checked_add(resolved.count).ok_or_else(|| {
+            let count = match limit {
+                Some((recipient, counter_type, maximum))
+                    if recipient == object && counter_type == resolved.counter_type => {
+                        resolved.count.min(maximum.saturating_sub(before))
+                    }
+                _ => resolved.count,
+            };
+            if count == 0 && resolved.count > 0 { return Ok(EffectOutcome::count(0)); }
+            before.checked_add(count).ok_or_else(|| {
                 ExecutionError::InternalError(
                     "object counter placement exceeds the supported counter range".into(),
                 )
@@ -123,7 +143,7 @@ pub(super) fn commit_object_counter_placement_with_frame(
             let Some(mut notification) = game.add_counters_with_source(
                 object,
                 resolved.counter_type,
-                resolved.count,
+                count,
                 resolved.cause.source,
                 resolved.cause.source_controller,
             ) else {

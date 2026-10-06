@@ -2372,6 +2372,7 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
     let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
     ctx.targets = vec![crate::effects::ResolvedTarget::Object(alice_creature)];
     let plus_one = crate::effects::PutCountersEffect {
+        maximum_total: None,
         completion_action: None,
         counter_type: crate::object::CounterType::PlusOnePlusOne,
         amount: crate::effect::Value::Fixed(1),
@@ -2400,6 +2401,7 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
 
     ctx.targets = vec![crate::effects::ResolvedTarget::Object(alice_creature)];
     let deathtouch_counter = crate::effects::PutCountersEffect {
+        maximum_total: None,
         completion_action: None,
         counter_type: crate::object::CounterType::Deathtouch,
         amount: crate::effect::Value::Fixed(1),

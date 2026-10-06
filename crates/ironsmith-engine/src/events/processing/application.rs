@@ -1914,7 +1914,7 @@ fn apply_trait_redirect(
     Some(event.rewrap_boxed(new_event_box))
 }
 
-fn resolve_trait_redirect_target(
+pub(super) fn resolve_trait_redirect_target(
     game: &GameState,
     event: &Event,
     redirect_target: &RedirectTarget,

@@ -4262,6 +4262,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "this permanent came under your control since the beginning of your last upkeep"
                 .to_string()
         }
+        Condition::SourceAttackedOrBlockedThisCombat => {
+            "this creature attacked or blocked this combat".to_string()
+        }
         Condition::SourceAttackedOrBlockedThisTurn => {
             "this creature attacked or blocked this turn".to_string()
         }

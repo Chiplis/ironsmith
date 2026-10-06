@@ -3714,6 +3714,16 @@
         return format!("{} unless {}", inner_text, unless_clause);
     }
     if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        if let Some(maximum) = put_counters.maximum_total {
+            let mut uncapped = put_counters.clone();
+            uncapped.maximum_total = None;
+            let target = describe_choose_spec(&put_counters.target);
+            return format!(
+                "{}. This ability can't cause the total number of {} counters on {} to be greater than {}",
+                describe_effect(&crate::effect::Effect::new(uncapped)),
+                describe_counter_type(put_counters.counter_type), target, maximum,
+            );
+        }
         if put_counters.completion_action == Some(crate::events::KeywordActionKind::Blight)
             && put_counters.counter_type == CounterType::MinusOneMinusOne
             && put_counters.target == ChooseSpec::Object(ObjectFilter::creature().you_control())

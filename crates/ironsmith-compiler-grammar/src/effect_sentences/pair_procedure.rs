@@ -49,6 +49,8 @@ mod discard_replacement;
 mod targeted_random_partition;
 #[path = "pair_procedure/named_random_reveal.rs"]
 mod named_random_reveal;
+#[path = "pair_procedure/counter_total_limit.rs"]
+mod counter_total_limit;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -152,6 +154,12 @@ struct Shape {
 /// document's, as the registry kept the rule consuming the longest program,
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("counter-placement-ability-total-limit"),
+        head: HeadDiscriminator::words(&["put"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, counter_total_limit::read(sentences, index)),
+    },
     Shape {
         id: RuleId::new("conditional-discard-self-replacement"),
         head: HeadDiscriminator::words(&["target"]),
