@@ -230,6 +230,15 @@ fn lower_combat_history_target(
     shape: shapes::DestroyCombatHistoryShape<'_>,
 ) -> Result<Option<TargetAst>, CardTextError> {
     match shape {
+        shapes::DestroyCombatHistoryShape::DealerThisTurn { target_tokens } => {
+            let TargetAst::Object(mut filter, target_span, it_span) =
+                parse_target_phrase(target_tokens)?
+            else {
+                return Ok(None);
+            };
+            filter.dealt_damage_this_turn = true;
+            Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+        }
         shapes::DestroyCombatHistoryShape::DealtDamageThisTurn { target_tokens } => {
             let target = parse_target_phrase(target_tokens)?;
             let TargetAst::Object(mut filter, target_span, it_span) = target else {

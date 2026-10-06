@@ -1059,24 +1059,19 @@ impl TurnHistory {
         self.total_creature_damage_to_player(player) > 0
     }
 
+    // These predicates ask about an object incarnation, not a physical card.
+    // A zone change creates a new source even if its StableId is retained.
     pub fn source_dealt_combat_damage_to_player_this_turn(
         &self,
         source: ObjectId,
-        source_stable_id: Option<StableId>,
+        _source_stable_id: Option<StableId>,
     ) -> bool {
         self.projected_records().any(|record| {
             record.event.downcast::<DamageEvent>().is_some_and(|event| {
                 event.is_combat
                     && event.amount > 0
                     && matches!(event.target, crate::events::DamageTarget::Player(_))
-                    && (event.source == source
-                        || source_stable_id.is_some_and(|stable_id| {
-                            record
-                                .source_snapshot
-                                .as_ref()
-                                .or(record.object_snapshot.as_ref())
-                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                        }))
+                    && event.source == source
             })
         })
     }
@@ -1086,19 +1081,12 @@ impl TurnHistory {
     pub fn source_dealt_damage_this_turn(
         &self,
         source: ObjectId,
-        source_stable_id: Option<StableId>,
+        _source_stable_id: Option<StableId>,
     ) -> bool {
         self.projected_records().any(|record| {
             record.event.downcast::<DamageEvent>().is_some_and(|event| {
                 event.amount > 0
-                    && (event.source == source
-                        || source_stable_id.is_some_and(|stable_id| {
-                            record
-                                .source_snapshot
-                                .as_ref()
-                                .or(record.object_snapshot.as_ref())
-                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                        }))
+                    && event.source == source
             })
         })
     }
@@ -1120,7 +1108,7 @@ impl TurnHistory {
     pub fn source_dealt_damage_to_player_this_turn_matching(
         &self,
         source: ObjectId,
-        source_stable_id: Option<StableId>,
+        _source_stable_id: Option<StableId>,
         player: PlayerId,
         combat_only: bool,
     ) -> bool {
@@ -1132,14 +1120,7 @@ impl TurnHistory {
                         event.target,
                         crate::events::DamageTarget::Player(pid) if pid == player
                     )
-                    && (event.source == source
-                        || source_stable_id.is_some_and(|stable_id| {
-                            record
-                                .source_snapshot
-                                .as_ref()
-                                .or(record.object_snapshot.as_ref())
-                                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
-                        }))
+                    && event.source == source
             })
         })
     }

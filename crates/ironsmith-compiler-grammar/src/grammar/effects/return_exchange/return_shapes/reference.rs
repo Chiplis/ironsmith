@@ -44,7 +44,11 @@ pub(super) fn classify_target(
         )),
     ) {
         let raw_filter_tokens = trim_lexed_commas(rest).to_vec();
-        let unsupported_qualifier = marker_anywhere(rest, primitives::kw("dealt"))
+        let complete_dealer_tail = primitives::split_lexed_once_before_suffix(rest, 1, || {
+            primitives::phrase(&["that", "dealt", "damage", "this", "turn"])
+        }).is_some();
+        let unsupported_qualifier = (marker_anywhere(rest, primitives::kw("dealt"))
+                && !complete_dealer_tail)
             || (marker_anywhere(rest, primitives::kw("without"))
                 && marker_anywhere(rest, primitives::kw("counter")));
         // `split_suffix` takes the first matching alternative, so a longer

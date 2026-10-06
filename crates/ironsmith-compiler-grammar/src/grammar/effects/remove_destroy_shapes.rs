@@ -97,6 +97,9 @@ pub enum DestroyAllShape<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestroyCombatHistoryShape<'a> {
+    DealerThisTurn {
+        target_tokens: &'a [OwnedLexToken],
+    },
     DealtDamageThisTurn {
         target_tokens: &'a [OwnedLexToken],
     },
@@ -426,6 +429,15 @@ fn has_combat_history_surface(tokens: &[OwnedLexToken]) -> bool {
 fn parse_target_combat_history_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyCombatHistoryShape<'_>> {
+    if let Some((target_tokens, ())) =
+        primitives::split_lexed_once_before_suffix(tokens, 1, || {
+            primitives::phrase(&["that", "dealt", "damage", "this", "turn"])
+        })
+    {
+        let target_tokens = trim_lexed_commas(target_tokens);
+        return (!target_tokens.is_empty())
+            .then_some(DestroyCombatHistoryShape::DealerThisTurn { target_tokens });
+    }
     if let Some((target_tokens, player_tokens)) = parse_dealt_damage_to_player_filter(tokens) {
         return Some(DestroyCombatHistoryShape::DealtDamageToPlayerThisTurn {
             target_tokens,

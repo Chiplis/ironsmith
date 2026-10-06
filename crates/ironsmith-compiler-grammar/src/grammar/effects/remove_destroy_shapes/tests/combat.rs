@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+pub(super) fn dealer_and_recipient_history_are_different_complete_shapes() {
+    let dealer = lex_line("target creature an opponent controls that dealt damage this turn", 0).unwrap();
+    let DestroyClauseKind::CombatHistory(DestroyCombatHistoryShape::DealerThisTurn { target_tokens }) =
+        parse_destroy_clause_shape(&dealer).kind
+    else { panic!("active damage dealer was not retained"); };
+    assert_eq!(words(target_tokens), vec!["target", "creature", "an", "opponent", "controls"]);
+    let recipient = lex_line("target creature that was dealt damage this turn", 0).unwrap();
+    assert!(matches!(parse_destroy_clause_shape(&recipient).kind,
+        DestroyClauseKind::CombatHistory(DestroyCombatHistoryShape::DealtDamageThisTurn { .. })));
+    let trailing = lex_line("target creature that dealt damage this turn while a puzzle was solved", 0).unwrap();
+    assert!(matches!(parse_destroy_clause_shape(&trailing).kind,
+        DestroyClauseKind::UnsupportedCombatHistory));
+}
+
+#[test]
 pub(super) fn couldnt_attack_exception_stays_inside_the_destroy_filter_domain() {
     let tokens = lex_line(
         "all untapped creatures that didn't attack this turn except for creatures that couldn't attack",

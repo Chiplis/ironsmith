@@ -1235,6 +1235,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/854"
+    },
+    {
+      "stage": 89,
+      "branch": "fix/card-failures-89-intet-permission-lifetime",
+      "base": "fix/card-failures-88-broker-and-text-owner",
+      "source_integration_commit": "96f0adead68d0f06603cc6f273e2765e86769f0c",
+      "remote_commit": "ccba54938cef26287e6c8b25a1c833a953a9db9b",
+      "tree": "33c99a775c3737b1faefecaa8c2e4b5832038dbb",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 855,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/855"
     }
   ]
 }

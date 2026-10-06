@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-06T15:24:32Z",
+  "checked_at": "2026-10-06T15:42:35Z",
   "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
-  "latest_published_head": "cafb57eca45937592b33fb00372e957914ff8d2b",
-  "latest_published_pr": 854,
+  "latest_published_head": "ccba54938cef26287e6c8b25a1c833a953a9db9b",
+  "latest_published_pr": 855,
   "open_draft_prs": [
     821,
     822,
@@ -38,19 +38,20 @@
     851,
     852,
     853,
-    854
+    854,
+    855
   ],
   "workspace_replaced": true,
-  "published_source_proposals": 1182,
-  "published_source_entries": 1187,
+  "published_source_proposals": 1183,
+  "published_source_entries": 1188,
   "unpublished_pre_outage_source_not_assumed_retained": [
     "Suspend4",
     "mana consumer6",
     "permanent prevention6",
     "linked exile Bishop prerequisites"
   ],
-  "current_reconstructed_source_proposals": 1183,
-  "current_reconstructed_source_entries": 1188,
+  "current_reconstructed_source_proposals": 1187,
+  "current_reconstructed_source_entries": 1192,
   "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "verified_compile_recoveries": 40,
@@ -80,5 +81,5 @@
     "bishop_reconstructed_head": "4c7076aa526c48def5922a985e809ebeb39b2e7b",
     "integrated_source_review_head": "2aa985aa6dc6463ed8794c20865cea711322d5a1"
   },
-  "new_post_recovery_family": "Intet is independently source-reviewed and integrated. Its exact source lifetime ends permanently on phasing; durable inspection remains separate. Current native recovery architecture is documented; no text-card promotion or execution."
+  "new_post_recovery_family": "Four damage-dealer filter bodies independently source-reviewed and integrated byte-identically. Exact-incarnation current-turn history replaces physical-card alias following. Current native recovery design retained; all execution deferred."
 }
