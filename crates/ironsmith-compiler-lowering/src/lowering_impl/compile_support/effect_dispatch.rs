@@ -623,14 +623,14 @@ fn link_unproduced_result_references_in_list(
 }
 
 fn nested_effect_contains<T: 'static>(effect: &Effect) -> bool {
-    if effect.downcast_ref::<T>().is_some() {
-        return true;
-    }
+    nested_effect_satisfies(effect, &|candidate| candidate.downcast_ref::<T>().is_some())
+}
+
+fn nested_effect_satisfies(effect: &Effect, predicate: &dyn Fn(&Effect) -> bool) -> bool {
+    if predicate(effect) { return true; }
     let mut found = false;
     effect.visit_child_effects(&mut |child| {
-        if !found && nested_effect_contains::<T>(child) {
-            found = true;
-        }
+        if !found && nested_effect_satisfies(child, predicate) { found = true; }
     });
     found
 }
@@ -652,6 +652,9 @@ fn nested_effect_performs_action(
         Action::Drawn => nested_effect_contains::<crate::effects::DrawCardsEffect>(effect),
         Action::Milled => nested_effect_contains::<crate::effects::MillEffect>(effect),
         Action::CountersPut => nested_effect_contains::<crate::effects::PutCountersEffect>(effect),
+        Action::CountersMoved(kind) => nested_effect_satisfies(effect, &|candidate|
+            candidate.downcast_ref::<crate::effects::MoveCountersEffect>()
+                .is_some_and(|movement| movement.counter_type == kind)),
         Action::Removed => nested_effect_contains::<crate::effects::RemoveCountersEffect>(effect),
         Action::DealtDamage => nested_effect_contains::<crate::effects::DealDamageEffect>(effect),
         Action::Returned => {
@@ -2773,9 +2776,11 @@ fn compile_plain_fixed_token_creation(
         ),
         _ => (false, false),
     };
-    let token = lower_token_definition_shape(definition.clone())
+    let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
+    let text_roles = subject_verb_middle::retain_token_description_roles(definition, &mut token)?;
     let mut create = crate::effects::CreateTokenEffect::you(token, count.clone());
+    create.text_roles = text_roles;
     if use_source_chosen_color {
         create = create.with_source_chosen_color();
     }
@@ -3564,4 +3569,25 @@ fn common_choose_one_mode_actor(
         }
     }
     actor
+}
+
+#[cfg(test)]
+mod counter_movement_antecedent_tests {
+    use super::*;
+    #[test]
+    fn nested_movement_antecedents_do_not_borrow_another_counter_kinds_receipt() {
+        use ironsmith_core::{CounterType, PriorEffectAction};
+        let charge = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(crate::effects::MoveCountersEffect::new(
+                CounterType::Charge, 1, crate::target::ChooseSpec::Source,
+                crate::target::ChooseSpec::creature())),
+        ]));
+        let plus_one = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::new(crate::effects::MoveCountersEffect::plus_one_counters(1)),
+        ]));
+        assert!(nested_effect_performs_action(&charge, PriorEffectAction::CountersMoved(CounterType::Charge)));
+        assert!(!nested_effect_performs_action(&charge, PriorEffectAction::CountersMoved(CounterType::PlusOnePlusOne)));
+        assert!(nested_effect_performs_action(&plus_one, PriorEffectAction::CountersMoved(CounterType::PlusOnePlusOne)));
+        assert!(!nested_effect_performs_action(&plus_one, PriorEffectAction::CountersMoved(CounterType::Charge)));
+    }
 }

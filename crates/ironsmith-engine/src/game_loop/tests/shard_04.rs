@@ -107,6 +107,7 @@ pub(super) fn triggering_permanent_controller_chooses_targets_using_ability_cont
     let mut trigger_queue = TriggerQueue::new();
     trigger_queue.add(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller: alice,
         x_value: None,
@@ -1480,6 +1481,7 @@ pub(super) fn put_triggers_on_stack_uses_controller_selected_order_for_simultane
     let mut trigger_queue = TriggerQueue::new();
     trigger_queue.add(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source: alpha_id,
         controller: alice,
         x_value: None,
@@ -1495,6 +1497,7 @@ pub(super) fn put_triggers_on_stack_uses_controller_selected_order_for_simultane
     });
     trigger_queue.add(TriggeredAbilityEntry {
         linked_exile_owner: None,
+        source_number_owner: None,
         source: beta_id,
         controller: alice,
         x_value: None,
@@ -1581,6 +1584,7 @@ pub(super) fn put_triggers_on_stack_orders_each_controller_in_apnap_order() {
             .stable_id;
         TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source: object_id,
             controller,
             x_value: None,
@@ -1643,6 +1647,7 @@ pub(super) fn test_drain_pending_events_checks_delayed_zone_change_triggers() {
         .delayed_triggers
         .push(crate::triggers::DelayedTrigger {
             linked_exile_owner: None,
+            source_number_owner: None,
             trigger: Trigger::this_leaves_battlefield(),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::move_to_zone(ChooseSpec::SpecificObject(twin_id), Zone::Exile, true),

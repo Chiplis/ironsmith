@@ -36,15 +36,20 @@ impl SpellCastEvent {
     /// The publication boundary for both priority and effect-driven casts.
     /// Capture only this exact stack incarnation after the cast commits.
     pub fn from_completed_cast(spell: ObjectId, caster: PlayerId, from_zone: Zone, game: &GameState) -> Self {
-        Self {
-            spell,
-            caster,
-            from_zone,
+        Self::try_from_completed_cast(spell, caster, from_zone, game)
+            .expect("legacy cast capture requires complete characteristic evidence")
+    }
+
+    pub fn try_from_completed_cast(spell: ObjectId, caster: PlayerId, from_zone: Zone, game: &GameState)
+        -> Result<Self, crate::effects::ExecutionError>
+    {
+        Ok(Self {
+            spell, caster, from_zone,
             snapshot: game.object(spell).filter(|object| object.zone == Zone::Stack)
-                .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game)),
+                .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?,
             targets: game.stack.iter().find(|entry| entry.object_id == spell && !entry.is_ability)
                 .map(|entry| entry.targets.clone()),
-        }
+        })
     }
 
     pub fn required_completed_snapshot(&self) -> Result<&ObjectSnapshot, crate::effects::ExecutionError> {

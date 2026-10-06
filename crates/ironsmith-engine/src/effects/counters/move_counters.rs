@@ -22,72 +22,117 @@ impl EffectExecutor for MoveCountersEffect {
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
 
-            // Targeted moves read the two resolved targets; untargeted moves
-            // (graft: this permanent onto the entering creature, CR 702.58a)
-            // resolve `from`/`to` through their specs.
-            let is_reference = |spec: &ChooseSpec| {
-                matches!(spec.base(), ChooseSpec::Source | ChooseSpec::Tagged(_))
-            };
-            let target_pair = if !is_reference(&self.from) && !is_reference(&self.to) {
-                super::assigned_counter_transfer_pair(ctx)
+            // Explicit target roles remain distinct even when their filters
+            // compare equal. Untargeted references and plural donor sets are
+            // resolved independently, never truncated to their first member.
+            let legacy_pair = matches!(self.from.base(), ChooseSpec::Object(_))
+                && matches!(self.to.base(), ChooseSpec::Object(_))
+                && ctx.targets.len() >= 2;
+            let (donors, recipients) = if (self.from.is_target() && self.to.is_target()) || legacy_pair {
+                let Some((from, to)) = super::assigned_counter_transfer_pair(ctx) else {
+                    return Ok(EffectOutcome::target_invalid());
+                };
+                (vec![from], vec![to])
             } else {
-                let from = match self.from.base() {
-                    ChooseSpec::Source => vec![ctx.source],
-                    _ => resolve_objects_for_effect(game, ctx, &self.from)?,
+                let resolve = |game: &mut GameState, ctx: &mut ExecutionContext, spec: &ChooseSpec| {
+                    if matches!(spec.base(), ChooseSpec::Source) { Ok(vec![ctx.source]) }
+                    else { resolve_objects_for_effect(game, ctx, spec) }
                 };
-                let to = match self.to.base() {
-                    ChooseSpec::Source => vec![ctx.source],
-                    _ => resolve_objects_for_effect(game, ctx, &self.to)?,
-                };
-                from.first().copied().zip(to.first().copied())
+                let donors = resolve(game, ctx, &self.from)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let recipients = resolve(game, ctx, &self.to)?;
+                (donors, recipients)
             };
-            let Some((from_id, to_id)) = target_pair else {
-                return Ok(EffectOutcome::target_invalid());
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let [to_id] = recipients.as_slice() else {
+                if recipients.is_empty() { return Ok(EffectOutcome::target_invalid()); }
+                return Err(ExecutionError::InternalError("counter transfer requires one bound destination".into()));
             };
-            // CR 122.5: nothing is removed if the counters can't be put onto the
-            // second object.
-            if game.is_phased_out(from_id)
-                || from_id == to_id
-                || !super::move_destination_can_receive_counters(game, to_id, self.counter_type)
-            {
+            let to_id = *to_id;
+            if !super::move_destination_can_receive_counters(game, to_id, self.counter_type) {
                 return Ok(EffectOutcome::count(0));
             }
 
-            // Get current counter count on source
-            let available = game
-                .object(from_id)
-                .and_then(|obj| obj.counters.get(&self.counter_type).copied())
-                .unwrap_or(0);
-
-            let to_move = match &self.count {
-                ironsmith_core::effect::CounterMoveAmount::Exact(value) => resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
-                ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
-                    let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
-                        format!("Choose how many {} counters to move", self.counter_type.description()));
-                    let chosen = crate::decisions::make_decision_with_fallback(game, &mut ctx.decision_maker,
-                        ctx.controller, Some(ctx.source), spec, crate::decision::FallbackStrategy::Maximum);
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    chosen
+            // Complete every amount choice before applying any removal or
+            // replacement program. A zero allocation contributes no event.
+            let mut allocations = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            let mut total = 0u32;
+            for from_id in donors {
+                if !seen.insert(from_id) || from_id == to_id || game.is_phased_out(from_id)
+                    || game.object(from_id).is_none() {
+                    continue;
                 }
-            }.min(available);
-
-            if to_move == 0 {
-                return Ok(EffectOutcome::count(0));
+                let available = game.counter_count(from_id, self.counter_type);
+                if available == 0 { continue; }
+                let to_move = match &self.count {
+                    ironsmith_core::effect::CounterMoveAmount::Exact(value) =>
+                        resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
+                    ironsmith_core::effect::CounterMoveAmount::All => available,
+                    ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
+                        let name = game.object(from_id).map(|object| object.name.as_str()).unwrap_or("the permanent");
+                        let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
+                            format!("Choose how many {} counters to move from {name}", self.counter_type.description()));
+                        let chosen = crate::decisions::make_decision_with_fallback(game, &mut ctx.decision_maker,
+                            ctx.controller, Some(ctx.source), spec, crate::decision::FallbackStrategy::Maximum);
+                        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                        chosen
+                    }
+                }.min(available);
+                if to_move == 0 { continue; }
+                total = total.checked_add(to_move).ok_or_else(|| ExecutionError::InternalError(
+                    "counter transfer destination exceeds the supported counter count range".into()))?;
+                allocations.push((from_id, to_move));
             }
+            if total == 0 { return Ok(EffectOutcome::count(0)); }
 
-            let mut outcome = super::remove_moved_counters(game, ctx, from_id, self.counter_type, to_move)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+            // This instruction is one simultaneous counter operation. Every
+            // removal and the combined placement are proposed against the
+            // pre-mutation state; appended programs cannot change a later
+            // donor's counters or the destination before its original commits.
+            let mut removals = Vec::new();
+            for (from_id, amount) in allocations {
+                let event = crate::events::Event::remove_counters(from_id, self.counter_type, amount)
+                    .with_provenance(ctx.provenance);
+                removals.push(super::prepared_removal::prepare_counter_removal(game, ctx, event)?);
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             }
-
-            // Putting the moved counters is an ordinary placement (CR 122.5).
-            let placed = super::put_moved_counters(game, ctx, to_id, self.counter_type, to_move)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+            let placement = super::prepare_counter_placement(game, ctx,
+                crate::events::Event::put_counters(to_id, self.counter_type, total, ctx.cause.clone())
+                    .with_provenance(ctx.provenance))?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let opened = game.open_simultaneous_action();
+            let originals = (|| {
+                let mut committed = Vec::new();
+                let mut removed = 0i64;
+                for removal in removals {
+                    let receipt = super::prepared_removal::commit_prepared_counter_removal_original(game, ctx, removal)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok((Vec::new(), 0)); }
+                    removed = removed.checked_add(receipt.outcome.count_or_zero()).ok_or_else(||
+                        ExecutionError::InternalError("counter transfer receipt exceeds the supported count range".into()))?;
+                    committed.push(receipt);
+                }
+                committed.push(super::commit_prepared_counter_original(game, ctx, placement)?);
+                Ok::<_, ExecutionError>((committed, removed))
+            })();
+            game.close_simultaneous_action(opened);
+            let (mut committed, removed) = originals?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            for receipt in &mut committed {
+                if let Some(completion) = &mut receipt.completion { completion.freeze(game)?; }
             }
-            outcome = EffectOutcome::aggregate([outcome, placed]);
-            outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(to_move)));
-
+            let mut outcomes = Vec::new();
+            for receipt in committed {
+                let outcome = if let Some(completion) = receipt.completion {
+                    completion.complete(game, ctx, receipt.outcome)?
+                } else { receipt.outcome };
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                outcomes.push(outcome);
+            }
+            let mut outcome = EffectOutcome::aggregate(outcomes);
+            // Movement receipts count original removals, not multiplied puts
+            // or life/draw/counter outcomes appended by replacement programs.
+            outcome.set_value(crate::effect::OutcomeValue::Count(removed));
             Ok(outcome)
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
@@ -495,7 +540,7 @@ mod move_component_application_tests {
         // CR 122.5 decomposes the instruction into removal and placement.
         // Replacing one component does not rewrite the other's authored quantity.
         assert_eq!(game.counter_count(destination, CounterType::Charge), 2 * budget);
-        assert_eq!(out.count_or_zero(), budget as i64);
+        assert_eq!(out.count_or_zero(), if owner == 0 { removed as i64 } else { budget as i64 });
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
         assert!(game.effect_store.replacement_effects.get_effect(put_shield).is_none());
         let markers = out.events_of_type::<crate::events::MarkersChangedEvent>().collect::<Vec<_>>();
@@ -532,7 +577,7 @@ mod move_component_application_tests {
         assert_eq!(game.counter_count(source, CounterType::Charge), 3);
         assert_eq!(game.counter_count(destination, CounterType::Charge), budget);
         assert_eq!(game.player(PlayerId::from_index(0)).unwrap().life, 22);
-        assert_eq!(out.count_or_zero(), budget as i64);
+        assert_eq!(out.count_or_zero(), if owner == 0 { 0 } else { budget as i64 });
         assert_eq!(out.events_of_type::<crate::events::LifeGainEvent>().count(), 1);
         assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>().count(), 1);
         assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
@@ -675,3 +720,7 @@ mod chosen_counter_move_amount_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "counted_transfer_tests.rs"]
+mod counted_transfer_tests;

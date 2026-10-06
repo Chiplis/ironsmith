@@ -36,7 +36,7 @@ pub(crate) fn resolve_value_direct_for_recipient(
 ) -> i32 {
     resolve_value_direct_for_recipient_impl(
         value, objects, effects, battlefield, commanders, source, recipient, controller, game,
-        None,
+        None, None,
     )
 }
 
@@ -51,10 +51,12 @@ pub(crate) fn resolve_characteristic_value_direct_for_recipient(
     controller: PlayerId,
     game: &crate::game_state::GameState,
     error: &mut Option<(&'static str, i128)>,
+    evidence_error: &mut Option<&'static str>,
+    numeric_origin: Option<&crate::continuous::AbilityOrigin>,
 ) -> i32 {
     resolve_value_direct_for_recipient_impl(
         value, objects, effects, battlefield, commanders, source, recipient, controller, game,
-        Some(error),
+        Some((error,evidence_error)), numeric_origin,
     )
 }
 
@@ -68,7 +70,8 @@ fn resolve_value_direct_for_recipient_impl(
     recipient: ObjectId,
     controller: PlayerId,
     game: &crate::game_state::GameState,
-    error: Option<&mut Option<(&'static str, i128)>>,
+    error: Option<(&mut Option<(&'static str, i128)>,&mut Option<&'static str>)>,
+    numeric_origin: Option<&crate::continuous::AbilityOrigin>,
 ) -> i32 {
     let mut effect_manager = ContinuousEffectManager::new();
     for effect in effects {
@@ -87,9 +90,9 @@ fn resolve_value_direct_for_recipient_impl(
         controller,
         effects,
         commanders,
-    );
+    ).with_numeric_origin(numeric_origin);
     match error {
-        Some(error) => crate::effects::helpers::value_eval::resolve_continuous_characteristic(value, layer, error),
+        Some((error,evidence_error)) => crate::effects::helpers::value_eval::resolve_continuous_characteristic(value, layer, error,evidence_error),
         None => crate::effects::helpers::value_eval::resolve_continuous(value, layer),
     }
 }
@@ -1011,8 +1014,10 @@ pub(super) fn apply_layer_7_effects(
                     if *sublayer == PtSublayer::CharacteristicDefining {
                         crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                             value,
-                            super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller),
+                            super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                                .with_numeric_origin(effect.originating_ability.as_ref().map(|origin|&origin.ability)),
                             &mut chars.numeric_range_error,
+                            &mut chars.numeric_choice_error,
                         )
                     } else {
                         resolve_value_with_context(value, ctx, effect.source, effect.controller)

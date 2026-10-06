@@ -504,20 +504,16 @@ fn prepare_battlefield_entry_batch_inner(
 
     // Original zone snapshots and observer lookback precede provisional faces,
     // continuous modifications and every entry program in this batch.
-    let pre_event_lookback = game.trigger_source_lookback_snapshots();
+    let pre_event_lookback = game.try_trigger_source_lookback_snapshots()?;
     let original_snapshots = requests
         .iter()
         .filter_map(|(id, _)| {
             game.object(*id).map(|object| {
-                (
-                    *id,
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    ),
-                )
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+                    .map(|snapshot| (*id, snapshot))
             })
         })
-        .collect::<std::collections::HashMap<_, _>>();
+        .collect::<Result<std::collections::HashMap<_, _>, ExecutionError>>()?;
     let mut physical_entries = std::collections::HashMap::new();
     for (index, (primary, options)) in requests.iter().enumerate() {
         if options.physical_components.is_empty() {
@@ -558,9 +554,9 @@ fn prepare_battlefield_entry_batch_inner(
                 })?;
             components.push(crate::game_state::PreparedEntryComponent {
                 snapshot:
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
                         object, game,
-                    ),
+                    )?,
                 original_definition: definition,
             });
         }

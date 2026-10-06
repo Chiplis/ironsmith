@@ -253,6 +253,11 @@ pub(super) fn begin_mana_ability_activation(
                 *source, effects_to_run.linked_exile_pair,
                 source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
                     .and_then(|origins| origins.get(*ability_index)));
+
+            let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                *source, effects_to_run.source_number_pair,
+                source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index)));
             crate::linked_exile::validate_program_owner(effects_to_run.linked_exile_pair, linked_exile_owner.as_ref())
                 .map_err(GameLoopError::ExecutionFailed)?;
 
@@ -314,6 +319,7 @@ pub(super) fn begin_mana_ability_activation(
                     .with_activation_definition(effects_to_run.activation_definition)
                     .with_ability_index(*ability_index)
                     .with_linked_exile_owner(linked_exile_owner.clone())
+                    .with_source_number_owner(source_number_owner.clone())
                     .with_provenance(mana_ability_provenance)
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                     .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
@@ -347,6 +353,7 @@ pub(super) fn begin_mana_ability_activation(
                     .with_activation_definition(effects_to_run.activation_definition)
                         .with_ability_index(*ability_index)
                         .with_linked_exile_owner(linked_exile_owner.clone())
+                        .with_source_number_owner(source_number_owner.clone())
                         .with_provenance(mana_ability_provenance)
                         .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                         .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
@@ -397,6 +404,7 @@ pub(super) fn begin_mana_ability_activation(
                     activation_origin: source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
                         .and_then(|origins| origins.get(*ability_index).cloned()),
                     linked_exile_owner,
+                    source_number_owner,
                     payment_reason,
                     source: *source,
                     ability_index: *ability_index,
@@ -1214,6 +1222,10 @@ fn apply_priority_response_with_dm_inner(
                 let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
                     *source, effects.linked_exile_pair,
                     source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
+
+                let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    *source, effects.source_number_pair,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
                 let mut entry = StackEntry::ability(*source, player, effects.clone())
                     .with_ability_index(*ability_index)
                     .with_activation_origin(source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index).cloned()))
@@ -1228,6 +1240,7 @@ fn apply_priority_response_with_dm_inner(
                     )
                     .with_tagged_objects(granting_source_tags);
                 entry.linked_exile_owner = linked_exile_owner;
+                entry.source_number_owner = source_number_owner;
                 game.push_to_stack(entry);
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),

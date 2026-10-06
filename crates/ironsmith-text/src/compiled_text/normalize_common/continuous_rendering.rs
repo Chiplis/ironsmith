@@ -5841,6 +5841,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Connived => "connive",
         crate::effect::PriorEffectAction::Countered => "counter",
         crate::effect::PriorEffectAction::CountersPut => "put counters on",
+        crate::effect::PriorEffectAction::CountersMoved(_) => "move counters",
         crate::effect::PriorEffectAction::DealtDamage => "deal damage to",
         crate::effect::PriorEffectAction::Died => "die",
         crate::effect::PriorEffectAction::Destroyed => "destroy",
@@ -5986,6 +5987,10 @@ fn describe_prior_effect_result_surface(
                 crate::effect::PriorEffectResultActor::Passive,
                 crate::effect::PriorEffectAction::Removed,
             ) => "one or more counters are removed this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectAction::CountersMoved(kind),
+            ) => format!("one or more {} counters are moved this way", kind.description()),
             (
                 crate::effect::PriorEffectResultActor::Passive,
                 crate::effect::PriorEffectAction::Countered,

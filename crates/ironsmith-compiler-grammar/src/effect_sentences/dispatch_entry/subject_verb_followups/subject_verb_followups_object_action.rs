@@ -97,22 +97,6 @@ pub(super) fn pre_rule_token_followups(
             route: Some("subject-verb verb=Create subject=implicit recognizer=instead-replacement"),
         }));
     }
-    if is_spawn_scion_token_mana_reminder(sentence_tokens) {
-        if state
-            .effects
-            .last()
-            .is_some_and(effect_creates_eldrazi_spawn_or_scion)
-        {
-            return Ok(Some(PreParseFollowupResult::Handled {
-                consumed_sentences: 1,
-                route: None,
-            }));
-        }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported standalone token mana reminder clause (clause: '{}')",
-            LexedClause::new(sentence_tokens).text()
-        )));
-    }
     if let Some(effect) =
         parse_sentence_exile_that_token_when_source_leaves(sentence_tokens, state.effects)
     {

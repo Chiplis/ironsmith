@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-06T18:49:51Z",
+  "checked_at": "2026-10-06T19:49:00Z",
   "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
-  "latest_published_head": "d9dbf793fa0d1c54ff14b71076cbaa7942925ed2",
-  "latest_published_pr": 860,
+  "latest_published_head": "a13255a3e19ac08f5c46dec62ecc75e92b868191",
+  "latest_published_pr": 861,
   "open_draft_prs": [
     821,
     822,
@@ -44,19 +44,20 @@
     857,
     858,
     859,
-    860
+    860,
+    861
   ],
   "workspace_replaced": true,
-  "published_source_proposals": 1209,
-  "published_source_entries": 1214,
+  "published_source_proposals": 1203,
+  "published_source_entries": 1208,
   "unpublished_pre_outage_source_not_assumed_retained": [
     "Suspend4",
     "mana consumer6",
     "permanent prevention6",
     "linked exile Bishop prerequisites"
   ],
-  "current_reconstructed_source_proposals": 1203,
-  "current_reconstructed_source_entries": 1208,
+  "current_reconstructed_source_proposals": 1213,
+  "current_reconstructed_source_entries": 1218,
   "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "verified_compile_recoveries": 40,
@@ -84,17 +85,16 @@
     "bishop_reconstructed_head": "4c7076aa526c48def5922a985e809ebeb39b2e7b",
     "integrated_source_review_head": "2aa985aa6dc6463ed8794c20865cea711322d5a1"
   },
-  "new_post_recovery_family": "Stage95 adds three reviewed Aura-control bodies and records nine previous source holds: two counter-transfer completion cases and seven confirmed ordinary/compact token-name cases. Corrective owners and next compatibility boundary remain pending. No execution.",
+  "new_post_recovery_family": "Stage96 source-reviewed: five source-owned number bodies and four counted counter transfers; restores two counter and seven ordinary-token holds while retaining eight confirmed predefined token-name holds. Artifact8/public digest4/audit21 form the coordinated boundary; all execution remains deferred.",
   "held_previous_proposals": [
-    "Tester of the Tangential",
-    "Cytoplast Manipulator",
-    "Adipose Offspring",
-    "Baloth Cage Trap",
-    "Cobra Trap",
-    "Camellia, the Seedmiser",
-    "Belisarius Cawl",
-    "Brood Birthing",
-    "Oni-Cult Anvil"
+    "Aerid Konstrari",
+    "Hungering Puppetbeast",
+    "Tenured Tethermage",
+    "Dora Milaje Elite",
+    "Shuri's Fabricator",
+    "T'Challa, the Black Panther",
+    "The Great Mound",
+    "Vibranium Mining Mech"
   ],
   "source_checkpoints": [
     {
@@ -105,6 +105,26 @@
       "local_source": "546da2231cb9143e5ae32b6853b60a041cc51352",
       "status": "WIP_known_review_blockers_no_card_credit_no_PR",
       "remote_tree_and_ref_verified": true
+    },
+    {
+      "branch": "wip/card-failures-chosen-number-reviewed-29487ada",
+      "remote_commit": "6563515c544ea8f71533473b967757af63e0f32d",
+      "tree": "524b2273227e3c38a3228d88f71361783fff879e",
+      "parent": "857460a1d4df08c599f125f72d54001964453251",
+      "local_source": "29487ada302c6fc9de518af1319c1152ef4d2953",
+      "status": "source_reviewed_integration_boundary_pending_no_card_credit_no_PR",
+      "remote_tree_and_ref_verified": true
     }
-  ]
+  ],
+  "next_compatibility_boundary": {
+    "artifact_format": 8,
+    "artifact_schema_fingerprint": "cb108f20f047d8702f593fc004a8f8e4cebc1c7cd29a9b0eef7b7590cf9adcad",
+    "public_digest": 4,
+    "signed_audit_protocol": 21,
+    "status": "source_reviewed_current_change",
+    "runtime_savepoints": "Native root/inactive-lane state remains exact; digest is not serialized gameplay recovery.",
+    "historical_replay": "Old signatures verify original bytes only; incompatible prior-protocol replay and peers reject before engine access.",
+    "regeneration": "All compiled artifacts require real regeneration after the deferred execution gate; rechecksumming/relabeling is not migration.",
+    "known_validation_prerequisite": "Pre-existing missing historical v5 fixture remains unresolved until actual fixture recovery; no passing legacy-validation claim."
+  }
 }

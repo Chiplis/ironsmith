@@ -94,6 +94,7 @@ mod tests {
             mana_spent_on_activation: Default::default(),
             ability_effects: None,
             linked_exile_owner: None,
+            source_number_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             casting_method: crate::alternative_cast::CastingMethod::Normal,

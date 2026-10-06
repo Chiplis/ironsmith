@@ -44,6 +44,8 @@ pub mod tag;
 pub mod target_model;
 pub mod text_change;
 pub use text_change::{ChangeTextEffect, TextChange, TextChangeError, TextChangeSelection, TextWord};
+pub mod token_text;
+pub use token_text::{TokenNameTextRole, TokenTextRoles, TokenWordRole, subtype_derived_token_name};
 pub mod trigger_model;
 pub mod types;
 pub mod value_model;
@@ -260,7 +262,7 @@ pub use value_model::{
     AttachmentConditionHost, Condition, ConditionConjunction, DeathHistoryControllerSurface,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
-    PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    PriorEffectMetricQuery, ColorChoiceReference, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

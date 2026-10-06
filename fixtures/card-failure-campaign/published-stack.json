@@ -1319,6 +1319,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/860"
+    },
+    {
+      "stage": 95,
+      "branch": "fix/card-failures-95-aura-control-bodies",
+      "base": "fix/card-failures-94-exile-prevention-and-combat-history",
+      "source_integration_commit": "2dbe5e1cd3f917e901f1c397ad595f63820e2b69",
+      "remote_commit": "a13255a3e19ac08f5c46dec62ecc75e92b868191",
+      "tree": "107e0d932ad66a9f7e93c84566475ebe524e4ef9",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 861,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/861"
     }
   ]
 }

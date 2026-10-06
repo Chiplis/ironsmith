@@ -728,6 +728,7 @@ impl StaticAbilityKind for ExertAttack {
                 };
                 trigger_queue.add(TriggeredAbilityEntry {
                     linked_exile_owner: None,
+                    source_number_owner: None,
                     source,
                     controller,
                     x_value: source_object.x_value,
@@ -903,6 +904,7 @@ impl StaticAbilityKind for EnlistAttack {
         game.queue_trigger_event(enlist_provenance, enlist_event.clone());
         trigger_queue.add(TriggeredAbilityEntry {
             linked_exile_owner: None,
+            source_number_owner: None,
             source,
             controller,
             x_value: source_object.x_value,

@@ -9,6 +9,7 @@ use super::*;
 fn creature_definition() -> TokenDefinitionSpec {
     TokenDefinitionSpec::Creature(CreatureTokenShape {
         name: "Spirit".to_string(),
+        text_roles: None,
         card_types: vec![CardType::Creature],
         subtypes: Vec::new(),
         power_toughness: (0, 0),

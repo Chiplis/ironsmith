@@ -172,6 +172,11 @@ pub fn parse_spell_restriction_subject_filter_words(words: &[&str]) -> Option<Ob
     while !input.is_empty() {
         input = prefix_remainder(input, &["with"])?;
         if let Some(rest) = prefix_remainder(input, &["mana", "value"]) {
+            if exact(rest, &["equal", "to", "the", "chosen", "number"]) {
+                return Some(filter.with_mana_value(Comparison::EqualExpr(Box::new(
+                    crate::effect::Value::SourceChosenNumber { if_unset: None, pair: None },
+                ))));
+            }
             let (comparison, consumed) =
                 crate::grammar::shared_util::value_semantics::parse_filter_comparison_tokens(
                     "mana value",

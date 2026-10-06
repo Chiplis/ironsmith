@@ -40,10 +40,10 @@ pub(crate) fn freeze_completed_lifecycle_events(
             .and_then(|id| observed.object(id))
             .filter(|object| object.zone == crate::zone::Zone::Battlefield)
             .map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
                     object, &observed, &effects,
                 )
-            });
+            }).transpose()?;
         if let Some(inner) = event.downcast::<TransformedEvent>() {
             *event = event.with_inner_event(inner.clone().with_snapshot(snapshot));
         } else if let Some(inner) = event.downcast::<MutatedEvent>() {

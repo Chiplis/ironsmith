@@ -59,7 +59,7 @@ impl EffectExecutor for ChooseColorEffect {
                 _ => return Err(ExecutionError::InternalError("non-color in stored-color witness".into())),
             };
             game.set_chosen_color(ctx.source, color);
-            return Ok(EffectOutcome::count(1));
+            return Ok(EffectOutcome::count(1).with_execution_fact(crate::effect::ExecutionFact::ChosenColor(color)));
         }
         let options: Vec<SelectableOption> = Self::color_options()
             .iter()
@@ -81,6 +81,6 @@ impl EffectExecutor for ChooseColorEffect {
         };
         let (color, _) = Self::color_options()[chosen];
         game.set_chosen_color(ctx.source, color);
-        Ok(EffectOutcome::count(1))
+        Ok(EffectOutcome::count(1).with_execution_fact(crate::effect::ExecutionFact::ChosenColor(color)))
     }
 }

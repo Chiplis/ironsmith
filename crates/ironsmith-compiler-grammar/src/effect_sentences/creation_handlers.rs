@@ -554,14 +554,15 @@ fn parse_inline_token_granted_abilities(
     // below. Recover only those typed Equipment facts from the complete
     // clause; merging all complete-clause reminder facts would also leak
     // keywords from nested tokens inside quotes onto the outer token.
-    let complete_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(tokens);
-    token_definition_grammar::merge_token_equipment_reminder_definition(
+    let rule_source = token_definition_grammar::token_definition_rule_tokens(tokens);
+    let complete_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(&rule_source);
+    token_definition_grammar::merge_authored_token_equipment_facts(
         definition,
         &complete_reminder,
     );
-    let outer_tokens = tokens_outside_double_quoted_rules(tokens);
+    let outer_tokens = token_definition_grammar::token_definition_outer_tokens(tokens);
     let outer_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(&outer_tokens);
-    token_definition_grammar::merge_token_reminder_definition(definition, &outer_reminder);
+    token_definition_grammar::merge_authored_token_definition_facts(definition, &outer_reminder);
     for rule_tokens in double_quoted_rule_bodies(tokens) {
         // Reminder parsing intentionally scans a whole quoted token rule so
         // specialized rules such as a dies-triggered token creation can be
@@ -577,17 +578,7 @@ fn parse_inline_token_granted_abilities(
             })
             .flatten();
         let reminder = token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens);
-        let rule_is_triggered_or_activated = rule_tokens
-            .first()
-            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
-            || rule_tokens
-                .iter()
-                .any(|token| token.kind == TokenKind::Colon);
-        let reminder = if rule_is_triggered_or_activated {
-            reminder.without_rule_effect_keywords()
-        } else {
-            reminder
-        };
+        let reminder = reminder.without_rule_effect_keywords();
         let conflicting_combat_restriction =
             match (&*definition, reminder.creature_combat_restriction()) {
                 (
@@ -605,7 +596,7 @@ fn parse_inline_token_granted_abilities(
         // continue through the ordinary granted-ability parser; replacing
         // the first slot here silently discards one of the two.
         let merged = !conflicting_combat_restriction
-            && token_definition_grammar::merge_token_reminder_definition(definition, &reminder);
+            && token_definition_grammar::merge_authored_token_definition_facts(definition, &reminder);
         if let Some(keywords) = outer_keywords
             && let crate::model::token_definition::TokenDefinitionSpec::Creature(creature) =
                 definition
@@ -740,7 +731,7 @@ fn parse_inline_token_granted_abilities(
             // Reapply the outer clause so an Equipment rule body cannot
             // discard a trailing `and equip` clause outside its quotes. Do
             // not merge keywords from a nested token rule into this token.
-            token_definition_grammar::merge_token_reminder_definition(definition, &outer_reminder);
+            token_definition_grammar::merge_authored_token_definition_facts(definition, &outer_reminder);
             continue;
         }
         if !conflicting_combat_restriction
@@ -1933,24 +1924,35 @@ pub fn parse_create(
         match &mut definition {
             crate::model::token_definition::TokenDefinitionSpec::Vehicle(shape) => {
                 shape.name = name.clone();
+                if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
             }
             crate::model::token_definition::TokenDefinitionSpec::Artifact(shape) => {
                 shape.name = name.clone();
+                if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
             }
             crate::model::token_definition::TokenDefinitionSpec::Creature(shape) => {
                 shape.name = name.clone();
+                if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
             }
             _ => {}
         }
     }
-    if let Some(postnominal_colors) =
-        token_definition_grammar::parse_postnominal_token_colors_tokens(&tail_tokens)
+    if let Some((postnominal_colors, color_role)) =
+        token_definition_grammar::parse_postnominal_token_color_words_tokens(&tail_tokens)
     {
         match &mut definition {
             crate::model::token_definition::TokenDefinitionSpec::Creature(creature) => {
+                if let Some(roles) = &mut creature.text_roles {
+                    if creature.colors.is_empty() || roles.colors == color_role { roles.colors = color_role; }
+                    else { roles.colors = ironsmith_core::TokenWordRole::Unrecorded; }
+                }
                 creature.colors = creature.colors.union(postnominal_colors);
             }
             crate::model::token_definition::TokenDefinitionSpec::Artifact(artifact) => {
+                if let Some(roles) = &mut artifact.text_roles {
+                    if artifact.colors.is_empty() || roles.colors == color_role { roles.colors = color_role; }
+                    else { roles.colors = ironsmith_core::TokenWordRole::Unrecorded; }
+                }
                 artifact.colors = artifact.colors.union(postnominal_colors);
             }
             _ => {}

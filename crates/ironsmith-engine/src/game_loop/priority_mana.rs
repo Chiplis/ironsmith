@@ -2159,6 +2159,7 @@ pub(super) fn execute_pending_mana_ability(
                 .with_activation_definition(pending.effects.activation_definition)
                 .with_ability_index(pending.ability_index)
                 .with_linked_exile_owner(pending.linked_exile_owner.clone())
+                .with_source_number_owner(pending.source_number_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
@@ -2192,6 +2193,7 @@ pub(super) fn execute_pending_mana_ability(
                 .with_activation_definition(pending.effects.activation_definition)
                 .with_ability_index(pending.ability_index)
                 .with_linked_exile_owner(pending.linked_exile_owner.clone())
+                .with_source_number_owner(pending.source_number_owner.clone())
                 .with_provenance(pending.provenance)
                 .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
                 .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
@@ -5360,6 +5362,7 @@ mod replacement_owner_tests {
                 &PendingManaAbility {
                     activation_origin,
                     linked_exile_owner: None,
+                    source_number_owner: None,
                     payment_reason: crate::costs::PaymentReason::ActivateManaAbility,
                     source,
                     ability_index: 0,

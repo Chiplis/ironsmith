@@ -226,6 +226,10 @@ fn prepare_token_proposal(
     {
         resolved_token.card.subtypes.push(subtype);
     }
+    if effect.text_roles.as_ref().is_some_and(|roles| roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived) {
+        resolved_token.card.name = ironsmith_core::subtype_derived_token_name(&resolved_token.card.subtypes)
+            .ok_or_else(|| ExecutionError::IncompleteEvidence("derived token name requires canonical subtype spellings".into()))?;
+    }
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
     let token_preview = crate::object::Object::from_token_definition(
         ObjectId::from_raw(0),

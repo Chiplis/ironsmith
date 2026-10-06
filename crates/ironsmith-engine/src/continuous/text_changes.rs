@@ -20,6 +20,7 @@ pub enum TextChangeDomainError {
     StaticAbility(StaticAbilityId),
     ObjectFilter,
     ProtectionReference,
+    TokenDefinition,
 }
 
 impl std::fmt::Display for TextChangeDomainError {
@@ -36,6 +37,7 @@ impl std::fmt::Display for TextChangeDomainError {
             Self::StaticAbility(id) => write!(f, "static ability {id:?}"),
             Self::ObjectFilter => f.write_str("object filter outside the typed word domain"),
             Self::ProtectionReference => f.write_str("referenced protection quality"),
+            Self::TokenDefinition => f.write_str("missing or incomplete token-definition word roles"),
         }
     }
 }

@@ -733,6 +733,7 @@ fn test_ability_granting_counters() {
         abilities: creature.abilities.clone().into(),
         static_abilities: extract_static_abilities(&creature.abilities).into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
         text_change_error: None,
         spell_effect: crate::snapshot::SpellProgramState::Absent,
         text_changes: Vec::new(),
@@ -800,6 +801,7 @@ fn test_multiple_ability_counters() {
         abilities: Vec::new().into(),
         static_abilities: Vec::new().into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
         text_change_error: None,
         spell_effect: crate::snapshot::SpellProgramState::Absent,
         text_changes: Vec::new(),
@@ -883,6 +885,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
         abilities: vec![crate::ability::Ability::static_ability(printed_flying.clone())].into(),
         static_abilities: vec![printed_flying].into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
         text_change_error: None,
         spell_effect: crate::snapshot::SpellProgramState::Absent,
         text_changes: Vec::new(),
@@ -2928,4 +2931,21 @@ fn base_pt_boundary_agrees_across_all_evaluators_and_departure_snapshots() {
             (Some(expected_base.0), Some(expected_base.1))
         );
     }
+}
+
+#[test]
+fn entry_copy_registration_is_native_single_use_and_restores_with_checkpoints() {
+    let mut manager=ContinuousEffectManager::new();
+    let before=manager.clone();
+    let reserved=manager.reserve_entry_effect();
+    let source=ObjectId::from_raw(99001);let controller=PlayerId::from_index(0);
+    let effect=ContinuousEffect::new(source,controller,EffectTarget::Specific(source),
+        Modification::AddColors(crate::color::ColorSet::BLUE));
+    let mut prospective=manager.clone();
+    assert_eq!(prospective.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(manager.effects().is_empty(),"prospective admission does not publish the effect");
+    assert_eq!(manager.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(matches!(manager.add_reserved_entry_effect(reserved,effect),Err(crate::effects::ExecutionError::IncompleteEvidence(_))));
+    manager=before;
+    assert_eq!(manager.reserve_entry_effect(),reserved,"pending or failed native rollback restores the allocation sequence");
 }

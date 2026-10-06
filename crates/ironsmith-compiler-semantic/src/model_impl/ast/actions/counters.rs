@@ -63,6 +63,8 @@ pub enum CounterActionAst {
         count: ironsmith_core::effect::CounterMoveAmount,
         from: TargetAst,
         to: TargetAst,
+        /// The complete donor set, rather than one resolution-time selection.
+        from_all: bool,
     },
     ForEachCounterKindPutOrRemove {
         target: TargetAst,

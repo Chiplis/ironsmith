@@ -296,3 +296,17 @@ fn complete_put_into_your_hand_results_keep_destination_and_negation() {
         assert!(parse_direct_prior_effect_result_surface(&tokens).is_none(), "{text}");
     }
 }
+
+#[test]
+fn counter_transfer_result_keeps_its_kind_and_only_accepts_a_complete_surface() {
+    let tokens = lex_line("one or more +1/+1 counters are moved this way", 0).unwrap();
+    let Some(IfResultPredicate::PriorEffectResult(surface)) = parse_if_result_predicate_lexed_tokens(&tokens) else {
+        panic!("expected a typed moved-counter result");
+    };
+    assert_eq!(surface.action, PriorEffectAction::CountersMoved(ironsmith_core::counter::CounterType::PlusOnePlusOne));
+    assert_eq!(surface.actor, PriorEffectResultActor::Passive);
+    assert_eq!(surface.quantifier, PriorEffectResultQuantifier::ActionOnly);
+    for text in ["one or more 2 counters are moved this way", "one or more +1/+1 counters are moved and drawn this way"] {
+        assert!(parse_if_result_predicate_lexed_tokens(&lex_line(text, 0).unwrap()).is_none());
+    }
+}

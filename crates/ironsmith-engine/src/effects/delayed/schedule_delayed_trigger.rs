@@ -339,6 +339,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 )
                 .with_ability_source(Some(ability_source))
                 .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+                .with_source_number_owner(ctx.source_number_owner.clone())
         .with_x_value(ctx.x_value)
                 .with_not_before_turn(if self.start_next_turn {
                     Some(game.turn.turn_number.saturating_add(1))
@@ -391,6 +392,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         )
         .with_ability_source(Some(ability_source))
         .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+        .with_source_number_owner(ctx.source_number_owner.clone())
         .with_x_value(ctx.x_value)
         .with_not_before_turn(if self.start_next_turn {
             Some(game.turn.turn_number.saturating_add(1))

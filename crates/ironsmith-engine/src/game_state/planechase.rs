@@ -818,6 +818,7 @@ impl GameState {
                 };
                 self.defer_trigger_entries([TriggeredAbilityEntry {
                     linked_exile_owner: None,
+                    source_number_owner: None,
                     source: ObjectId::from_raw(0),
                     controller: player,
                     x_value: None,

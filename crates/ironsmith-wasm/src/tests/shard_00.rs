@@ -1282,6 +1282,7 @@ pub(super) fn cancelability_allows_locked_pending_mana_ability_while_decision_op
     wasm.priority_state.pending_mana_ability = Some(PendingManaAbility {
         activation_origin: None,
         linked_exile_owner: None,
+        source_number_owner: None,
         payment_reason: ironsmith::costs::PaymentReason::ActivateManaAbility,
         source: ObjectId::from_raw(1),
         ability_index: 0,
@@ -1319,6 +1320,7 @@ pub(super) fn cancelability_allows_mana_undo_when_not_locked() {
     wasm.priority_state.pending_mana_ability = Some(PendingManaAbility {
         activation_origin: None,
         linked_exile_owner: None,
+        source_number_owner: None,
         payment_reason: ironsmith::costs::PaymentReason::ActivateManaAbility,
         source: ObjectId::from_raw(1),
         ability_index: 0,

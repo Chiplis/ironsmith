@@ -1431,6 +1431,7 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
         if let Some(source) = restriction.source {
             ctx = with_source_exiled_tagged_objects(game, ctx.with_source(source), source);
         }
+        ctx.source_number_owner=restriction.source_number_owner.clone();
         restriction.filter.matches(spell, &ctx, game)
     })
 }

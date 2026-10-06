@@ -19,6 +19,8 @@ pub(crate) struct PreparedEtbChoices {
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     pub(crate) transfer_as_enters_source_links: bool,
     pub(crate) as_enters_continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
+    /// Exact native acquisition shared by prospective and committed duration copies.
+    pub(crate) entry_copy_registration: Option<crate::continuous::ContinuousEffectId>,
 }
 
 /// Real source cards represented by one prospective entering permanent.
@@ -222,9 +224,9 @@ impl GameState {
                         continue;
                     };
                     let copied_tag = crate::tag::TagKey::from("copied_object");
-                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        copied, self,
-                    );
+                    let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(copied, self) else {
+                        return;
+                    };
                     let mut tagged_objects = std::collections::HashMap::new();
                     tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
                     crate::effects::composition::queue_reflexive_trigger(
@@ -246,9 +248,9 @@ impl GameState {
                         continue;
                     };
                     let copied_tag = crate::tag::TagKey::from("copied_object");
-                    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        copied, self,
-                    );
+                    let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(copied, self) else {
+                        return;
+                    };
                     let mut tagged_objects = std::collections::HashMap::new();
                     tagged_objects.insert(copied_tag.clone(), vec![snapshot]);
                     let frozen = crate::target::ObjectFilter::default().match_tagged(
@@ -406,6 +408,22 @@ impl GameState {
                         source, controller,
                     ))
                     .with_provenance(provenance);
+            if program.source_number_pair.is_some() {
+                context.source_number_owner = Some(if preparing_entry {
+                    let from = self.object(source)
+                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?.zone;
+                    let default_event = crate::events::EnterBattlefieldEvent::new(source, from);
+                    let prospective = entry_event.unwrap_or(&default_event)
+                        .try_prospective_game_state(self)
+                        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?;
+                    crate::source_numbers::resolve_owner(&prospective, source,
+                        program.source_number_pair, None, None)?
+                } else {
+                    crate::source_numbers::resolve_owner(self, source,
+                        program.source_number_pair, None, None)?
+                });
+            }
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
             context.replacement.entry_event = entry_event.cloned().map(Box::new);
             context.replacement.entry_reserved_objects = entry_reserved_objects.clone();
@@ -527,6 +545,7 @@ impl GameState {
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
             as_enters_continuous_effects: execution.continuous_effects,
+            entry_copy_registration: entry_event.and_then(|event| event.program_choices.entry_copy_registration),
             ..Default::default()
         }))
     }
@@ -789,7 +808,10 @@ impl GameState {
         let pre_event_lookback_source_snapshots = if self
             .may_have_triggered_abilities_for_event_kind(crate::events::EventKind::ZoneChange)
         {
-            self.trigger_source_lookback_snapshots()
+            match self.try_trigger_source_lookback_snapshots() {
+                Ok(snapshots) => snapshots,
+                Err(error) => { self.record_token_resource_failure(&error); return None; }
+            }
         } else {
             Vec::new()
         };
@@ -979,6 +1001,17 @@ impl GameState {
                     .any(|ability| ability_retains_counters_moving_to(ability, new_zone))
             },
         );
+        // Capture before the first mutation. Legacy Option movement reports
+        // incompleteness to the surrounding event/effect root and moves nothing.
+        let pre_move_snapshot = match lki_snapshot {
+            Some(snapshot) => Some(snapshot),
+            None => match self.objects.get(&old_id).map(|object|
+                self.try_cached_object_snapshot_with_calculated_characteristics(object)
+            ).transpose() {
+                Ok(snapshot) => snapshot,
+                Err(error) => { self.record_token_resource_failure(&error); return None; }
+            },
+        };
         let was_face_down = self.is_face_down(old_id);
         let was_foretold = self.is_foretold(old_id);
         let preserved_exile_viewers = if self
@@ -986,18 +1019,10 @@ impl GameState {
             .get(&old_id)
             .is_some_and(|obj| obj.zone == Zone::Exile)
         {
-            self.exile_tracking_mut()
-                .face_down_exile_viewers
-                .remove(&old_id)
+            self.exile_tracking_mut().face_down_exile_viewers.remove(&old_id)
         } else {
             None
         };
-        // Capture a full pre-move snapshot for LKI-based trigger matching.
-        let pre_move_snapshot = lki_snapshot.or_else(|| {
-            self.objects
-                .get(&old_id)
-                .map(|obj| self.cached_object_snapshot_with_calculated_characteristics(obj))
-        });
         if self
             .objects
             .get(&old_id)
@@ -2079,11 +2104,30 @@ impl GameState {
                     (!face_up_only).then_some(program)
                 })
                 .collect();
+            let from = self.object(old_id)
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(old_id))?.zone;
+            let mut entry_event = crate::events::EnterBattlefieldEvent::new(old_id, from);
+            entry_event.enters_as_copy_of = result.enters_as_copy_of;
+            entry_event.copy_duration = result.copy_duration.clone();
+            entry_event.copy_name_override = result.copy_name_override.clone();
+            entry_event.added_colors = result.added_colors;
+            entry_event.added_card_types = result.added_card_types.clone();
+            entry_event.removes_other_card_types = result.removes_other_card_types;
+            entry_event.added_supertypes = result.added_supertypes.clone();
+            entry_event.removed_supertypes = result.removed_supertypes.clone();
+            entry_event.added_subtypes = result.added_subtypes.clone();
+            entry_event.added_abilities = result.added_abilities.clone();
+            entry_event.set_base_power_toughness = result.set_base_power_toughness;
+            entry_event.controller_override = Some(prospective_controller);
+            if result.copy_duration.is_some() && result.enters_as_copy_of.is_some() {
+                entry_event.program_choices.entry_copy_registration = Some(
+                    self.effect_store.continuous_effects.reserve_entry_effect());
+            }
             let Some(choices) = self.execute_entry_programs(
                 old_id,
                 prospective_controller,
                 programs,
-                None,
+                Some(&entry_event),
                 decision_maker,
             )?
             else {
@@ -3108,6 +3152,10 @@ impl GameState {
             if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
                 choice_store.chosen_named_options.insert(new_id, names);
             }
+            let numeric=choice_store.numeric_acquisitions.iter().filter(|(owner,_)|owner.host==old_id)
+                .map(|(owner,number)|(owner.clone(),*number)).collect::<Vec<_>>();
+            choice_store.numeric_acquisitions.retain(|owner,_|owner.host!=old_id);
+            for (mut owner,number) in numeric {owner.host=new_id;choice_store.numeric_acquisitions.insert(owner,number);}
             // Devour runs as the permanent enters (CR 702.82a) and records the
             // devoured count on the pre-move id.
             let devoured = self.devoured_count(old_id);
@@ -3245,7 +3293,10 @@ impl GameState {
                     );
                     // Stage the copy with the remaining entry fields. Its
                     // counters and prepared choices are not assembled yet.
-                    self.effect_store.continuous_effects.add_effect(effect);
+                    let registration = choices.entry_copy_registration.ok_or_else(||
+                        crate::effects::ExecutionError::IncompleteEvidence(
+                            "temporary entry copy omitted its prospective acquisition".into()))?;
+                    self.effect_store.continuous_effects.add_reserved_entry_effect(registration, effect)?;
                 }
             } else {
                 let copy_source = self.object(copy_source_id).cloned();
@@ -4544,6 +4595,7 @@ impl GameState {
             abilities: Vec::new().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+                numeric_choice_error: None,
             text_change_error: None,
             spell_effect: crate::snapshot::SpellProgramState::Absent,
             text_changes: Vec::new(),
@@ -4811,6 +4863,7 @@ impl GameState {
                         .collect::<Vec<_>>()
                         .into(),
                     numeric_range_error: None,
+                numeric_choice_error: None,
                     text_change_error: None,
                     spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
                     text_changes: Vec::new(),
@@ -4819,7 +4872,7 @@ impl GameState {
                     controller: self.controller_of(object),
                 });
 
-        if chars.numeric_range_error.is_some() || chars.text_change_error.is_some() {
+        if chars.validate_numeric_range().is_err() {
             return None;
         }
         Self::normalize_current_characteristic_subtypes(object, &mut chars);
@@ -5536,7 +5589,7 @@ impl GameState {
         let effects_can_change_cant_abilities = all_effects
             .iter()
             .any(Self::continuous_effect_requires_cant_update);
-        let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId)> =
+        let abilities_to_apply: Vec<(StaticAbility, ObjectId, PlayerId, Option<crate::continuous::AbilityOrigin>)> =
             if !effects_can_change_cant_abilities {
                 self.objects
                     .iter()
@@ -5550,8 +5603,8 @@ impl GameState {
                         let controller = self.controller_of(object);
                         let mut abilities = object
                             .abilities
-                            .iter()
-                            .filter_map(|ability| match &ability.kind {
+                            .iter().enumerate()
+                            .filter_map(|(slot,ability)| match &ability.kind {
                                 AbilityKind::Static(static_ability)
                                     if ability.functions_in(&zone)
                                         && Self::static_ability_requires_cant_update(
@@ -5559,7 +5612,7 @@ impl GameState {
                                         )
                                         && static_ability.is_active(self, object_id) =>
                                 {
-                                    Some((static_ability.clone(), object_id, controller))
+                                    Some((static_ability.clone(), object_id, controller, Some(crate::continuous::AbilityOrigin::Printed(slot))))
                                 }
                                 _ => None,
                             })
@@ -5573,7 +5626,7 @@ impl GameState {
                                         Self::static_ability_requires_cant_update(static_ability)
                                             && static_ability.is_active(self, object_id)
                                     })
-                                    .map(|static_ability| (static_ability, object_id, controller)),
+                                    .map(|static_ability| (static_ability, object_id, controller, None)),
                             );
                             abilities.extend(
                                 object
@@ -5585,7 +5638,7 @@ impl GameState {
                                         Self::static_ability_requires_cant_update(static_ability)
                                             && static_ability.is_active(self, object_id)
                                     })
-                                    .map(|static_ability| (static_ability, object_id, controller)),
+                                    .map(|static_ability| (static_ability, object_id, controller, None)),
                             );
                         }
                         abilities
@@ -5625,26 +5678,22 @@ impl GameState {
                                 .map(Arc::new)
                             }
                             .map(|chars| {
-                                chars
-                                    .static_abilities
-                                    .iter()
-                                    .filter(|static_ability| {
-                                        static_ability.is_active(self, object_id)
-                                    })
-                                    .cloned()
-                                    .map(|static_ability| (static_ability, object_id, controller))
-                                    .collect::<Vec<_>>()
+                                chars.abilities.iter().enumerate().filter_map(|(slot,ability)| {
+                                    let AbilityKind::Static(static_ability)=&ability.kind else{return None};
+                                    (ability.functions_in(&zone) && static_ability.is_active(self,object_id))
+                                        .then(||(static_ability.clone(),object_id,controller,chars.abilities.origin(slot).cloned()))
+                                }).collect::<Vec<_>>()
                             })
                             .unwrap_or_default(),
                             _ => object
                                 .abilities
-                                .iter()
-                                .filter_map(|ability| {
+                                .iter().enumerate()
+                                .filter_map(|(slot,ability)| {
                                     if let AbilityKind::Static(static_ability) = &ability.kind {
                                         if ability.functions_in(&zone)
                                             && static_ability.is_active(self, object_id)
                                         {
-                                            Some((static_ability.clone(), object_id, controller))
+                                            Some((static_ability.clone(), object_id, controller, Some(crate::continuous::AbilityOrigin::Printed(slot))))
                                         } else {
                                             None
                                         }
@@ -5663,7 +5712,7 @@ impl GameState {
         // timestamp order (CR 613.11, 402.2) together with the spell-created
         // "no maximum hand size" effects below, so defer them.
         let mut hand_size_modifications: Vec<(u64, HandSizeModification)> = Vec::new();
-        for (static_ability, permanent_id, controller) in abilities_to_apply {
+        for (static_ability, permanent_id, controller, origin) in abilities_to_apply {
             if Self::static_ability_modifies_maximum_hand_size(&static_ability) {
                 let timestamp = self
                     .effect_store
@@ -5677,6 +5726,21 @@ impl GameState {
                 continue;
             }
             static_ability.apply_restrictions(self, permanent_id, controller);
+            if let Some(pair)=crate::source_numbers::static_pair(&static_ability) {
+                let owner=crate::source_numbers::capture(permanent_id,Some(pair),origin.as_ref());
+                if owner.is_none() {
+                    self.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "numeric cast restriction has no exact acquisition origin".into()));
+                }
+                for restrictions in self.effect_store.cant_effects.cant_cast_filters.values_mut() {
+                    for restriction in restrictions {
+                        if restriction.source==Some(permanent_id) && restriction.source_number_owner.is_none()
+                            && crate::source_numbers::filter_pair(&restriction.filter)==Some(pair) {
+                            restriction.source_number_owner=owner.clone();
+                        }
+                    }
+                }
+            }
         }
 
         // Apply active restriction effects from spells/abilities.

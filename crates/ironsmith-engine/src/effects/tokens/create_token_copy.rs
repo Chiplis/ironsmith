@@ -365,9 +365,9 @@ fn prepare_token_copy_proposal(
     if stored_snapshot.is_none()
         && let Some(target) = target_object.as_ref()
     {
-        stored_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+        stored_snapshot = Some(ObjectSnapshot::try_from_object_with_calculated_characteristics(
             target, game,
-        ));
+        )?);
     }
     let copy_snapshot = stored_snapshot.as_ref();
     if target_object.is_none() && copy_snapshot.is_none() {

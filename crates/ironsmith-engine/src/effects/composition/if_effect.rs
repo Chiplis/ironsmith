@@ -220,6 +220,9 @@ pub(super) fn predicate_matches_with_context(
             ctx,
         );
     }
+    if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
+        return outcome.count_or_zero() > 0;
+    }
     if surface.action == crate::effect::PriorEffectAction::Died {
         let filter_ctx = ctx.filter_context(game);
         let matching = outcome.affected_object_memory().unwrap_or_default().iter()

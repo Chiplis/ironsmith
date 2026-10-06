@@ -364,6 +364,7 @@ pub struct ExecutionContext<'a> {
     pub source: ObjectId,
     /// Linked pair and rules-text acquisition captured when the ability was admitted.
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The controller of the source.
     pub controller: PlayerId,
     /// Resolved targets for the effect.
@@ -538,6 +539,7 @@ macro_rules! execution_context_checkpoint {
 execution_context_checkpoint! {
     source: ObjectId,
     linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
@@ -649,6 +651,7 @@ impl<'a> ExecutionContext<'a> {
         Self {
             source,
             linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -716,6 +719,7 @@ impl<'a> ExecutionContext<'a> {
         ExecutionContext {
             source,
             linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
@@ -773,6 +777,7 @@ impl<'a> ExecutionContext<'a> {
         ExecutionContext {
             source: self.source,
             linked_exile_owner: self.linked_exile_owner,
+            source_number_owner: self.source_number_owner,
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
@@ -919,6 +924,11 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.source_number_owner = owner;
+        self
+    }
+
     /// Set provenance parent for emitted events.
     pub fn with_provenance(mut self, provenance: ProvNodeId) -> Self {
         self.provenance = provenance;
@@ -928,32 +938,31 @@ impl<'a> ExecutionContext<'a> {
     /// Snapshot all object targets for "last known information".
     /// Call this before executing effects that may exile/destroy targets.
     pub fn snapshot_targets(&mut self, game: &GameState) {
+        if let Err(error) = self.try_snapshot_targets(game) {
+            game.record_token_resource_failure(&error);
+        }
+    }
+
+    pub fn try_snapshot_targets(&mut self, game: &GameState) -> Result<(), super::ExecutionError> {
+        let mut snapshots = self.target_snapshots.clone();
         for target in &self.targets {
-            let ResolvedTarget::Object(obj_id) = target else {
-                continue;
-            };
+            let ResolvedTarget::Object(obj_id) = target else { continue; };
             if let Some(obj) = game.object(*obj_id) {
-                self.target_snapshots.insert(
-                    *obj_id,
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game),
-                );
+                snapshots.insert(*obj_id,
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)?);
             } else if let Some(entry) = game.stack_ability_entry(*obj_id) {
-                // An ability on the stack, named by its own stack id: its
-                // last known information is its source's, controlled by the
-                // ability's controller ("its controller", CR 113.8).
-                let snapshot = game
-                    .object(entry.object_id)
-                    .map(|source| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(source, game)
-                    })
-                    .or_else(|| entry.source_snapshot.clone());
+                let snapshot = game.object(entry.object_id).map(|source|
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(source, game)
+                ).transpose()?.or_else(|| entry.source_snapshot.clone());
                 if let Some(mut snapshot) = snapshot {
                     snapshot.controller = entry.controller;
                     snapshot.zone = crate::zone::Zone::Stack;
-                    self.target_snapshots.insert(*obj_id, snapshot);
+                    snapshots.insert(*obj_id, snapshot);
                 }
             }
         }
+        self.target_snapshots = snapshots;
+        Ok(())
     }
 
     /// Refresh target LKI when a target object is about to leave its expected zone.
@@ -1634,9 +1643,7 @@ impl<'a> ExecutionContext<'a> {
                 .filter_map(|target| match target {
                     ResolvedTarget::Object(id) => game
                         .object(*id)
-                        .map(|obj| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                        })
+                        .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                         .or_else(|| self.target_snapshots.get(id).cloned()),
                     _ => None,
                 })
@@ -1680,9 +1687,7 @@ impl<'a> ExecutionContext<'a> {
         let source_exiled = linked
             .iter()
             .filter_map(|id| {
-                game.object(*id).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(*id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             })
             .collect::<Vec<_>>();
         if self.linked_exile_owner.is_some() || !source_exiled.is_empty() {
@@ -1718,11 +1723,7 @@ impl<'a> ExecutionContext<'a> {
                 }
                 target_objects.extend(entry.targets.iter().filter_map(|target| match target {
                     crate::game_state::Target::Object(target_id) => {
-                        game.object(*target_id).map(|object| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(
-                                object, game,
-                            )
-                        })
+                        game.object(*target_id).and_then(|object| ObjectSnapshot::capture_for_execution(object, game))
                     }
                     crate::game_state::Target::Player(_) => None,
                 }));
@@ -1785,6 +1786,7 @@ impl<'a> ExecutionContext<'a> {
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&tagged_players)
             .with_effect_outcomes(&self.effect_outcomes);
+        filter_ctx.source_number_owner=self.source_number_owner.clone();
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
@@ -1825,7 +1827,7 @@ impl<'a> ExecutionContext<'a> {
         let damage = triggering_event.downcast::<crate::events::DamageEvent>()?;
         let source_snapshot = triggering_event.source_snapshot().cloned().or_else(|| {
             game.object(damage.source)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
         });
         let source_controller = game
             .object(damage.source)
@@ -1835,9 +1837,7 @@ impl<'a> ExecutionContext<'a> {
             crate::events::DamageTarget::Player(player) => (Some(player), None),
             crate::events::DamageTarget::Object(object_id) => {
                 let snapshot = damage.target_snapshot.clone().or_else(|| {
-                    game.object(object_id).map(|obj| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                    })
+                    game.object(object_id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                 });
                 (None, snapshot)
             }
@@ -1859,14 +1859,10 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshot = blocked.blocker_snapshot.clone().or_else(|| {
-                game.object(blocked.blocker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             return Some(BlockEventContext {
                 attacker: blocked.attacker,
@@ -1880,18 +1876,14 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshots = if blocked.blocker_snapshots.is_empty() {
                 blocked
                     .blockers
                     .iter()
                     .filter_map(|blocker| {
-                        game.object(*blocker).map(|obj| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                        })
+                        game.object(*blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                     })
                     .collect()
             } else {

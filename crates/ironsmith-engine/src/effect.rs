@@ -198,10 +198,17 @@ impl OutcomeObjectMemory {
     }
 
     pub fn from_object_id(game: &GameState, object_id: ObjectId) -> Option<Self> {
+        Self::try_from_object_id(game, object_id)
+            .inspect_err(|error| game.record_token_resource_failure(error)).ok().flatten()
+    }
+
+    pub fn try_from_object_id(game: &GameState, object_id: ObjectId)
+        -> Result<Option<Self>, crate::effects::ExecutionError>
+    {
         game.object(object_id).map(|obj| {
-            let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-            Self::from_snapshot(&snapshot)
-        })
+            ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)
+                .map(|snapshot| Self::from_snapshot(&snapshot))
+        }).transpose()
     }
 
     /// Rebuild a filterable snapshot while preserving captured LKI fields.
@@ -235,6 +242,7 @@ impl OutcomeObjectMemory {
             .unwrap_or_else(|| ObjectSnapshot {
                 ability_origins: None,
                 chosen_subtype: None,
+                numeric_choice_memory: None,
                 secret_chosen_subtype: None,
                 noted_life_total: None,
                 saddled: None,
@@ -422,6 +430,11 @@ pub enum ExecutionFact {
     /// deferred replacement programs; each memory carries the actual zone.
     /// An empty vector is completed zero movement, not missing evidence.
     OriginalZoneMoveCards(Vec<OutcomeObjectMemory>),
+    /// One completed local color decision, including when its source left.
+    ChosenColor(crate::color::Color),
+    /// Exact cards disclosed by this reveal instruction. Empty is a completed
+    /// empty reveal; absence is unavailable evidence.
+    RevealedCards(Vec<OutcomeObjectMemory>),
 }
 
 impl ExecutionFact {
@@ -1271,6 +1284,9 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
+                if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
+                    return outcome.count_or_zero() > 0;
+                }
                 if surface.action == crate::effect::PriorEffectAction::Died {
                     let count = outcome.affected_object_memory().unwrap_or_default().iter()
                         .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
@@ -1496,6 +1512,7 @@ impl RestrictionExt for Restriction {
                                         tracker.add_scoped_cant_cast_filter(
                                             player.id,
                                             crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                                                 filter: resolved_filter,
                                                 source: Some(source),
                                                 controller: Some(controller),
@@ -1510,6 +1527,7 @@ impl RestrictionExt for Restriction {
                             tracker.add_scoped_cant_cast_filter(
                                 player.id,
                                 crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                                     filter: spell_filter.clone(),
                                     source,
                                     controller: Some(controller),
@@ -1941,6 +1959,7 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                     filter: filter.clone(),
                     source,
                     controller: Some(controller),

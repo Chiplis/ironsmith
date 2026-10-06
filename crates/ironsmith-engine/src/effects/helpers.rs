@@ -39,6 +39,9 @@ pub(crate) use value_eval::resolve_damage_history_for_comparison;
 #[cfg(test)]
 #[path = "helpers/original_destination_tests.rs"]
 mod original_destination_tests;
+#[cfg(test)]
+#[path = "helpers/source_number_tests.rs"]
+mod source_number_tests;
 
 // ============================================================================
 // Tagged Object Resolution
@@ -1025,6 +1028,36 @@ fn resolve_prior_effect_metric(
         && (query.filter.is_some() || query.player.is_some())
     {
         return Err(ExecutionError::UnresolvableValue("coin receipts do not accept object or player-memory filters".into()));
+    }
+    if let Some(reference) = query.color_choice {
+        let ironsmith_core::ColorChoiceReference::Effect(color_id) = reference else {
+            return Err(ExecutionError::UnresolvableValue("unbound local color choice".into()));
+        };
+        if query.action != Some(ironsmith_core::PriorEffectAction::Revealed)
+            || query.source != EffectMetricSource::AffectedObjects
+            || query.metric != EffectMetric::Count || query.player.is_some()
+            || query.counter_type.is_some() || query.original_destination.is_some()
+            || query.filter.as_ref() != Some(&crate::target::ObjectFilter::default().of_chosen_color()) {
+            return Err(ExecutionError::UnresolvableValue("local color count requires an exact revealed-card set".into()));
+        }
+        let color_outcome = ctx.get_outcome(color_id).ok_or_else(||
+            ExecutionError::IncompleteEvidence("local color choice has no completed receipt".into()))?;
+        let colors = color_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::ChosenColor(color) => Some(*color), _ => None,
+        }).collect::<Vec<_>>();
+        let [color] = colors.as_slice() else {
+            return Err(ExecutionError::IncompleteEvidence("local color choice receipt is missing or ambiguous".into()));
+        };
+        let reveal_outcome = ctx.get_outcome(effect_id).ok_or_else(||
+            ExecutionError::IncompleteEvidence("hand reveal has no completed receipt".into()))?;
+        let reveals = reveal_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::RevealedCards(cards) => Some(cards), _ => None,
+        }).collect::<Vec<_>>();
+        let [cards] = reveals.as_slice() else {
+            return Err(ExecutionError::IncompleteEvidence("hand reveal receipt is missing or ambiguous".into()));
+        };
+        return i64::try_from(cards.iter().filter(|card| card.colors.contains(*color)).count())
+            .map_err(|_| ExecutionError::UnresolvableValue("revealed card count exceeds supported range".into()));
     }
     if query.action == Some(ironsmith_core::PriorEffectAction::ChosenNumber) {
         if query.source != EffectMetricSource::Outcome || query.metric != EffectMetric::Count

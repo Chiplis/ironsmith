@@ -1963,6 +1963,7 @@ fn canceling_nested_mana_removes_only_the_child_visibility_boundary() {
     let pending = |provenance| PendingManaAbility {
         activation_origin: None,
         linked_exile_owner: None,
+        source_number_owner: None,
         payment_reason: crate::costs::PaymentReason::ActivateManaAbility,
         source,
         ability_index: 0,

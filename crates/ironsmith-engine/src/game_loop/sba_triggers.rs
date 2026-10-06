@@ -1075,6 +1075,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     // Mirror stack-resolution context as closely as possible, but without using the stack.
     let mut ctx = ExecutionContext::new(entry.object_id, entry.controller, decision_maker)
         .with_linked_exile_owner(entry.linked_exile_owner.clone())
+        .with_source_number_owner(entry.source_number_owner.clone())
         .with_optional_costs_paid(entry.optional_costs_paid.clone())
         .with_cause(EventCause::from_effect(entry.object_id, entry.controller));
     if let Some(x) = entry.x_value {
@@ -1155,7 +1156,7 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
         .with_announced_target_assignments(super::targeting::current_stack_entry_target_assignments(game, &entry)?);
-    ctx.snapshot_targets(game);
+    ctx.try_snapshot_targets(game).map_err(GameLoopError::ExecutionFailed)?;
 
     let effects = if let Some(ref ability_effects) = entry.ability_effects {
         ability_effects.clone()
@@ -2273,10 +2274,9 @@ pub(super) fn triggered_to_stack_entry_with_effects(
         .source_snapshot
         .clone()
         .or_else(|| {
-            game.object(trigger.source).map(|obj| {
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                    obj, game, effects,
-                )
+            game.object(trigger.source).and_then(|obj| {
+                ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(obj, game, effects)
+                    .inspect_err(|error| game.record_token_resource_failure(error)).ok()
             })
         })
         .or_else(|| {
@@ -2309,6 +2309,7 @@ pub(super) fn triggered_to_stack_entry_with_effects(
     .with_triggering_event(trigger.triggering_event.clone())
     .with_trigger_identity(trigger.trigger_identity);
     entry.linked_exile_owner = trigger.linked_exile_owner.clone();
+    entry.source_number_owner = trigger.source_number_owner.clone();
     if let Some(event_value_amount) = trigger.event_value_amount {
         entry = entry.with_event_value_amount(event_value_amount);
     }

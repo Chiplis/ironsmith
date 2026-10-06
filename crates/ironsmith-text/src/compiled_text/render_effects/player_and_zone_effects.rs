@@ -1887,6 +1887,7 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
 pub(crate) fn describe_compact_create_token(
     create_token: &crate::effects::CreateTokenEffect,
 ) -> Option<String> {
+    if create_token.text_roles.is_some() { return None; }
     if create_token.exile_at_end_of_combat
         || create_token.sacrifice_at_end_of_combat
         || create_token.sacrifice_at_next_end_step

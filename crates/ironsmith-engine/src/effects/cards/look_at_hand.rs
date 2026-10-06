@@ -63,6 +63,7 @@ impl EffectExecutor for LookAtHandEffect {
         }
 
         let mut total_cards = 0;
+        let mut exact_reveal = Vec::new();
         for player_id in players {
             let cards = game
                 .player(player_id)
@@ -99,6 +100,14 @@ impl EffectExecutor for LookAtHandEffect {
                     "Reveal that player's hand",
                     true,
                 );
+                for id in &cards {
+                    let memory = crate::effect::OutcomeObjectMemory::try_from_object_id(game, *id)?
+                        .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                            "revealed hand card is unavailable at completed capture".into(),
+                        ))?;
+                    exact_reveal.push(memory);
+                }
+
             } else {
                 // Record exactly the looked-at cards so a following "exile
                 // those cards" acts on this set. The set lives only in this
@@ -119,7 +128,10 @@ impl EffectExecutor for LookAtHandEffect {
             }
         }
 
-        Ok(EffectOutcome::count(total_cards))
+        let outcome = EffectOutcome::count(total_cards);
+        Ok(if self.reveal {
+            outcome.with_execution_fact(crate::effect::ExecutionFact::RevealedCards(exact_reveal))
+        } else { outcome })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

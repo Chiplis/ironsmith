@@ -1345,6 +1345,21 @@ pub(super) fn build_spell_filter_power_or_toughness_disjunction(
 
 pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     let mut filter = ObjectFilter::default();
+    if let Some(start) = words.windows(3).position(|window| window == ["with", "mana", "value"]) {
+        let suffix = words[start..].iter().copied().filter(|word| !matches!(*word, "," | "the")).collect::<Vec<_>>();
+        if suffix == ["with", "mana", "value", "power", "or", "toughness", "equal", "to", "chosen", "number"] {
+            apply_spell_filter_word_atoms(&mut filter, &words[..start]);
+            let comparison = crate::filter::Comparison::EqualExpr(Box::new(
+                crate::effect::Value::SourceChosenNumber { if_unset: None, pair: None },
+            ));
+            let mut mana_value = ObjectFilter::default(); mana_value.mana_value = Some(comparison.clone());
+            let mut power = ObjectFilter::default(); power.power = Some(comparison.clone());
+            let mut toughness = ObjectFilter::default(); toughness.toughness = Some(comparison);
+            filter.any_of = vec![mana_value, power, toughness];
+            return filter;
+        }
+    }
+
 
     apply_spell_filter_word_atoms(&mut filter, words);
     apply_spell_filter_chosen_type_reference(&mut filter, words);

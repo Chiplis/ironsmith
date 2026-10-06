@@ -111,7 +111,7 @@ use trigger_subject_filters::*;
 pub use trigger_subject_filters::{
     append_token_reminder_to_last_create_effect, build_may_cast_tagged_effect,
     controller_filter_for_token_player, effect_creates_any_token,
-    effect_creates_eldrazi_spawn_or_scion, is_generic_token_reminder_sentence,
+    is_generic_token_reminder_sentence,
     is_round_up_each_time_sentence, is_simple_copy_reference_sentence,
     is_spawn_scion_token_mana_reminder, last_created_token_info,
     parse_copy_reference_cost_reduction_sentence, parse_may_cast_it_sentence,

@@ -55,7 +55,8 @@ there is no runtime lookup of a token that happened to be created earlier.
 - Brood Birthing (`e7d1c762-69d0-401d-8035-6e9744baf9d8`): the control predicate
   chooses three Spawn or one from the unexecuted true-arm blueprint. The
   complete 0/1 colorless Eldrazi Spawn definition owns its sacrifice-for-{C}
-  ability. Existing Spawn reminder handling avoids duplicating the quoted rule.
+  ability. The ordinary authored-grant owner retains the complete quoted rule
+  exactly once, and prototype reuse preserves it on both branches.
 - From Under the Floorboards (`a1fc4269-f3e4-4a59-849d-aa1727eef23a`): native
   discard/madness exile, linked cast permission and alternative payment remain.
   The coordinated self-replacement replaces both creation and life gain;

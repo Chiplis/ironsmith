@@ -1900,9 +1900,16 @@ pub(super) fn compile_subject_verb_late(
             count,
             from,
             to,
+            from_all,
         }) => {
-            let (from_spec, mut choices) =
+            let (mut from_spec, mut choices) =
                 resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
+            if *from_all {
+                let TargetAst::Object(filter, None, _) = from else {
+                    return Err(CardTextError::ParseError("all counter donors require a complete object filter".into()));
+                };
+                from_spec = ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
             let (to_spec, to_choices) =
                 resolve_target_spec_with_choices(to, &current_reference_env(ctx))?;
             for choice in to_choices {
@@ -1918,6 +1925,9 @@ pub(super) fn compile_subject_verb_late(
                                 from_spec.clone(),
                                 to_spec.clone(),
                             )
+                        }
+                        ironsmith_core::effect::CounterMoveAmount::All => {
+                            crate::effects::MoveCountersEffect::all(*counter_type, from_spec.clone(), to_spec.clone())
                         }
                         ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
                             crate::effects::MoveCountersEffect::any_number(

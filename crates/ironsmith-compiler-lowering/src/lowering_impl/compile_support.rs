@@ -180,6 +180,9 @@ pub fn compile_effects(
             life_amount_producers: ctx.life_amount_producers.clone(),
             die_result_producers: ctx.die_result_producers.clone(),
             coin_result_producers: ctx.coin_result_producers.clone(),
+            number_result_producers: ctx.number_result_producers.clone(),
+            color_result_producers: ctx.color_result_producers.clone(),
+            reveal_result_producers: ctx.reveal_result_producers.clone(),
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             has_announced_x: ctx.has_announced_x,
             initial_last_effect_id: ctx.last_effect_id,
@@ -3124,7 +3127,9 @@ fn build_vehicle_token_definition(
     if let Some((power, toughness)) = shape.power_toughness {
         builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
     }
-    if shape.colorless {
+    if shape.legendary { builder = builder.supertypes(vec![crate::types::Supertype::Legendary]); }
+    if !shape.colors.is_empty() { builder = builder.color_indicator(shape.colors); }
+    else if shape.colorless {
         builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
             ObjectFilter::source(),
         )));

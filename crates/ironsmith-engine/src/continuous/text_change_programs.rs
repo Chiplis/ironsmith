@@ -20,6 +20,10 @@ use crate::effects::*;
 use crate::resolution::ResolutionProgram;
 use ironsmith_core::{ManaPaymentPredicate, ManaUsageSubtypeRequirement, TextChange};
 
+#[cfg(test)]
+#[path = "text_change_token_tests.rs"]
+mod token_tests;
+
 pub(crate) fn rewrite_program_words(
     program: &ResolutionProgram,
     change: TextChange,
@@ -213,6 +217,51 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
 /// intentionally drops the old retained transport model; its native encoder
 /// must encode the rewritten typed payload, never reuse stale serialized data.
 pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Result<Option<Effect>, Error> {
+    if let Some(model) = effect.downcast_ref::<CreateTokenEffect>() {
+        let roles = model.text_roles.as_ref().ok_or(Error::TokenDefinition)?;
+        if !roles.has_complete_ability_inventory(model.token.abilities.len())
+            || roles.colors == ironsmith_core::TokenWordRole::Unrecorded
+            || roles.subtypes == ironsmith_core::TokenWordRole::Unrecorded
+            || roles.abilities.contains(&ironsmith_core::TokenWordRole::Unrecorded)
+            || model.token.spell_effect.is_some() || model.token.aura_attach_filter.is_some()
+            || !model.token.alternative_casts.is_empty() || !model.token.optional_costs.is_empty()
+            || !model.token.additional_cost.as_all().is_some_and(|costs| costs.is_empty())
+        { return Err(Error::TokenDefinition); }
+        let mut changed = model.clone();
+        changed.count = rewrite_value_words(&model.count, change)?;
+        changed.controller = rewrite_player_filter_words(&model.controller, change)?;
+        changed.controller_target = model.controller_target.as_ref()
+            .map(|target| rewrite_choose_spec_words(target, change)).transpose()?;
+        changed.enters_blocking = model.enters_blocking.as_ref()
+            .map(|target| rewrite_choose_spec_words(target, change)).transpose()?;
+        changed.next_end_step_player = rewrite_player_filter_words(&model.next_end_step_player, change)?;
+        if let Some(mode) = &mut changed.attack_target_mode {
+            match mode {
+                ironsmith_core::CopyAttackTargetMode::Player(player)
+                | ironsmith_core::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player) =>
+                    *player = rewrite_player_filter_words(player, change)?,
+            }
+        }
+        if roles.colors == ironsmith_core::TokenWordRole::Authored
+            && let Some(colors) = &mut changed.token.card.color_indicator
+        { change.replace_color_words(colors); }
+        if roles.subtypes == ironsmith_core::TokenWordRole::Authored {
+            change.replace_subtype_words(&mut changed.token.card.subtypes);
+        }
+        for (ability, role) in changed.token.abilities.iter_mut().zip(&roles.abilities) {
+            if *role == ironsmith_core::TokenWordRole::Authored {
+                *ability = rewrite_ability_words(ability, change)?;
+            }
+        }
+        if roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived {
+            changed.token.card.name = ironsmith_core::subtype_derived_token_name(&changed.token.card.subtypes)
+                .ok_or(Error::TokenDefinition)?;
+        }
+        // The immutable template CardId, explicit names, mana symbols, source
+        // choices, entry/lifecycle flags, and all link/acquisition metadata
+        // remain those of the complete original instruction.
+        return Ok(Some(Effect::new(changed)));
+    }
     macro_rules! visit {
         ($ty:ty, $model:ident, $body:block) => {
             if let Some(original) = effect.downcast_ref::<$ty>() {

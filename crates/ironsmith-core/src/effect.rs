@@ -4764,9 +4764,13 @@ impl TokenAbilityPresentation {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct CreateTokenEffect<D> {
     pub token: D,
+    /// Authored word roles retained by the creating instruction. Historical
+    /// absence is unknown evidence, not an implicit all-authored declaration.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub text_roles: Option<crate::TokenTextRoles>,
     pub count: Value,
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
@@ -4804,6 +4808,35 @@ pub struct CreateTokenEffect<D> {
     pub link_source_exiled_this_resolution: bool,
 }
 
+impl<D: std::fmt::Debug> std::fmt::Debug for CreateTokenEffect<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("CreateTokenEffect");
+        debug.field("token", &self.token);
+        // Unstamped native trigger identities still hash effect Debug. Keep
+        // absent historical evidence byte-identical to the old field order.
+        if self.text_roles.is_some() { debug.field("text_roles", &self.text_roles); }
+        debug.field("count", &self.count)
+            .field("controller", &self.controller)
+            .field("controller_target", &self.controller_target)
+            .field("use_source_chosen_color", &self.use_source_chosen_color)
+            .field("use_source_chosen_creature_type", &self.use_source_chosen_creature_type)
+            .field("actor_surface_explicit", &self.actor_surface_explicit)
+            .field("suppress_aura_attachment_choice", &self.suppress_aura_attachment_choice)
+            .field("ability_presentation", &self.ability_presentation)
+            .field("enters_tapped", &self.enters_tapped)
+            .field("enters_attacking", &self.enters_attacking)
+            .field("attack_target_mode", &self.attack_target_mode)
+            .field("enters_blocking", &self.enters_blocking)
+            .field("exile_at_end_of_combat", &self.exile_at_end_of_combat)
+            .field("sacrifice_at_end_of_combat", &self.sacrifice_at_end_of_combat)
+            .field("sacrifice_at_next_end_step", &self.sacrifice_at_next_end_step)
+            .field("exile_at_next_end_step", &self.exile_at_next_end_step)
+            .field("next_end_step_player", &self.next_end_step_player)
+            .field("link_source_exiled_this_resolution", &self.link_source_exiled_this_resolution)
+            .finish()
+    }
+}
+
 impl<D> CreateTokenEffect<D> {
     pub fn new(token: D, count: impl Into<Value>, controller: PlayerFilter) -> Self {
         let count = count.into();
@@ -4815,6 +4848,7 @@ impl<D> CreateTokenEffect<D> {
         };
         Self {
             token,
+            text_roles: None,
             count,
             controller,
             controller_target,
@@ -4838,6 +4872,11 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn linking_source_exiled_this_resolution(mut self) -> Self {
         self.link_source_exiled_this_resolution = true;
+        self
+    }
+
+    pub fn with_text_roles(mut self, roles: crate::TokenTextRoles) -> Self {
+        self.text_roles = Some(roles);
         self
     }
 
@@ -6208,10 +6247,16 @@ pub struct ChooseNumberEffect {
     pub chooser: PlayerFilter,
     pub min: u32,
     pub max: Option<u32>,
+    /// Source-owned entry/reselection choices survive this resolution. Local
+    /// numeric producers remain bound by their exact execution effect id.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "number_choice_is_local"))]
+    pub source_owned: bool,
 }
+fn number_choice_is_local(source_owned: &bool) -> bool { !*source_owned }
 impl ChooseNumberEffect {
-    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max) } }
-    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None } }
+    pub fn new(chooser: PlayerFilter, min: u32, max: u32) -> Self { Self { chooser, min, max: Some(max), source_owned: false } }
+    pub fn unbounded(chooser: PlayerFilter) -> Self { Self { chooser, min: 0, max: None, source_owned: false } }
+    pub fn with_source_retention(mut self) -> Self { self.source_owned = true; self }
 }
 
 /// One CR702.60 reveal/cast/remainder resolution transaction.

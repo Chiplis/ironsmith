@@ -1,0 +1,50 @@
+[
+  {
+    "name": "Adipose Offspring",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature \u2014 Alien",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Emerge {5}{W} (You may cast this spell by sacrificing a creature and paying the emerge cost reduced by that creature's mana value.)\nWhen this creature enters, create a 2/2 white Alien creature token. If this creature's emerge cost was paid, instead create X of those tokens, where X is the sacrificed creature's toughness."
+  },
+  {
+    "name": "Baloth Cage Trap",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Instant \u2014 Trap",
+    "oracle_text": "If an opponent had an artifact enter the battlefield under their control this turn, you may pay {1}{G} rather than pay this spell's mana cost.\nCreate a 4/4 green Beast creature token."
+  },
+  {
+    "name": "Belisarius Cawl",
+    "mana_cost": "{2}{W}{U}",
+    "type_line": "Legendary Artifact Creature \u2014 Human",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "Ultima Founding \u2014 {T}, Tap two untapped artifacts you control: Create a 2/2 white Astartes Warrior creature token with vigilance.\nMaster of Machines \u2014 {T}, Tap X untapped creatures you control: Look at the top X cards of your library. You may reveal an artifact card from among them and put it into your hand. Put the rest on the bottom of your library in a random order."
+  },
+  {
+    "name": "Brood Birthing",
+    "mana_cost": "{1}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "If you control an Eldrazi Spawn, create three 0/1 colorless Eldrazi Spawn creature tokens. They have \"Sacrifice this token: Add {C}.\" Otherwise, create one of those tokens."
+  },
+  {
+    "name": "Camellia, the Seedmiser",
+    "mana_cost": "{1}{B}{G}",
+    "type_line": "Legendary Creature \u2014 Squirrel Warlock",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Menace\nOther Squirrels you control have menace.\nWhenever you sacrifice one or more Foods, create a 1/1 green Squirrel creature token.\n{2}, Forage: Put a +1/+1 counter on each other Squirrel you control. (To forage, exile three cards from your graveyard or sacrifice a Food.)"
+  },
+  {
+    "name": "Cobra Trap",
+    "mana_cost": "{4}{G}{G}",
+    "type_line": "Instant \u2014 Trap",
+    "oracle_text": "If a noncreature permanent under your control was destroyed this turn by a spell or ability an opponent controlled, you may pay {G} rather than pay this spell's mana cost.\nCreate four 1/1 green Snake creature tokens."
+  },
+  {
+    "name": "Oni-Cult Anvil",
+    "mana_cost": "{B}{R}",
+    "type_line": "Artifact",
+    "oracle_text": "Whenever one or more artifacts you control leave the battlefield during your turn, create a 1/1 colorless Construct artifact creature token. This ability triggers only once each turn.\n{T}, Sacrifice an artifact: This artifact deals 1 damage to each opponent. You gain 1 life."
+  }
+]

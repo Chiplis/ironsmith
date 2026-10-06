@@ -69,7 +69,7 @@ const STATEMENT_READINGS: &[Reading] = &[
         id: RuleId::new("bounded-number-choice"),
         head: HeadDiscriminator::Words(&["choose"]),
         admits: |_| true,
-        read: |input| input.outcome(super::bounded_number_choice::parse(input.sentence).map(|result|result.map(|effect|vec![effect]))),
+        read: |input| input.outcome(super::bounded_number_choice::parse_sentence(input.sentence)),
     },
     Reading {
         id: RuleId::new("owner-subject-shuffle"),

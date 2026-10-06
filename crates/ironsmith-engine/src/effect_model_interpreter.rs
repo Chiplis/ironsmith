@@ -362,6 +362,7 @@ where
             payload.count.clone(),
             payload.controller.clone(),
         );
+        converted.text_roles = payload.text_roles.clone();
         converted.controller_target = payload.controller_target.clone();
         if payload.use_source_chosen_color {
             converted = converted.with_source_chosen_color();

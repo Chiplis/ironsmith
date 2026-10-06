@@ -1266,6 +1266,10 @@ pub struct ContinuousEffectManager {
     /// Next effect ID to assign
     next_id: u64,
 
+    /// Native identities reserved by a prospective entry, then consumed once
+    /// by its committed copy effect. Game checkpoints retain this set.
+    reserved_entry_ids: HashSet<ContinuousEffectId>,
+
     /// Next group ID to assign to layer-parts of one resolved effect.
     next_group_id: u64,
 
@@ -1314,14 +1318,40 @@ impl ContinuousEffectManager {
         Self::default()
     }
 
-    /// Add a new continuous effect.
-    pub fn add_effect(&mut self, mut effect: ContinuousEffect) -> ContinuousEffectId {
+    /// Reserve one native acquisition before an as-entry choice runs. The
+    /// reservation is absent from active layers until a prospective clone or
+    /// the real commit consumes it.
+    pub(crate) fn reserve_entry_effect(&mut self) -> ContinuousEffectId {
         let id = ContinuousEffectId::new(self.next_id);
-        self.next_id = self
-            .next_id
-            .checked_add(1)
+        self.next_id = self.next_id.checked_add(1)
             .expect("continuous effect registration identity exhausted");
+        self.reserved_entry_ids.insert(id);
+        id
+    }
 
+    pub(crate) fn add_reserved_entry_effect(
+        &mut self,
+        id: ContinuousEffectId,
+        effect: ContinuousEffect,
+    ) -> Result<ContinuousEffectId, crate::effects::ExecutionError> {
+        if !self.reserved_entry_ids.remove(&id) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "entry copy lost its reserved native acquisition".into()));
+        }
+        Ok(self.add_effect_with_identity(id, effect))
+    }
+
+    /// Add a new continuous effect.
+    pub fn add_effect(&mut self, effect: ContinuousEffect) -> ContinuousEffectId {
+        let id = ContinuousEffectId::new(self.next_id);
+        self.next_id = self.next_id.checked_add(1)
+            .expect("continuous effect registration identity exhausted");
+        self.add_effect_with_identity(id, effect)
+    }
+
+    fn add_effect_with_identity(&mut self, id: ContinuousEffectId, mut effect: ContinuousEffect)
+        -> ContinuousEffectId
+    {
         effect.id = id;
         effect.registration_id = Some(id);
         if effect.timestamp == 0 {
@@ -2080,6 +2110,7 @@ pub struct CalculatedCharacteristics {
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
+    pub(crate) numeric_choice_error: Option<&'static str>,
     pub(crate) text_change_error: Option<text_changes::TextChangeDomainError>,
     pub name: SharedStr,
     /// A second current split-card name, cleared when layer 1 replaces names.
@@ -2130,6 +2161,9 @@ impl CalculatedCharacteristics {
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         if let Some(error) = &self.text_change_error {
             return Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(error.clone()));
+        }
+        if let Some(detail)=self.numeric_choice_error {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::NumericChoiceEvidence{detail});
         }
         if let Some((resource, value)) = self.numeric_range_error {
             Err(
@@ -2464,6 +2498,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         text_changes: Vec::new(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
         text_change_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
@@ -2555,15 +2590,11 @@ fn replace_rules_text_abilities(
     for (index, ability) in previous.iter().enumerate() {
         let old_origin = previous.origin(index).expect("paired ability occurrence");
         let independent = old_origin.is_independent_early_grant();
-        let already_present = if independent {
-            chars
-                .abilities
-                .iter()
-                .enumerate()
-                .any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin))
-        } else {
-            chars.abilities.contains(ability)
-        };
+        // Equal text from distinct acquisitions is still a distinct ability.
+        // Preserve the occurrence, including its linked choice, unless that
+        // exact occurrence is already present in the replacement text box.
+        let already_present = chars.abilities.iter().enumerate()
+            .any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin));
         if (independent || preserve_source_abilities) && !already_present {
             chars
                 .abilities
@@ -6376,6 +6407,8 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
                 &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
             chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
@@ -6388,6 +6421,8 @@ fn apply_modification_to_chars(
                 effect_controller,
                 game,
                 &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
         }
 

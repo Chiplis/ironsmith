@@ -154,6 +154,18 @@ fn token_text_names_source_exiled(
     names
 }
 
+pub(super) fn retain_token_description_roles(
+    source: &crate::model::token_definition::TokenDefinitionSpec,
+    token: &mut crate::cards::CardDefinition,
+) -> Result<Option<ironsmith_core::TokenTextRoles>, CardTextError> {
+    let Some(roles) = source.text_roles() else { return Ok(None); };
+    if roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived {
+        token.card.name = ironsmith_core::subtype_derived_token_name(&token.card.subtypes)
+            .ok_or_else(|| CardTextError::InvariantViolation("token subtype has no retained canonical rules spelling".into()))?;
+    }
+    Ok(Some(roles.retained(token.abilities.len())))
+}
+
 pub(super) fn compile_create_token_with_mods_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -191,6 +203,7 @@ pub(super) fn compile_create_token_with_mods_action(
     let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
     apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
+    let text_roles = retain_token_description_roles(definition, &mut token)?;
     let subject = if *action_player == PlayerAst::Opponent {
         LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
     } else {
@@ -225,6 +238,7 @@ pub(super) fn compile_create_token_with_mods_action(
     } else {
         crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
     };
+    effect.text_roles = text_roles;
     if use_source_chosen_color {
         effect = effect.with_source_chosen_color();
     }
@@ -3599,6 +3613,7 @@ pub(super) fn compile_subject_verb_middle(
             let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
             apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
+            let text_roles = retain_token_description_roles(definition, &mut token)?;
             let subject = if *action_player == PlayerAst::Opponent {
                 // A singular authored "an opponent creates ..." is a
                 // resolution-time player choice. Export that chosen player so
@@ -3618,6 +3633,7 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
             };
+            effect.text_roles = text_roles;
             if use_source_chosen_color {
                 effect = effect.with_source_chosen_color();
             }

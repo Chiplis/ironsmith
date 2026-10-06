@@ -443,8 +443,8 @@ test("canonicalJson sorts object keys recursively", () => {
 });
 
 test("historical signed audits remain signature-only evidence with their original checkpoint bytes", async () => {
-  for (const protocolVersion of [14, 16, 17, 18, 19]) {
-    const checkpoint = { version: protocolVersion === 19 ? 3 : 2, players: [], stack: [],
+  for (const protocolVersion of [14, 16, 17, 18, 19, 20]) {
+    const checkpoint = { version: protocolVersion >= 19 ? 3 : 2, players: [], stack: [],
       objects: [{ id: 7, stableId: 7, manifested: true }] };
     const checkpointHash = await publicCheckpointHash(checkpoint, webcrypto);
     const transcript = await buildCurrentProtocolTranscript({
@@ -459,6 +459,7 @@ test("historical signed audits remain signature-only evidence with their origina
     assert.deepEqual(transcript, before);
     assert.equal(await publicCheckpointHash(transcript.finalPublicCheckpoint, webcrypto), checkpointHash);
     assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "cloaked"), false);
+    assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "numericChoices"), false);
     let replayCalls = 0;
     await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
       requireEngineReplay: false,
@@ -470,6 +471,15 @@ test("historical signed audits remain signature-only evidence with their origina
     tampered.finalPublicCheckpoint.objects[0].manifested = false;
     await assert.rejects(verifyLiveAuditTranscript(tampered, webcrypto, { requireEngineReplay: false }),
       /final public checkpoint hash mismatch/);
+    const injectedProof = cloneTestPayload(transcript);
+    injectedProof.finalPublicCheckpoint.objects[0].numericChoices = { records: [], bindings: [] };
+    await assert.rejects(verifyLiveAuditTranscript(injectedProof, webcrypto, { requireEngineReplay: false }),
+      /final public checkpoint hash mismatch/);
+    const relabeled = cloneTestPayload(transcript);
+    relabeled.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+    relabeled.match.protocolVersion = CURRENT_AUDIT_PROTOCOL_VERSION;
+    await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, { requireEngineReplay: false }),
+      /genesis payload hash mismatch/);
   }
 });
 

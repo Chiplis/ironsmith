@@ -377,6 +377,7 @@ pub(crate) fn rat_token_definition() -> crate::model::token_definition::TokenDef
     };
     TokenDefinitionSpec::Creature(CreatureTokenShape {
         name: "Rat".to_string(),
+        text_roles: Some(crate::model::token_definition::TokenDescriptionTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived)),
         card_types: vec![crate::types::CardType::Creature],
         subtypes: vec![crate::types::Subtype::Rat],
         power_toughness: (1, 1),

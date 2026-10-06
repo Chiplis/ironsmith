@@ -5,6 +5,30 @@ use winnow::token::any;
 
 use super::super::primitives;
 
+pub(super) struct TokenDescriptionProjection<'a> {
+    pub outer: Vec<crate::lexer::OwnedLexToken>,
+    pub quoted_rules: Vec<&'a [crate::lexer::OwnedLexToken]>,
+    pub complete_quotes: bool,
+}
+
+/// One lexical boundary for a token's outer description and its quoted rules.
+/// Retain original rule slices for the rule owner; only the outer projection
+/// may supply template kind, characteristic words, or an explicit name.
+pub(super) fn token_description_projection(tokens: &[crate::lexer::OwnedLexToken]) -> TokenDescriptionProjection<'_> {
+    let mut outer = Vec::new();
+    let mut quoted_rules = Vec::new();
+    let mut open = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            if let Some(start) = open.take() {
+                if start < index { quoted_rules.push(&tokens[start..index]); }
+            } else { open = Some(index + 1); }
+        } else if open.is_none() { outer.push(token.clone()); }
+    }
+    if let Some(start) = open && start < tokens.len() { quoted_rules.push(&tokens[start..]); }
+    TokenDescriptionProjection { outer, quoted_rules, complete_quotes: open.is_none() }
+}
+
 fn parse_phrase<'a>(input: &mut primitives::WordSliceInput<'a>, expected: &[&str]) -> WResult<()> {
     for expected_word in expected {
         let Some((word, rest)) = input.split_first() else {

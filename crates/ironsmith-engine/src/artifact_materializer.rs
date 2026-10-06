@@ -1625,7 +1625,7 @@ pub fn encode_runtime_effect(
 
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
-            token, count, controller, controller_target, use_source_chosen_color,
+            token, text_roles, count, controller, controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
             enters_attacking, attack_target_mode, enters_blocking,
@@ -1634,7 +1634,7 @@ pub fn encode_runtime_effect(
             next_end_step_player, link_source_exiled_this_resolution,
         } = payload.clone();
         let converted = ironsmith_core::CreateTokenEffect {
-            token: encode_runtime_definition(token)?, count, controller,
+            token: encode_runtime_definition(token)?, text_roles, count, controller,
             controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
@@ -2049,6 +2049,7 @@ mod native_effect_payload_codec_tests {
             .token().card_types(vec![crate::types::CardType::Creature])
             .power_toughness(crate::card::PowerToughness::fixed(1, 1)).flying().build();
         let mut token = crate::effects::CreateTokenEffect::new(definition, 3, crate::target::PlayerFilter::You);
+        token.text_roles = Some(ironsmith_core::TokenTextRoles::authored(ironsmith_core::TokenNameTextRole::Explicit, 1));
         token.controller_target = Some(crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Any));
         token.use_source_chosen_color = true;
         token.use_source_chosen_creature_type = true;
@@ -2109,6 +2110,11 @@ mod native_direct_payload_codec_tests {
     #[test]
     fn native_direct_payload_codec_bounded_number_preserves_bounds_and_chooser() {
         check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::Specific(crate::ids::PlayerId::from_index(1)), 0, 13));
+    }
+    #[test]
+    fn native_direct_payload_codec_source_owned_number_keeps_unbounded_domain() {
+        check(ironsmith_core::ChooseNumberEffect::unbounded(crate::target::PlayerFilter::You).with_source_retention());
+        check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::You, 0, 7).with_source_retention());
     }
     #[test]
     fn native_direct_payload_codec_note_activation_mana() {

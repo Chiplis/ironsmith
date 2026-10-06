@@ -3128,6 +3128,7 @@ impl GameState {
             }
             self.defer_trigger_entries([crate::triggers::TriggeredAbilityEntry {
                 linked_exile_owner: None,
+                source_number_owner: None,
                 source: mana_source,
                 controller: source_snapshot
                     .as_ref()
@@ -3906,83 +3907,93 @@ impl GameState {
     }
 
     pub(crate) fn cached_object_snapshot_with_calculated_characteristics_and_effects(
-        &self,
-        object: &Object,
-        effects: &[ContinuousEffect],
+        &self, object: &Object, effects: &[ContinuousEffect],
     ) -> ObjectSnapshot {
+        self.try_cached_object_snapshot_with_calculated_characteristics_and_effects(object, effects)
+            .expect("legacy snapshot cache caller requires complete evidence")
+    }
+
+    pub(crate) fn try_cached_object_snapshot_with_calculated_characteristics_and_effects(
+        &self, object: &Object, effects: &[ContinuousEffect],
+    ) -> Result<ObjectSnapshot, crate::effects::ExecutionError> {
         let mutation_revision = self.mutation_revision;
         let effect_revision = self.effect_store.continuous_effects.revision();
         {
             let mut cache = self.runtime_cache.object_snapshot_cache.borrow_mut();
-            if cache.mutation_revision != mutation_revision
-                || cache.effect_revision != effect_revision
-            {
+            if cache.mutation_revision != mutation_revision || cache.effect_revision != effect_revision {
                 cache.entries.clear();
                 cache.mutation_revision = mutation_revision;
                 cache.effect_revision = effect_revision;
             }
             if let Some(snapshot) = cache.entries.get(&object.id) {
-                return snapshot.as_ref().clone();
+                return Ok(snapshot.as_ref().clone());
             }
         }
-
-        let snapshot = Arc::new(
-            ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
-                object, self, effects,
-            ),
-        );
+        let snapshot = Arc::new(ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
+            object, self, effects,
+        )?);
         let mut cache = self.runtime_cache.object_snapshot_cache.borrow_mut();
-        if cache.mutation_revision == mutation_revision && cache.effect_revision == effect_revision
-        {
+        if cache.mutation_revision == mutation_revision && cache.effect_revision == effect_revision {
             cache.entries.insert(object.id, Arc::clone(&snapshot));
         }
-        snapshot.as_ref().clone()
+        Ok(snapshot.as_ref().clone())
     }
 
     pub(crate) fn cached_object_snapshot_with_calculated_characteristics(
-        &self,
-        object: &Object,
+        &self, object: &Object,
     ) -> ObjectSnapshot {
-        let all_effects = self.all_continuous_effects();
-        self.cached_object_snapshot_with_calculated_characteristics_and_effects(
-            object,
-            &all_effects,
-        )
+        self.try_cached_object_snapshot_with_calculated_characteristics(object)
+            .expect("legacy snapshot cache caller requires complete evidence")
+    }
+
+    pub(crate) fn try_cached_object_snapshot_with_calculated_characteristics(
+        &self, object: &Object,
+    ) -> Result<ObjectSnapshot, crate::effects::ExecutionError> {
+        let effects = self.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        self.try_cached_object_snapshot_with_calculated_characteristics_and_effects(object, &effects)
     }
 
     pub(crate) fn trigger_source_lookback_snapshots(&self) -> Vec<ObjectSnapshot> {
+        self.try_trigger_source_lookback_snapshots()
+            .inspect_err(|error| self.record_token_resource_failure(error)).unwrap_or_default()
+    }
+
+    pub(crate) fn try_trigger_source_lookback_snapshots(
+        &self,
+    ) -> Result<Vec<ObjectSnapshot>, crate::effects::ExecutionError> {
         if let Some(lookback) = self.simultaneous_event_lookback() {
-            return lookback.to_vec();
+            return Ok(lookback.to_vec());
         }
-        self.current_trigger_source_snapshots()
+        self.try_current_trigger_source_snapshots()
     }
 
     pub(crate) fn current_trigger_source_snapshots(&self) -> Vec<ObjectSnapshot> {
-        let all_effects = self.all_continuous_effects();
-        let ability_effects_can_add_triggers = all_effects
-            .iter()
+        self.try_current_trigger_source_snapshots()
+            .inspect_err(|error| self.record_token_resource_failure(error)).unwrap_or_default()
+    }
+
+    pub(crate) fn try_current_trigger_source_snapshots(
+        &self,
+    ) -> Result<Vec<ObjectSnapshot>, crate::effects::ExecutionError> {
+        let effects = self.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let ability_effects_can_add_triggers = effects.iter()
             .any(|effect| Self::modification_can_change_triggered_abilities(&effect.modification));
-        self.objects_in_deterministic_order()
-            .into_iter()
+        let mut snapshots = Vec::new();
+        for object in self.objects_in_deterministic_order().into_iter()
             .filter(|object| !self.is_phased_out(object.id))
-            .filter(|object| {
-                ability_effects_can_add_triggers
-                    || object.abilities.iter().any(|ability| {
-                        Self::ability_is_trigger_lookback_relevant(ability, object.zone)
-                    })
-            })
-            .map(|object| {
-                self.cached_object_snapshot_with_calculated_characteristics_and_effects(
-                    object,
-                    &all_effects,
-                )
-            })
-            .filter(|snapshot| {
-                snapshot.abilities.iter().any(|ability| {
-                    Self::ability_is_trigger_lookback_relevant(ability, snapshot.zone)
-                })
-            })
-            .collect()
+            .filter(|object| ability_effects_can_add_triggers || object.abilities.iter().any(|ability|
+                Self::ability_is_trigger_lookback_relevant(ability, object.zone)))
+        {
+            let snapshot = self.try_cached_object_snapshot_with_calculated_characteristics_and_effects(object, &effects)?;
+            if snapshot.abilities.iter().any(|ability|
+                Self::ability_is_trigger_lookback_relevant(ability, snapshot.zone))
+            {
+                snapshots.push(snapshot);
+            }
+        }
+        Ok(snapshots)
     }
 
     /// Triggered abilities, plus the statics that make other abilities

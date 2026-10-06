@@ -793,6 +793,7 @@ pub enum StaticEffectDiscoveryError {
     UnavailableCharacteristics { object: ObjectId },
     /// An existing signed scalar cannot represent this exact quantity.
     ScalarRange { resource: &'static str, value: i128 },
+    NumericChoiceEvidence { detail: &'static str },
 }
 
 impl std::fmt::Display for StaticEffectDiscoveryError {
@@ -809,6 +810,7 @@ impl std::fmt::Display for StaticEffectDiscoveryError {
                 "continuous source-controller context unavailable for {source:?}"),
             Self::ScalarRange { resource, value } => write!(f,
                 "{resource} value {value} exceeds the engine's signed scalar representation"),
+            Self::NumericChoiceEvidence { detail } => write!(f,"numeric choice evidence unavailable: {detail}"),
             Self::UnavailableCharacteristics { object } => write!(f,
                 "continuous characteristics unavailable for existing object {object:?}"),
         }

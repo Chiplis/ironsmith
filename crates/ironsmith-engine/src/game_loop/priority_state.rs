@@ -1074,6 +1074,7 @@ pub struct PendingManaAbility {
     pub activation_origin: Option<crate::continuous::AbilityOrigin>,
     /// Exact paired rules acquisition retained before nested mana payments.
     pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The exact announced ability identity, retained through nested payment.
     pub payment_reason: crate::costs::PaymentReason,
     /// The source permanent of the mana ability.

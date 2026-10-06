@@ -1131,37 +1131,6 @@ pub fn is_simple_copy_reference_sentence(tokens: &[OwnedLexToken]) -> bool {
     crate::grammar::trigger_subjects::parse_simple_copy_reference_tokens(tokens).is_some()
 }
 
-pub fn token_name_mentions_eldrazi_spawn_or_scion(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    (lower.matches("eldrazi").next().is_some() && lower.matches("spawn").next().is_some())
-        || (lower.matches("eldrazi").next().is_some() && lower.matches("scion").next().is_some())
-}
-
-pub fn effect_creates_eldrazi_spawn_or_scion(effect: &EffectAst) -> bool {
-    match effect {
-        EffectAst::SubjectVerb(subject_verb)
-            if matches!(
-                &subject_verb.action,
-                crate::model::ast::SubjectVerbActionAst::Tokens(crate::model::ast::TokenActionAst::CreateTokenWithMods {
-                    name,
-                    ..
-                }) if token_name_mentions_eldrazi_spawn_or_scion(name)
-            ) =>
-        {
-            true
-        }
-        _ => {
-            let mut found = false;
-            for_each_nested_effects(effect, false, |nested| {
-                if !found && nested.iter().any(effect_creates_eldrazi_spawn_or_scion) {
-                    found = true;
-                }
-            });
-            found
-        }
-    }
-}
-
 pub fn effect_creates_any_token(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb)

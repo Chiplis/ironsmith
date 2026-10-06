@@ -1538,6 +1538,7 @@ pub struct FilterContext {
     /// Last known source characteristics when the source left its zone while
     /// paying a cost or during resolution.
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    pub source_number_owner: Option<crate::source_numbers::NumberChoiceOwner>,
 
     /// The player casting the spell currently being evaluated, if any.
     pub caster: Option<PlayerId>,
@@ -2058,6 +2059,16 @@ fn resolve_filter_comparison_rhs_value(
     match rhs {
         Value::SurfaceHinted { value, .. } => {
             resolve_filter_comparison_rhs_value(value, game, ctx, stack_entry)
+        }
+        Value::SourceChosenNumber { if_unset, pair } => {
+            // A delayed trigger's watched object can differ from the host
+            // that owns this linked choice. Admission fixes the numeric host.
+            let source = ctx.source_number_owner.as_ref().map(|owner| owner.host).or(ctx.source)?;
+            match crate::source_numbers::read(game,source,*pair,
+                ctx.source_number_owner.as_ref(),ctx.source_snapshot.as_ref()) {
+                Ok(number) => number.map(i64::from).or_else(|| if_unset.map(i64::from)),
+                Err(error) => { game.record_token_resource_failure(&error); None }
+            }
         }
         Value::Fixed(value) => Some(i64::from(*value)),
         Value::X => resolve_x_value(game, ctx, stack_entry),

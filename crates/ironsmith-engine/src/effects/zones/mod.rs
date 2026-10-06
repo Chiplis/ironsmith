@@ -489,8 +489,11 @@ pub(crate) fn prepare_zone_change_with_context_and_draws(
     cause: crate::events::cause::EventCause, ctx: &mut crate::effects::ExecutionContext,
     additional: &[ReplacementEffect], draws: &mut ZoneInstructionDraws,
 ) -> Result<(), crate::effects::ExecutionError> {
-    let snapshot = draws.snapshots.get(&object).cloned().or_else(|| game.object(object).map(|object|
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)));
+    let snapshot = match draws.snapshots.get(&object) {
+        Some(snapshot) => Some(snapshot.clone()),
+        None => game.object(object).map(|object|
+            crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?,
+    };
     if let Some(snapshot) = &snapshot { draws.snapshots.insert(object, snapshot.clone()); }
     let scope = ReplacementEventContext::with_scope(game,
         crate::events::Event::zone_change(object, from, to, cause.clone(), snapshot.clone())
@@ -685,31 +688,35 @@ pub fn finish_zone_change_receipts(
     finish_zone_change_receipts_frozen(game, ctx, outcome, frozen)
 }
 
-pub(crate) struct FrozenZoneChangeReceipts(Vec<(ObjectId, Vec<ObjectId>, Vec<crate::snapshot::ObjectSnapshot>, Vec<crate::events::processing::PreparedReplacementProgram>)>);
+pub(crate) struct FrozenZoneChangeReceipts(Result<Vec<(ObjectId, Vec<ObjectId>, Vec<crate::snapshot::ObjectSnapshot>, Vec<crate::events::processing::PreparedReplacementProgram>)>, crate::effects::ExecutionError>);
 
 pub(crate) fn freeze_zone_change_receipts(
     game: &mut GameState, receipts: Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
 ) -> FrozenZoneChangeReceipts {
-    let mut prepared = Vec::new();
-    for (object, receipt) in receipts {
-        if receipt.programs.is_empty() { continue; }
-        let mut ids = match &receipt.original {
-            EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-            _ => Vec::new(),
-        };
-        if ids.is_empty() {
-            // An Instead movement can retain its own exact arrival receipt.
-            // Read and restore it; never chase a later object by stable ID.
-            ids = game.take_zone_change_results(object);
-            if !ids.is_empty() { game.record_zone_change_results(object, ids.clone()); }
+    let captured = (|| {
+        let mut prepared = Vec::new();
+        for (object, receipt) in receipts {
+            if receipt.programs.is_empty() { continue; }
+            let mut ids = match &receipt.original {
+                EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+                _ => Vec::new(),
+            };
+            if ids.is_empty() {
+                // An Instead movement can retain its own exact arrival receipt.
+                // Read and restore it; never chase a later object by stable ID.
+                ids = game.take_zone_change_results(object);
+                if !ids.is_empty() { game.record_zone_change_results(object, ids.clone()); }
+            }
+            if ids.is_empty() { ids.push(object); }
+            let snapshots = ids.iter().filter_map(|id| game.object(*id).map(|object|
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)))
+                .collect::<Result<Vec<_>, crate::effects::ExecutionError>>()?;
+            prepared.push((object, ids, snapshots, receipt.programs));
         }
-        if ids.is_empty() { ids.push(object); }
-        let snapshots = ids.iter().filter_map(|id| game.object(*id).map(|object|
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)))
-            .collect::<Vec<_>>();
-        prepared.push((object, ids, snapshots, receipt.programs));
-    }
-    FrozenZoneChangeReceipts(prepared)
+        Ok(prepared)
+    })();
+    if let Err(error) = &captured { game.record_token_resource_failure(error); }
+    FrozenZoneChangeReceipts(captured)
 }
 
 pub(crate) fn bind_frozen_zone_programs(
@@ -717,7 +724,7 @@ pub(crate) fn bind_frozen_zone_programs(
 ) -> Result<Vec<(crate::events::processing::PreparedReplacementProgram,
     crate::effects::replacement::ReplacementProgramBindings)>, crate::effects::ExecutionError> {
     let mut bound = Vec::new();
-    for (object, ids, snapshots, programs) in frozen.0 {
+    for (object, ids, snapshots, programs) in frozen.0? {
         for program in programs {
             let context = &program.context;
             let zone = context.zone_change_context.as_ref().or_else(||

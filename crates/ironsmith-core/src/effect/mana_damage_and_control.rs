@@ -2810,6 +2810,8 @@ impl MoveOneCounterEffect {
 pub enum CounterMoveAmount {
     Exact(Value),
     AnyNumber,
+    /// Every counter of the named kind present on each donor at resolution.
+    All,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2839,6 +2841,10 @@ impl MoveCountersEffect {
     /// Choose zero through the number currently available at resolution.
     pub fn any_number(counter_type: crate::counter::CounterType, from: ChooseSpec, to: ChooseSpec) -> Self {
         Self { counter_type, count: CounterMoveAmount::AnyNumber, from, to }
+    }
+
+    pub fn all(counter_type: crate::counter::CounterType, from: ChooseSpec, to: ChooseSpec) -> Self {
+        Self { counter_type, count: CounterMoveAmount::All, from, to }
     }
 
     pub fn plus_one_counters(count: impl Into<Value>) -> Self {

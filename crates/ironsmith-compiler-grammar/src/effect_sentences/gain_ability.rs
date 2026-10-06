@@ -1334,7 +1334,8 @@ pub fn parse_granted_abilities_for_token_definition(
                             .is_some_and(|next| next.parser_text() == THE_WORD))
             })
         });
-        if (starts_triggered_rule || contains_token_kind(ability_tokens, TokenKind::Colon))
+        if !mixed_pronoun_list
+            && (starts_triggered_rule || contains_token_kind(ability_tokens, TokenKind::Colon))
             && let Some(ability) = parse_granted_activated_or_triggered_ability_for_gain(
                 ability_tokens,
                 &clause_words,

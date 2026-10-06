@@ -218,10 +218,31 @@ pub enum EquipmentRuleLineShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct TokenDescriptionTextRoles {
+    pub name: ironsmith_core::TokenNameTextRole,
+    pub colors: ironsmith_core::TokenWordRole,
+    pub subtypes: ironsmith_core::TokenWordRole,
+    pub abilities: ironsmith_core::TokenWordRole,
+}
+impl TokenDescriptionTextRoles {
+    pub fn authored(name: ironsmith_core::TokenNameTextRole) -> Self {
+        Self { name, colors: ironsmith_core::TokenWordRole::Authored,
+            subtypes: ironsmith_core::TokenWordRole::Authored, abilities: ironsmith_core::TokenWordRole::Authored }
+    }
+    pub fn retained(&self, ability_count: usize) -> ironsmith_core::TokenTextRoles {
+        ironsmith_core::TokenTextRoles { name: self.name, colors: self.colors, subtypes: self.subtypes,
+            abilities: vec![self.abilities; ability_count] }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct VehicleTokenShape {
     pub name: String,
+    pub text_roles: Option<TokenDescriptionTextRoles>,
     pub power_toughness: Option<(i32, i32)>,
     pub colorless: bool,
+    pub colors: ColorSet,
+    pub legendary: bool,
     pub flying: bool,
     pub crew_amount: Option<u32>,
 }
@@ -229,6 +250,7 @@ pub struct VehicleTokenShape {
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct EnchantmentTokenShape {
     pub name: String,
+    pub text_roles: Option<TokenDescriptionTextRoles>,
     pub subtypes: Vec<Subtype>,
     pub legendary: bool,
     pub colors: ColorSet,
@@ -238,6 +260,7 @@ pub struct EnchantmentTokenShape {
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct ArtifactTokenShape {
     pub name: String,
+    pub text_roles: Option<TokenDescriptionTextRoles>,
     pub subtypes: Vec<Subtype>,
     pub legendary: bool,
     pub colorless: bool,
@@ -299,6 +322,7 @@ pub struct CreatureTokenRulesShape {
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub struct CreatureTokenShape {
     pub name: String,
+    pub text_roles: Option<TokenDescriptionTextRoles>,
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
     pub power_toughness: (i32, i32),
@@ -349,6 +373,25 @@ pub enum TokenDefinitionSpec {
 }
 
 impl TokenDefinitionSpec {
+    pub fn text_roles(&self) -> Option<&TokenDescriptionTextRoles> {
+        match self {
+            Self::Vehicle(shape) => shape.text_roles.as_ref(),
+            Self::Enchantment(shape) => shape.text_roles.as_ref(),
+            Self::Artifact(shape) => shape.text_roles.as_ref(),
+            Self::Creature(shape) => shape.text_roles.as_ref(),
+            _ => None,
+        }
+    }
+    pub fn mark_unproven_ability_words(&mut self) {
+        let roles = match self {
+            Self::Vehicle(shape) => &mut shape.text_roles,
+            Self::Enchantment(shape) => &mut shape.text_roles,
+            Self::Artifact(shape) => &mut shape.text_roles,
+            Self::Creature(shape) => &mut shape.text_roles,
+            _ => return,
+        };
+        if let Some(roles) = roles { roles.abilities = ironsmith_core::TokenWordRole::Unrecorded; }
+    }
     /// Whether a post-create `It has ...` sentence must remain separate from
     /// abilities already authored in the token-definition sentence.
     pub fn has_intrinsic_abilities(&self) -> bool {

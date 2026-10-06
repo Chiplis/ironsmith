@@ -218,9 +218,10 @@ fn brood_birthing_uses_authored_spawn_on_both_branches_and_retains_its_mana_abil
         settle(&mut game, &mut choices);
         assert_creatures(&game, Subtype::Spawn, expected, 0, 1, false);
         let token = tokens(&game, Subtype::Spawn)[0];
+        assert_eq!(game.object(token).unwrap().name.as_ref(), "Eldrazi Spawn Token");
         assert_eq!(game.object(token).unwrap().abilities.iter().filter(|ability|
             matches!(ability.kind, AbilityKind::Activated(_))).count(), 1,
-            "the quoted Spawn reminder must neither disappear nor duplicate the builtin mana ability");
+            "the authored quoted Spawn mana ability must be installed exactly once");
         let ability = game.object(token).unwrap().abilities.iter().position(|ability|
             matches!(ability.kind, AbilityKind::Activated(_))).unwrap();
         let mana = game.player(A).unwrap().mana_pool.total();
@@ -433,14 +434,14 @@ fn copied_adipose_spell_retains_copied_cast_choices_but_token_copy_does_not_pay_
         // Two ETBs each create four Alien tokens. The permanent spell copy is
         // itself an Alien token, so exclude its retained Emerge keyword.
         let offspring = tokens(&game, Subtype::Alien).into_iter().filter(|id|
-            game.object(*id).unwrap().name == "Alien").count();
+            game.object(*id).unwrap().name == "Alien Token").count();
         assert_eq!(offspring, 8);
         let source = game.battlefield.iter().copied().find(|id|
             game.object(*id).is_some_and(|object| object.kind != ObjectKind::Token && object.name == "Adipose Offspring")).unwrap();
         apply(&mut game, host, Effect::create_token_copy(ChooseSpec::SpecificObject(source)), &mut choices);
         settle(&mut game, &mut choices);
         assert_eq!(tokens(&game, Subtype::Alien).into_iter().filter(|id|
-            game.object(*id).unwrap().name == "Alien").count(), 9);
+            game.object(*id).unwrap().name == "Alien Token").count(), 9);
     }
 }
 

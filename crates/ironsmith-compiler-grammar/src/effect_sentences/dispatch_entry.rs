@@ -4641,17 +4641,6 @@ pub(crate) fn parse_complete_create_statement(
                 // followup while preserving its authored duration.
                 return Ok(None);
             }
-            // Eldrazi Spawn/Scion tokens carry their mana ability in the
-            // token blueprint, so the authored restatement adds nothing. The
-            // followup registry treats it as a no-op; this fast path must
-            // agree, or the ability is appended a second time as a grant.
-            if crate::activation_and_restrictions::is_spawn_scion_token_mana_reminder(followup)
-                && effects.last().is_some_and(
-                    crate::activation_and_restrictions::effect_creates_eldrazi_spawn_or_scion,
-                )
-            {
-                continue;
-            }
             // A complete create statement may absorb only grammar-proven
             // token reminder sentences. Conditional `create ... instead`
             // followups share token words but belong to the typed

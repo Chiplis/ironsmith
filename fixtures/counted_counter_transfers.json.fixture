@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Aetherborn Marauder",
+    "oracle_id": "ff6427f6-d2b1-4e33-984d-c06bd15d7c2c",
+    "id": "4c861a13-4e02-41fb-a2c0-29d3a7ae3922",
+    "mana_cost": "{3}{B}",
+    "type_line": "Creature — Aetherborn Rogue",
+    "oracle_text": "Flying, lifelink\nWhen this creature enters, move any number of +1/+1 counters from other permanents you control onto this creature.",
+    "power": "2",
+    "toughness": "2",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ]
+  },
+  {
+    "name": "Scrounging Bandar",
+    "oracle_id": "8e1eff5a-77e8-4ea2-96b8-547504f83b45",
+    "id": "95f050b4-ae64-47ae-8e55-047e7a588d9c",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Cat Monkey",
+    "oracle_text": "This creature enters with two +1/+1 counters on it.\nAt the beginning of your upkeep, you may move any number of +1/+1 counters from this creature onto another target creature.",
+    "power": "0",
+    "toughness": "0",
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ]
+  },
+  {
+    "name": "Spike Cannibal",
+    "oracle_id": "c175ab0e-7085-41ec-83e4-38fc85c338fa",
+    "id": "64003772-c62f-4728-a00c-48c78991c6ae",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Creature — Spike",
+    "oracle_text": "This creature enters with a +1/+1 counter on it.\nWhen this creature enters, move all +1/+1 counters from all creatures onto it.",
+    "power": "0",
+    "toughness": "0",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ]
+  },
+  {
+    "name": "Black Panther, Wakandan King",
+    "oracle_id": "48deff27-b421-430b-a484-55b4a593010a",
+    "id": "3a93a12d-6913-4d9e-8e9c-8067147e37f2",
+    "mana_cost": "{G}{W}",
+    "type_line": "Legendary Creature — Human Noble Hero",
+    "oracle_text": "First strike\nSurvey the Realm — Whenever Black Panther or another creature you control enters, put a +1/+1 counter on target land you control.\nMine Vibranium — {3}: Move all +1/+1 counters from target land you control onto target creature. If one or more +1/+1 counters are moved this way, you gain that much life and draw a card.",
+    "power": "2",
+    "toughness": "2",
+    "colors": [
+      "G",
+      "W"
+    ],
+    "color_identity": [
+      "G",
+      "W"
+    ]
+  }
+]

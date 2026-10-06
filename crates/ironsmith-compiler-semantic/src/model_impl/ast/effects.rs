@@ -5515,6 +5515,23 @@ impl EffectAst {
                 count,
                 from,
                 to,
+                from_all: false,
+            }),
+        )
+    }
+
+    pub fn subject_verb_move_counters_from_all(
+        counter_type: CounterType,
+        count: ironsmith_core::effect::CounterMoveAmount,
+        from: ObjectFilter,
+        to: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters {
+                counter_type, count, from: TargetAst::Object(from, None, None), to,
+                from_all: true,
             }),
         )
     }

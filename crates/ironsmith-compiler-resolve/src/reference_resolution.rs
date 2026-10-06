@@ -78,6 +78,9 @@ pub struct EffectReferenceResolutionConfig {
         std::sync::Arc<Vec<ironsmith_compiler_semantic::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub coin_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub number_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub color_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub reveal_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub has_announced_x: bool,
     pub initial_last_effect_id: Option<EffectId>,
@@ -125,6 +128,9 @@ struct EffectReferenceResolutionState<'a> {
         &'a [ironsmith_compiler_semantic::trigger_references::LifeAmountProducer],
     die_result_producers: &'a [Option<EffectId>],
     coin_result_producers: &'a [Option<EffectId>],
+    number_result_producers: &'a [Option<EffectId>],
+    color_result_producers: &'a [Option<EffectId>],
+    reveal_result_producers: &'a [Option<EffectId>],
     bind_unbound_x_to_last_effect: bool,
     has_announced_x: bool,
     /// Inside a delayed trigger's body: the result id of the registering
@@ -235,6 +241,9 @@ pub fn annotate_effect_sequence_owned(
     env.life_amount_producers = config.life_amount_producers.clone();
     env.die_result_producers = config.die_result_producers.clone();
     env.coin_result_producers = config.coin_result_producers.clone();
+    env.number_result_producers = config.number_result_producers.clone();
+    env.color_result_producers = config.color_result_producers.clone();
+    env.reveal_result_producers = config.reveal_result_producers.clone();
     let mut id_gen = id_gen;
     let mut effects = effects;
     crate::token_prototypes::resolve_token_prototypes(&mut effects)?;
@@ -3709,6 +3718,9 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
         life_amount_producers: &env.life_amount_producers,
         die_result_producers: &env.die_result_producers,
         coin_result_producers: &env.coin_result_producers,
+        number_result_producers: &env.number_result_producers,
+        color_result_producers: &env.color_result_producers,
+        reveal_result_producers: &env.reveal_result_producers,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
         has_announced_x: env.has_announced_x,
         delayed_registration_effect_id: None,
@@ -3717,6 +3729,15 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
 
 /// Shared typed boundary for value helpers that resolve before the sequence
 /// result-ID pass. Life queries must never use their generic last-result fallback.
+pub(crate) fn resolve_choice_quantity_query(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    env: &ReferenceEnv,
+) -> Option<Result<Value, CardTextError>> {
+    [local_random_result_bindings::Family::Number, local_random_result_bindings::Family::Reveal]
+        .into_iter().find(|family| family.query(query))
+        .map(|family| family.bind(query, effect_reference_resolution_state(env)))
+}
+
 pub(crate) fn resolve_coin_quantity_query(
     query: &ironsmith_core::PriorEffectMetricQuery,
     env: &ReferenceEnv,
@@ -4279,6 +4300,13 @@ fn annotate_effect_sequence_with_env_internal(
             assigned_effect_id,
             &effect,
         );
+        for (family, producers) in [
+            (local_random_result_bindings::Family::Number, &mut out_env.number_result_producers),
+            (local_random_result_bindings::Family::Color, &mut out_env.color_result_producers),
+            (local_random_result_bindings::Family::Reveal, &mut out_env.reveal_result_producers),
+        ] {
+            family.remember(std::sync::Arc::make_mut(producers), assigned_effect_id, &effect);
+        }
         current_env = out_env.clone();
         annotated.push(AnnotatedEffect {
             effect,
@@ -4428,6 +4456,13 @@ fn maybe_assign_effect_result_id(
     id_gen: &mut IdGenContext,
     config: EffectReferenceResolutionConfig,
 ) -> Option<EffectId> {
+    for family in [local_random_result_bindings::Family::Number,
+        local_random_result_bindings::Family::Color, local_random_result_bindings::Family::Reveal] {
+        if let Some(id) = family.rebound(effect, remaining) {
+            id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
+            return Some(id);
+        }
+    }
     if let Some(id) = coin_result_bindings::rebound_producer_id(effect, remaining) {
         id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
         return Some(id);
@@ -4495,6 +4530,9 @@ fn maybe_assign_effect_result_id(
         && remaining.is_empty()
         && effect_can_supply_prior_effect_memory(effect);
 
+    let exact_choice_producer = [local_random_result_bindings::Family::Number,
+        local_random_result_bindings::Family::Color, local_random_result_bindings::Family::Reveal]
+        .into_iter().any(|family| family.compatible(effect));
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt
         || next_is_if_result_with_opponent_did
@@ -4505,7 +4543,7 @@ fn maybe_assign_effect_result_id(
         || next_needs_prior_effect_value
         || later_needs_library_search_result
         || later_needs_typed_result
-        || force_export_last_memory_effect_id)
+        || force_export_last_memory_effect_id || exact_choice_producer)
     {
         return None;
     }
@@ -4710,6 +4748,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { .. })
+                | SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
                 | SubjectVerbActionAst::DamagePrevention(
                     DamagePreventionActionAst::PreventDamage { .. }
@@ -5081,6 +5120,10 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             producer_action,
             SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CounterUnlessPays { .. })
+        ),
+        PriorEffectAction::CountersMoved(kind) => matches!(
+            producer_action,
+            SubjectVerbActionAst::Counters(CounterActionAst::MoveCounters { counter_type, .. }) if *counter_type == kind
         ),
         PriorEffectAction::CountersPut => matches!(
             producer_action,
@@ -5857,6 +5900,9 @@ fn resolve_effect_references_in_effect(
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
                 coin_result_producers: state.coin_result_producers,
+                number_result_producers: state.number_result_producers,
+                color_result_producers: state.color_result_producers,
+                reveal_result_producers: state.reveal_result_producers,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
                 has_announced_x: state.has_announced_x,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
@@ -5900,6 +5946,9 @@ fn resolve_effect_references_in_effect(
                 life_amount_producers: state.life_amount_producers,
                 die_result_producers: state.die_result_producers,
                 coin_result_producers: state.coin_result_producers,
+                number_result_producers: state.number_result_producers,
+                color_result_producers: state.color_result_producers,
+                reveal_result_producers: state.reveal_result_producers,
                 bind_unbound_x_to_last_effect: true,
                 has_announced_x: state.has_announced_x,
                 delayed_registration_effect_id: state.delayed_registration_effect_id,
@@ -5969,6 +6018,9 @@ fn resolve_effect_references_in_effect(
             life_amount_producers: &[],
             die_result_producers: &[],
             coin_result_producers: &[],
+            number_result_producers: &[],
+            color_result_producers: &[],
+            reveal_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             has_announced_x: state.has_announced_x,
             delayed_registration_effect_id: state.delayed_registration_effect_id,
@@ -6012,6 +6064,9 @@ fn resolve_effect_references_in_effect(
             life_amount_producers: &[],
             die_result_producers: &[],
             coin_result_producers: &[],
+            number_result_producers: &[],
+            color_result_producers: &[],
+            reveal_result_producers: &[],
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
             has_announced_x: state.has_announced_x,
             delayed_registration_effect_id: state.pinned_effect_metric_id.or(state.last_effect_id),
@@ -6086,6 +6141,9 @@ fn resolve_effect_sequence_references_with_state_in_place(
     let mut life_producers = state.life_amount_producers.to_vec();
     let mut die_producers = state.die_result_producers.to_vec();
     let mut coin_producers = state.coin_result_producers.to_vec();
+    let mut number_producers = state.number_result_producers.to_vec();
+    let mut color_producers = state.color_result_producers.to_vec();
+    let mut reveal_producers = state.reveal_result_producers.to_vec();
 
     for idx in 0..effect_count {
         let saved_last_effect_id = state.last_effect_id;
@@ -6107,6 +6165,9 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 life_amount_producers: std::sync::Arc::new(state.life_amount_producers.to_vec()),
                 die_result_producers: std::sync::Arc::new(state.die_result_producers.to_vec()),
                 coin_result_producers: std::sync::Arc::new(state.coin_result_producers.to_vec()),
+                number_result_producers: std::sync::Arc::new(state.number_result_producers.to_vec()),
+                color_result_producers: std::sync::Arc::new(state.color_result_producers.to_vec()),
+                reveal_result_producers: std::sync::Arc::new(state.reveal_result_producers.to_vec()),
                 ..Default::default()
             },
         );
@@ -6117,6 +6178,9 @@ fn resolve_effect_sequence_references_with_state_in_place(
                 life_amount_producers: &life_producers,
                 die_result_producers: &die_producers,
                 coin_result_producers: &coin_producers,
+                number_result_producers: &number_producers,
+                color_result_producers: &color_producers,
+                reveal_result_producers: &reveal_producers,
                 ..state
             },
         )?;
@@ -6125,6 +6189,9 @@ fn resolve_effect_sequence_references_with_state_in_place(
         }
         dice_result_bindings::remember_producer(&mut die_producers, assigned_effect_id, effect);
         coin_result_bindings::remember_producer(&mut coin_producers, assigned_effect_id, effect);
+        local_random_result_bindings::Family::Number.remember(&mut number_producers, assigned_effect_id, effect);
+        local_random_result_bindings::Family::Color.remember(&mut color_producers, assigned_effect_id, effect);
+        local_random_result_bindings::Family::Reveal.remember(&mut reveal_producers, assigned_effect_id, effect);
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         state.last_effect_id = if result_gate_surface(effect).is_some() {
             if result_gate_exports_outcome_to_fallback(effect, remaining.first()) {
@@ -6326,6 +6393,9 @@ fn advance_reference_env_for_effect(
                     life_amount_producers: env.life_amount_producers.clone(),
                     die_result_producers: env.die_result_producers.clone(),
                     coin_result_producers: env.coin_result_producers.clone(),
+                    number_result_producers: env.number_result_producers.clone(),
+                    color_result_producers: env.color_result_producers.clone(),
+                    reveal_result_producers: env.reveal_result_producers.clone(),
                     bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                     has_announced_x: env.has_announced_x,
                 });
@@ -6370,6 +6440,9 @@ fn advance_reference_env_for_effect(
                 life_amount_producers: env.life_amount_producers.clone(),
                 die_result_producers: env.die_result_producers.clone(),
                 coin_result_producers: env.coin_result_producers.clone(),
+                number_result_producers: env.number_result_producers.clone(),
+                color_result_producers: env.color_result_producers.clone(),
+                reveal_result_producers: env.reveal_result_producers.clone(),
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
                 has_announced_x: env.has_announced_x,
             })
@@ -6551,7 +6624,17 @@ fn resolve_effect_result_values_in_fields(
     ) -> Result<(), CardTextError> {
         match value {
             Value::PendingPriorEffectMetric(query) if coin_result_bindings::is_coin_query(query) => {
-            *value = coin_result_bindings::bind_coin_query(query, state)?;
+                *value = coin_result_bindings::bind_coin_query(query, state)?;
+                Ok(())
+            }
+        Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::Family::Number.query(query)
+                || local_random_result_bindings::Family::Reveal.query(query) => {
+            let family = if local_random_result_bindings::Family::Number.query(query) {
+                local_random_result_bindings::Family::Number
+            } else { local_random_result_bindings::Family::Reveal };
+            *value = family.bind(query, state)?;
+            Ok(())
         }
         Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => {
                 resolve_effect_result_value(value, state)
@@ -7607,6 +7690,14 @@ fn resolve_effect_result_value(
                 metric: *metric,
                 offset: *offset,
             };
+        }
+        Value::PendingPriorEffectMetric(query)
+            if local_random_result_bindings::Family::Number.query(query)
+                || local_random_result_bindings::Family::Reveal.query(query) => {
+            let family = if local_random_result_bindings::Family::Number.query(query) {
+                local_random_result_bindings::Family::Number
+            } else { local_random_result_bindings::Family::Reveal };
+            *value = family.bind(query, state)?;
         }
         Value::PendingPriorEffectMetric(query) if dice_result_bindings::is_die_query(query) => {
             *value = dice_result_bindings::bind_die_query(query, state)?;
@@ -10229,6 +10320,9 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 coin_result_producers: &[],
+                number_result_producers: &[],
+                color_result_producers: &[],
+                reveal_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 has_announced_x: false,
                 delayed_registration_effect_id: None,
@@ -10265,6 +10359,9 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 coin_result_producers: &[],
+                number_result_producers: &[],
+                color_result_producers: &[],
+                reveal_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 has_announced_x: false,
                 delayed_registration_effect_id: None,
@@ -10302,6 +10399,9 @@ mod tests {
                 life_amount_producers: &[],
                 die_result_producers: &[],
                 coin_result_producers: &[],
+                number_result_producers: &[],
+                color_result_producers: &[],
+                reveal_result_producers: &[],
                 bind_unbound_x_to_last_effect: false,
                 has_announced_x: false,
                 delayed_registration_effect_id: None,
@@ -12250,6 +12350,9 @@ mod excess_damage_binding_tests {
             life_amount_producers: &[],
             die_result_producers: &[],
             coin_result_producers: &[],
+            number_result_producers: &[],
+            color_result_producers: &[],
+            reveal_result_producers: &[],
             bind_unbound_x_to_last_effect: false,
             has_announced_x: false,
             delayed_registration_effect_id: None,

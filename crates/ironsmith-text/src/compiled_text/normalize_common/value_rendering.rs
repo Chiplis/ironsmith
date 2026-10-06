@@ -4604,6 +4604,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
+        crate::effect::PriorEffectAction::CountersMoved(_) => "had counters moved",
         crate::effect::PriorEffectAction::DealtDamage => "dealt damage",
         crate::effect::PriorEffectAction::Died => "died",
         crate::effect::PriorEffectAction::Destroyed => "destroyed",
@@ -6661,6 +6662,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the highest number you noted for cards named {}",
             title_case_card_name_fragment(card_name)
         ),
+        Value::SourceChosenNumber { .. } => "the last chosen number".to_string(),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
         Value::PlayerCounters(PlayerFilter::Any, counter_type) => format!(
             "the total number of {} counters among players",
