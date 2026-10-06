@@ -20,13 +20,18 @@ const agent = (id, controller) => ({
   compiled_text: ["You control your opponents while they're searching their libraries."],
   zone: "Battlefield", controller, owner: controller, power: 3, toughness: 2,
 });
-const agents = [agent(40, 1), agent(41, 2)];
+const agents = params.has("optional")
+  ? [{ ...agent(40, 0), name: "Golgari Thug", oracle_text: "Dredge 4", compiled_text: ["Dredge 4"], zone: "Graveyard" }]
+  : [agent(40, 1), agent(41, 2)];
 const search = { id: 60, stable_id: 60, name: "Demonic Tutor", type_line: "Sorcery", zone: "Stack", controller: 0, owner: 0, oracle_text: "Search your library for a card.", compiled_text: ["Search your library for a card."] };
 const cards = Object.fromEntries([...agents, search].map(card => [card.id, card]));
 const decision = {
   kind: "select_options", player: 0, min: 1, max: 1,
   description: "Choose which replacement effect to apply",
-  options: agents.map((card, index) => ({
+  options: params.has("optional") ? [
+    { index: 9, legal: true, object_id: 40, description: "Do not apply Golgari Thug" },
+    { index: 3, legal: true, object_id: 40, description: "Golgari Thug" },
+  ] : agents.map((card, index) => ({
     index, legal: true, related_object_ids: [card.id],
     description: `Opposition Agent\nExile The Underworld Cookbook; ${index === 0 ? "Bob" : "Carol"} may play that card for as long as it remains exiled.`,
   })),

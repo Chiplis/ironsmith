@@ -12,7 +12,7 @@ use crate::ability::AbilityKind;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
 use crate::game_state::GameState;
@@ -154,27 +154,26 @@ fn can_pay_loyalty_crew_alternative(
 
 fn pay_loyalty_crew_alternative(
     game: &mut GameState,
-    source: ObjectId,
-    controller: PlayerId,
-) -> Result<TriggerEvent, ExecutionError> {
-    let planeswalker = loyalty_planeswalker_for_crew(game, controller).ok_or_else(|| {
+    ctx: &mut ExecutionContext,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let planeswalker = loyalty_planeswalker_for_crew(game, ctx.controller).ok_or_else(|| {
         ExecutionError::Impossible(
             "No planeswalker with a loyalty counter available to pay crew cost".to_string(),
         )
     })?;
-    game.remove_counters(
-        planeswalker,
-        CounterType::Loyalty,
-        1,
-        Some(source),
-        Some(controller),
-    )
-    .map(|(_, event)| event)
-    .ok_or_else(|| {
-        ExecutionError::Impossible(
+    let event = crate::events::Event::remove_counters(planeswalker, CounterType::Loyalty, 1)
+        .with_provenance(ctx.provenance);
+    let payment =
+        crate::effects::counters::execute_counter_removal_cost_with_outputs(game, ctx, event)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(payment);
+    }
+    if payment.outcome.instruction_result().count_or_zero() != 1 {
+        return Err(ExecutionError::Impossible(
             "No loyalty counter could be removed to pay crew cost".to_string(),
-        )
-    })
+        ));
+    }
+    Ok(payment)
 }
 
 /// CR 702.122b: the "crews a Vehicle" event for one creature tapped to pay a
@@ -238,7 +237,7 @@ fn stash_pending_crew_activation(
 /// when a crew ability resolves, and records the resolution for "becomes
 /// crewed for the first time each turn". Returns `None` for any other stack
 /// entry.
-pub(crate) fn crew_ability_resolved_event(
+fn build_crew_ability_resolved_event(
     game: &mut GameState,
     entry: &crate::game_state::StackEntry,
 ) -> Option<TriggerEvent> {
@@ -300,6 +299,21 @@ pub(crate) fn crew_ability_resolved_event(
     ))
 }
 
+/// Publication remains at crew-ability resolution, independently of payment.
+/// Undo first-resolution bookkeeping if the completion cannot be published.
+pub(crate) fn complete_crew_ability_resolution(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    entry: &crate::game_state::StackEntry,
+) -> Result<EffectOutcome, ExecutionError> {
+    crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+        let Some(event) = build_crew_ability_resolved_event(game, entry) else {
+            return Ok(EffectOutcome::resolved());
+        };
+        crate::effects::composition::publish_keyword_action_completion(game, ctx, event)
+    })
+}
+
 fn contributor_value(effect: &CrewCostEffect, game: &GameState, id: ObjectId) -> i32 {
     if effect.teamwork {
         object_power(game, id)
@@ -318,126 +332,177 @@ impl EffectExecutor for CrewCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller = ctx.controller;
-        let mut candidates = crew_candidates(game, ctx.source, controller);
-        if candidates.is_empty() && self.required_power > 0 {
-            if !self.teamwork && can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
-                let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
-                stash_pending_crew_activation(game, ctx, &[]);
-                return Ok(EffectOutcome::resolved().with_events(vec![event]));
-            }
-            return Err(ExecutionError::Impossible(
-                "No untapped creatures available to crew".to_string(),
-            ));
-        }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        let min = if self.required_power == 0 { 0 } else { 1 };
-        let max = Some(candidates.len());
-        let chosen = {
-            // Prefer higher-power candidates in fallback selection.
-            candidates.sort_by_key(|id| -contributor_value(self, game, *id));
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                if self.teamwork {
-                    "Choose creatures for teamwork"
-                } else {
-                    "Choose creatures to crew"
-                },
-                candidates.clone(),
-                min,
-                max,
-            );
-            make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec)
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let mut chosen = chosen;
-        chosen.sort();
-        chosen.dedup();
-
-        // If the decision maker picked a set that doesn't meet the requirement,
-        // greedily add remaining candidates until it does (or we exhaust options).
-        let required = self.required_power as i32;
-        let mut total_power: i32 = chosen
-            .iter()
-            .map(|id| contributor_value(self, game, *id))
-            .sum();
-        if total_power < required {
-            let mut remaining: Vec<ObjectId> = candidates
-                .iter()
-                .copied()
-                .filter(|id| !chosen.contains(id))
-                .collect();
-            remaining.sort_by_key(|id| -contributor_value(self, game, *id));
-            for id in remaining {
-                if total_power >= required {
-                    break;
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let controller = ctx.controller;
+                let mut candidates = crew_candidates(game, ctx.source, controller);
+                if candidates.is_empty() && self.required_power > 0 {
+                    if !self.teamwork
+                        && can_pay_loyalty_crew_alternative(game, ctx.source, controller)
+                    {
+                        let payment = pay_loyalty_crew_alternative(game, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        stash_pending_crew_activation(game, ctx, &[]);
+                        return Ok(CompletedEffectOutputs::with_primary_result(
+                            EffectOutcome::resolved(),
+                            [payment],
+                        ));
+                    }
+                    return Err(ExecutionError::Impossible(
+                        "No untapped creatures available to crew".to_string(),
+                    ));
                 }
-                chosen.push(id);
-                total_power += contributor_value(self, game, id);
-            }
-        }
 
-        if total_power < required {
-            if !self.teamwork && can_pay_loyalty_crew_alternative(game, ctx.source, controller) {
-                let event = pay_loyalty_crew_alternative(game, ctx.source, controller)?;
-                stash_pending_crew_activation(game, ctx, &[]);
-                return Ok(EffectOutcome::resolved().with_events(vec![event]));
-            }
-            return Err(ExecutionError::Impossible(
-                "Not enough total power to crew".to_string(),
-            ));
-        }
+                let min = if self.required_power == 0 { 0 } else { 1 };
+                let max = Some(candidates.len());
+                let chosen = {
+                    // Prefer higher-power candidates in fallback selection.
+                    candidates.sort_by_key(|id| -contributor_value(self, game, *id));
+                    let spec = ChooseObjectsSpec::new(
+                        ctx.source,
+                        if self.teamwork {
+                            "Choose creatures for teamwork"
+                        } else {
+                            "Choose creatures to crew"
+                        },
+                        candidates.clone(),
+                        min,
+                        max,
+                    );
+                    make_decision(game, ctx.decision_maker, controller, Some(ctx.source), spec)
+                };
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
-        let crew_count = chosen.len();
-        for id in chosen.iter() {
-            if game.object(*id).is_some() && !game.is_tapped(*id) {
-                game.tap(*id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, *id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-            }
-        }
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
-        if self.teamwork {
-            return Ok(EffectOutcome::resolved().with_events(events));
-        }
-        // CR 702.122d: "becomes crewed" means "a crew ability of this Vehicle
-        // resolves", so the Vehicle-level event is deferred to resolution.
-        // Stash what it needs on the activation's cost tags; the stack entry
-        // carries them to `crew_ability_resolved_event`.
-        stash_pending_crew_activation(game, ctx, &chosen);
-        for id in chosen.iter() {
-            events.push(keyword_crew_event(
-                game,
-                *id,
-                ctx.source,
-                controller,
-                crew_count,
-                ctx.provenance,
-            ));
-        }
+                let mut chosen = chosen;
+                chosen.sort();
+                chosen.dedup();
 
-        // Record crew contributors for "crewed it this turn" references.
-        let entry = game
-            .turn_store
-            .turn_history
-            .crewed_this_turn
-            .entry(ctx.source)
-            .or_default();
-        for id in chosen {
-            if !entry.contains(&id) {
-                entry.push(id);
-            }
-        }
+                // If the decision maker picked a set that doesn't meet the requirement,
+                // greedily add remaining candidates until it does (or we exhaust options).
+                let required = self.required_power as i32;
+                let mut total_power: i32 = chosen
+                    .iter()
+                    .map(|id| contributor_value(self, game, *id))
+                    .sum();
+                if total_power < required {
+                    let mut remaining: Vec<ObjectId> = candidates
+                        .iter()
+                        .copied()
+                        .filter(|id| !chosen.contains(id))
+                        .collect();
+                    remaining.sort_by_key(|id| -contributor_value(self, game, *id));
+                    for id in remaining {
+                        if total_power >= required {
+                            break;
+                        }
+                        chosen.push(id);
+                        total_power += contributor_value(self, game, id);
+                    }
+                }
 
-        Ok(EffectOutcome::resolved().with_events(events))
+                if total_power < required {
+                    if !self.teamwork
+                        && can_pay_loyalty_crew_alternative(game, ctx.source, controller)
+                    {
+                        let payment = pay_loyalty_crew_alternative(game, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        stash_pending_crew_activation(game, ctx, &[]);
+                        return Ok(CompletedEffectOutputs::with_primary_result(
+                            EffectOutcome::resolved(),
+                            [payment],
+                        ));
+                    }
+                    return Err(ExecutionError::Impossible(
+                        "Not enough total power to crew".to_string(),
+                    ));
+                }
+
+                let taps = super::tap::tap_cost_objects_with_outputs(game, ctx, &chosen)?;
+                let batch = taps
+                    .outcome
+                    .events
+                    .iter()
+                    .find_map(TriggerEvent::simultaneous_batch);
+                let mut children = vec![taps];
+                let mut completions = Vec::new();
+                let crew_count = chosen.len();
+
+                if self.teamwork {
+                    return Ok(CompletedEffectOutputs::with_primary_result(
+                        EffectOutcome::resolved(),
+                        children,
+                    ));
+                }
+                // CR 702.122d: "becomes crewed" means "a crew ability of this Vehicle
+                // resolves", so the Vehicle-level event is deferred to resolution.
+                // Stash what it needs on the activation's cost tags; the stack entry
+                // carries them to `complete_crew_ability_resolution`.
+                stash_pending_crew_activation(game, ctx, &chosen);
+                for id in chosen.iter() {
+                    let mut event = keyword_crew_event(
+                        game,
+                        *id,
+                        ctx.source,
+                        controller,
+                        crew_count,
+                        ctx.provenance,
+                    );
+                    if let Some(batch) = batch {
+                        event = event.with_simultaneous_batch(batch);
+                    }
+                    completions.push(event);
+                }
+
+                // Record crew contributors for "crewed it this turn" references.
+                let entry = game
+                    .turn_store
+                    .turn_history
+                    .crewed_this_turn
+                    .entry(ctx.source)
+                    .or_default();
+                for id in chosen {
+                    if !entry.contains(&id) {
+                        entry.push(id);
+                    }
+                }
+
+                for event in completions {
+                    children.push(
+                        crate::effects::composition::publish_keyword_action_completion_receipt(
+                            game, ctx, event,
+                        )?,
+                    );
+                }
+                Ok(CompletedEffectOutputs::with_primary_result(
+                    EffectOutcome::resolved(),
+                    children,
+                ))
+            },
+        )
     }
 
     fn cost_description(&self) -> Option<String> {

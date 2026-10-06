@@ -6,6 +6,7 @@ import { useCastPlayerHovered } from "@/context/DragContext";
 import { cloneElement, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useDecisionControlMotion from "@/hooks/useDecisionControlMotion";
+import useDecisionRollout from "@/hooks/useDecisionRollout";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
@@ -121,6 +122,7 @@ export default function TableCore({
     state,
     playerAccentOverrides,
     multiplayer,
+    surrenderRequested,
     autoResolveEnabled,
     setAutoResolveEnabled,
   } = useGame();
@@ -128,7 +130,11 @@ export default function TableCore({
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const tableRef = useRef(null);
   const humanActionDockRef = useRef(null);
-  const previousHoldRuleRef = useRef("never");
+  const decisionRolloutRef = useDecisionRollout([
+    state?.decision?.kind, state?.decision?.player, state?.decision?.source_id,
+    state?.decision?.reason, state?.decision?.description, state?.decision?.context_text,
+    state?.decision?.source_name, surrenderRequested,
+  ].join('|'));
   const [openDecklist, setOpenDecklist] = useState(null);
   const [humanActionDockPosition, setHumanActionDockPosition] = useState(null);
   const {
@@ -255,7 +261,7 @@ export default function TableCore({
       observe(dock);
       observe(table);
       const protectedZones = zoneElements.flatMap(element => [element, ...element.querySelectorAll(".zone-pile, .zone-pile-label")]).map(visibleRect).filter(Boolean);
-      if (state?.decision?.kind === 'mana_payment') {
+      if (state?.decision?.kind === 'mana_payment' && !surrenderRequested) {
         const opponentRows = [...table.querySelectorAll('.battlefield-panel--opponents [data-zone-anchor-player]')].map(zone => zone.querySelector('.battlefield-row[data-bf-side="top"]')).filter(Boolean);
         const opponentCards = opponentRows.flatMap(row => [...row.querySelectorAll('.battlefield-row-card')]);
         opponentCards.forEach(observe);
@@ -309,7 +315,7 @@ export default function TableCore({
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     };
-  }, [focusedHudDesktop, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step]);
+  }, [focusedHudDesktop, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
 
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
@@ -341,7 +347,6 @@ export default function TableCore({
     && players.length > 1;
   const humanQuickControlsElement = focusedHudDesktop ? (
     <div className="battlefield-human-quick-controls decision-quick-controls">
-      <PriorityHoldControl compact previousRuleRef={previousHoldRuleRef} />
       <button
         type="button"
         className="battlefield-auto-pass-toggle"
@@ -546,7 +551,7 @@ export default function TableCore({
       ref={humanActionDockRef}
       className="battlefield-human-action-dock"
       data-human-action-dock
-      data-mana-payment={decision?.kind === 'mana_payment' ? 'true' : undefined}
+      data-mana-payment={decision?.kind === 'mana_payment' && !surrenderRequested ? 'true' : undefined}
       style={{
         "--decision-panel-content-width": decisionContentPreferredWidth(decision),
         "--decision-panel-compact-width": decisionCompactPreferredWidth(decision),
@@ -555,7 +560,7 @@ export default function TableCore({
             left: `${humanActionDockPosition.left}px`,
             top: `${humanActionDockPosition.top}px`,
             maxWidth: `${humanActionDockPosition.maxWidth}px`,
-            ...(decision?.kind === 'mana_payment' ? { width: `${humanActionDockPosition.maxWidth}px` } : {}),
+            ...(decision?.kind === 'mana_payment' && !surrenderRequested ? { width: `${humanActionDockPosition.maxWidth}px` } : {}),
             "--dock-max-height": `${humanActionDockPosition.maxHeight}px`,
             right: "auto",
             bottom: "auto",
@@ -565,9 +570,10 @@ export default function TableCore({
       }}
     >
       <div className="battlefield-human-decision-dock">
-        <div className="table-action-bar battlefield-human-decision-panel">
-          {decision?.kind === 'mana_payment' ? <ManaPaymentDecision
+        <div ref={decisionRolloutRef} className="table-action-bar battlefield-human-decision-panel">
+          {decision?.kind === 'mana_payment' && !surrenderRequested ? <ManaPaymentDecision
             decision={decision}
+            quickControls={humanQuickControlsElement}
             canAct={samePlayerId(decision.player, perspective) && !multiplayer?.submittingAction && !multiplayer?.peerWait}
           /> : <DecisionPopupLayer
             priorityInline

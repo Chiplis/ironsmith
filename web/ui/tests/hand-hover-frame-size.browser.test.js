@@ -189,3 +189,39 @@ test('a hovered hand card matches the local battlefield preview size', async () 
     await vite.close();
   }
 });
+
+
+test('highlighted hand neighbors smoothly spread away from the hovered card', async () => {
+  const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route('https://**/*', route => route.abort());
+    await page.addInitScript(() => {
+      window.__handDecision = { kind: 'priority', player: 0, actions: Array.from({ length: 7 }, (_, i) => ({
+        kind: 'cast_spell', object_id: i + 1, index: i, label: 'Cast Myr Moonvessel',
+        action_ref: { kind: 'cast_spell', object_id: i + 1 },
+      })) };
+    });
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-hover-frame-size.html`);
+    const neighbor = page.locator('.hand-card[data-object-id="3"]');
+    await neighbor.waitFor();
+    await page.waitForTimeout(400);
+    assert.equal(await neighbor.evaluate(node => node.classList.contains('card-action-available')), true);
+    const restingX = await neighbor.evaluate(node => node.getBoundingClientRect().x);
+    const resting = await page.locator('.hand-card[data-object-id="4"]').boundingBox();
+    await page.mouse.move(resting.x + resting.width / 2, resting.y + 24);
+    await page.waitForFunction(() => document.querySelector('.hand-card[data-object-id="4"]')?.classList.contains('hovered'));
+    const motion = await neighbor.evaluate(node => {
+      const animation = node.getAnimations().find(animation => animation.transitionProperty === 'transform');
+      return animation ? { duration: animation.effect.getTiming().duration, state: animation.playState } : null;
+    });
+    assert.ok(motion, 'the highlighted neighbor has a live transform transition');
+    assert.equal(motion.state, 'running');
+    assert.ok(motion.duration >= 220, 'spreading remains smooth');
+    await page.waitForTimeout(450);
+    const spreadX = await neighbor.evaluate(node => node.getBoundingClientRect().x);
+    assert.ok(spreadX < restingX - 10, 'the left neighbor moves away from the hovered card');
+  } finally { await browser.close(); await vite.close(); }
+});

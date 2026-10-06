@@ -20,6 +20,7 @@ pub use gain_life::GainLifeEffect;
 pub use lose_life::LoseLifeEffect;
 pub use note_life_total::NoteLifeTotalEffect;
 pub use pay_life::PayLifeEffect;
+pub(crate) use pay_life::life_payment_cost_description;
 pub use set_life_total::SetLifeTotalEffect;
 
 #[cfg(test)]

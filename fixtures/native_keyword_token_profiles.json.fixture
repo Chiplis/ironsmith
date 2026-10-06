@@ -1,0 +1,130 @@
+[
+  {
+    "name": "Astrologian's Planisphere",
+    "oracle_id": "4dcd0583-cee0-46a6-ba43-93bca5eb0428",
+    "mana_cost": "{1}{U}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature is a Wizard in addition to its other types and has \"Whenever you cast a noncreature spell and whenever you draw your third card each turn, put a +1/+1 counter on this creature.\"\nDiana \u2014 Equip {2}"
+  },
+  {
+    "name": "Avenger of the Fallen",
+    "oracle_id": "158d0272-a850-4399-8afa-d0caa143c3cb",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature \u2014 Human Warrior",
+    "power": "2",
+    "toughness": "4",
+    "oracle_text": "Deathtouch\nMobilize X, where X is the number of creature cards in your graveyard. (Whenever this creature attacks, create X tapped and attacking 1/1 red Warrior creature tokens. Sacrifice them at the beginning of the next end step.)"
+  },
+  {
+    "name": "Bard's Bow",
+    "oracle_id": "4aceb786-960d-4719-9de8-79dffd491a51",
+    "mana_cost": "{2}{G}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has reach, and is a Bard in addition to its other types.\nPerseus's Bow \u2014 Equip {6} ({6}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Black Mage's Rod",
+    "oracle_id": "909b3d90-5762-461b-b49a-004a9e72733d",
+    "mana_cost": "{1}{B}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0, has \"Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent,\" and is a Wizard in addition to its other types.\nEquip {3}"
+  },
+  {
+    "name": "Blue Mage's Cane",
+    "oracle_id": "6290233b-b015-4909-8aba-bf8d65cc37b5",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select\nEquipped creature gets +0/+2, is a Wizard in addition to its other types, and has \"Whenever this creature attacks, exile up to one target instant or sorcery card from defending player's graveyard. If you do, copy it. You may cast the copy by paying {3} rather than paying its mana cost.\"\nSpirit of the Whalaqee \u2014 Equip {2}"
+  },
+  {
+    "name": "Dancer's Chakrams",
+    "oracle_id": "7465d02f-3eee-483c-8de3-404381aa21eb",
+    "mana_cost": "{3}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has lifelink and \"Other commanders you control get +2/+2 and have lifelink,\" and is a Performer in addition to its other types.\nKrishna \u2014 Equip {3}"
+  },
+  {
+    "name": "Dragoon's Lance",
+    "oracle_id": "a66c35fc-d5db-4cfd-9b85-d70b001d83d3",
+    "mana_cost": "{1}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0 and is a Knight in addition to its other types.\nDuring your turn, equipped creature has flying.\nGae Bolg \u2014 Equip {4}"
+  },
+  {
+    "name": "Infantry Shield",
+    "oracle_id": "71c68002-1489-4858-a8fb-1f575641983e",
+    "mana_cost": "{2}{R}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Equipped creature has menace and mobilize X, where X is its power. (Whenever it attacks, create X tapped and attacking 1/1 red Warrior creature tokens. Sacrifice them at the beginning of the next end step.)\nEquip {2}"
+  },
+  {
+    "name": "Machinist's Arsenal",
+    "oracle_id": "e7fff34e-9b80-4a67-a917-fd9efddb5a1f",
+    "mana_cost": "{4}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2 for each artifact you control and is an Artificer in addition to its other types.\nMachina \u2014 Equip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Monk's Fist",
+    "oracle_id": "1b524149-340e-4f94-9520-6a5258fabb00",
+    "mana_cost": "{2}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0 and is a Monk in addition to its other types.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Ninja's Blades",
+    "oracle_id": "cdaffb13-c2a4-4bc5-a9d6-c1a0d1686a81",
+    "mana_cost": "{2}{B}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select\nEquipped creature gets +1/+1, is a Ninja in addition to its other types, and has \"Whenever this creature deals combat damage to a player, draw a card, then discard a card. That player loses life equal to the discarded card's mana value.\"\nMutsunokami \u2014 Equip {2}"
+  },
+  {
+    "name": "Paladin's Arms",
+    "oracle_id": "22076484-e9d5-4f33-8cf3-b9b427436b05",
+    "mana_cost": "{2}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+1, has ward {1}, and is a Knight in addition to its other types.\nLightbringer and Hero's Shield \u2014 Equip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Red Mage's Rapier",
+    "oracle_id": "35ad9e15-3e00-4bd2-96cf-36a6ef49059f",
+    "mana_cost": "{1}{R}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature has \"Whenever you cast a noncreature spell, this creature gets +2/+0 until end of turn\" and is a Wizard in addition to its other types.\nEquip {3}"
+  },
+  {
+    "name": "Sage's Nouliths",
+    "oracle_id": "97248734-6e99-42a2-8f11-f3337b25f8ab",
+    "mana_cost": "{1}{U}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+0, has \"Whenever this creature attacks, untap target attacking creature,\" and is a Cleric in addition to its other types.\nHagneia \u2014 Equip {3}"
+  },
+  {
+    "name": "Samurai's Katana",
+    "oracle_id": "9b8b5812-73bd-453e-bdff-aad1fafa9226",
+    "mana_cost": "{2}{R}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2, has trample and haste, and is a Samurai in addition to its other types.\nMurasame \u2014 Equip {5}"
+  },
+  {
+    "name": "Thief's Knife",
+    "oracle_id": "4bf589ed-58f8-40ad-bcee-50cb99da02ca",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+1, has \"Whenever this creature deals combat damage to a player, draw a card,\" and is a Rogue in addition to its other types.\nEquip {4}"
+  },
+  {
+    "name": "Warrior's Sword",
+    "oracle_id": "a339961e-3555-467f-a4f8-c5eaac7e7ed1",
+    "mana_cost": "{3}{R}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +3/+2 and is a Warrior in addition to its other types.\nEquip {5} ({5}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "White Mage's Staff",
+    "oracle_id": "af1acf07-39e2-441e-a1e0-1db535535e2e",
+    "mana_cost": "{1}{W}",
+    "type_line": "Artifact \u2014 Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +1/+1, has \"Whenever this creature attacks, you gain 1 life,\" and is a Cleric in addition to its other types.\nEquip {3} ({3}: Attach to target creature you control. Equip only as a sorcery.)"
+  }
+]

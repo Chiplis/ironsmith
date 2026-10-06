@@ -115,21 +115,34 @@ impl<'a> ObjectSubject<'a> {
         };
         match self {
             Self::Live(_) => current(),
-            Self::Snapshot(snapshot) => snapshot.ring_bearer.unwrap_or_else(current),
+            Self::Snapshot(snapshot) => snapshot.ring_bearer.unwrap_or_else(|| {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "historical Ring-bearer predicate lacks its captured designation".into(),
+                ));
+                false
+            }),
         }
     }
     pub(crate) fn suspected(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_suspected(object.id),
-            Self::Snapshot(snapshot) => snapshot.suspected == Some(true),
+            Self::Snapshot(snapshot) => snapshot.suspected.unwrap_or_else(|| {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "historical suspected predicate lacks its captured designation".into(),
+                ));
+                false
+            }),
         }
     }
     pub(crate) fn goaded(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_goaded(object.id),
-            Self::Snapshot(snapshot) => snapshot
-                .goaded
-                .unwrap_or_else(|| game.is_goaded(snapshot.object_id)),
+            Self::Snapshot(snapshot) => snapshot.goaded.unwrap_or_else(|| {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "historical goaded predicate lacks its captured designation".into(),
+                ));
+                false
+            }),
         }
     }
     pub(crate) fn attacking(self, game: &GameState) -> bool {
@@ -475,11 +488,22 @@ impl<'a> ObjectSubject<'a> {
         {
             return None;
         }
-        if has_stack_subject
-            && let Some(kind) = filter.stack_kind
-        {
+        if let Some(kind) = filter.stack_kind {
             if let Some(entry) = entry {
                 if !ObjectFilter::stack_entry_matches_kind(entry, kind) {
+                    return None;
+                }
+            } else if let Self::Snapshot(snapshot) = self
+                && let Some(recorded) = snapshot.stack_kind
+            {
+                let matches = recorded == kind
+                    || kind == StackObjectKind::SpellOrAbility
+                    || (kind == StackObjectKind::Ability
+                        && matches!(
+                            recorded,
+                            StackObjectKind::ActivatedAbility | StackObjectKind::TriggeredAbility
+                        ));
+                if !matches {
                     return None;
                 }
             } else if !((self.zone() == Zone::Stack

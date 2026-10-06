@@ -1,31 +1,26 @@
 //! Runtime orchestration for `VoteEffect`.
 
 use crate::filter::ObjectFilterExt as _;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::spec::DisplayOption;
 use crate::decisions::specs::{ChoiceSpec, ChooseObjectsSpec};
 use crate::decisions::{make_boolean_decision, make_decision};
 use crate::effect::EffectOutcome;
-use crate::effects::InvestigateEffect;
 use crate::effects::helpers::resolve_player_filter_to_list;
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::{
-    EventCause, EventKind, KeywordActionEvent, KeywordActionKind, PlayerVote,
-    PlayersFinishedVotingEvent, ZoneChangeEvent,
+    KeywordActionEvent, KeywordActionKind, PlayerVote, PlayersFinishedVotingEvent,
 };
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::object::ObjectKind;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 
 use super::vote::{VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteResult};
-
-type TokenBatchByController = BTreeMap<PlayerId, Vec<ObjectId>>;
 
 fn option_vote_tag(option_name: &str) -> TagKey {
     let slug = option_name
@@ -385,13 +380,35 @@ fn build_option_voter_tags(
     option_tags
 }
 
+#[derive(Debug, Clone)]
+struct PublishVotingFacts(TriggerEvent);
+
+impl crate::effects::EffectExecutor for PublishVotingFacts {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let mut event = self.0.clone();
+        let provenance = game.alloc_child_event_provenance(event.provenance(), event.kind());
+        event.set_provenance(provenance);
+        if let Some(batch) = game.simultaneous_action_batch() {
+            event = event.with_simultaneous_batch(batch);
+        }
+        Ok(EffectOutcome::resolved().with_event(event))
+    }
+}
+
 fn queue_vote_events(
     effect: &VoteEffect,
     game: &mut GameState,
-    ctx: &ExecutionContext,
+    ctx: &mut ExecutionContext,
     votes: &[PlayerVote],
     vote_counts: HashMap<usize, usize>,
-) {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let option_names: Vec<String> = match &effect.choice {
         VoteChoice::NamedOptions(options) => options
             .iter()
@@ -438,74 +455,49 @@ fn queue_vote_events(
             .collect(),
     );
 
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(vote_action_event, ctx.provenance),
+    let source_snapshot =
+        ObjectSnapshot::from_object_id(game, ctx.source).or_else(|| ctx.source_snapshot.clone());
+    let keyword = super::publish_keyword_action_completion_receipt(
+        game,
+        ctx,
+        TriggerEvent::new_with_provenance(
+            vote_action_event.with_snapshot(source_snapshot.clone()),
+            ctx.provenance,
+        ),
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let mut voting_event = TriggerEvent::new_with_provenance(voting_event, ctx.provenance);
+    if let Some(snapshot) = source_snapshot {
+        voting_event = voting_event.with_source_snapshot(snapshot);
+    }
+    let facts = PublishVotingFacts(voting_event).execute_child_with_outputs(game, ctx)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let mut completion = crate::effects::CompletedEffectOutputs::from_children(
+        [keyword, facts],
+        EffectOutcome::aggregate,
     );
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(voting_event, ctx.provenance),
-    );
-}
-
-fn collect_token_batch(
-    game: &GameState,
-    outcome: &mut EffectOutcome,
-    by_controller: &mut TokenBatchByController,
-) {
-    if outcome.events.is_empty() {
-        return;
+    crate::effects::capture_triggers_before_added_program(
+        game,
+        ctx,
+        None,
+        completion.outcome.events.iter_mut(),
+    )?;
+    // Retain the existing queued-notification protocol; returned aliases carry
+    // the same occurrence and matching receipt, so publication cannot duplicate
+    // the actual observation when the enclosing instruction reports its result.
+    completion.synchronize_observations();
+    for event in &completion.outcome.events {
+        game.queue_trigger_event(event.provenance(), event.clone());
     }
-
-    let mut filtered_events = Vec::with_capacity(outcome.events.len());
-
-    for event in outcome.events.drain(..) {
-        if event.kind() == EventKind::ZoneChange
-            && let Some(zone_change) = event.downcast::<ZoneChangeEvent>()
-            && zone_change.to == Zone::Battlefield
-            && zone_change.objects.iter().all(|&object_id| {
-                game.object(object_id)
-                    .map(|object| matches!(object.kind, ObjectKind::Token))
-                    .unwrap_or(false)
-            })
-        {
-            for &object_id in &zone_change.objects {
-                if let Some(object) = game.object(object_id) {
-                    by_controller
-                        .entry(game.controller_of(object))
-                        .or_default()
-                        .push(object_id);
-                }
-            }
-            continue;
-        }
-
-        filtered_events.push(event);
-    }
-
-    outcome.events = filtered_events;
-}
-
-fn append_batched_token_events(
-    outcome: &mut EffectOutcome,
-    cause: EventCause,
-    token_batches: Vec<TokenBatchByController>,
-    provenance: crate::provenance::ProvNodeId,
-) {
-    for by_controller in token_batches {
-        for (_controller, mut object_ids) in by_controller {
-            if object_ids.is_empty() {
-                continue;
-            }
-
-            object_ids.sort();
-            object_ids.dedup();
-            outcome.events.push(TriggerEvent::new_with_provenance(
-                ZoneChangeEvent::batch(object_ids, Zone::Stack, Zone::Battlefield, cause.clone()),
-                provenance,
-            ));
-        }
-    }
+    Ok(completion)
 }
 
 fn execute_vote_payloads(
@@ -513,62 +505,68 @@ fn execute_vote_payloads(
     votes: &[PlayerVote],
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if !effect.payloads.is_empty() {
+        let mut outcomes = Vec::new();
+        for payload in &effect.payloads {
+            let outcome = match payload {
+                ironsmith_core::VotePayload::Effects(effects) => {
+                    crate::effects::SequenceEffect::new(effects.clone())
+                        .execute_child_with_outputs(game, ctx)?
+                }
+                ironsmith_core::VotePayload::ForEachVote { option, effects } => {
+                    // Keep every occurrence and its voter binding. Set-valued
+                    // voter tags cannot represent a player's additional votes.
+                    let players = votes
+                        .iter()
+                        .filter(|vote| vote.option_name.eq_ignore_ascii_case(option))
+                        .map(|vote| vote.player)
+                        .collect();
+                    super::execute_player_occurrences_with_outputs(effects, players, game, ctx)?
+                }
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            outcomes.push(outcome);
+        }
+        return Ok(crate::effects::CompletedEffectOutputs::from_children(
+            outcomes,
+            EffectOutcome::aggregate,
+        ));
+    }
     let VoteChoice::NamedOptions(options) = &effect.choice else {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     };
     let mut outcomes = Vec::new();
-    let mut token_batches: Vec<TokenBatchByController> = vec![BTreeMap::new(); options.len()];
-
-    // The tokens each vote creates are regrouped into one entry event per
-    // option below, so no boundary inside a payload may match them first.
-    game.effect_store.trigger_matching_holds += 1;
-    let payloads = execute_vote_payload_effects(
-        options.as_slice(),
-        votes,
-        game,
-        ctx,
-        &mut outcomes,
-        &mut token_batches,
-    );
-    game.effect_store.trigger_matching_holds -= 1;
-    payloads?;
-
-    let mut aggregate = EffectOutcome::aggregate(outcomes);
-    let cause = EventCause::from_effect(ctx.source, ctx.controller);
-    append_batched_token_events(&mut aggregate, cause, token_batches, ctx.provenance);
-    Ok(aggregate)
-}
-
-fn execute_vote_payload_effects(
-    options: &[crate::effects::VoteOption],
-    votes: &[PlayerVote],
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    outcomes: &mut Vec<EffectOutcome>,
-    token_batches: &mut [TokenBatchByController],
-) -> Result<(), ExecutionError> {
-    for vote in votes {
-        if let Some(option) = options.get(vote.option_index) {
-            ctx.with_temp_iterated_player(Some(vote.player), |ctx| {
-                for vote_effect in &option.effects_per_vote {
-                    let is_investigate = vote_effect.downcast_ref::<InvestigateEffect>().is_some();
-                    let mut outcome = execute_effect(game, vote_effect, ctx)?;
-
-                    if !is_investigate {
-                        let batch = token_batches
-                            .get_mut(vote.option_index)
-                            .expect("vote option index should be valid");
-                        collect_token_batch(game, &mut outcome, batch);
-                    }
-
-                    outcomes.push(outcome);
-                }
-                Ok::<(), ExecutionError>(())
-            })?;
+    // Older option-local programs have no separate clause schedule. Preserve
+    // option order while delegating their actual participant action execution.
+    for (option_index, option) in options.iter().enumerate() {
+        let players = votes
+            .iter()
+            .filter(|vote| vote.option_index == option_index)
+            .map(|vote| vote.player)
+            .collect();
+        outcomes.push(super::execute_player_occurrences_with_outputs(
+            &option.effects_per_vote,
+            players,
+            game,
+            ctx,
+        )?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
     }
-    Ok(())
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        outcomes,
+        EffectOutcome::aggregate,
+    ))
 }
 
 pub(crate) fn run_vote(
@@ -576,97 +574,130 @@ pub(crate) fn run_vote(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let starting_player = if effect.starting_with_controller {
-        ctx.controller
-    } else {
-        game.turn.active_player
-    };
-    let players = active_players_in_vote_order(game, starting_player);
-    match &effect.choice {
-        VoteChoice::NamedOptions(options) => {
-            if options.is_empty() {
-                return Ok(EffectOutcome::resolved());
-            }
-            let display_options = build_display_options(effect);
-            let Some((votes, vote_counts)) =
-                collect_votes(effect, game, ctx, &players, &display_options)
-            else {
-                return Ok(EffectOutcome::count(0));
+    run_vote_with_outputs(effect, game, ctx)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn run_vote_with_outputs(
+    effect: &VoteEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let starting_player = if effect.starting_with_controller {
+                ctx.controller
+            } else {
+                game.turn.active_player
             };
-            let vote_counts_map = build_vote_counts_map(&vote_counts);
-            let mut result = VoteResult::default();
-            result.total_votes = votes.len();
-            for (idx, count) in &vote_counts_map {
-                if let Some(option) = options.get(*idx) {
-                    result.option_counts.insert(option.name.to_string(), *count);
+            let players = active_players_in_vote_order(game, starting_player);
+            match &effect.choice {
+                VoteChoice::NamedOptions(options) => {
+                    if options.is_empty() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::resolved(),
+                        ));
+                    }
+                    let display_options = build_display_options(effect);
+                    let Some((votes, vote_counts)) =
+                        collect_votes(effect, game, ctx, &players, &display_options)
+                    else {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    };
+                    let vote_counts_map = build_vote_counts_map(&vote_counts);
+                    let mut result = VoteResult::default();
+                    result.total_votes = votes.len();
+                    for (idx, count) in &vote_counts_map {
+                        if let Some(option) = options.get(*idx) {
+                            result.option_counts.insert(option.name.to_string(), *count);
+                        }
+                    }
+                    ctx.vote_results.insert(ctx.source, result);
+                    ctx.clear_object_tag(VOTE_WINNERS_TAG);
+                    ctx.clear_object_tag(VOTED_OBJECTS_TAG);
+                    let completion = queue_vote_events(effect, game, ctx, &votes, vote_counts_map)?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    let payload = execute_vote_payloads(effect, &votes, game, ctx)?;
+                    let primary = payload.outcome.summary_projection();
+                    Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
+                        primary,
+                        [completion, payload],
+                    ))
+                }
+                VoteChoice::Objects { .. } => {
+                    let Some((votes, object_vote_counts)) =
+                        collect_object_votes(effect, game, ctx, &players)
+                    else {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    };
+
+                    let max_votes = object_vote_counts.values().copied().max().unwrap_or(0);
+                    // Sorted so the tagged-object order is identical on every peer
+                    // (the counts map is a std HashMap with per-instance iteration order).
+                    let mut winning_objects: Vec<ObjectId> = object_vote_counts
+                        .iter()
+                        .filter_map(|(object_id, count)| {
+                            (*count == max_votes && *count > 0).then_some(*object_id)
+                        })
+                        .collect();
+                    winning_objects.sort_unstable();
+                    let mut voted_objects: Vec<ObjectId> =
+                        object_vote_counts.keys().copied().collect();
+                    voted_objects.sort_unstable();
+                    ctx.set_tagged_objects(
+                        VOTED_OBJECTS_TAG,
+                        snapshots_for_objects(game, &voted_objects),
+                    );
+                    ctx.set_tagged_objects(
+                        VOTE_WINNERS_TAG,
+                        snapshots_for_objects(game, &winning_objects),
+                    );
+
+                    let mut result = VoteResult::default();
+                    result.total_votes = votes.len();
+                    result.object_counts = object_vote_counts.clone();
+                    ctx.vote_results.insert(ctx.source, result);
+
+                    let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
+                    for (object_id, count) in object_vote_counts {
+                        vote_counts_map.insert(object_id.0 as usize, count);
+                    }
+                    queue_vote_events(effect, game, ctx, &votes, vote_counts_map)
+                }
+                VoteChoice::Players { .. } => {
+                    let Some((votes, player_vote_counts)) =
+                        collect_player_votes(effect, game, ctx, &players)?
+                    else {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    };
+
+                    let mut result = VoteResult::default();
+                    result.total_votes = votes.len();
+                    result.player_counts = player_vote_counts.clone();
+                    ctx.vote_results.insert(ctx.source, result);
+
+                    let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
+                    for (player_id, count) in player_vote_counts {
+                        vote_counts_map.insert(player_id.0 as usize, count);
+                    }
+                    queue_vote_events(effect, game, ctx, &votes, vote_counts_map)
                 }
             }
-            ctx.vote_results.insert(ctx.source, result);
-            ctx.clear_object_tag(VOTE_WINNERS_TAG);
-            ctx.clear_object_tag(VOTED_OBJECTS_TAG);
-            queue_vote_events(effect, game, ctx, &votes, vote_counts_map);
-            execute_vote_payloads(effect, &votes, game, ctx)
-        }
-        VoteChoice::Objects { .. } => {
-            let Some((votes, object_vote_counts)) =
-                collect_object_votes(effect, game, ctx, &players)
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
-
-            let max_votes = object_vote_counts.values().copied().max().unwrap_or(0);
-            // Sorted so the tagged-object order is identical on every peer
-            // (the counts map is a std HashMap with per-instance iteration order).
-            let mut winning_objects: Vec<ObjectId> = object_vote_counts
-                .iter()
-                .filter_map(|(object_id, count)| {
-                    (*count == max_votes && *count > 0).then_some(*object_id)
-                })
-                .collect();
-            winning_objects.sort_unstable();
-            let mut voted_objects: Vec<ObjectId> = object_vote_counts.keys().copied().collect();
-            voted_objects.sort_unstable();
-            ctx.set_tagged_objects(
-                VOTED_OBJECTS_TAG,
-                snapshots_for_objects(game, &voted_objects),
-            );
-            ctx.set_tagged_objects(
-                VOTE_WINNERS_TAG,
-                snapshots_for_objects(game, &winning_objects),
-            );
-
-            let mut result = VoteResult::default();
-            result.total_votes = votes.len();
-            result.object_counts = object_vote_counts.clone();
-            ctx.vote_results.insert(ctx.source, result);
-
-            let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
-            for (object_id, count) in object_vote_counts {
-                vote_counts_map.insert(object_id.0 as usize, count);
-            }
-            queue_vote_events(effect, game, ctx, &votes, vote_counts_map);
-            Ok(EffectOutcome::resolved())
-        }
-        VoteChoice::Players { .. } => {
-            let Some((votes, player_vote_counts)) =
-                collect_player_votes(effect, game, ctx, &players)?
-            else {
-                return Ok(EffectOutcome::count(0));
-            };
-
-            let mut result = VoteResult::default();
-            result.total_votes = votes.len();
-            result.player_counts = player_vote_counts.clone();
-            ctx.vote_results.insert(ctx.source, result);
-
-            let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
-            for (player_id, count) in player_vote_counts {
-                vote_counts_map.insert(player_id.0 as usize, count);
-            }
-            queue_vote_events(effect, game, ctx, &votes, vote_counts_map);
-            Ok(EffectOutcome::resolved())
-        }
-    }
+        },
+    )
 }
 
 #[cfg(test)]

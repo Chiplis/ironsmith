@@ -2,9 +2,10 @@
 //!
 //! This module implements the `DealDamage` effect, which deals damage to a target
 //! creature, planeswalker, or player.
+#[cfg(test)]
 use crate::effect::ExecutionFact;
+#[cfg(test)]
 use crate::events::LifeGainEvent;
-use crate::events::processing::ProcessedDamageResult;
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -15,6 +16,7 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
+#[cfg(test)]
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::processing::SimultaneousDamageEvent;
@@ -85,305 +87,40 @@ pub(crate) fn apply_processed_damage_outcome_opts(
     dm: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<EffectOutcome, ExecutionError> {
     let checkpoint = game.clone();
-    let result = crate::events::processing::with_deferred_prevention_follow_up_outcome(
-        game,
-        dm,
-        |game, dm| {
-            let controller = game
-                .current_controller(source)
-                .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
-                .unwrap_or(game.turn.active_player);
-            let mut parent = ExecutionContext::new(source, controller, dm)
-                .with_cause(cause.clone())
-                .with_provenance(provenance);
-            parent.source_snapshot = source_snapshot.cloned();
-            parent.replacement = replacement_scope.clone();
-            let batch = game.simultaneous_action_batch();
-            super::multi_source_damage::commit_damage_batch(
-                game,
-                &mut parent,
-                vec![SimultaneousDamageEvent {
-                    source,
-                    target: initial_target,
-                    amount,
-                    is_combat: source_is_combat,
-                    unpreventable,
-                    cause,
-                    source_snapshot: source_snapshot.cloned(),
-                }],
-                batch,
-            )
-        },
-    );
-    let pending = dm.awaiting_choice();
-    if pending || result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
-    }
-    if pending && result.is_ok() {
-        return Ok(EffectOutcome::count(0));
-    }
-    result
-}
-
-fn apply_simultaneous_damage_outcome_opts(
-    game: &mut GameState,
-    source: crate::ids::ObjectId,
-    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    initial_targets: Vec<DamageTarget>,
-    amount: u32,
-    source_is_combat: bool,
-    unpreventable: bool,
-    provenance: crate::provenance::ProvNodeId,
-    cause: crate::events::cause::EventCause,
-    replacement_scope: &crate::effects::ReplacementExecutionContext,
-    dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<EffectOutcome, ExecutionError> {
-    apply_simultaneous_damage_assignments_opts(
-        game,
-        source,
-        source_snapshot,
-        initial_targets
-            .into_iter()
-            .map(|target| (target, amount))
-            .collect(),
-        source_is_combat,
-        unpreventable,
-        provenance,
-        cause,
-        replacement_scope,
-        dm,
-    )
-}
-
-/// Deals possibly different amounts from one source to several recipients as
-/// one simultaneous damage event (one batch, one lifelink gain: CR 702.15e).
-#[allow(clippy::too_many_arguments)]
-fn apply_simultaneous_damage_assignments_opts(
-    game: &mut GameState,
-    source: crate::ids::ObjectId,
-    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    assignments: Vec<(DamageTarget, u32)>,
-    source_is_combat: bool,
-    unpreventable: bool,
-    provenance: crate::provenance::ProvNodeId,
-    cause: crate::events::cause::EventCause,
-    replacement_scope: &crate::effects::ReplacementExecutionContext,
-    dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<EffectOutcome, ExecutionError> {
-    let checkpoint = game.clone();
-    let result = crate::events::processing::with_deferred_prevention_follow_up_outcome(
-        game,
-        dm,
-        |game, dm| {
-            let controller = game
-                .current_controller(source)
-                .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
-                .unwrap_or(game.turn.active_player);
-            let mut parent = ExecutionContext::new(source, controller, dm)
-                .with_cause(cause.clone())
-                .with_provenance(provenance);
-            parent.source_snapshot = source_snapshot.cloned();
-            parent.replacement = replacement_scope.clone();
-            let events = assignments
-                .into_iter()
-                .map(|(target, amount)| SimultaneousDamageEvent {
-                    source,
-                    target,
-                    amount,
-                    is_combat: source_is_combat,
-                    unpreventable,
-                    cause: cause.clone(),
-                    source_snapshot: source_snapshot.cloned(),
-                })
-                .collect();
-            let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
-                game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
-            });
-            super::multi_source_damage::commit_damage_batch(game, &mut parent, events, Some(batch))
-        },
-    );
-    let pending = dm.awaiting_choice();
-    if pending || result.is_err() {
-        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
-    }
-    if pending && result.is_ok() {
-        return Ok(EffectOutcome::count(0));
-    }
-    result
-}
-
-#[allow(clippy::too_many_arguments)]
-fn apply_processed_damage_results(
-    game: &mut GameState,
-    source: crate::ids::ObjectId,
-    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    processed_results: impl IntoIterator<Item = ProcessedDamageResult>,
-    simultaneous_batch: Option<crate::provenance::ProvNodeId>,
-    source_is_combat: bool,
-    provenance: crate::provenance::ProvNodeId,
-    cause: crate::events::cause::EventCause,
-    replacement_scope: &crate::effects::ReplacementExecutionContext,
-    dm: &mut dyn crate::decision::DecisionMaker,
-) -> Result<EffectOutcome, ExecutionError> {
-    let source_controller = game
-        .object(source)
-        .filter(|_| !game.is_phased_out(source))
-        .map(|obj| game.controller_of(obj))
-        .or_else(|| source_snapshot.map(|snapshot| snapshot.controller));
-
-    let keywords = crate::rules::damage::source_damage_keywords(game, source, source_snapshot);
-    let mut outcomes = Vec::new();
-    let mut programs = Vec::new();
-    let damage_source_snapshot = game
-        .object(source)
-        .filter(|_| !game.is_phased_out(source))
-        .map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        })
-        .or_else(|| source_snapshot.cloned());
-    let mut total_damage_dealt = 0u32;
-    let mut affected_objects = Vec::new();
-    let mut any_replacement_prevented = false;
-    let mut lifelink_outcome = None;
-    for processed in processed_results {
-        programs.extend(processed.programs);
-        any_replacement_prevented |= processed.replacement_prevented;
-        if let Some(mut payload) = processed.payload_outcome {
-            if let Some(batch) = simultaneous_batch {
-                for event in &mut payload.events {
-                    *event = event.clone().with_simultaneous_batch(batch);
-                }
-            }
-            outcomes.push(payload);
-        }
-        for assignment in processed.assignments {
-            let target_snapshot = match assignment.target {
-                DamageTarget::Object(object_id) => game.object(object_id).map(|obj| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        obj, game,
-                    )
-                }),
-                DamageTarget::Player(_) => None,
-            };
-            let excess_damage = match assignment.target {
-                DamageTarget::Object(object_id) => {
-                    excess_damage_to_object(game, object_id, assignment.amount, keywords)
-                }
-                DamageTarget::Player(_) => 0,
-            };
-            let applied = crate::rules::damage::apply_processed_damage_assignment_with_scope(
-                game,
-                source,
-                assignment.target,
-                assignment.amount,
-                keywords,
-                cause.clone(),
-                dm,
-                replacement_scope,
-                source_snapshot,
-                provenance,
-            )?;
-            if dm.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if !applied.applied {
-                continue;
-            }
-
-            total_damage_dealt = total_damage_dealt.saturating_add(assignment.amount);
-            if let DamageTarget::Object(object_id) = assignment.target {
-                affected_objects.push(object_id);
-            }
-            let mut outcome = EffectOutcome::count(i64::from(assignment.amount));
-            if excess_damage > 0 {
-                outcome = outcome
-                    .with_execution_fact(ExecutionFact::ExcessDamageDealt)
-                    .with_execution_fact(ExecutionFact::ExcessDamage(excess_damage));
-            }
-            if assignment.amount > 0 {
-                let mut damage_event = DamageEvent::with_cause(
-                    source,
-                    assignment.target,
-                    assignment.amount,
-                    source_is_combat,
-                    cause.clone(),
-                )
-                .with_excess_damage(excess_damage);
-                if let Some(snapshot) = target_snapshot {
-                    damage_event = damage_event.with_target_snapshot(snapshot);
-                }
-                let mut event = TriggerEvent::new_with_provenance(damage_event, provenance);
-                if let Some(batch) = simultaneous_batch {
-                    event = event.with_simultaneous_batch(batch);
-                }
-                if let Some(snapshot) = damage_source_snapshot.as_ref() {
-                    event = event.with_source_snapshot(snapshot.clone());
-                }
-                outcome = outcome.with_event(event);
-            }
-
-            if let Some(mut consequence_outcome) = applied.consequence_outcome {
-                if let Some(batch) = simultaneous_batch {
-                    for event in &mut consequence_outcome.events {
-                        *event = event.clone().with_simultaneous_batch(batch);
-                    }
-                }
-                outcome =
-                    EffectOutcome::aggregate_replacement_outcomes(outcome, [consequence_outcome]);
-            }
-
-            outcomes.push(outcome);
-        }
-    }
-
-    if keywords.has_lifelink
-        && total_damage_dealt > 0
-        && let Some(controller) = source_controller
-    {
-        let mut life_ctx = ExecutionContext::new(source, controller, &mut *dm);
-        life_ctx.provenance = provenance;
-        life_ctx.cause = cause.clone();
-        life_ctx.source_snapshot = source_snapshot.cloned();
-        life_ctx.replacement = replacement_scope.clone();
-        let gain = crate::effects::life::life_change::execute_life_change(
+    let result = (|| {
+        let controller = game
+            .current_controller(source)
+            .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
+            .unwrap_or(game.turn.active_player);
+        let mut parent = ExecutionContext::new(source, controller, dm)
+            .with_cause(cause.clone())
+            .with_provenance(provenance);
+        parent.source_snapshot = source_snapshot.cloned();
+        parent.replacement = replacement_scope.clone();
+        let batch = game.simultaneous_action_batch();
+        super::execute_damage_batch(
             game,
-            &mut life_ctx,
-            crate::events::Event::new_with_provenance(
-                LifeGainEvent::new(controller, total_damage_dealt).with_source(source),
-                provenance,
-            ),
-        )?;
-        if life_ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        lifelink_outcome = Some(gain);
+            &mut parent,
+            vec![SimultaneousDamageEvent {
+                source,
+                target: initial_target,
+                amount,
+                is_combat: source_is_combat,
+                unpreventable,
+                cause,
+                source_snapshot: source_snapshot.cloned(),
+            }],
+            batch,
+        )
+    })();
+    let pending = dm.awaiting_choice();
+    if pending || result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
     }
-
-    let mut outcome = if outcomes.is_empty() && any_replacement_prevented {
-        EffectOutcome::prevented()
-    } else if outcomes.is_empty() {
-        EffectOutcome::count(0)
-    } else {
-        EffectOutcome::aggregate_summing_counts(outcomes)
-    };
-    if !affected_objects.is_empty() {
-        outcome = outcome.with_affected_objects_from_game(game, affected_objects);
+    if pending && result.is_ok() {
+        return Ok(EffectOutcome::count(0));
     }
-    if let Some(gain) = lifelink_outcome {
-        outcome = EffectOutcome::aggregate_replacement_outcomes(outcome, [gain]);
-    }
-    let mut parent = ExecutionContext::new(
-        source,
-        source_controller.unwrap_or(game.turn.active_player),
-        dm,
-    )
-    .with_cause(cause)
-    .with_provenance(provenance);
-    parent.source_snapshot = damage_source_snapshot;
-    parent.replacement = replacement_scope.clone();
-    finish_damage_replacement_programs(game, &mut parent, outcome, programs)
+    result
 }
 
 /// Execute captured additions after their owning damage operation. Targets
@@ -394,34 +131,79 @@ pub(crate) fn finish_damage_replacement_programs(
     outcome: EffectOutcome,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
 ) -> Result<EffectOutcome, ExecutionError> {
-    crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
+    complete_damage_replacement_programs(game, parent, outcome, programs)
+        .map(crate::effects::replacement::CompletedReplacementPrograms::into_outcome)
+}
+
+pub(super) fn complete_damage_replacement_programs(
+    game: &mut GameState,
+    parent: &mut ExecutionContext,
+    outcome: EffectOutcome,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+) -> Result<crate::effects::replacement::CompletedReplacementPrograms, ExecutionError> {
+    crate::effects::replacement::complete_deferred_replacement_programs_with_bindings(
         game,
         parent,
         outcome,
         programs,
-        |_, context, _| {
-            let damage = crate::events::downcast_event::<DamageEvent>(context.event.inner())
-                .ok_or_else(|| {
-                    ExecutionError::InternalError("damage addition lost its matched event".into())
-                })?;
-            let target = match damage.target {
-                DamageTarget::Player(player) => ResolvedTarget::Player(player),
-                DamageTarget::Object(object) => ResolvedTarget::Object(object),
-            };
-            let snapshots = damage
-                .target_snapshot
-                .clone()
-                .into_iter()
-                .collect::<Vec<_>>();
-            Ok(crate::effects::replacement::ReplacementProgramBindings {
-                targets: Some(vec![target]),
-                object_tags: vec![
-                    ("it".into(), snapshots.clone()),
-                    ("__it__".into(), snapshots),
-                ],
-            })
-        },
+        |_, context, _| damage_replacement_bindings(context),
     )
+}
+
+/// Commit a frozen replacement of an original damage assignment. Selection
+/// never executes this program; its first draw retains the original tail.
+pub(crate) fn commit_damage_replacement_original_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    program: crate::events::processing::PreparedReplacementProgram,
+) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    if program.effects.iter().any(crate::effects::replacement::replacement_effect_contains_draw)
+        && !program.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    {
+        return Err(ExecutionError::Impossible(
+            "damage replacement original has no native draw-continuation owner".into(),
+        ));
+    }
+    let bindings = damage_replacement_bindings(&program.context)?;
+    if let Some(receipt) = crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
+        game, ctx, &program.effects, program.source, program.controller, &program.context,
+        program.source_snapshot.clone(), bindings.clone(),
+    )? {
+        return Ok(receipt);
+    }
+    let outputs = crate::effects::replacement::execute_replacement_payload_with_outputs(
+        game, ctx, &program.effects, program.source, program.controller, &program.context,
+        bindings.targets, program.source_snapshot, bindings.object_tags,
+    )?;
+    let mut original = EffectOutcome::replaced();
+    original.set_value(crate::effect::OutcomeValue::Count(0));
+    let aggregate = EffectOutcome::aggregate_replacement_outcomes(original, [outputs.outcome.clone()]);
+    Ok(crate::effects::SimultaneousEffectCommit::finished(outputs.project_aggregate(aggregate)))
+}
+
+pub(super) fn damage_replacement_bindings(
+    context: &crate::events::processing::ReplacementEventContext,
+) -> Result<crate::effects::replacement::ReplacementProgramBindings, ExecutionError> {
+    let damage = crate::events::downcast_event::<DamageEvent>(context.event.inner())
+        .ok_or_else(|| {
+            ExecutionError::InternalError("damage addition lost its matched event".into())
+        })?;
+    let target = match damage.target {
+        DamageTarget::Player(player) => ResolvedTarget::Player(player),
+        DamageTarget::Object(object) => ResolvedTarget::Object(object),
+    };
+    let snapshots = damage
+        .target_snapshot
+        .clone()
+        .into_iter()
+        .collect::<Vec<_>>();
+    Ok(crate::effects::replacement::ReplacementProgramBindings {
+        targets: Some(vec![target]),
+        object_tags: vec![
+            ("it".into(), snapshots.clone()),
+            ("__it__".into(), snapshots),
+        ],
+    })
 }
 
 /// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
@@ -482,144 +264,515 @@ pub(crate) fn object_can_be_dealt_damage(
             || game.current_has_card_type(object_id, CardType::Battle))
 }
 
-trait ExcessDamageRedirectExt {
-    fn deal_with_excess_redirect(
+/// Ordinary damage occurrence policy, retained with captured assignments.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum DamageInstructionBatch {
+    Single,
+    Grouped,
+    Independent,
+}
+
+/// Authored damage inputs captured before any sibling participant commits.
+/// The batch owner still owns replacement processing, consequences and observation.
+#[derive(Debug)]
+pub(super) enum DamageInstructionPlan {
+    Finished(EffectOutcome),
+    Assignments {
+        events: Vec<SimultaneousDamageEvent>,
+        batch_policy: DamageInstructionBatch,
+    },
+}
+
+impl DamageInstructionPlan {
+    /// Some authored instructions retain their own ordinary occurrence even
+    /// inside an enclosing batch. Cohort execution explicitly supplies its
+    /// shared owner instead; it does not change this ordinary dispatch policy.
+    pub(super) fn from_independent_events(events: Vec<SimultaneousDamageEvent>) -> Self {
+        Self::Assignments {
+            events,
+            batch_policy: DamageInstructionBatch::Independent,
+        }
+    }
+
+    pub(super) fn from_events(events: Vec<SimultaneousDamageEvent>) -> Self {
+        if events.is_empty() {
+            Self::Finished(EffectOutcome::count(0))
+        } else {
+            Self::Assignments {
+                events,
+                batch_policy: DamageInstructionBatch::Grouped,
+            }
+        }
+    }
+    fn assignments(
+        ctx: &ExecutionContext,
+        assignments: Vec<(DamageTarget, u32)>,
+        grouped: bool,
+        is_combat: bool,
+        unpreventable: bool,
+    ) -> Self {
+        Self::Assignments {
+            events: assignments
+                .into_iter()
+                .map(|(target, amount)| SimultaneousDamageEvent {
+                    source: ctx.source,
+                    target,
+                    amount,
+                    is_combat,
+                    unpreventable,
+                    cause: ctx.cause.clone(),
+                    source_snapshot: ctx.source_snapshot.clone(),
+                })
+                .collect(),
+            batch_policy: if grouped {
+                DamageInstructionBatch::Grouped
+            } else {
+                DamageInstructionBatch::Single
+            },
+        }
+    }
+
+    fn single(
+        ctx: &ExecutionContext,
+        target: DamageTarget,
+        amount: u32,
+        is_combat: bool,
+        unpreventable: bool,
+    ) -> Self {
+        Self::assignments(ctx, vec![(target, amount)], false, is_combat, unpreventable)
+    }
+
+    fn recipients(
+        ctx: &ExecutionContext,
+        targets: Vec<DamageTarget>,
+        amount: u32,
+        is_combat: bool,
+        unpreventable: bool,
+    ) -> Self {
+        Self::assignments(
+            ctx,
+            targets.into_iter().map(|target| (target, amount)).collect(),
+            true,
+            is_combat,
+            unpreventable,
+        )
+    }
+
+    pub(super) fn capture(self, ctx: &ExecutionContext) -> CapturedDamageInstructionPlan {
+        match self {
+            Self::Finished(outcome) => CapturedDamageInstructionPlan::Finished(outcome),
+            Self::Assignments {
+                events,
+                batch_policy,
+            } => CapturedDamageInstructionPlan::Assignments {
+                inputs: super::multi_source_damage::capture_damage_inputs(events, ctx),
+                batch_policy,
+            },
+        }
+    }
+
+    pub(super) fn execute_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        match self {
+            Self::Finished(outcome) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                outcome,
+            )),
+            Self::Assignments {
+                events,
+                batch_policy,
+            } => {
+                let batch = damage_instruction_batch(game, ctx, batch_policy);
+                super::execute_damage_batch_with_outputs(game, ctx, events, batch)
+            }
+        }
+    }
+}
+
+fn damage_instruction_batch(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    batch_policy: DamageInstructionBatch,
+) -> Option<crate::provenance::ProvNodeId> {
+    let allocate = |game: &mut GameState| {
+        game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::Damage)
+    };
+    match batch_policy {
+        DamageInstructionBatch::Single => game.simultaneous_action_batch(),
+        DamageInstructionBatch::Grouped => game
+            .simultaneous_action_batch()
+            .or_else(|| Some(allocate(game))),
+        DamageInstructionBatch::Independent => Some(allocate(game)),
+    }
+}
+
+#[derive(Debug)]
+pub(super) enum CapturedDamageInstructionPlan {
+    Finished(EffectOutcome),
+    Assignments {
+        inputs: Vec<super::multi_source_damage::CapturedDamageInput>,
+        batch_policy: DamageInstructionBatch,
+    },
+}
+
+impl CapturedDamageInstructionPlan {
+    fn seal(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SealedDamageInstructionPlan, ExecutionError> {
+        match self {
+            Self::Finished(outcome) => Ok(SealedDamageInstructionPlan::Finished(outcome)),
+            Self::Assignments {
+                inputs,
+                batch_policy,
+            } => {
+                let scope = inputs.first().map(|input| input.participant_scope());
+                let batch = damage_instruction_batch(game, ctx, batch_policy);
+                let proposal =
+                    super::DamageActionInputs { inputs }.seal_with_batch(game, ctx, batch)?;
+                Ok(SealedDamageInstructionPlan::Assignments { proposal, scope })
+            }
+        }
+    }
+
+    fn execute_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        match self {
+            Self::Finished(outcome) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                outcome,
+            )),
+            Self::Assignments {
+                inputs,
+                batch_policy,
+            } => {
+                let batch = damage_instruction_batch(game, ctx, batch_policy);
+                let scope = inputs.first().map(|input| input.participant_scope());
+                let mut outputs = super::batch::execute_captured_damage_batch_with_outputs(
+                    game, ctx, inputs, batch,
+                )?;
+                if !ctx.decision_maker.awaiting_choice() {
+                    if let Some(scope) = scope {
+                        let binding = outputs.participant_view(&scope)?;
+                        let observations = outputs.outcome.clone();
+                        outputs = outputs.project_aggregate(
+                            binding.with_authoritative_observations(observations),
+                        );
+                    }
+                }
+                Ok(outputs)
+            }
+        }
+    }
+}
+
+/// A claimed instruction retains one physical owner after contribution
+/// collection. Commitment cannot prepare replacement choices a second time.
+#[derive(Debug)]
+enum SealedDamageInstructionPlan {
+    Finished(EffectOutcome),
+    Assignments {
+        proposal: Box<dyn crate::effects::SimultaneousEffectProposal>,
+        scope: Option<crate::effects::EffectOutcomeScope>,
+    },
+}
+
+impl SealedDamageInstructionPlan {
+    fn commit_original_with_outputs(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        match self {
+            Self::Finished(outcome) => Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
+            )),
+            Self::Assignments { proposal, scope } => {
+                let receipt = proposal.commit_original_with_outputs(game, ctx)?;
+                match scope {
+                    Some(scope) => {
+                        crate::effects::composition::adapt_original_outcome_with_outputs(
+                            receipt,
+                            Box::new(DamageInstructionOutcomeAdapter { scope }),
+                            game,
+                            ctx,
+                        )
+                    }
+                    None => Ok(receipt),
+                }
+            }
+        }
+    }
+}
+
+/// Keep the original receipt physical; bind the authored instruction only
+/// after its completion owner has supplied actual participant outputs.
+struct DamageInstructionOutcomeAdapter {
+    scope: crate::effects::EffectOutcomeScope,
+}
+
+impl crate::effects::composition::OriginalOutcomeAdapter for DamageInstructionOutcomeAdapter {
+    fn finish(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        result
+    }
+
+    fn finish_with_outputs(
+        self: Box<Self>,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let outputs = result?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let binding = outputs.participant_view(&self.scope)?;
+        let observations = outputs.outcome.clone();
+        Ok(outputs.project_aggregate(binding.with_authoritative_observations(observations)))
+    }
+}
+
+#[derive(Debug)]
+struct DamageInstructionProposal {
+    effect: Box<dyn DamageInstructionInputProvider>,
+    plan: Option<CapturedDamageInstructionPlan>,
+    sealed: Option<SealedDamageInstructionPlan>,
+}
+
+/// Select authored inputs without preparing replacements or committing damage.
+/// All instruction families then compose the same captured proposal lifecycle.
+pub(super) trait DamageInstructionInputProvider: std::fmt::Debug + Send {
+    fn capture_damage_instruction(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-        object_id: crate::ids::ObjectId,
-        amount: u32,
-    ) -> Result<Option<EffectOutcome>, ExecutionError>;
+    ) -> Result<CapturedDamageInstructionPlan, ExecutionError>;
 }
 
-impl ExcessDamageRedirectExt for DealDamageEffect {
-    /// "Excess damage is dealt to that creature's controller instead": the
-    /// creature is dealt only lethal damage and the rest goes to its
-    /// controller (CR 120.4a).
-    fn deal_with_excess_redirect(
+pub(super) fn prepare_damage_instruction(
+    effect: impl DamageInstructionInputProvider + 'static,
+) -> Box<dyn crate::effects::SimultaneousEffectProposal> {
+    Box::new(DamageInstructionProposal {
+        effect: Box::new(effect),
+        plan: None,
+        sealed: None,
+    })
+}
+
+impl DamageInstructionInputProvider for DealDamageEffect {
+    fn capture_damage_instruction(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-        object_id: crate::ids::ObjectId,
-        amount: u32,
-    ) -> Result<Option<EffectOutcome>, ExecutionError> {
-        let Some(redirect) = &self.excess_to_controller else {
-            return Ok(None);
-        };
-        if let Some(condition) = &redirect.condition
-            && !crate::condition_eval::evaluate_condition_resolution(game, condition, ctx)?
-        {
-            return Ok(None);
-        }
-        let Some(object) = game.object(object_id) else {
-            return Ok(None);
-        };
-        if !game.current_is_creature(object_id) {
-            return Ok(None);
-        }
-        let controller = game.controller_of(object);
-        let keywords = crate::rules::damage::source_damage_keywords(
-            game,
-            ctx.source,
-            ctx.source_snapshot.as_ref(),
-        );
-        let excess = excess_damage_to_object(game, object_id, amount, keywords).min(amount);
-        if excess == 0 {
-            return Ok(None);
-        }
-        // CR 120.4a modifies the one damage event: the lethal part and the
-        // redirected excess are dealt simultaneously, so lifelink yields a
-        // single life-gain event (CR 702.15e) and watchers see one batch.
-        Ok(Some(apply_simultaneous_damage_assignments_opts(
-            game,
-            ctx.source,
-            ctx.source_snapshot.as_ref(),
-            vec![
-                (DamageTarget::Object(object_id), amount - excess),
-                (DamageTarget::Player(controller), excess),
-            ],
-            self.source_is_combat,
-            self.unpreventable,
-            ctx.provenance,
-            ctx.cause.clone(),
-            &ctx.replacement,
-            &mut *ctx.decision_maker,
-        )?))
+    ) -> Result<CapturedDamageInstructionPlan, ExecutionError> {
+        self.resolve_damage_inputs(game, ctx)
+            .map(|plan| plan.capture(ctx))
     }
 }
 
-impl EffectExecutor for DealDamageEffect {
-    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
-        self.target.mentions_player_filter(needle)
-    }
-    fn supports_simultaneous_player_action(&self) -> bool {
-        true
+impl crate::effects::SimultaneousEffectProposal for DamageInstructionProposal {
+    fn damage_action_inputs(&self) -> Option<super::DamageActionInputs> {
+        self.plan.as_ref().map(|plan| super::DamageActionInputs {
+            inputs: match plan {
+                CapturedDamageInstructionPlan::Finished(_) => Vec::new(),
+                CapturedDamageInstructionPlan::Assignments { inputs, .. } => inputs.clone(),
+            },
+        })
     }
 
-    fn prepare_simultaneous_player_action(
-        &self,
-        _game: &GameState,
+    fn bind_damage_action(
+        self: Box<Self>,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        let outcome = match self.plan {
+            Some(CapturedDamageInstructionPlan::Finished(outcome)) => Ok(outcome),
+            Some(CapturedDamageInstructionPlan::Assignments { inputs, .. }) => match inputs.first()
+            {
+                Some(input) => owner.participant_view(&input.participant_scope()),
+                None => Ok(EffectOutcome::count(0)),
+            },
+            None => Err(ExecutionError::InternalError(
+                "shared damage binding lost its prepared instruction".into(),
+            )),
+        }?;
+        Ok(crate::effects::DamageActionBinding::from_outcome(outcome))
+    }
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        // Dealing damage involves no player choices (targets were fixed
-        // earlier); defer to commit so the batch lands simultaneously.
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
+    ) -> Result<(), ExecutionError> {
+        if self.plan.is_none() && self.sealed.is_none() {
+            let plan = self.effect.capture_damage_instruction(game, ctx)?;
+            if !ctx.decision_maker.awaiting_choice() {
+                self.plan = Some(plan);
+            }
+        }
+        Ok(())
     }
 
-    fn execute(
-        &self,
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.sealed.is_some() || ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        let plan = self.plan.take().ok_or_else(|| {
+            ExecutionError::InternalError("damage sealing lost its captured instruction".into())
+        })?;
+        let sealed = plan.seal(game, ctx)?;
+        if !ctx.decision_maker.awaiting_choice() {
+            self.sealed = Some(sealed);
+        }
+        Ok(())
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    // A standalone prepared instruction delegates the same sealed owner as a
+    // cohort, retaining additions until the enclosing coordinator completes.
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        self.seal_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        self.sealed
+            .take()
+            .ok_or_else(|| {
+                ExecutionError::InternalError("prepared damage lost its sealed original".into())
+            })?
+            .commit_original_with_outputs(game, ctx)
+    }
+
+    fn commit(
+        mut self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.sealed.is_some() {
+            return crate::effects::composition::complete_prepared_original_with_grouping(
+                self, game, ctx, false,
+            );
+        }
+        // Full ordinary execution retains the damage gateway's established
+        // prevention-deferral and transaction contract.
+        self.prepare_original(game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        self.plan
+            .take()
+            .ok_or_else(|| {
+                ExecutionError::InternalError("prepared damage lost its authored inputs".into())
+            })?
+            .execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+}
+
+trait DamageInstructionInputsExt {
+    fn resolve_damage_inputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<DamageInstructionPlan, ExecutionError>;
+
+    fn resolve_excess_redirect(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        object_id: crate::ids::ObjectId,
+        amount: u32,
+    ) -> Result<Option<DamageInstructionPlan>, ExecutionError>;
+}
+
+impl DamageInstructionInputsExt for DealDamageEffect {
+    fn resolve_damage_inputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<DamageInstructionPlan, ExecutionError> {
         let amount = resolve_nonnegative_u32(game, &self.amount, ctx)?;
 
         // Check if this is targeting IteratedPlayer (used in ForEachOpponent)
         // If so, resolve the target from the context's iterated_player
         if let ChooseSpec::Player(PlayerFilter::IteratedPlayer) = &self.target {
             if let Some(player_id) = ctx.iteration.iterated_player {
-                return Ok(apply_processed_damage_outcome_opts(
-                    game,
-                    ctx.source,
-                    ctx.source_snapshot.as_ref(),
+                return Ok(DamageInstructionPlan::single(
+                    ctx,
                     DamageTarget::Player(player_id),
                     amount,
                     self.source_is_combat,
                     self.unpreventable,
-                    ctx.provenance,
-                    ctx.cause.clone(),
-                    &ctx.replacement,
-                    &mut *ctx.decision_maker,
-                )?);
+                ));
             }
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(DamageInstructionPlan::Finished(
+                EffectOutcome::target_invalid(),
+            ));
         }
 
         if let ChooseSpec::Iterated = &self.target {
             if let Some(object_id) = ctx.iteration.iterated_object {
                 if game.object(object_id).is_some() {
                     if !object_can_be_dealt_damage(game, object_id) {
-                        return Ok(EffectOutcome::target_invalid());
+                        return Ok(DamageInstructionPlan::Finished(
+                            EffectOutcome::target_invalid(),
+                        ));
                     }
-                    return Ok(apply_processed_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    return Ok(DamageInstructionPlan::single(
+                        ctx,
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?);
+                    ));
                 }
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ));
             }
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(DamageInstructionPlan::Finished(
+                EffectOutcome::target_invalid(),
+            ));
         }
 
         if let ChooseSpec::AttackedPlayerOrPlaneswalker = &self.target {
@@ -638,86 +791,72 @@ impl EffectExecutor for DealDamageEffect {
                 .or_else(|| ctx.combat.defending_player.map(AttackEventTarget::Player));
 
             let Some(attacked_target) = attacked_target else {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ));
             };
 
             match attacked_target {
                 AttackEventTarget::Player(player_id) => {
-                    return Ok(apply_processed_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    return Ok(DamageInstructionPlan::single(
+                        ctx,
                         DamageTarget::Player(player_id),
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?);
+                    ));
                 }
                 AttackEventTarget::Planeswalker(object_id) => {
                     if game.object(object_id).is_none()
                         || !game.current_has_card_type(object_id, CardType::Planeswalker)
                     {
-                        return Ok(EffectOutcome::target_invalid());
+                        return Ok(DamageInstructionPlan::Finished(
+                            EffectOutcome::target_invalid(),
+                        ));
                     }
-                    return Ok(apply_processed_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    return Ok(DamageInstructionPlan::single(
+                        ctx,
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?);
+                    ));
                 }
                 AttackEventTarget::Battle(object_id) => {
                     if game.object(object_id).is_none()
                         || !game.current_has_card_type(object_id, CardType::Battle)
                     {
-                        return Ok(EffectOutcome::target_invalid());
+                        return Ok(DamageInstructionPlan::Finished(
+                            EffectOutcome::target_invalid(),
+                        ));
                     }
-                    return Ok(apply_processed_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    return Ok(DamageInstructionPlan::single(
+                        ctx,
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?);
+                    ));
                 }
                 // CR 506.4c: it isn't attacking anything.
-                AttackEventTarget::Nothing => return Ok(EffectOutcome::target_invalid()),
+                AttackEventTarget::Nothing => {
+                    return Ok(DamageInstructionPlan::Finished(
+                        EffectOutcome::target_invalid(),
+                    ));
+                }
             }
         }
 
         // Handle SourceController - deal damage to the controller of the source (e.g., Ancient Tomb)
         if let ChooseSpec::SourceController = &self.target {
             let controller = ctx.controller;
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         // "Each player" is one simultaneous damage event per matching player,
@@ -729,21 +868,15 @@ impl EffectExecutor for DealDamageEffect {
                 .map(DamageTarget::Player)
                 .collect::<Vec<_>>();
             if damage_targets.is_empty() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
             }
-            return Ok(apply_simultaneous_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::recipients(
+                ctx,
                 damage_targets,
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         // A triggered damage follow-up can refer to the exact participant of
@@ -779,21 +912,17 @@ impl EffectExecutor for DealDamageEffect {
                 _ => None,
             };
             let Some(recipient) = recipient else {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ));
             };
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 recipient,
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         if matches!(
@@ -838,21 +967,17 @@ impl EffectExecutor for DealDamageEffect {
             }
             if found_assignment {
                 return if damage_targets.is_empty() {
-                    Ok(EffectOutcome::target_invalid())
+                    Ok(DamageInstructionPlan::Finished(
+                        EffectOutcome::target_invalid(),
+                    ))
                 } else {
-                    Ok(apply_simultaneous_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    Ok(DamageInstructionPlan::recipients(
+                        ctx,
                         damage_targets,
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?)
+                    ))
                 };
             }
         }
@@ -882,21 +1007,17 @@ impl EffectExecutor for DealDamageEffect {
                         .map(|snapshot| snapshot.controller)
                 });
             let Some(controller) = controller else {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ));
             };
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         let controller_of_specific = match &self.target {
@@ -928,21 +1049,17 @@ impl EffectExecutor for DealDamageEffect {
                         })
                 });
             let Some(controller) = controller else {
-                return Ok(EffectOutcome::target_invalid());
+                return Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ));
             };
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         if matches!(
@@ -954,19 +1071,13 @@ impl EffectExecutor for DealDamageEffect {
                 | ChooseSpec::EachPlayer(_)
         ) && let Ok(player_id) = resolve_player_from_spec(game, &self.target, ctx)
         {
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 DamageTarget::Player(player_id),
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         let resolved_objects = resolve_objects_for_effect(game, ctx, &self.target)
@@ -990,10 +1101,8 @@ impl EffectExecutor for DealDamageEffect {
             ChooseSpec::All(_) | ChooseSpec::Tagged(_)
         ) || self.target.count().max.is_none_or(|max| max > 1);
         if names_several && resolved_objects.len() > 1 {
-            return Ok(apply_simultaneous_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::recipients(
+                ctx,
                 resolved_objects
                     .into_iter()
                     .map(DamageTarget::Object)
@@ -1001,29 +1110,19 @@ impl EffectExecutor for DealDamageEffect {
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
         if let Some(object_id) = resolved_objects.first().copied() {
-            if let Some(outcome) = self.deal_with_excess_redirect(game, ctx, object_id, amount)? {
+            if let Some(outcome) = self.resolve_excess_redirect(game, ctx, object_id, amount)? {
                 return Ok(outcome);
             }
-            return Ok(apply_processed_damage_outcome_opts(
-                game,
-                ctx.source,
-                ctx.source_snapshot.as_ref(),
+            return Ok(DamageInstructionPlan::single(
+                ctx,
                 DamageTarget::Object(object_id),
                 amount,
                 self.source_is_combat,
                 self.unpreventable,
-                ctx.provenance,
-                ctx.cause.clone(),
-                &ctx.replacement,
-                &mut *ctx.decision_maker,
-            )?);
+            ));
         }
 
         // Otherwise, use pre-resolved targets from ctx.targets
@@ -1037,44 +1136,133 @@ impl EffectExecutor for DealDamageEffect {
             }
             match target {
                 ResolvedTarget::Player(player_id) => {
-                    return Ok(apply_processed_damage_outcome_opts(
-                        game,
-                        ctx.source,
-                        ctx.source_snapshot.as_ref(),
+                    return Ok(DamageInstructionPlan::single(
+                        ctx,
                         DamageTarget::Player(*player_id),
                         amount,
                         self.source_is_combat,
                         self.unpreventable,
-                        ctx.provenance,
-                        ctx.cause.clone(),
-                        &ctx.replacement,
-                        &mut *ctx.decision_maker,
-                    )?);
+                    ));
                 }
                 ResolvedTarget::Object(object_id) => {
                     if game.object(*object_id).is_some() {
                         if !object_can_be_dealt_damage(game, *object_id) {
                             continue;
                         }
-                        return Ok(apply_processed_damage_outcome_opts(
-                            game,
-                            ctx.source,
-                            ctx.source_snapshot.as_ref(),
+                        return Ok(DamageInstructionPlan::single(
+                            ctx,
                             DamageTarget::Object(*object_id),
                             amount,
                             self.source_is_combat,
                             self.unpreventable,
-                            ctx.provenance,
-                            ctx.cause.clone(),
-                            &ctx.replacement,
-                            &mut *ctx.decision_maker,
-                        )?);
+                        ));
                     }
                 }
             }
         }
 
-        Ok(EffectOutcome::target_invalid())
+        Ok(DamageInstructionPlan::Finished(
+            EffectOutcome::target_invalid(),
+        ))
+    }
+
+    /// "Excess damage is dealt to that creature's controller instead": the
+    /// creature is dealt only lethal damage and the rest goes to its
+    /// controller (CR 120.4a).
+    fn resolve_excess_redirect(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        object_id: crate::ids::ObjectId,
+        amount: u32,
+    ) -> Result<Option<DamageInstructionPlan>, ExecutionError> {
+        let Some(redirect) = &self.excess_to_controller else {
+            return Ok(None);
+        };
+        if let Some(condition) = &redirect.condition
+            && !crate::condition_eval::evaluate_condition_resolution(game, condition, ctx)?
+        {
+            return Ok(None);
+        }
+        let Some(object) = game.object(object_id) else {
+            return Ok(None);
+        };
+        if !game.current_is_creature(object_id) {
+            return Ok(None);
+        }
+        let controller = game.controller_of(object);
+        let keywords = crate::rules::damage::source_damage_keywords(
+            game,
+            ctx.source,
+            ctx.source_snapshot.as_ref(),
+        );
+        let excess = excess_damage_to_object(game, object_id, amount, keywords).min(amount);
+        if excess == 0 {
+            return Ok(None);
+        }
+        // CR 120.4a modifies the one damage event: the lethal part and the
+        // redirected excess are dealt simultaneously, so lifelink yields a
+        // single life-gain event (CR 702.15e) and watchers see one batch.
+        Ok(Some(DamageInstructionPlan::assignments(
+            ctx,
+            vec![
+                (DamageTarget::Object(object_id), amount - excess),
+                (DamageTarget::Player(controller), excess),
+            ],
+            true,
+            self.source_is_combat,
+            self.unpreventable,
+        )))
+    }
+}
+
+impl EffectExecutor for DealDamageEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.target.mentions_player_filter(needle)
+    }
+    fn supports_damage_action_cohort(&self) -> bool {
+        true
+    }
+    fn shares_iterated_damage_action(&self) -> bool {
+        true
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(prepare_damage_instruction(self.clone()))
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.resolve_damage_inputs(game, ctx)?
+            .execute_with_outputs(game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -3007,12 +3195,19 @@ mod wide_damage_receipt_consumer_tests {
 
 pub use ironsmith_core::DealDamageToRecipientsEffect;
 
-impl EffectExecutor for DealDamageToRecipientsEffect {
-    fn execute(
+trait ResolveRecipientDamageInputs {
+    fn resolve_recipient_damage_inputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<DamageInstructionPlan, ExecutionError>;
+}
+impl ResolveRecipientDamageInputs for DealDamageToRecipientsEffect {
+    fn resolve_recipient_damage_inputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<DamageInstructionPlan, ExecutionError> {
         // The amount and every recipient belong to one pre-damage world.
         // In particular, lifelink or a prevention follow-up on one recipient
         // must not change the amount or membership of a later recipient.
@@ -3064,20 +3259,64 @@ impl EffectExecutor for DealDamageToRecipientsEffect {
             }
         }
         if targets.is_empty() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
         }
-        apply_simultaneous_damage_outcome_opts(
-            game,
-            ctx.source,
-            ctx.source_snapshot.as_ref(),
-            targets,
-            amount,
-            false,
-            false,
-            ctx.provenance,
-            ctx.cause.clone(),
-            &ctx.replacement,
-            &mut *ctx.decision_maker,
-        )
+        Ok(DamageInstructionPlan::recipients(
+            ctx, targets, amount, false, false,
+        ))
+    }
+}
+impl DamageInstructionInputProvider for DealDamageToRecipientsEffect {
+    fn capture_damage_instruction(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CapturedDamageInstructionPlan, ExecutionError> {
+        self.resolve_recipient_damage_inputs(game, ctx)
+            .map(|plan| plan.capture(ctx))
+    }
+}
+
+impl EffectExecutor for DealDamageToRecipientsEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        true
+    }
+    fn shares_iterated_damage_action(&self) -> bool {
+        true
+    }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(prepare_damage_instruction(self.clone()))
+    }
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.resolve_recipient_damage_inputs(game, ctx)?
+            .execute_with_outputs(game, ctx)
     }
 }

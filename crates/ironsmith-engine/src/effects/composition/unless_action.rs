@@ -5,46 +5,69 @@ use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 
-fn execute_effect_sequence(
+fn execute_effect_sequence_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: &[Effect],
-) -> Result<EffectOutcome, ExecutionError> {
-    let mut outcomes = Vec::new();
-    for effect in effects {
-        outcomes.push(execute_effect(game, effect, ctx)?);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::action_program::execute_action_program_with_outputs(
+        unless_branch_cursor(effects, vec![0], Default::default()),
+        game,
+        ctx,
+        purpose,
+    )
+}
+
+struct SelectedUnlessBranch {
+    effects: Vec<Effect>,
+    identity: Vec<usize>,
+    scope: crate::effects::ProgramActionScope,
+    /// Any-player clauses own this target override for the complete body.
+    targets: Option<Vec<ResolvedTarget>>,
+}
+impl SelectedUnlessBranch {
+    fn into_cursor(self) -> Box<dyn crate::effects::ActionProgramCursor> {
+        unless_branch_cursor(&self.effects, self.identity, self.scope)
     }
-    Ok(EffectOutcome::aggregate(outcomes))
+}
+
+struct UnlessBranchProjection;
+impl super::branch_program::SelectedBranchProjection for UnlessBranchProjection {
+    fn empty_outcome(&self) -> EffectOutcome {
+        EffectOutcome::aggregate(Vec::new())
+    }
+    fn matches_instruction_boundaries(&self) -> bool {
+        false
+    }
+}
+fn unless_branch_cursor(
+    effects: &[Effect],
+    identity: Vec<usize>,
+    scope: crate::effects::ProgramActionScope,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    super::branch_program::selected_branch_cursor_with_projection(
+        vec![super::branch_program::SelectedProgramBranch {
+            effects: effects.to_vec(),
+            identity,
+            repetitions: 1,
+            scope,
+            child_scope: None,
+            first_scope: None,
+            match_before_first: false,
+        }],
+        Some(Box::new(UnlessBranchProjection)),
+    )
 }
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
-}
-
-fn cost_effect_sequence_can_execute(
-    effects: &[Effect],
-    game: &GameState,
-    source: ObjectId,
-    controller: PlayerId,
-) -> Result<(), CostValidationError> {
-    for effect in effects {
-        let Some(cost_effect) = effect.0.as_cost_executable() else {
-            return Err(CostValidationError::Other(format!(
-                "unless-action branch contains a non-cost effect: {effect:?}"
-            )));
-        };
-        CostExecutableEffect::can_execute_as_cost(cost_effect, game, source, controller)?;
-    }
-    Ok(())
 }
 
 /// Effect that executes main effects unless a player performs an alternative action.
@@ -221,6 +244,7 @@ impl UnlessActionEffect {
 /// alternative or the main effects happen at commit.
 #[derive(Debug)]
 struct UnlessActionProposal {
+    prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
     effects: Vec<Effect>,
     alternative: Vec<Effect>,
     wants_alternative: bool,
@@ -228,37 +252,166 @@ struct UnlessActionProposal {
 }
 
 impl crate::effects::SimultaneousEffectProposal for UnlessActionProposal {
-    fn commit(
+    fn has_simultaneous_originals(&self) -> bool {
+        self.prepared
+            .as_ref()
+            .is_some_and(|inner| inner.has_simultaneous_originals())
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.prepared
+            .as_ref()
+            .and_then(|inner| inner.nominal_payment_quantity())
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_payment_resources())
+            .unwrap_or_default()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(PlayerId, u32)> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_life_payments())
+            .unwrap_or_default()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            inner.prepare_selection(game, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            inner.prepare_original(game, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            inner.seal_original(game, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn commit_original(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if let Some(inner) = self.prepared.take() {
+            return inner.commit_original_with_outputs(game, ctx);
+        }
+        self.execute_fallback_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::finished)
+    }
+
+    fn commit(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let proposal = *self;
-            ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
-                if proposal.wants_alternative {
-                    // CR 118.11 / 118.12a: replacement-modified payment remains
-                    // payment. Control flow follows the accepted feasible cost.
-                    return execute_effect_sequence(game, ctx, &proposal.alternative);
-                }
-                execute_effect_sequence(game, ctx, &proposal.effects)
-            })
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
+        if let Some(inner) = self.prepared.take() {
+            return inner.commit(game, ctx);
         }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+        self.execute_fallback_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+}
+
+impl UnlessActionProposal {
+    fn execute_fallback_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let proposal = *self;
+                ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
+                    // Accepted feasible alternatives remain payment after replacements.
+                    let effects = if proposal.wants_alternative {
+                        &proposal.alternative
+                    } else {
+                        &proposal.effects
+                    };
+                    execute_effect_sequence_with_outputs(
+                        game,
+                        ctx,
+                        effects,
+                        if proposal.wants_alternative {
+                            crate::effects::EffectExecutionPurpose::Payment
+                        } else {
+                            crate::effects::EffectExecutionPurpose::Action
+                        },
+                    )
+                })
+            },
+        )
     }
 }
 
 impl EffectExecutor for UnlessActionEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.player != PlayerFilter::Any
+            && self
+                .effects
+                .iter()
+                .all(super::action_program::action_program_child_is_prepared)
+            && self.alternative.iter().all(|effect| {
+                effect.0.as_cost_executable().is_some_and(|cost| {
+                    effect.0.is_read_only_simultaneous_player_action()
+                        || cost.supports_prepared_payment()
+                })
+            })
+    }
+
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if self.player == PlayerFilter::Any {
+            return Err(ExecutionError::Impossible(
+                "any-player unless requires a retained whole-branch target frame".into(),
+            ));
+        }
+        self.select_branch_plan(game, ctx)
+            .map(|plan| plan.map(SelectedUnlessBranch::into_cursor))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -278,16 +431,27 @@ impl EffectExecutor for UnlessActionEffect {
             ));
         }
         let deciding_player = resolve_player_filter(game, &self.player, ctx)?;
-        let wants_alternative = !self.alternative_is_infeasible(game, ctx, deciding_player)
-            && make_boolean_decision(
-                game,
-                &mut ctx.decision_maker,
-                deciding_player,
-                ctx.source,
-                "Perform alternative action to prevent effect?".to_string(),
-                FallbackStrategy::Accept,
-            );
+        let wants_alternative = self.choose_alternative(game, ctx, deciding_player);
+        let iterated_player = ctx.iteration.iterated_player;
+        let prepared = super::prepared_branch::prepare_branch_for_purpose(
+            if wants_alternative {
+                &self.alternative
+            } else {
+                &self.effects
+            },
+            game,
+            ctx,
+            iterated_player,
+            false,
+            false,
+            if wants_alternative {
+                crate::effects::EffectExecutionPurpose::Payment
+            } else {
+                crate::effects::EffectExecutionPurpose::Action
+            },
+        )?;
         Ok(Box::new(UnlessActionProposal {
+            prepared,
             effects: self.effects.clone(),
             alternative: self.alternative.clone(),
             wants_alternative,
@@ -313,34 +477,21 @@ impl EffectExecutor for UnlessActionEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-            let deciding_players = if matches!(self.player, PlayerFilter::Any) {
-                players_in_turn_order(game)
-            } else {
-                vec![resolve_player_filter(game, &self.player, ctx)?]
-            };
-            // "Target opponent loses 2 life unless they sacrifice ...": outside a
-            // player loop, "they"/"that player" in either branch is the single
-            // deciding player.
-            let bound_player = match deciding_players.as_slice() {
-                [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
-                _ => ctx.iteration.iterated_player,
-            };
-            ctx.with_temp_iterated_player(bound_player, |ctx| {
-                self.execute_for_deciding_players(game, ctx, deciding_players)
-            })
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if pending {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_unless_action_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -361,60 +512,185 @@ impl EffectExecutor for UnlessActionEffect {
 }
 
 impl UnlessActionEffect {
-    fn execute_for_deciding_players(
+    fn choose_alternative(
         &self,
-        game: &mut GameState,
+        game: &GameState,
         ctx: &mut ExecutionContext,
-        deciding_players: Vec<PlayerId>,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        for deciding_player in deciding_players {
-            if self.alternative_is_infeasible(game, ctx, deciding_player) {
-                continue;
-            }
-            // Ask the player if they want to perform the alternative action.
-            let wants_alternative = make_boolean_decision(
+        deciding_player: PlayerId,
+    ) -> bool {
+        !self.alternative_is_infeasible(game, ctx, deciding_player)
+            && make_boolean_decision(
                 game,
                 &mut ctx.decision_maker,
                 deciding_player,
                 ctx.source,
                 "Perform alternative action to prevent effect?".to_string(),
                 FallbackStrategy::Accept,
-            );
+            )
+    }
 
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+    fn select_branch_plan(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<SelectedUnlessBranch>, ExecutionError> {
+        let deciding_players = if matches!(self.player, PlayerFilter::Any) {
+            players_in_turn_order(game)
+        } else {
+            vec![resolve_player_filter(game, &self.player, ctx)?]
+        };
+        let bound_player = match deciding_players.as_slice() {
+            [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
+            _ => ctx.iteration.iterated_player,
+        };
+        ctx.with_temp_iterated_player(bound_player, |ctx| {
+            for (index, deciding_player) in deciding_players.into_iter().enumerate() {
+                let wants_alternative = self.choose_alternative(game, ctx, deciding_player);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                if !wants_alternative {
+                    continue;
+                }
+                // Accepted alternatives remain payment after replacements.
+                return Ok(Some(SelectedUnlessBranch {
+                    effects: self.alternative.clone(),
+                    identity: vec![1, index],
+                    scope: crate::effects::ProgramActionScope {
+                        iterated_player: Some(bound_player),
+                        payment: Some(crate::costs::PaymentScope::new(
+                            ctx,
+                            deciding_player,
+                            crate::costs::PaymentReason::Effect,
+                        )),
+                        ..Default::default()
+                    },
+                    targets: matches!(self.player, PlayerFilter::Any)
+                        .then(|| vec![ResolvedTarget::Player(deciding_player)]),
+                }));
             }
-            if !wants_alternative {
-                continue;
-            }
-
-            // Payment choice is authoritative even when a replacement changes
-            // or prevents the payment event (CR 118.11 / 118.12a).
-            let alternative_outcome = if matches!(self.player, PlayerFilter::Any) {
-                ctx.with_temp_targets(vec![ResolvedTarget::Player(deciding_player)], |ctx| {
-                    execute_effect_sequence(game, ctx, &self.alternative)
-                })?
-            } else {
-                execute_effect_sequence(game, ctx, &self.alternative)?
-            };
-
-            return Ok(alternative_outcome);
-        }
-
-        execute_effect_sequence(game, ctx, &self.effects)
+            Ok(Some(SelectedUnlessBranch {
+                effects: self.effects.clone(),
+                identity: vec![0],
+                scope: crate::effects::ProgramActionScope {
+                    iterated_player: Some(bound_player),
+                    ..Default::default()
+                },
+                targets: None,
+            }))
+        })
     }
 }
 
+fn execute_unless_action_with_outputs(
+    effect: &UnlessActionEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            let Some(mut plan) = effect.select_branch_plan(game, ctx)? else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            };
+            // Clear assignments once for the whole any-player clause, exactly
+            // as the existing target owner does; retain body-produced bindings.
+            if let Some(targets) = plan.targets.take() {
+                ctx.with_temp_targets(targets, |ctx| {
+                    super::action_program::execute_action_program_with_outputs(
+                        plan.into_cursor(),
+                        game,
+                        ctx,
+                        purpose,
+                    )
+                })
+            } else {
+                super::action_program::execute_action_program_with_outputs(
+                    plan.into_cursor(),
+                    game,
+                    ctx,
+                    purpose,
+                )
+            }
+        },
+    )
+}
+
 impl CostExecutableEffect for UnlessActionEffect {
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_unless_action_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let effects = crate::effects::canonical_cost_children(&self.effects);
+        let alternative = crate::effects::canonical_cost_children(&self.alternative);
+        if effects.is_none() && alternative.is_none() {
+            return None;
+        }
+        let mut replacement = self.clone();
+        if let Some(effects) = effects {
+            replacement.effects = effects;
+        }
+        if let Some(alternative) = alternative {
+            replacement.alternative = alternative;
+        }
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        let main = cost_effect_sequence_can_execute(&self.effects, game, source, controller);
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            self,
+            game,
+            source,
+            controller,
+            crate::costs::PaymentReason::Other,
+        )
+    }
+
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, controller, &mut decision_maker);
+        CostExecutableEffect::can_execute_as_cost_with_context(self, game, &mut ctx, reason)
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let main = crate::costs::check_effect_cost_program(&self.effects, game, ctx, reason);
         let alternative =
-            cost_effect_sequence_can_execute(&self.alternative, game, source, controller);
+            crate::costs::check_effect_cost_program(&self.alternative, game, ctx, reason);
         if main.is_ok() || alternative.is_ok() {
             Ok(())
         } else {

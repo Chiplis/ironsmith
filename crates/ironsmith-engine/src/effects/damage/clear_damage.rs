@@ -54,13 +54,15 @@ impl EffectExecutor for ClearDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // Resolve the target creature through ChooseSpec (targets, tags, source, etc.).
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-
-        // Clear all damage from the creature
-        game.clear_damage(target_id);
-
-        Ok(EffectOutcome::resolved())
+        let removed = super::remove_marked_damage(game, ctx, target_id, None)?;
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved(),
+            [removed],
+        ))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

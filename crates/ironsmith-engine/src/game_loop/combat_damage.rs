@@ -571,6 +571,22 @@ fn attack_target_damage_recipient(
     }
 }
 
+/// Combat owns original mutation too. Retain Instead intents while returning
+/// prevention follow-ups to the step's already-open deferral scope.
+fn prepare_combat_damage_processing(
+    game: &mut GameState,
+    events: &[crate::events::processing::SimultaneousDamageEvent],
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<Vec<crate::events::processing::ProcessedDamageResult>, crate::events::processing::DamageProcessingError> {
+    let scope = crate::effects::ReplacementExecutionContext::default();
+    let scopes = vec![&scope; events.len()];
+    let (results, follow_ups) = crate::events::processing::prepare_simultaneous_damage_assignments_with_scopes(
+        game, events, dm, &scopes,
+    )?.into_parts();
+    for follow_up in follow_ups { follow_up.requeue(game); }
+    Ok(results)
+}
+
 fn execute_general_combat_damage_batch_path(
     game: &mut GameState,
     combat: &CombatState,
@@ -602,7 +618,7 @@ fn execute_general_combat_damage_batch_path(
         )
         .collect::<Vec<_>>();
     let processed =
-        crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
+        prepare_combat_damage_processing(
             game, &batch, dm,
         )
         .map_err(CombatDamageAssignmentError::from)?;
@@ -1020,6 +1036,7 @@ fn execute_unblocked_player_damage_fast_path(
                 }],
                 replacement_prevented: false,
                 payload_outcome: None,
+                original_payloads: Vec::new(),
                 programs: Vec::new(),
             }
         })
@@ -1054,7 +1071,7 @@ fn execute_unblocked_player_damage_batch_path(
         })
         .collect::<Vec<_>>();
     let processed =
-        crate::events::processing::process_simultaneous_damage_assignments_with_event_with_dm(
+        prepare_combat_damage_processing(
             game, &proposals, dm,
         )
         .map_err(CombatDamageAssignmentError::from)?;
@@ -1333,7 +1350,7 @@ type CombatLifelinkReceipt = (
     PlayerId,
     usize,
     Option<crate::snapshot::ObjectSnapshot>,
-    crate::effects::SimultaneousEffectCommit,
+    crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
 );
 
 fn commit_prepared_combat_lifelink(
@@ -1346,10 +1363,11 @@ fn commit_prepared_combat_lifelink(
         let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
         ctx.source_snapshot = snapshot.clone();
         ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
-        let receipt = crate::effects::life::life_change::commit_prepared_life_original(
-            game, &mut ctx, prepared,
-        )
-        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
+        let receipt =
+            crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
+                game, &mut ctx, prepared,
+            )
+            .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(Vec::new());
         }
@@ -1368,17 +1386,14 @@ fn complete_combat_lifelink(
         let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut *dm);
         ctx.source_snapshot = snapshot;
         ctx.cause = crate::events::cause::EventCause::from_combat_damage(source, controller);
-        let outcome = if let Some(completion) = receipt.completion {
-            completion
-                .complete(game, &mut ctx, receipt.outcome)
-                .map_err(|error| CombatDamageAssignmentError::execution(source, error))?
-        } else {
-            receipt.outcome
-        };
+        let outputs = crate::effects::composition::complete_committed_original_with_outputs(
+            game, &mut ctx, receipt,
+        )
+        .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
-        events[index].lifelink_outcome = Some(outcome);
+        events[index].lifelink_outcome = Some(outputs.into_outcome());
     }
     Ok(())
 }

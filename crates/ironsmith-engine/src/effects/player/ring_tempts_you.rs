@@ -32,9 +32,7 @@ impl EffectExecutor for RingTemptsYouEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
             let player_id = resolve_player_filter(game, &self.player, ctx)?;
             game.reconcile_ring_bearer(player_id);
             game.increment_ring_temptations(player_id);
@@ -94,18 +92,8 @@ impl EffectExecutor for RingTemptsYouEffect {
                     vec![snapshot],
                 );
             }
-            Ok(EffectOutcome::resolved().with_event(
-                crate::triggers::TriggerEvent::new_with_provenance(event, ctx.provenance),
-            ))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                checkpoint,
-                result.is_ok() && ctx.decision_maker.awaiting_choice(),
-            );
-            context_checkpoint.restore(ctx);
-        }
-        result
+            crate::effects::composition::complete_keyword_action(game, ctx, event)
+        })
     }
 }
 

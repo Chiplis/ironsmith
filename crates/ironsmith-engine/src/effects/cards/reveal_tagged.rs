@@ -3,17 +3,18 @@
 //! Reveals currently update player-facing visibility and carry that visibility
 //! through tagged contexts when later stack objects still need it.
 
-use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+
+#[cfg(test)]
 use crate::tag::TagKey;
+#[cfg(test)]
+use crate::decisions::context::ViewCardsContext;
 pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
-/// Preparation fixes the selected set without disclosing it. The batch owner
-/// gathers all players' proposals before committing any public opening.
 #[derive(Debug)]
 struct RevealTaggedProposal {
     effect: RevealTaggedEffect,
@@ -32,6 +33,13 @@ impl crate::effects::SimultaneousEffectProposal for RevealTaggedProposal {
 }
 
 impl EffectExecutor for RevealTaggedEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::requiring(self.tag.clone())
+    }
+
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Revealed)
+    }
     fn supports_simultaneous_player_action(&self) -> bool { true }
 
     fn prepare_simultaneous_player_action(&self, _game: &GameState, ctx: &mut ExecutionContext)
@@ -42,6 +50,7 @@ impl EffectExecutor for RevealTaggedEffect {
             selected: ctx.get_tagged_all(&self.tag).cloned().unwrap_or_default(),
         }))
     }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }
@@ -51,109 +60,15 @@ impl EffectExecutor for RevealTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
-        let mut tagged = ctx
+        let tagged = ctx
             .get_tagged_all(self.tag.clone())
             .cloned()
             .unwrap_or_default();
-        // A random choice names opaque IDs identically on every peer. Open
-        // only those IDs before later effects inspect their names or values.
-        // A view callback alone is not an owner-authorized public opening.
-        for index in 0..game.players.len() {
-            let owner = PlayerId::from_index(index as u8);
-            let private = tagged.iter().filter_map(|snapshot| {
-                game.object(snapshot.object_id)
-                    .filter(|object| object.owner == owner && game.hidden_identity_is_private(object.id))
-                    .map(|object| object.id)
-            }).collect::<Vec<_>>();
-            if private.is_empty() { continue; }
-            let Some(opened) = game.reveal_private_hidden_cards_publicly(
-                &mut *ctx.decision_maker, owner, ctx.source, &private, "Reveal selected cards", false,
-            ) else { return Ok(EffectOutcome::count(0)); };
-            if private.iter().any(|id| !opened.contains(id) || game.is_hidden_card_placeholder(*id)) {
-                return Err(ExecutionError::IncompleteEvidence(
-                    "a mandatory tagged reveal lacks an opening for a selected card".into()));
-            }
+        let outcome = super::reveal_objects(game, ctx, tagged, None, "Reveal cards", None)?;
+        if !ctx.decision_maker.awaiting_choice() {
+            ctx.set_tagged_objects(self.tag.clone(), outcome.chosen_object_memory().unwrap_or_default().to_vec());
         }
-        // The peer may have held placeholder snapshots when the set was
-        // chosen. Keep original incarnations, refresh opened characteristics.
-        for snapshot in &mut tagged {
-            if let Some(object) = game.object(snapshot.object_id) {
-                *snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
-            }
-        }
-        ctx.set_tagged_objects(self.tag.clone(), tagged.clone());
-        let count = tagged.len();
-        if let Some(first) = tagged.first() {
-            let card_ids = tagged.iter().map(|obj| obj.object_id).collect::<Vec<_>>();
-            for viewer_idx in 0..game.players.len() {
-                let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                let view_ctx = ViewCardsContext::new(
-                    viewer,
-                    first.owner,
-                    Some(ctx.source),
-                    first.zone,
-                    "Reveal cards",
-                )
-                .with_public(true);
-                ctx.decision_maker
-                    .view_cards(game, viewer, &card_ids, &view_ctx);
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
-        }
-        if !tagged.is_empty() {
-            let entry = ctx
-                .tagged_objects
-                .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
-                .or_default();
-            for snapshot in tagged.iter().cloned() {
-                if let Some(existing) = entry
-                    .iter()
-                    .position(|existing| existing.object_id == snapshot.object_id)
-                {
-                    entry[existing] = snapshot;
-                } else {
-                    entry.push(snapshot);
-                }
-            }
-        }
-        let reveal_events = tagged
-            .iter()
-            .map(|snapshot| {
-                let provenance = game.alloc_child_event_provenance(
-                    ctx.provenance, crate::events::EventKind::CardRevealed,
-                );
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardRevealedEvent::new(
-                        snapshot.owner,
-                        snapshot.object_id,
-                        snapshot.zone,
-                        Some(ctx.source),
-                        Some(snapshot.clone()),
-                    ),
-                    provenance,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let memory = tagged
-            .iter()
-            .map(OutcomeObjectMemory::from_snapshot)
-            .collect::<Vec<_>>();
-        Ok(EffectOutcome::count(count as i32)
-            .with_events(reveal_events)
-            .with_chosen_object_memory(memory.clone())
-            .with_affected_object_memory(memory))
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || result.is_err() {
-            game.restore_execution_checkpoint(checkpoint, pending);
-            context_checkpoint.restore(ctx);
-        }
-        result
+        Ok(outcome)
     }
 }
 

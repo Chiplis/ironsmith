@@ -2677,7 +2677,8 @@ pub(super) fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -
     let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
         return None;
     };
-    if vote.secret
+    if !vote.payloads.is_empty()
+        || vote.secret
         || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0
@@ -2997,7 +2998,8 @@ pub(super) fn describe_named_vote_per_vote_effects(
     let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
         return None;
     };
-    if vote.secret
+    if !vote.payloads.is_empty()
+        || vote.secret
         || !vote.starting_with_controller
         || vote.controller_extra_votes != 0
         || vote.controller_optional_extra_votes != 0

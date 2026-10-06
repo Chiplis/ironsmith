@@ -1,12 +1,13 @@
 //! Remove up to any counters effect implementation.
 
+use super::remove_counters::SelectedCounterRemovalPlan;
 use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, DecisionSpec as _, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{
     resolve_single_object_for_effect, resolve_single_target_from_spec, resolve_value_wide,
 };
-use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
+use crate::effects::{CompletedEffectOutputs, EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::{GameState, Target};
 use crate::object::CounterType;
@@ -29,20 +30,51 @@ pub use ironsmith_core::RemoveUpToAnyCountersEffect;
 /// let effect = RemoveUpToAnyCountersEffect::new(Value::X, ChooseSpec::permanent());
 /// ```
 impl EffectExecutor for RemoveUpToAnyCountersEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(super::remove_counters::selected_counter_removal_proposal(
+            super::remove_counters::CounterRemovalSelector::UpTo(self.clone()),
+        ))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = execute_up_to_any_counter_removal(self, game, ctx);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| execute_up_to_any_counter_removal(self, game, ctx),
+        );
+        // The shared transaction restores the action; keep this adapter's
+        // existing neutral suspension policy even if the child failed.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }
@@ -56,130 +88,167 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
     }
 }
 
-fn execute_up_to_any_counter_removal(effect: &RemoveUpToAnyCountersEffect, game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
-        let max_count = resolve_value_wide(game, &effect.max_count, ctx)?.max(0) as u64;
-        if let ChooseSpec::All(filter) = effect.target.unhinted() {
-            if max_count > u64::from(u32::MAX) {
-                return super::remove_any_counters_among::execute_wide_counter_removal_among(game, ctx, filter.clone(), None, max_count, effect.up_to);
-            }
-            let max_count = u32::try_from(max_count).expect("bounded branch");
-            let min_count = if effect.up_to { 0 } else { max_count };
-            let distributed =
-                RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
-            return distributed.execute(game, ctx);
-        }
-        let target = match effect.target.base() {
-            ChooseSpec::Player(_)
-            | ChooseSpec::SpecificPlayer(_)
-            | ChooseSpec::AnyTarget
-            | ChooseSpec::AnyOtherTarget
-            | ChooseSpec::ObjectOrPlayer(_, _)
-            | ChooseSpec::PlayerOrPlaneswalker(_)
-            | ChooseSpec::AttackedPlayerOrPlaneswalker
-            | ChooseSpec::SourceController
-            | ChooseSpec::SourceOwner
-            | ChooseSpec::EachPlayer(_) => {
-                resolve_single_target_from_spec(game, &effect.target, ctx)?
-            }
-            _ => ResolvedTarget::Object(resolve_single_object_for_effect(game, ctx, &effect.target)?),
-        };
-
-        // Get available counters on the target
-        let available_counters: Vec<(CounterType, u32)> = match target {
-            ResolvedTarget::Object(target_id) => game.object(target_id).map(|object| {
-                object
-                    .counters
-                    .iter()
-                    .filter(|(_, count)| **count > 0)
-                    .map(|(counter_type, count)| (*counter_type, *count))
-                    .collect()
-            }),
-            ResolvedTarget::Player(target_player) => game.player(target_player).map(|player| {
-                player
-                    .counter_types_with_counters()
-                    .into_iter()
-                    .map(|counter_type| (counter_type, player.counter_count(counter_type)))
-                    .collect()
-            }),
-        }
-        .unwrap_or_default();
-
-        // Count total counters available
-        let total_counters: u64 = available_counters.iter().try_fold(0u64, |total, (_, count)| total.checked_add(u64::from(*count))
-            .ok_or_else(|| ExecutionError::InternalError("available counter total overflow".into())))?;
-
-        // The actual maximum we can remove is the lesser of max_count and total available
-        let actual_max = max_count.min(total_counters);
-
-        // If there's nothing to remove, return 0
-        if actual_max == 0 {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        // Ask the player which counters to remove using the spec-based system
-        let min_count = if effect.up_to { 0 } else { actual_max };
-        let decision_target = match target {
-            ResolvedTarget::Object(id) => Target::Object(id),
-            ResolvedTarget::Player(id) => Target::Player(id),
-        };
-        let spec = CounterRemovalSpec::for_target_wide(
-            ctx.source,
-            decision_target,
-            actual_max,
-            available_counters.clone(),
-        )
-        .with_min_total_wide(min_count);
-        let mandatory_fallback = spec.default_response(FallbackStrategy::Maximum);
-        let mut selections = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            ctx.controller,
-            Some(ctx.source),
-            spec,
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        if selections.iter().try_fold(0u64, |total, (_, count)| total.checked_add(u64::from(*count))
-            .ok_or_else(|| ExecutionError::InternalError("selected counter total overflow".into())))? < min_count {
-            selections = mandatory_fallback;
-        }
-
-        let mut selected_total = 0u64;
-        let mut removed_total = 0u64;
-        let mut outcomes = Vec::new();
-        for (counter_type, requested) in selections {
-            if selected_total >= actual_max { break; }
-            let amount = requested.min(u32::try_from(actual_max - selected_total).unwrap_or(u32::MAX));
-            if amount == 0 { continue; }
-            let outcome = match target {
-                ResolvedTarget::Object(target_id) => {
-                    let event = crate::events::Event::remove_counters(target_id, counter_type, amount)
-                        .with_provenance(ctx.provenance);
-                    super::remove_counters::execute_counter_removal_event(game, ctx, event)?
-                }
-                // Player-counter removal still lacks a replaceable player carrier.
-                // Preserve its existing primitive path until that model is migrated.
-                ResolvedTarget::Player(player) => {
-                    if let Some((removed, event)) = game.remove_player_counters_with_source(player, counter_type, amount, Some(ctx.source), Some(ctx.controller)) {
-                        let count = i64::from(removed);
-                        EffectOutcome::count(count).with_event(event)
-                    } else { EffectOutcome::count(0) }
-                }
-            };
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let removed = u32::try_from(outcome.count_or_zero()).map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
-            removed_total = removed_total.checked_add(u64::from(removed)).ok_or_else(|| ExecutionError::InternalError("counter-removal total overflow".into()))?;
-            selected_total += u64::from(amount);
-            outcomes.push(outcome);
-        }
-        let count = i64::try_from(removed_total).map_err(|_| ExecutionError::InternalError("counter-removal total exceeds outcome range".into()))?;
-        let mut outcome = EffectOutcome::aggregate(outcomes);
-        outcome.set_value(crate::effect::OutcomeValue::Count(count));
-        Ok(outcome)
+fn execute_up_to_any_counter_removal(
+    effect: &RemoveUpToAnyCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    let plan = select_up_to_any_counter_removal(effect, game, ctx)?;
+    super::remove_counters::complete_selected_counter_removal_plan(game, ctx, plan)
 }
 
+pub(super) fn select_up_to_any_counter_removal(
+    effect: &RemoveUpToAnyCountersEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<SelectedCounterRemovalPlan, ExecutionError> {
+    let max_count = resolve_value_wide(game, &effect.max_count, ctx)?.max(0) as u64;
+    if let ChooseSpec::All(filter) = effect.target.unhinted() {
+        if max_count > u64::from(u32::MAX) {
+            return super::remove_any_counters_among::select_wide_counter_removal_among(
+                game,
+                ctx,
+                filter.clone(),
+                None,
+                max_count,
+                effect.up_to,
+            );
+        }
+        let max_count = u32::try_from(max_count).expect("bounded branch");
+        let min_count = if effect.up_to { 0 } else { max_count };
+        let distributed =
+            RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
+        return Ok(SelectedCounterRemovalPlan::Recorded(Box::new(
+            super::remove_any_counters_among::select_distributed_counter_removal(
+                &distributed,
+                game,
+                ctx,
+            )?,
+        )));
+    }
+    let target = match effect.target.base() {
+        ChooseSpec::Player(_)
+        | ChooseSpec::SpecificPlayer(_)
+        | ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::ObjectOrPlayer(_, _)
+        | ChooseSpec::PlayerOrPlaneswalker(_)
+        | ChooseSpec::AttackedPlayerOrPlaneswalker
+        | ChooseSpec::SourceController
+        | ChooseSpec::SourceOwner
+        | ChooseSpec::EachPlayer(_) => resolve_single_target_from_spec(game, &effect.target, ctx)?,
+        _ => ResolvedTarget::Object(resolve_single_object_for_effect(game, ctx, &effect.target)?),
+    };
+
+    // Get available counters on the target
+    let available_counters: Vec<(CounterType, u32)> = match target {
+        ResolvedTarget::Object(target_id) => game.object(target_id).map(|object| {
+            object
+                .counters
+                .iter()
+                .filter(|(_, count)| **count > 0)
+                .map(|(counter_type, count)| (*counter_type, *count))
+                .collect()
+        }),
+        ResolvedTarget::Player(target_player) => game.player(target_player).map(|player| {
+            player
+                .counter_types_with_counters()
+                .into_iter()
+                .map(|counter_type| (counter_type, player.counter_count(counter_type)))
+                .collect()
+        }),
+    }
+    .unwrap_or_default();
+
+    // Count total counters available
+    let total_counters: u64 = available_counters
+        .iter()
+        .try_fold(0u64, |total, (_, count)| {
+            total.checked_add(u64::from(*count)).ok_or_else(|| {
+                ExecutionError::InternalError("available counter total overflow".into())
+            })
+        })?;
+
+    // The actual maximum we can remove is the lesser of max_count and total available
+    let actual_max = max_count.min(total_counters);
+
+    // If there's nothing to remove, return 0
+    if actual_max == 0 {
+        return Ok(SelectedCounterRemovalPlan::Finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
+    }
+
+    // Ask the player which counters to remove using the spec-based system
+    let min_count = if effect.up_to { 0 } else { actual_max };
+    let decision_target = match target {
+        ResolvedTarget::Object(id) => Target::Object(id),
+        ResolvedTarget::Player(id) => Target::Player(id),
+    };
+    let spec = CounterRemovalSpec::for_target_wide(
+        ctx.source,
+        decision_target,
+        actual_max,
+        available_counters.clone(),
+    )
+    .with_min_total_wide(min_count);
+    let mandatory_fallback = spec.default_response(FallbackStrategy::Maximum);
+    let mut selections = make_decision_with_fallback(
+        game,
+        &mut ctx.decision_maker,
+        ctx.controller,
+        Some(ctx.source),
+        spec,
+        FallbackStrategy::Maximum,
+    );
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(SelectedCounterRemovalPlan::Finished(
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
+    }
+    if selections.iter().try_fold(0u64, |total, (_, count)| {
+        total
+            .checked_add(u64::from(*count))
+            .ok_or_else(|| ExecutionError::InternalError("selected counter total overflow".into()))
+    })? < min_count
+    {
+        selections = mandatory_fallback;
+    }
+
+    let mut selected_total = 0u64;
+    let mut events = Vec::new();
+    for (counter_type, requested) in selections {
+        if selected_total >= actual_max {
+            break;
+        }
+        let amount = requested.min(u32::try_from(actual_max - selected_total).unwrap_or(u32::MAX));
+        if amount == 0 {
+            continue;
+        }
+        let event = match target {
+            ResolvedTarget::Object(target_id) => {
+                crate::events::Event::remove_counters(target_id, counter_type, amount)
+                    .with_provenance(ctx.provenance)
+            }
+            ResolvedTarget::Player(player) => crate::events::Event::new_with_provenance(
+                crate::events::RemovePlayerCountersEvent::new(
+                    player,
+                    counter_type,
+                    amount,
+                    Some(ctx.source),
+                    Some(ctx.controller),
+                ),
+                ctx.provenance,
+            ),
+        };
+        selected_total += u64::from(amount);
+        events.push(event);
+    }
+    Ok(SelectedCounterRemovalPlan::Groups {
+        events,
+        requested: selected_total,
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;

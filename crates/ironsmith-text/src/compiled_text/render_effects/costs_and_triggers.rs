@@ -1250,14 +1250,20 @@ pub(super) fn describe_destroy_unless_controller_pays_toughness_life(
     let [cost] = unless_pays.cost.costs() else {
         return None;
     };
-    let lose = cost
-        .effect_ref()?
-        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
-    let Value::ToughnessOf(basis) = lose.amount.unhinted() else {
+    let effect = cost.effect_ref()?;
+    let (amount, player) = if let Some(payment) =
+        effect.downcast_ref::<crate::effects::PayLifeEffect>()
+    {
+        (&payment.amount, &payment.player)
+    } else {
+        let loss = effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+        (&loss.amount, &loss.player)
+    };
+    let Value::ToughnessOf(basis) = amount.unhinted() else {
         return None;
     };
     if !matches!(
-        lose.player.unhinted(),
+        player.unhinted(),
         ChooseSpec::Player(PlayerFilter::You)
     ) || basis.unhinted() != destroy.spec.unhinted()
     {
@@ -2426,7 +2432,7 @@ pub(super) fn waterbend_generic_from_branches(branches: &[crate::cost::TotalCost
             return None;
         };
         costs.iter().find_map(|cost| {
-            let effect = &cost.downcast_ref::<crate::costs::CostEffect>()?.effect;
+            let effect = cost.downcast_ref::<crate::costs::CostEffect>()?.effect();
             if let Some(completion) =
                 effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>()
                 && completion.action == crate::events::KeywordActionKind::Waterbend

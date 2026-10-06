@@ -157,26 +157,34 @@ fn cost_candidate_count(
     controller: crate::ids::PlayerId,
     x_value: Option<u32>,
 ) -> Result<usize, CostValidationError> {
-    if x_value.is_none()
-        && let Some(relaxed) = with_unbound_x_relaxed(effect)
-    {
-        return cost_candidate_count(&relaxed, game, source, controller, None);
-    }
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     let mut ctx = ExecutionContext::new(source, controller, &mut dm);
     ctx.x_value = x_value;
+    cost_candidate_count_with_context(effect, game, &ctx)
+}
+
+fn cost_candidate_count_with_context(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<usize, CostValidationError> {
+    if ctx.x_value.is_none()
+        && let Some(relaxed) = with_unbound_x_relaxed(effect)
+    {
+        return cost_candidate_count_with_context(&relaxed, game, ctx);
+    }
+    let source = ctx.source;
+    let controller = ctx.controller;
     let filter_ctx = ctx.filter_context(game);
-    let chooser_id = match crate::effects::helpers::resolve_player_filter_as_chooser(
-        game,
-        &effect.chooser,
-        &ctx,
-    ) {
-        Ok(player) => player,
-        Err(_) => controller,
-    };
+    let chooser_id =
+        match crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)
+        {
+            Ok(player) => player,
+            Err(_) => controller,
+        };
     let search_zones =
         search_zones(effect).map_err(|err| CostValidationError::Other(format!("{err:?}")))?;
-    let top_only_limit = top_only_selection_limit(effect, x_value);
+    let top_only_limit = top_only_selection_limit(effect, ctx.x_value);
 
     let matches_filter = |obj: &crate::object::Object| {
         if effect.filter.other && obj.id == source {
@@ -446,6 +454,26 @@ pub(crate) fn check_relation_cost_with_context(
 }
 
 impl EffectExecutor for ChooseObjectsEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings {
+            required: Vec::new(),
+            published: vec![self.tag.clone()],
+        }
+    }
+
+    fn is_object_selection_prelude(&self) -> bool {
+        true
+    }
+
+    fn visit_prepared_selection_bindings(
+        &self,
+        visitor: &mut dyn FnMut(crate::effects::PreparedSelectionBinding),
+    ) {
+        visitor(crate::effects::PreparedSelectionBinding::ObjectTag(
+            self.tag.clone(),
+        ));
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -646,41 +674,95 @@ impl EffectExecutor for ChooseObjectsEffect {
     }
 }
 
+/// Cost preflight uses the same captured value and filter inputs as live
+/// selection, including participant tags and the source's last known state.
+fn check_selection_cost_with_context(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<(), CostValidationError> {
+    if let Some(constraint) = &effect.aggregate_constraint
+        && let Some(crate::effect::Value::Fixed(minimum)) =
+            constraint.minimum.as_ref().map(|value| value.unhinted())
+        && aggregate_cost_capacity_with_context(effect, game, ctx)? < *minimum
+    {
+        return Err(CostValidationError::NotEnoughCards);
+    }
+    if effect.count.min == 0 {
+        return Ok(());
+    }
+
+    check_relation_cost_with_context(effect, game, ctx)?;
+    let candidate_count = cost_candidate_count_with_context(effect, game, ctx)?;
+
+    if candidate_count < effect.count.min {
+        return Err(CostValidationError::Other(format!(
+            "Not enough objects to choose ({} needed, {} available)",
+            effect.count.min, candidate_count
+        )));
+    }
+
+    Ok(())
+}
+
 impl CostExecutableEffect for ChooseObjectsEffect {
+    fn finalize_payment_bindings(
+        &self,
+        game: &GameState,
+        _outcome: &EffectOutcome,
+        execution: &mut ExecutionContext,
+        payment_x: Option<u32>,
+    ) -> Result<(), crate::cost::CostPaymentError> {
+        // A resolving instruction may do as much as possible. A cost selection
+        // must supply its entire required input before another component pays it.
+        let required = if self.count.up_to_x
+            || (self.is_search && self.search_mode == crate::effect::SearchSelectionMode::Optional)
+        {
+            0
+        } else if let Some(value) = self.count_value.as_ref() {
+            crate::effects::helpers::resolve_value(game, value, execution)
+                .map_err(crate::cost::CostPaymentError::ExecutionFailed)?
+                .max(0) as usize
+        } else if self.count.dynamic_x {
+            payment_x.ok_or_else(|| {
+                crate::cost::CostPaymentError::Other("X value not set for cost".into())
+            })? as usize
+        } else {
+            self.count.min
+        };
+        let selected = execution.tagged_objects.get(&self.tag).map_or(0, Vec::len);
+        if selected < required {
+            return Err(crate::cost::CostPaymentError::Other(format!(
+                "Not enough objects selected to pay cost ({required} needed, {selected} selected)"
+            )));
+        }
+        // Completed zero differs from a selection that never ran. Preserve the
+        // binding so subsequent components and replay observe that distinction.
+        execution
+            .tagged_objects
+            .entry(self.tag.clone())
+            .or_default();
+        Ok(())
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        _reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        check_selection_cost_with_context(self, game, ctx)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if let Some(constraint) = &self.aggregate_constraint
-            && let Some(crate::effect::Value::Fixed(minimum)) =
-                constraint.minimum.as_ref().map(|value| value.unhinted())
-            && aggregate_cost_capacity(self, game, source, controller)? < *minimum
-        {
-            return Err(CostValidationError::NotEnoughCards);
-        }
-        if self.count.min == 0 {
-            return Ok(());
-        }
-
-        check_relation_cost_with_context(self, game, &ExecutionContext::new_default(source, controller))?;
-        let candidate_count = cost_candidate_count(
-            self,
-            game,
-            source,
-            controller,
-            game.object(source).and_then(|object| object.x_value),
-        )?;
-
-        if candidate_count < self.count.min {
-            return Err(CostValidationError::Other(format!(
-                "Not enough objects to choose ({} needed, {} available)",
-                self.count.min, candidate_count
-            )));
-        }
-
-        Ok(())
+        let mut ctx = ExecutionContext::new_default(source, controller);
+        ctx.x_value = game.object(source).and_then(|object| object.x_value);
+        check_selection_cost_with_context(self, game, &ctx)
     }
 }
 
@@ -690,14 +772,25 @@ fn aggregate_cost_capacity(
     source: crate::ids::ObjectId,
     controller: crate::ids::PlayerId,
 ) -> Result<i32, CostValidationError> {
-    if let Some(relaxed) = with_unbound_x_relaxed(effect) {
-        return aggregate_cost_capacity(&relaxed, game, source, controller);
+    let ctx = ExecutionContext::new_default(source, controller);
+    aggregate_cost_capacity_with_context(effect, game, &ctx)
+}
+
+fn aggregate_cost_capacity_with_context(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<i32, CostValidationError> {
+    if ctx.x_value.is_none()
+        && let Some(relaxed) = with_unbound_x_relaxed(effect)
+    {
+        return aggregate_cost_capacity_with_context(&relaxed, game, ctx);
     }
     let constraint = effect
         .aggregate_constraint
         .as_ref()
         .expect("aggregate cost");
-    let context = crate::filter::FilterContext::new(controller).with_source(source);
+    let context = ctx.filter_context(game);
     let mut contributions: Vec<_> = search_zones(effect)
         .map_err(|error| CostValidationError::Other(format!("{error:?}")))?
         .into_iter()

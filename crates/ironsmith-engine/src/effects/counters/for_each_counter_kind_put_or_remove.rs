@@ -242,7 +242,7 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                             1,
                             ChooseSpec::SpecificObject(target_id),
                         )
-                        .execute(game, ctx)?,
+                        .execute_child(game, ctx)?,
                     );
                     continue;
                 }
@@ -285,9 +285,9 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
 
                 let spec = ChooseSpec::SpecificObject(target_id);
                 let outcome = if choice == 1 {
-                    RemoveCountersEffect::new(counter_type, 1, spec).execute(game, ctx)?
+                    RemoveCountersEffect::new(counter_type, 1, spec).execute_child(game, ctx)?
                 } else {
-                    PutCountersEffect::new(counter_type, 1, spec).execute(game, ctx)?
+                    PutCountersEffect::new(counter_type, 1, spec).execute_child(game, ctx)?
                 };
                 outcomes.push(outcome);
             }

@@ -788,9 +788,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           ? { level: 'current', seq: currentSequence, snapshot: validationSnapshot } : null;
         const recovered = await recoverVerifiedRuntime({
           current,
-          saved: servicesRef.current.localRuntimeRecoveryCandidates(actionEntries),
+          saved: [...servicesRef.current.localRuntimeRecoveryCandidates(actionEntries),
+            ...await servicesRef.current.exactBuildRecoveryCandidates(actionEntries, matchPayload)],
           restore: async candidate => {
-            await restoreSequencedActionValidationSnapshot(candidate.snapshot, { keepHandle: true });
+            if (candidate.level === 'exact-build') await servicesRef.current.restoreExactBuildRecovery(candidate);
+            else await restoreSequencedActionValidationSnapshot(candidate.snapshot, { keepHandle: true });
             await verifyCurrentPublicCheckpointHash(actionEntries[candidate.seq - 1].audit.publicCheckpointHash,
               'Local recovery savepoint does not match its signed action');
           },
@@ -1343,6 +1345,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
+      await servicesRef.current.persistRelayCheckpoint();
       sendMatchStartToClients(payload);
       await revealLocalZiffleHand(payload);
     } catch (err) {
@@ -1643,6 +1646,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           initialPublicCheckpointHash: payload.initialPublicCheckpointHash || "",
         };
       }
+      await servicesRef.current.persistRelayCheckpoint();
       sendMatchStartToClients(payload);
       await revealLocalZiffleHand(payload);
     } catch (err) {

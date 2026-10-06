@@ -1,10 +1,11 @@
 //! Return to hand effect implementation.
 
-use crate::effect::{EffectOutcome, OutcomeStatus};
-use crate::effects::helpers::{
-    ObjectApplyResultPolicy, apply_single_target_object_from_spec, apply_to_selected_objects,
-    resolve_tagged_object_id,
-};
+use super::movement_instruction::{SelectedZoneMovement, ZoneMovementInstruction};
+use crate::effect::EffectOutcome;
+#[cfg(test)]
+use crate::effect::OutcomeStatus;
+use crate::effects::CompletedEffectOutputs;
+
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
@@ -14,62 +15,33 @@ use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 
-use super::{apply_zone_change_with_context_and_additional_effects, take_recorded_zone_change};
 pub type ReturnToHandEffect = ironsmith_core::ReturnToHandEffect;
 
-type ReturnZoneReceipts = Vec<(
-    crate::ids::ObjectId,
-    crate::events::processing::PreparedEventOutcome<super::AppliedZoneChange>,
-)>;
-
-fn return_object_to_hand(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    object_id: crate::ids::ObjectId,
-    receipts: &mut ReturnZoneReceipts,
-) -> Result<Option<OutcomeStatus>, ExecutionError> {
-    if let Some(obj) = game.object(object_id) {
-        let from_zone = obj.zone;
-        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-        let receipt = apply_zone_change_with_context_and_additional_effects(
-            game,
-            object_id,
-            from_zone,
-            Zone::Hand,
-            ctx.cause.clone(),
-            ctx,
-            &additional_effects,
-        )?;
-
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(Some(OutcomeStatus::Prevented));
-        }
-        let original = receipt.original.clone();
-        receipts.push((object_id, receipt));
-        return match original {
-            EventOutcome::Prevented => Ok(Some(crate::effect::OutcomeStatus::Prevented)),
-            EventOutcome::Proceed(result) => {
-                if result.new_object_id.is_some() {
-                    ctx.refresh_target_snapshot(pre_snapshot.clone());
-                    if pre_snapshot.object_id == ctx.source {
-                        ctx.refresh_source_snapshot(pre_snapshot.clone());
-                    }
-                }
-                Ok(None)
-            }
-            EventOutcome::Replaced => Ok(Some(crate::effect::OutcomeStatus::Replaced)),
-            EventOutcome::NotApplicable => Ok(Some(crate::effect::OutcomeStatus::TargetInvalid)),
-        };
+impl EffectExecutor for ReturnToHandEffect {
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        crate::effects::CostChoiceBindings::from_spec(&self.spec)
     }
 
-    Ok(Some(crate::effect::OutcomeStatus::TargetInvalid))
-}
-
-impl EffectExecutor for ReturnToHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Returned)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(super::movement_instruction::prepare_movement_instruction(
+            self.clone(),
+            ctx,
+        ))
     }
 
     fn execute(
@@ -77,30 +49,16 @@ impl EffectExecutor for ReturnToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let mut receipts = Vec::new();
-        // CR 603.10a: objects this instruction moves together share one
-        // pre-event look-back, so a leaves-the-battlefield observer moved in
-        // the same event sees every other object leave.
-        let pinned_lookback = (!self.spec.is_single()
-            || matches!(self.spec.base(), ChooseSpec::Tagged(_) | ChooseSpec::All(_)))
-            && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-        let outcome = self.execute_with_shared_lookback(game, ctx, &mut receipts);
-        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
-        let outcome = outcome
-            .and_then(|original| super::finish_zone_change_receipts(game, ctx, original, receipts));
-        if outcome.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() {
-            return outcome.map(|_| EffectOutcome::count(0));
-        }
-        outcome
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        super::movement_instruction::execute_movement_instruction(self.clone(), game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -135,247 +93,105 @@ impl EffectExecutor for ReturnToHandEffect {
     }
 }
 
-trait SharedLookbackExecute {
-    fn execute_with_shared_lookback(
+impl ZoneMovementInstruction for ReturnToHandEffect {
+    fn select(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-        receipts: &mut ReturnZoneReceipts,
-    ) -> Result<EffectOutcome, ExecutionError>;
-}
-
-impl SharedLookbackExecute for ReturnToHandEffect {
-    fn execute_with_shared_lookback(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-        receipts: &mut ReturnZoneReceipts,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        let resolve_tagged_targets = |game: &GameState,
-                                      ctx: &ExecutionContext,
-                                      spec: &ChooseSpec|
-         -> Result<Vec<crate::ids::ObjectId>, ExecutionError> {
-            let mut object_ids =
-                crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)?;
-            if let ChooseSpec::Tagged(tag) = spec.base()
-                && let Some(tagged) = ctx.get_tagged_all(tag)
-            {
-                for (idx, snapshot) in tagged.iter().enumerate() {
-                    if idx < object_ids.len()
-                        && game.object(object_ids[idx]).is_none()
-                        && let Some(resolved) = resolve_tagged_object_id(game, ctx, snapshot)
-                    {
-                        object_ids[idx] = resolved;
-                    }
-                }
+    ) -> Result<SelectedZoneMovement, ExecutionError> {
+        let mut objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
+            Ok(objects) => objects,
+            Err(ExecutionError::InvalidTarget) => {
+                return Ok(SelectedZoneMovement::Finished(
+                    if self.spec.count().min == 0 && ctx.targets.is_empty() {
+                        EffectOutcome::count(0)
+                    } else {
+                        EffectOutcome::target_invalid()
+                    },
+                ));
             }
-            Ok(object_ids)
+            Err(error) => return Err(error),
         };
-
-        if self.spec.is_target()
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(SelectedZoneMovement::Finished(EffectOutcome::count(0)));
+        }
+        let counted_targets = self.spec.is_target()
             && matches!(
                 self.spec.unhinted(),
-                ChooseSpec::WithCount(_, _) | ChooseSpec::WithCountValue(_, _, _)
-            )
+                ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
+            );
+        let single_target = self.spec.is_target() && self.spec.is_single() && !counted_targets;
+        if single_target {
+            objects.truncate(1);
+        }
+        if objects.is_empty()
+            && (self.spec.is_target() || matches!(self.spec.base(), ChooseSpec::Tagged(_)))
         {
-            let targets = ctx
-                .targets
-                .iter()
-                .filter_map(|target| match target {
-                    crate::effects::ResolvedTarget::Object(id) => Some(*id),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
-            if targets.is_empty() {
-                return if self.spec.count().min == 0 {
-                    Ok(EffectOutcome::count(0))
+            return Ok(SelectedZoneMovement::Finished(
+                if self.spec.count().min == 0 && ctx.targets.is_empty() {
+                    EffectOutcome::count(0)
                 } else {
-                    Ok(EffectOutcome::target_invalid())
-                };
-            }
-
-            let mut affected_ids = Vec::new();
-            let mut applied_count = 0usize;
-            for target_id in targets {
-                let stable_id = game.object(target_id).map(|obj| obj.stable_id);
-                let status = return_object_to_hand(game, ctx, target_id, receipts)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let moved_ids = take_recorded_zone_change(game, target_id)
-                    .map(|result| result.new_object_ids)
-                    .or_else(|| match status {
-                        None | Some(OutcomeStatus::Replaced) => stable_id
-                            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
-                            .map(|object_id| vec![object_id]),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                if status.is_none() {
-                    applied_count += 1;
-                }
-                affected_ids.extend(moved_ids);
-            }
-            return Ok(
-                EffectOutcome::count(applied_count as i32).with_affected_objects(affected_ids)
-            );
+                    EffectOutcome::target_invalid()
+                },
+            ));
         }
-
-        // Handle targeted effects with special single-target behavior
-        if self.spec.is_target() && self.spec.is_single() {
-            if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {
-                let target_id = resolve_tagged_targets(game, ctx, &self.spec)?
-                    .into_iter()
-                    .next()
-                    .ok_or(ExecutionError::InvalidTarget)?;
-                let stable_id = game.object(target_id).map(|obj| obj.stable_id);
-                let status = return_object_to_hand(game, ctx, target_id, receipts)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let affected_ids = take_recorded_zone_change(game, target_id)
-                    .map(|result| result.new_object_ids)
-                    .or_else(|| match status {
-                        None | Some(OutcomeStatus::Replaced) => stable_id
-                            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
-                            .map(|object_id| vec![object_id]),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                return match status {
-                    None => Ok(EffectOutcome::resolved().with_affected_objects(affected_ids)),
-                    Some(OutcomeStatus::Prevented) => Ok(EffectOutcome::prevented()),
-                    Some(OutcomeStatus::Replaced) => {
-                        Ok(EffectOutcome::replaced().with_affected_objects(affected_ids))
-                    }
-                    Some(OutcomeStatus::TargetInvalid) => Ok(EffectOutcome::target_invalid()),
-                    Some(_) => Ok(EffectOutcome::resolved().with_affected_objects(affected_ids)),
-                };
-            }
-            return apply_single_target_object_from_spec(
-                game,
-                ctx,
-                &self.spec,
-                |game, ctx, object| return_object_to_hand(game, ctx, object, receipts),
-            );
-        }
-
-        // For all/multi-target effects, count successful moves to hand.
-        let apply_result = if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {
-            let object_ids = match resolve_tagged_targets(game, ctx, &self.spec) {
-                Ok(ids) => ids,
-                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-                Err(error) => return Err(error),
-            };
-            if object_ids.is_empty() {
-                return Ok(EffectOutcome::target_invalid());
-            }
-
-            let selected_count = object_ids.len();
-            let mut applied_count = 0usize;
-            let mut affected_ids = Vec::new();
-            for object_id in object_ids {
-                let Some(obj) = game.object(object_id) else {
-                    continue;
-                };
-                let from_zone = obj.zone;
-                let pre_snapshot =
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                let additional_effects = ctx.additional_replacement_effects_snapshot();
-                let receipt = apply_zone_change_with_context_and_additional_effects(
-                    game,
-                    object_id,
-                    from_zone,
-                    Zone::Hand,
-                    ctx.cause.clone(),
-                    ctx,
-                    &additional_effects,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                let original = receipt.original.clone();
-                receipts.push((object_id, receipt));
-                if let EventOutcome::Proceed(result) = original {
-                    if result.new_object_id.is_some() {
-                        ctx.refresh_target_snapshot(pre_snapshot.clone());
-                        if pre_snapshot.object_id == ctx.source {
-                            ctx.refresh_source_snapshot(pre_snapshot.clone());
-                        }
-                        affected_ids.extend(result.new_object_ids.iter().copied());
-                        applied_count += 1;
-                    }
-                } else if let Some(result) = take_recorded_zone_change(game, object_id) {
-                    affected_ids.extend(result.new_object_ids);
-                }
-            }
-
-            crate::effects::helpers::ObjectApplyResult {
-                selected_count,
-                applied_count,
-                outcome: EffectOutcome::count(applied_count as i32)
-                    .with_affected_objects(affected_ids),
-            }
-        } else {
-            let mut affected_ids = Vec::new();
-            match apply_to_selected_objects(
-                game,
-                ctx,
-                &self.spec,
-                ObjectApplyResultPolicy::CountApplied,
-                |game, ctx, object_id| {
-                    let Some(obj) = game.object(object_id) else {
-                        return Ok(false);
-                    };
-                    let from_zone = obj.zone;
-                    let pre_snapshot =
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-                    let additional_effects = ctx.additional_replacement_effects_snapshot();
-                    let receipt = apply_zone_change_with_context_and_additional_effects(
+        // Selection and source observations are fixed before any sibling's
+        // replacement proposal or movement can change the selected world.
+        let snapshots = objects
+            .iter()
+            .filter_map(|id| {
+                ObjectSnapshot::from_object_id(game, *id).map(|snapshot| (*id, snapshot))
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        let requests = objects
+            .into_iter()
+            .filter_map(|id| {
+                snapshots.get(&id).map(|snapshot| {
+                    super::PreparedZoneMove::capture(
                         game,
-                        object_id,
-                        from_zone,
+                        id,
+                        snapshot.zone,
                         Zone::Hand,
                         ctx.cause.clone(),
-                        ctx,
-                        &additional_effects,
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(false);
-                    }
-                    let original = receipt.original.clone();
-                    receipts.push((object_id, receipt));
-                    match original {
-                        EventOutcome::Proceed(result) => {
-                            if result.new_object_id.is_some() {
-                                ctx.refresh_target_snapshot(pre_snapshot.clone());
-                                if pre_snapshot.object_id == ctx.source {
-                                    ctx.refresh_source_snapshot(pre_snapshot.clone());
-                                }
-                            }
-                            affected_ids.extend(result.new_object_ids.iter().copied());
-                            Ok(result.new_object_id.is_some())
-                        }
-                        EventOutcome::Prevented | EventOutcome::NotApplicable => Ok(false),
-                        EventOutcome::Replaced => {
-                            if let Some(result) = take_recorded_zone_change(game, object_id) {
-                                affected_ids.extend(result.new_object_ids);
-                            }
-                            Ok(false)
-                        }
-                    }
-                },
-            ) {
-                Ok(result) => crate::effects::helpers::ObjectApplyResult {
-                    outcome: result.outcome.with_affected_objects(affected_ids),
-                    ..result
-                },
-                Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
-                Err(error) => return Err(error),
-            }
-        };
+                        Some(snapshot.clone()),
+                    )
+                })
+            })
+            .collect();
 
-        Ok(apply_result.outcome)
+        Ok(SelectedZoneMovement::moves(
+            requests,
+            move |game, ctx, receipts, pending_start| {
+                let originals = super::observe_zone_move_originals(
+                    game,
+                    ctx,
+                    receipts,
+                    &snapshots,
+                    pending_start,
+                )?;
+                let affected = originals
+                    .iter()
+                    .flat_map(|(_, change, _)| change.new_object_ids.iter().copied())
+                    .collect::<Vec<_>>();
+                let memories = originals
+                    .iter()
+                    .map(|(_, _, snapshot)| snapshot.clone())
+                    .collect();
+                let outcome = if single_target {
+                    match receipts.first().map(|(_, receipt)| &receipt.original) {
+                        Some(EventOutcome::Proceed(_)) => EffectOutcome::resolved(),
+                        Some(EventOutcome::Prevented) => EffectOutcome::prevented(),
+                        Some(EventOutcome::Replaced) => EffectOutcome::replaced(),
+                        Some(EventOutcome::NotApplicable) | None => EffectOutcome::target_invalid(),
+                    }
+                } else {
+                    EffectOutcome::count(originals.len() as i32)
+                };
+                Ok(outcome
+                    .with_affected_objects(affected)
+                    .with_affected_object_memory(memories))
+            },
+        ))
     }
 }
 
@@ -424,7 +240,6 @@ impl CostExecutableEffect for ReturnToHandEffect {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

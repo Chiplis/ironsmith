@@ -19,7 +19,7 @@ use crate::ability::AbilityKind;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
 use crate::game_state::GameState;
@@ -173,101 +173,130 @@ impl EffectExecutor for SaddleCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let controller = ctx.controller;
-        let source = ctx.source;
-        let mut candidates = Self::saddle_candidates(game, controller, source);
-        if candidates.is_empty() && self.required_power > 0 {
-            return Err(ExecutionError::Impossible(
-                "No untapped creatures available to saddle".to_string(),
-            ));
-        }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        let min = if self.required_power == 0 { 0 } else { 1 };
-        let max = Some(candidates.len());
-        let chosen = {
-            // Prefer the actual saddle contribution, including marker-based modifications.
-            candidates.sort_by_key(|id| -Self::saddle_value(game, *id));
-            let spec = ChooseObjectsSpec::new(
-                source,
-                "Choose other creatures to saddle",
-                candidates.clone(),
-                min,
-                max,
-            );
-            make_decision(game, ctx.decision_maker, controller, Some(source), spec)
-        };
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-
-        let mut chosen = chosen;
-        chosen.sort();
-        chosen.dedup();
-
-        // If the decision maker picked a set that doesn't meet the requirement,
-        // greedily add remaining candidates until it does (or we exhaust options).
-        let required = self.required_power as i32;
-        let mut total_power: i32 = chosen.iter().map(|id| Self::saddle_value(game, *id)).sum();
-        if total_power < required {
-            let mut remaining: Vec<ObjectId> = candidates
-                .iter()
-                .copied()
-                .filter(|id| !chosen.contains(id))
-                .collect();
-            remaining.sort_by_key(|id| -Self::saddle_value(game, *id));
-            for id in remaining {
-                if total_power >= required {
-                    break;
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let controller = ctx.controller;
+                let source = ctx.source;
+                let mut candidates = Self::saddle_candidates(game, controller, source);
+                if candidates.is_empty() && self.required_power > 0 {
+                    return Err(ExecutionError::Impossible(
+                        "No untapped creatures available to saddle".to_string(),
+                    ));
                 }
-                chosen.push(id);
-                total_power += Self::saddle_value(game, id);
-            }
-        }
 
-        if total_power < required {
-            return Err(ExecutionError::Impossible(
-                "Not enough total power to saddle".to_string(),
-            ));
-        }
+                let min = if self.required_power == 0 { 0 } else { 1 };
+                let max = Some(candidates.len());
+                let chosen = {
+                    // Prefer the actual saddle contribution, including marker-based modifications.
+                    candidates.sort_by_key(|id| -Self::saddle_value(game, *id));
+                    let spec = ChooseObjectsSpec::new(
+                        source,
+                        "Choose other creatures to saddle",
+                        candidates.clone(),
+                        min,
+                        max,
+                    );
+                    make_decision(game, ctx.decision_maker, controller, Some(source), spec)
+                };
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
-        let saddle_count = chosen.len();
-        for id in &chosen {
-            if game.object(*id).is_some() && !game.is_tapped(*id) {
-                game.tap(*id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, *id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-                events.push(keyword_saddle_event(
-                    game,
-                    *id,
-                    source,
-                    controller,
-                    saddle_count,
-                    ctx.provenance,
-                ));
-            }
-        }
+                let mut chosen = chosen;
+                chosen.sort();
+                chosen.dedup();
 
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
+                // If the decision maker picked a set that doesn't meet the requirement,
+                // greedily add remaining candidates until it does (or we exhaust options).
+                let required = self.required_power as i32;
+                let mut total_power: i32 =
+                    chosen.iter().map(|id| Self::saddle_value(game, *id)).sum();
+                if total_power < required {
+                    let mut remaining: Vec<ObjectId> = candidates
+                        .iter()
+                        .copied()
+                        .filter(|id| !chosen.contains(id))
+                        .collect();
+                    remaining.sort_by_key(|id| -Self::saddle_value(game, *id));
+                    for id in remaining {
+                        if total_power >= required {
+                            break;
+                        }
+                        chosen.push(id);
+                        total_power += Self::saddle_value(game, id);
+                    }
+                }
 
-        // Record saddle contributors for "saddled it this turn" references.
-        let entry = game
-            .turn_store
-            .turn_history
-            .saddled_this_turn
-            .entry(source)
-            .or_default();
-        for id in chosen {
-            if !entry.contains(&id) {
-                entry.push(id);
-            }
-        }
+                if total_power < required {
+                    return Err(ExecutionError::Impossible(
+                        "Not enough total power to saddle".to_string(),
+                    ));
+                }
 
-        Ok(EffectOutcome::resolved().with_events(events))
+                let taps = super::tap::tap_cost_objects_with_outputs(game, ctx, &chosen)?;
+                let batch = taps
+                    .outcome
+                    .events
+                    .iter()
+                    .find_map(TriggerEvent::simultaneous_batch);
+                let mut children = vec![taps];
+                let mut completions = Vec::new();
+                let saddle_count = chosen.len();
+                for id in &chosen {
+                    let mut event = keyword_saddle_event(
+                        game,
+                        *id,
+                        source,
+                        controller,
+                        saddle_count,
+                        ctx.provenance,
+                    );
+                    if let Some(batch) = batch {
+                        event = event.with_simultaneous_batch(batch);
+                    }
+                    completions.push(event);
+                }
+
+                // Record saddle contributors for "saddled it this turn" references.
+                let entry = game
+                    .turn_store
+                    .turn_history
+                    .saddled_this_turn
+                    .entry(source)
+                    .or_default();
+                for id in chosen {
+                    if !entry.contains(&id) {
+                        entry.push(id);
+                    }
+                }
+
+                for event in completions {
+                    children.push(
+                        crate::effects::composition::publish_keyword_action_completion_receipt(
+                            game, ctx, event,
+                        )?,
+                    );
+                }
+                Ok(CompletedEffectOutputs::with_primary_result(
+                    EffectOutcome::resolved(),
+                    children,
+                ))
+            },
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -325,23 +354,31 @@ impl EffectExecutor for BecomeSaddledUntilEotEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        // CR 702.171b: an already-saddled permanent can't become saddled
-        // again; only a newly saddled permanent reports the event that
-        // "whenever this creature becomes saddled" watches.
-        if game.is_saddled(ctx.source) || game.object(ctx.source).is_none() {
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            // CR 702.171b: an already-saddled permanent can't become saddled
+            // again; only a newly saddled permanent reports the event that
+            // "whenever this creature becomes saddled" watches.
+            if game.is_saddled(ctx.source) || game.object(ctx.source).is_none() {
+                game.set_saddled_until_end_of_turn(ctx.source);
+                return Ok(EffectOutcome::resolved());
+            }
             game.set_saddled_until_end_of_turn(ctx.source);
-            return Ok(EffectOutcome::resolved());
-        }
-        game.set_saddled_until_end_of_turn(ctx.source);
-        let controller = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
-        let snapshot = game
-            .object(ctx.source)
-            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-        let event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::BecomeSaddled, controller, ctx.source, 1)
+            let controller = game.controller_of_id(ctx.source).unwrap_or(ctx.controller);
+            let snapshot = game
+                .object(ctx.source)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+            crate::effects::composition::complete_keyword_action_with_result(
+                game,
+                ctx,
+                EffectOutcome::resolved(),
+                KeywordActionEvent::new(
+                    KeywordActionKind::BecomeSaddled,
+                    controller,
+                    ctx.source,
+                    1,
+                )
                 .with_snapshot(snapshot),
-            ctx.provenance,
-        );
-        Ok(EffectOutcome::resolved().with_events(vec![event]))
+            )
+        })
     }
 }

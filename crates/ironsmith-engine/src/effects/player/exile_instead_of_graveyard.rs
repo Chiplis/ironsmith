@@ -1,10 +1,9 @@
 //! Exile-instead-of-graveyard replacement effect implementation.
 
-use crate::Effect;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ApplyReplacementEffect, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
@@ -35,8 +34,10 @@ impl EffectExecutor for ExileInsteadOfGraveyardEffect {
         );
 
         let apply = ApplyReplacementEffect::until_end_of_turn(replacement);
-        let _ = execute_effect(game, &Effect::new(apply), ctx)?;
-
-        Ok(EffectOutcome::resolved())
+        let registration = apply.execute_child(game, ctx)?;
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved(),
+            [registration],
+        ))
     }
 }

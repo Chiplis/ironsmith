@@ -201,6 +201,16 @@ pub(crate) fn apply_tagged_runtime_state(
             .explicit_objects()
             .or_else(|| outcome.result_objects())
     {
+        if result_ids.is_empty() {
+            ctx.set_tagged_objects(tag, Vec::new());
+            return;
+        }
+        if let Some(snapshots) = outcome.result_object_memory() {
+            if !snapshots.is_empty() {
+                ctx.set_tagged_objects(tag, snapshots.to_vec());
+                return;
+            }
+        }
         let snapshots = result_ids
             .iter()
             .filter_map(|id| {
@@ -247,15 +257,7 @@ pub(crate) fn apply_tagged_runtime_state(
             })
             .flatten()
             .filter(|memory| seen.insert(memory.object_id))
-            .map(|memory| {
-                memory.to_snapshot_with_fallback(
-                    game,
-                    state
-                        .pre_snapshots
-                        .iter()
-                        .find(|snapshot| snapshot.object_id == memory.object_id),
-                )
-            })
+            .map(|memory| memory.clone())
             .collect::<Vec<_>>();
         // Some producers return exact IDs without memories. Their pre-effect
         // candidate snapshots can supply LKI, but only for those exact IDs.
@@ -359,7 +361,7 @@ pub(crate) fn apply_tagged_runtime_state(
             })
             .flatten()
             .filter(|memory| seen.insert(memory.object_id))
-            .map(|memory| memory.to_snapshot(game))
+            .map(|memory| memory.clone())
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
             ctx.set_tagged_objects(tag, snapshots);
@@ -576,7 +578,7 @@ mod tests {
         let memories = selected
             .iter()
             .map(|id| {
-                crate::effect::OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(
+                Clone::clone(&ObjectSnapshot::from_object(
                     game.object(*id).unwrap(),
                     &game,
                 ))
@@ -661,7 +663,7 @@ mod tests {
             let memories = [first, second]
                 .iter()
                 .map(|id| {
-                    crate::effect::OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(
+                    Clone::clone(&ObjectSnapshot::from_object(
                         game.object(*id).unwrap(),
                         &game,
                     ))
@@ -793,7 +795,7 @@ mod tests {
         let a = create_creature(&mut game, alice);
         let b = create_creature(&mut game, bob);
         let memories = [a, b].map(|id| {
-            crate::effect::OutcomeObjectMemory::from_snapshot(
+            Clone::clone(
                 &ObjectSnapshot::from_object_with_calculated_characteristics(
                     game.object(id).unwrap(),
                     &game,
@@ -871,9 +873,7 @@ mod tests {
         let outcome = EffectOutcome::count(1)
             .with_result_objects(vec![graveyard_id])
             .with_affected_objects(vec![graveyard_id])
-            .with_affected_object_memory(vec![crate::effect::OutcomeObjectMemory::from_snapshot(
-                &pre_move_snapshot,
-            )]);
+            .with_affected_object_memory(vec![Clone::clone(&pre_move_snapshot)]);
 
         apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("moved"), &outcome, runtime);
 
@@ -913,8 +913,8 @@ mod tests {
         let source = game.new_object_id();
         let first_snapshot = ObjectSnapshot::from_object(game.object(first).unwrap(), &game);
         let second_snapshot = ObjectSnapshot::from_object(game.object(second).unwrap(), &game);
-        let first_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&first_snapshot);
-        let second_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&second_snapshot);
+        let first_memory = Clone::clone(&first_snapshot);
+        let second_memory = Clone::clone(&second_snapshot);
         game.set_current_controller(first, alice)
             .expect("finite controller fixture must refresh successfully");
         game.set_current_controller(second, bob)

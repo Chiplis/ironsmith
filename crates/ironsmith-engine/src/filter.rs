@@ -1195,20 +1195,18 @@ fn subject_shares_creature_type_with_source(
         .any(|subtype| source_subtypes.contains(subtype))
 }
 
-/// The permanent an attachment source is attached to, when `tag` is that
-/// source's own "enchanted" (Aura) / "equipped" (Equipment) reference.
+/// The host of either source-relative attachment reference. The authored
+/// word survives copy/type changes, so the source's subtype is irrelevant.
 fn source_attachment_host_for_tag(
     source: Option<crate::ids::ObjectId>,
     tag: &TagKey,
     game: &GameState,
 ) -> Option<crate::ids::ObjectId> {
-    let subtype = match tag.as_str() {
-        "enchanted" => Subtype::Aura,
-        "equipped" => Subtype::Equipment,
-        _ => return None,
-    };
+    if !matches!(tag.as_str(), "enchanted" | "equipped") {
+        return None;
+    }
     let source = game.object(source?)?;
-    if source.zone != crate::zone::Zone::Battlefield || !source.subtypes.contains(&subtype) {
+    if source.zone != crate::zone::Zone::Battlefield {
         return None;
     }
     source.attached_to.as_ref()?.object_id()
@@ -3660,12 +3658,9 @@ impl ObjectFilterExt for ObjectFilter {
                                     live.zone != source.zone || live.stable_id != source.stable_id
                                 })
                             });
-                            let matching_attachment = match constraint.tag.as_str() {
-                                "equipped" => source.subtypes.contains(&Subtype::Equipment),
-                                "enchanted" => source.subtypes.contains(&Subtype::Aura),
-                                _ => false,
-                            };
-                            if !departed || !matching_attachment {
+                            if !departed
+                                || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                            {
                                 return None;
                             }
                             match source.attached_to {

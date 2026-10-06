@@ -2528,6 +2528,7 @@ export default function HoverArtOverlay({
                       || lineActions[0]
                       || null;
                     const isActivatedAbility = action != null || activatedRuleLineIndices.has(lineIndex);
+                    const canClickAbility = action != null && typeof onInteractiveAction === "function";
                     const canActivate = action != null
                       && !action.payment_pending
                       && action.mana_payment_available !== false
@@ -2552,14 +2553,14 @@ export default function HoverArtOverlay({
                             type="button"
                             className="inspector-oracle-line-action interactive-card-frame__ability group w-full text-left"
                             data-available={canActivate ? "true" : "false"}
-                            aria-disabled={canActivate ? undefined : "true"}
+                            aria-disabled={canClickAbility ? undefined : "true"}
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              if (canActivate) onInteractiveAction(action);
+                              if (canClickAbility) onInteractiveAction(action);
                             }}
-                            aria-label={ui(canActivate
+                            aria-label={ui(canClickAbility
                               ? `Activate ${displayObjectName || "card ability"}: ${line}`
                               : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`)}
                           >
@@ -3055,6 +3056,7 @@ export default function HoverArtOverlay({
                           || lineActions[0]
                           || null;
                         const isActivatedAbility = action != null || activatedRuleLineIndices.has(lineIndex);
+                        const canClickAbility = action != null && typeof onInteractiveAction === "function";
                         const canActivate = action != null
                           && !action.payment_pending
                           && action.mana_payment_available !== false
@@ -3093,14 +3095,14 @@ export default function HoverArtOverlay({
                                 type="button"
                                 className="inspector-oracle-line-action group w-full text-left"
                                 data-available={canActivate ? "true" : "false"}
-                                aria-disabled={canActivate ? undefined : "true"}
+                                aria-disabled={canClickAbility ? undefined : "true"}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  if (canActivate) onInteractiveAction(action);
+                                  if (canClickAbility) onInteractiveAction(action);
                                 }}
-                                aria-label={ui(canActivate
+                                aria-label={ui(canClickAbility
                                   ? `Activate ${displayObjectName || "card ability"}: ${line}`
                                   : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`)}
                               >

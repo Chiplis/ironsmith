@@ -3,41 +3,24 @@
 use crate::decision::{FallbackStrategy, SelectFirstDecisionMaker};
 use crate::decisions::make_boolean_decision;
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::effects::{ExecutionContext, ExecutionError, ExecutionContextCheckpoint, execute_effect};
-use ironsmith_core::effect::UpkeepPaymentKind;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
-
-pub type CumulativeUpkeepEffect = ironsmith_core::CumulativeUpkeepEffect<Effect>;
+use ironsmith_core::effect::UpkeepPaymentKind;
 
 #[path = "cumulative_upkeep_action_costs.rs"]
 mod action_costs;
 
-fn execute_sequence(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    effects: &[Effect],
-) -> Result<EffectOutcome, ExecutionError> {
-    let mut outcomes = Vec::new();
-    for effect in effects {
-        let outcome = execute_effect(game, effect, ctx)?;
-        let status = outcome.status;
-        outcomes.push(outcome);
-        if status.is_failure() {
-            break;
-        }
-    }
-    Ok(EffectOutcome::aggregate(outcomes))
-}
+pub type CumulativeUpkeepEffect = ironsmith_core::CumulativeUpkeepEffect<Effect>;
 
 fn execute_failure(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     effects: &[Effect],
-) -> Result<EffectOutcome, ExecutionError> {
-    execute_sequence(game, ctx, effects)
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    super::execute_checked_program_with_outputs(game, ctx, effects)
 }
 
 fn execute_unpaid_failure(
@@ -45,7 +28,7 @@ fn execute_unpaid_failure(
     ctx: &mut ExecutionContext,
     player: crate::ids::PlayerId,
     effects: &[Effect],
-) -> Result<EffectOutcome, ExecutionError> {
+) -> Result<CompletedEffectOutputs, ExecutionError> {
     let mut lookback_source_snapshots = game.trigger_source_lookback_snapshots();
     let source_snapshot = game
         .object(ctx.source)
@@ -58,8 +41,14 @@ fn execute_unpaid_failure(
         lookback_source_snapshots.push(snapshot.clone());
     }
     let outcome = execute_failure(game, ctx, effects)?;
-    game.queue_trigger_event(
-        ctx.provenance,
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let completion = super::publish_keyword_action_completion_receipt(
+        game,
+        ctx,
         crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::other::KeywordActionEvent::new(
                 crate::events::other::KeywordActionKind::CumulativeUpkeepNotPaid,
@@ -71,16 +60,12 @@ fn execute_unpaid_failure(
             ctx.provenance,
         )
         .with_lookback_source_snapshots(lookback_source_snapshots),
-    );
+    )?;
+    for event in &completion.outcome.events {
+        game.queue_trigger_event(event.provenance(), event.clone());
+    }
+    let outcome = outcome.append_batch_completion_outputs(completion);
     Ok(outcome)
-}
-
-fn restore_payment_checkpoint(
-    game: &mut GameState, ctx: &mut ExecutionContext,
-    game_checkpoint: GameState, ctx_checkpoint: ExecutionContextCheckpoint,
-) {
-    game.restore_execution_checkpoint(game_checkpoint, ctx.decision_maker.awaiting_choice());
-    ctx_checkpoint.restore(ctx);
 }
 
 fn payment_can_complete(
@@ -94,17 +79,26 @@ fn payment_can_complete(
         return action.can_pay(game, ctx, count);
     }
     let mut simulated_game = game.clone();
-    let query = crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
+    let query =
+        crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
     simulated_game.bind_token_query_meter(query.meter());
     let mut simulated_dm = SelectFirstDecisionMaker;
     let mut simulated_ctx = ExecutionContext::new_default(ctx.source, ctx.controller)
         .with_decision_maker(&mut simulated_dm);
     crate::effects::ExecutionContextCheckpoint::capture(ctx).restore(&mut simulated_ctx);
     simulated_ctx.mana.payment_reason = Some(reason);
+    simulated_ctx.prospective_cost_payment = true;
 
     for _ in 0..count {
-        let outcome = execute_sequence(&mut simulated_game, &mut simulated_ctx, effects)?;
-        if outcome.status.is_failure() {
+        let outcome = match super::sequence::execute_checked_payment_program_with_outputs(
+            &mut simulated_game,
+            &mut simulated_ctx,
+            effects,
+        ) {
+            Err(ExecutionError::Impossible(_)) => return Ok(false),
+            other => other?,
+        };
+        if outcome.outcome.status.is_failure() {
             return Ok(false);
         }
     }
@@ -117,59 +111,40 @@ fn execute_payment_atomically(
     effects: &[Effect],
     count: usize,
     reason: crate::costs::PaymentReason,
-) -> Result<Option<EffectOutcome>, ExecutionError> {
-    let game_checkpoint = game.clone();
-    let ctx_checkpoint = ExecutionContextCheckpoint::capture(ctx);
-    let previous_reason = ctx.mana.payment_reason;
-    ctx.mana.payment_reason = Some(reason);
-    if let Some(action) = action_costs::ActionCost::read(effects) {
-        let previous_cause = ctx.cause.clone();
-        ctx.cause.cause_type = crate::events::cause::CauseType::Cost;
-        let result = action.pay(game, ctx, count);
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            restore_payment_checkpoint(game, ctx, game_checkpoint, ctx_checkpoint);
-            return result.map(|_| None);
+) -> Result<Option<CompletedEffectOutputs>, ExecutionError> {
+    super::compound::execute_optional_transaction(game, ctx, |game, ctx| {
+        let previous_reason = ctx.mana.payment_reason;
+        ctx.mana.payment_reason = Some(reason);
+        if let Some(action) = action_costs::ActionCost::read(effects) {
+            let previous_cause = ctx.cause.clone();
+            ctx.cause.cause_type = crate::events::cause::CauseType::Cost;
+            let result = action.pay(game, ctx, count);
+            ctx.cause = previous_cause;
+            ctx.mana.payment_reason = previous_reason;
+            return result.map(Some);
         }
-        ctx.cause = previous_cause;
+        let mut outcomes = Vec::new();
+
+        for _ in 0..count {
+            let outcome = match super::sequence::execute_checked_payment_program_with_outputs(
+                game, ctx, effects,
+            ) {
+                Err(ExecutionError::Impossible(_)) => return Ok(None),
+                other => other?,
+            };
+            let status = outcome.outcome.status;
+            outcomes.push(outcome);
+            if ctx.decision_maker.awaiting_choice() || status.is_failure() {
+                return Ok(None);
+            }
+        }
+
         ctx.mana.payment_reason = previous_reason;
-        return result.map(Some);
-    }
-    let mut outcomes = Vec::new();
-    let mut failed_to_pay = false;
-    let mut execution_error = None;
-
-    for _ in 0..count {
-        match execute_sequence(game, ctx, effects) {
-            Ok(outcome) => {
-                let status = outcome.status;
-                outcomes.push(outcome);
-                if ctx.decision_maker.awaiting_choice() {
-                    restore_payment_checkpoint(game, ctx, game_checkpoint, ctx_checkpoint);
-                    return Ok(None);
-                }
-                if status.is_failure() {
-                    failed_to_pay = true;
-                    break;
-                }
-            }
-            Err(err) => {
-                execution_error = Some(err);
-                break;
-            }
-        }
-    }
-
-    if let Some(err) = execution_error {
-        restore_payment_checkpoint(game, ctx, game_checkpoint, ctx_checkpoint);
-        return Err(err);
-    }
-    if failed_to_pay {
-        restore_payment_checkpoint(game, ctx, game_checkpoint, ctx_checkpoint);
-        return Ok(None);
-    }
-
-    ctx.mana.payment_reason = previous_reason;
-    Ok(Some(EffectOutcome::aggregate_summing_counts(outcomes)))
+        Ok(Some(CompletedEffectOutputs::from_children(
+            outcomes,
+            EffectOutcome::aggregate_summing_counts,
+        )))
+    })
 }
 
 impl EffectExecutor for CumulativeUpkeepEffect {
@@ -191,62 +166,118 @@ impl EffectExecutor for CumulativeUpkeepEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        // Replacement programs may move the source during payment. Preserve
-        // this incarnation's pre-payment LKI; never find a stable-id successor.
-        let payment_source_snapshot = game.object(ctx.source)
-            .map(|object| game.cached_object_snapshot_with_calculated_characteristics(object))
-            .or_else(|| ctx.source_snapshot.clone().filter(|snapshot| snapshot.object_id == ctx.source));
-        let count = match self.kind {
-            UpkeepPaymentKind::Echo => 1,
-            UpkeepPaymentKind::Cumulative => resolve_value(game, &crate::effect::Value::CountersOnSource(CounterType::Age), ctx)?.max(0) as usize,
-        };
-        let reason = if self.kind == UpkeepPaymentKind::Cumulative { crate::costs::PaymentReason::CumulativeUpkeep } else { crate::costs::PaymentReason::Effect };
-        // A cost of zero still offers a choice (CR 118.5, 702.24a).
-        let can_attempt = payment_can_complete(&self.payment, count, reason, game, ctx)?;
-        let wants_to_pay = can_attempt
-            && make_boolean_decision(
-                game,
-                &mut ctx.decision_maker,
-                player,
-                ctx.source,
-                if self.kind == UpkeepPaymentKind::Echo { "Pay echo cost?".into() } else { format!("Pay cumulative upkeep {count} time(s)?") },
-                FallbackStrategy::Accept,
-            );
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        if !wants_to_pay {
-            if game.controller_of_id(ctx.source) != Some(player) {
-                return Ok(EffectOutcome::count(0));
-            }
-            return if self.kind == UpkeepPaymentKind::Cumulative { execute_unpaid_failure(game, ctx, player, &self.failure) }
-                else { execute_failure(game, ctx, &self.failure) };
-        }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(Vec::new())),
+            |game, ctx| {
+                game.refresh_continuous_state()
+                    .map_err(ExecutionError::ContinuousDiscovery)?;
+                let player = resolve_player_filter(game, &self.player, ctx)?;
+                let count = match self.kind {
+                    UpkeepPaymentKind::Echo => 1,
+                    UpkeepPaymentKind::Cumulative => resolve_value(
+                        game,
+                        &crate::effect::Value::CountersOnSource(CounterType::Age),
+                        ctx,
+                    )?
+                    .max(0) as usize,
+                };
+                let reason = if self.kind == UpkeepPaymentKind::Cumulative {
+                    crate::costs::PaymentReason::CumulativeUpkeep
+                } else {
+                    crate::costs::PaymentReason::Effect
+                };
+                // A cost of zero still offers a choice (CR 118.5, 702.24a).
+                let can_attempt = payment_can_complete(&self.payment, count, reason, game, ctx)?;
+                let wants_to_pay = can_attempt
+                    && make_boolean_decision(
+                        game,
+                        &mut ctx.decision_maker,
+                        player,
+                        ctx.source,
+                        if self.kind == UpkeepPaymentKind::Echo {
+                            "Pay echo cost?".into()
+                        } else {
+                            format!("Pay cumulative upkeep {count} time(s)?")
+                        },
+                        FallbackStrategy::Accept,
+                    );
 
-        let Some(mut outcome) = execute_payment_atomically(game, ctx, &self.payment, count, reason)? else {
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            return if self.kind == UpkeepPaymentKind::Cumulative { execute_unpaid_failure(game, ctx, player, &self.failure) }
-                else { execute_failure(game, ctx, &self.failure) };
-        };
-        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-        // The entire optional keyword cost has now succeeded. A successful
-        // zero cost still represents the player's affirmative acknowledgement.
-        // The receipt is not emitted by affordability simulation or installments.
-        let action = match self.kind {
-            UpkeepPaymentKind::Cumulative => crate::events::KeywordActionKind::CumulativeUpkeepPaid,
-            UpkeepPaymentKind::Echo => crate::events::KeywordActionKind::EchoCostPaid,
-        };
-        let snapshot = game.object(ctx.source).map(|object|game.cached_object_snapshot_with_calculated_characteristics(object))
-            .or(payment_source_snapshot);
-        let provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::KeywordAction);
-        outcome.events.push(crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::other::KeywordActionEvent::new(action, player, ctx.source, 1).with_snapshot(snapshot), provenance,
-        ));
-        crate::effects::runtime::capture_triggers_before_added_program(game, ctx, None, outcome.events.iter_mut())?;
-        Ok(outcome)
-        })
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                if !wants_to_pay {
+                    if game.controller_of_id(ctx.source) != Some(player) {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    return if self.kind == UpkeepPaymentKind::Cumulative {
+                        execute_unpaid_failure(game, ctx, player, &self.failure)
+                    } else {
+                        execute_failure(game, ctx, &self.failure)
+                    };
+                }
+
+                let source_before_payment =
+                    crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
+                        .or_else(|| ctx.source_snapshot.clone());
+                let Some(mut outcome) =
+                    execute_payment_atomically(game, ctx, &self.payment, count, reason)?
+                else {
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    return if self.kind == UpkeepPaymentKind::Cumulative {
+                        execute_unpaid_failure(game, ctx, player, &self.failure)
+                    } else {
+                        execute_failure(game, ctx, &self.failure)
+                    };
+                };
+                game.refresh_continuous_state()
+                    .map_err(ExecutionError::ContinuousDiscovery)?;
+                // The entire optional keyword cost has now succeeded. A successful
+                // zero cost still represents the player's affirmative acknowledgement.
+                // The receipt is not emitted by affordability simulation or installments.
+                let action = match self.kind {
+                    UpkeepPaymentKind::Cumulative => {
+                        crate::events::KeywordActionKind::CumulativeUpkeepPaid
+                    }
+                    UpkeepPaymentKind::Echo => crate::events::KeywordActionKind::EchoCostPaid,
+                };
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
+                    .or(source_before_payment);
+                outcome = super::complete_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    outcome,
+                    crate::events::other::KeywordActionEvent::new(action, player, ctx.source, 1)
+                        .with_snapshot(snapshot),
+                )?;
+                crate::effects::runtime::capture_triggers_before_added_program(
+                    game,
+                    ctx,
+                    None,
+                    outcome.outcome.events.iter_mut(),
+                )?;
+                outcome.synchronize_observations();
+                Ok(outcome)
+            },
+        )
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {

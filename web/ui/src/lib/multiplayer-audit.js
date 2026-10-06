@@ -19,12 +19,12 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-// Coordinated numeric-choice evidence and counted-counter semantics boundary.
-// Historical signed bytes, including protocol20/digest3, stay intact; only the
+// Coordinated prepared-action, ordered-definition and full-snapshot boundary.
+// Historical signed bytes, including protocol21/digest4, stay intact; only the
 // current protocol and digest may enter the current engine or a current peer.
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 21;
-export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 4;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, CURRENT_AUDIT_PROTOCOL_VERSION]);
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 22;
+export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 5;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, CURRENT_AUDIT_PROTOCOL_VERSION]);
 
 // The current rules engine must never reinterpret a historical signed record.
 // Signature-only verification keeps the original version and canonical payload.

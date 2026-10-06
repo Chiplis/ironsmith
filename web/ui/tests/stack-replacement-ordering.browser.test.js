@@ -17,6 +17,37 @@ test("replacement choices share trigger arrows and require explicit single-effec
     assert.deepEqual(ordering.effectOrderingOptionIndices(triggers, [9, 3]), [9, 3], "triggers still submit the full order");
     assert.notEqual(ordering.buildEffectOrderingKey(replacement), ordering.buildEffectOrderingKey({ ...replacement, options: replacement.options.map(option => ({ ...option, related_object_ids: [101] })) }), "source identity invalidates stale order");
 
+    const optional = { ...replacement, options: [
+      { index: 9, object_id: 40, description: "Do not apply Golgari Thug" },
+      { index: 3, object_id: 40, description: "Golgari Thug" },
+    ] };
+    assert.equal(ordering.isEffectOrderingDecision(optional), false);
+    const presented = ordering.presentOptionalReplacementDecision(optional);
+    assert.equal(presented.reason, "May ability");
+    assert.deepEqual(presented.options.map(option => [option.index, option.description]), [[3, "Yes"], [9, "No"]]);
+    assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [...optional.options, { index: 12, description: "Another replacement" }] }), true);
+    assert.equal(ordering.isReplacementOrderingDecision({ ...optional, options: [optional.options[0], { ...optional.options[1], object_id: 41 }] }), true);
+
+    for (const suffix of ["", "&mobile", "&spectator"]) {
+      const page = await browser.newPage({ viewport: { width: suffix.includes("mobile") ? 700 : 1100, height: 850 } });
+      const errors = [];
+      page.on("pageerror", error => errors.push(error.message));
+      await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/stack-replacement-ordering.html?optional${suffix}`);
+      await page.getByText("May ability", { exact: true }).first().waitFor();
+      assert.equal(await page.locator('.stack-card[data-pending-replacement="true"]').count(), 0);
+      assert.deepEqual(await page.evaluate(() => window.__commands), []);
+      if (!suffix.includes("spectator")) {
+        const yes = page.getByRole("button", { name: "Yes", exact: true });
+        await yes.waitFor({ state: "visible" });
+        await yes.click();
+        assert.deepEqual(await page.evaluate(() => window.__commands), [{ type: "select_options", option_indices: [3] }]);
+        await page.getByRole("button", { name: "No", exact: true }).click();
+        assert.deepEqual(await page.evaluate(() => window.__commands), [{ type: "select_options", option_indices: [3] }, { type: "select_options", option_indices: [9] }]);
+      }
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+
     for (const query of ["", "?mobile", "?spectator", "?narrow"]) {
       const page = await browser.newPage({ viewport: { width: query.includes("mobile") ? 700 : 1100, height: 850 } });
       const errors = [];

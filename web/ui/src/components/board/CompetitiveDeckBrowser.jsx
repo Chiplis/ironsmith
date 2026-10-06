@@ -21,6 +21,8 @@ const FEATURED_COLLECTION = "last-major-events";
 const FEATURED_SIZE = 3;
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
 const catalogFormats = [
+  { id: "commander", label: "Commander" },
+  { id: "vintage", label: "Vintage" },
   { id: "modern", label: "Modern" },
   { id: "pioneer", label: "Pioneer" },
   { id: "standard", label: "Standard" },
@@ -233,7 +235,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   );
 
   const searchResults = useMemo(
-    () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: 240, searchIndex: catalog?.searchIndex }),
+    () => searchCatalogEntries(catalog?.decks, deferredQuery, { limit: catalog?.decks?.length || 500, searchIndex: catalog?.searchIndex }),
     [catalog, deferredQuery],
   );
 

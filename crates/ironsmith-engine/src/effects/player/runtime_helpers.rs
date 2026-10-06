@@ -2,7 +2,6 @@ use crate::alternative_cast::CastingMethod;
 use crate::effect::EffectOutcome;
 use crate::effects::ExecutionContext;
 use crate::effects::ExecutionError;
-use crate::events::other::LandPlayedEvent;
 use crate::filter::AlternativeCastKind;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -36,33 +35,6 @@ pub(super) fn register_effect_driven_spell_cast(
     )?;
     game.defer_trigger_entries(captured.take_all());
     Ok(event)
-}
-
-pub(super) fn queue_effect_driven_land_play(
-    game: &mut GameState,
-    ctx: &ExecutionContext,
-    land_id: ObjectId,
-    player: PlayerId,
-    from_zone: Zone,
-    completed_destination: Zone,
-) -> Result<(), ExecutionError> {
-    let event = LandPlayedEvent::with_current_snapshot(land_id, player, from_zone, completed_destination, game)?;
-    game.queue_trigger_event(
-        ctx.provenance,
-        TriggerEvent::new_with_provenance(
-            event,
-            ctx.provenance,
-        ),
-    );
-
-    // Entry counters, including Saga lore, are committed by the central entry
-    // pipeline. A zero-counter result may be a completed prevention or Instead
-    // replacement and must not be repaired by this notification helper.
-
-    if let Some(player_data) = game.player_mut(player) {
-        player_data.record_land_play();
-    }
-    Ok(())
 }
 
 pub(super) fn with_spell_cast_event(

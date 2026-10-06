@@ -12,6 +12,34 @@ struct HiddenCardMetadata {
     origin_commitment: String,
 }
 
+// Both damage steps share Step::CombatDamage in the engine. Preserve that
+// protocol field while exposing the runner's distinction to priority-stop UI.
+fn combat_damage_step_for_runner(runner: Option<&ironsmith::turn_runner::TurnRunner>) -> Option<&'static str> {
+    use ironsmith::turn_runner::TurnState;
+    match runner?.state() {
+        TurnState::CombatDamageFirstStrike | TurnState::CombatDamageFirstStrikeAssign
+        | TurnState::CombatDamageFirstStrikeSbas | TurnState::CombatDamageFirstStrikePriority => Some("first_strike"),
+        TurnState::CombatDamageRegular | TurnState::CombatDamageRegularAssign
+        | TurnState::CombatDamageRegularSbas | TurnState::CombatDamageRegularPriority => Some("regular"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn combat_damage_snapshot_distinguishes_both_priority_windows() {
+    use ironsmith::turn_runner::{TurnRunner, TurnState};
+    for (state, expected) in [
+        (TurnState::CombatDamageFirstStrikePriority, Some("first_strike")),
+        (TurnState::CombatDamageRegularPriority, Some("regular")),
+        (TurnState::EndCombatPriority, None),
+    ] {
+        let runner = TurnRunner::from_state_for_sync(state);
+        assert_eq!(combat_damage_step_for_runner(Some(&runner)), expected);
+    }
+    assert_eq!(combat_damage_step_for_runner(None), None);
+}
+
 impl WasmGame {
     fn hidden_metadata_for_committed_object(&self, id: ObjectId) -> Option<HiddenCardMetadata> {
         let object = self.game.object(id)?;
@@ -237,8 +265,6 @@ impl WasmGame {
         let snapshot_id = self.snapshot_serial;
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
-        let disclosure_view = self.payment_disclosure_view();
-        let disclosure_source_view = self.payment_disclosure_source_view();
         let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
@@ -255,12 +281,8 @@ impl WasmGame {
             &self.snapshot_object_view_cache,
             self.static_library_top_visibility_window(),
         );
-        if let Some(view) = disclosure_view.as_ref() {
-            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
-        }
-        if let Some(view) = disclosure_source_view.as_ref() {
-            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
-        }
+        self.include_payment_disclosure_views(&mut snap);
+        snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
         serde_json::to_string_pretty(&snap)
@@ -1071,6 +1093,7 @@ impl WasmGame {
             self.game.turn.active_player,
             self.game.turn.phase,
             self.game.turn.step,
+            combat_damage_step_for_runner(self.runner.as_ref()),
             self.game.object_ids_in_deterministic_order().len(),
             self.game.stack.len(),
         ))
@@ -3527,7 +3550,6 @@ impl WasmGame {
         if let Some(before) = self.pending_crypto_audit_before.take() {
             self.update_crypto_requirements_from(before);
         }
-        let disclosure_view = self.payment_disclosure_view();
         let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
@@ -3544,9 +3566,8 @@ impl WasmGame {
             &self.snapshot_object_view_cache,
             self.static_library_top_visibility_window(),
         );
-        if let Some(view) = disclosure_view.as_ref() {
-            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
-        }
+        self.include_payment_disclosure_views(&mut snap);
+        snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
         let pending_insert_started_at = PerfTimer::start();
@@ -4068,110 +4089,90 @@ impl WasmGame {
             }
         }
 
-        if skip_triggers {
-            if zone == Zone::Battlefield {
-                let event_record_len = self.game.turn_store.turn_history.event_records.len();
-                let staged_event_record_len =
-                    self.game.turn_store.turn_history.staged_event_records.len();
-                self.game
-                    .register_linked_face_family_from_catalog(definition, &self.registry);
+        if zone == Zone::Battlefield {
+            let registry = &self.registry;
+            let trigger_queue = &mut self.trigger_queue;
+            let mut run = |game: &mut GameState| {
+                game.register_linked_face_family_from_catalog(definition, registry);
                 let temp_id =
-                    self.game
-                        .create_object_from_definition(definition, player_id, Zone::Command);
-                let receipt = self.game.move_object_with_etb_processing_with_dm(
-                    temp_id, Zone::Battlefield, dm,
-                ).map_err(|error| error.to_string())?;
-                let result = manual_entry_original(&receipt, dm)?;
-                align_manual_add_stable_id(&mut self.game, result.new_id);
-                finish_manual_entry_receipt(&mut self.game, temp_id, player_id, receipt, dm)?;
-                self.game.take_pending_trigger_events();
-                self.game
-                    .turn_store
-                    .turn_history
-                    .event_records
-                    .truncate(event_record_len);
-                self.game
-                    .turn_store
-                    .turn_history
-                    .staged_event_records
-                    .truncate(staged_event_record_len);
-                return Ok(result.new_id.0);
-            }
-            let object_id = self.game.create_object_from_catalog_definition(
+                    game.create_object_from_definition(definition, player_id, Zone::Command);
+                let receipt = game
+                    .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
+                    .map_err(|error| error.to_string())?;
+                let entry = manual_entry_original(&receipt, dm)?;
+                let entered_id = entry.new_id;
+                align_manual_add_stable_id(game, entered_id);
+                if !skip_triggers
+                    && game
+                        .object(entered_id)
+                        .is_some_and(|object| object.zone == Zone::Battlefield)
+                {
+                    let provenance = game
+                        .provenance_graph_mut()
+                        .alloc_root_event(ironsmith::events::EventKind::EnterBattlefield);
+                    let mut event = ironsmith::effects::zones::battlefield_entry_observation(
+                        game,
+                        entered_id,
+                        Zone::Command,
+                        entry.enters_tapped,
+                        provenance,
+                        Vec::new(),
+                    )
+                    .map_err(|error| error.to_string())?;
+                    game.freeze_completed_entry_events(std::iter::once(&mut event))
+                        .map_err(|error| error.to_string())?;
+                    game.queue_trigger_event(provenance, event);
+                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                    ironsmith::game_loop::handle_saga_enters_battlefield(
+                        game,
+                        entered_id,
+                        trigger_queue,
+                        dm,
+                    )
+                    .map_err(|error| error.to_string())?;
+                }
+                finish_manual_entry_receipt(game, temp_id, player_id, receipt, dm)?;
+                align_manual_add_stable_id(game, entered_id);
+                if !skip_triggers {
+                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                }
+                Ok(entered_id.0)
+            };
+            return if skip_triggers {
+                self.game.with_suppressed_action_observations(run)
+            } else {
+                run(&mut self.game)
+            };
+        }
+        let object_id = if skip_triggers {
+            self.game.create_object_from_catalog_definition(
                 definition,
                 &self.registry,
                 player_id,
                 zone,
-            );
-            if zone == Zone::Command {
-                self.game.set_as_commander(object_id, player_id);
-            }
-            return Ok(object_id.0);
-        }
-
-        // Create in Command zone first, then move to target zone so that
-        // zone-change triggers (ETB, etc.) fire naturally.
-        self.game
-            .register_linked_face_family_from_catalog(definition, &self.registry);
-        let temp_id = self
-            .game
-            .create_object_from_definition(definition, player_id, Zone::Command);
-        let object_id = if zone == Zone::Battlefield {
-            let receipt = self.game
-                .move_object_with_etb_processing_with_dm(temp_id, Zone::Battlefield, dm)
-                .map_err(|error| error.to_string())?;
-            let result = manual_entry_original(&receipt, dm)?;
-
-            let entered_id = result.new_id;
-            align_manual_add_stable_id(&mut self.game, entered_id);
-            let entered_tapped = result.enters_tapped;
-            let entered_battlefield = self
-                .game
-                .object(entered_id)
-                .is_some_and(|obj| obj.zone == Zone::Battlefield);
-            if entered_battlefield {
-                let etb_event_provenance = self
-                    .game
-                    .provenance_graph_mut()
-                    .alloc_root_event(ironsmith::events::EventKind::EnterBattlefield);
-                let event = if entered_tapped {
-                    ironsmith::triggers::TriggerEvent::new_with_provenance(
-                        ironsmith::events::EnterBattlefieldEvent::tapped(entered_id, Zone::Command),
-                        etb_event_provenance,
-                    )
-                } else {
-                    ironsmith::triggers::TriggerEvent::new_with_provenance(
-                        ironsmith::events::EnterBattlefieldEvent::new(entered_id, Zone::Command),
-                        etb_event_provenance,
-                    )
-                };
-                self.game.queue_trigger_event(etb_event_provenance, event);
-
-                ironsmith::game_loop::drain_pending_trigger_events(
-                    &mut self.game,
-                    &mut self.trigger_queue,
-                );
-
-                ironsmith::game_loop::handle_saga_enters_battlefield(
-                    &mut self.game,
-                    entered_id,
-                    &mut self.trigger_queue,
-                    dm,
-                ).map_err(|error| error.to_string())?;
-            }
-
-            finish_manual_entry_receipt(&mut self.game, temp_id, player_id, receipt, dm)?;
-            entered_id
+            )
         } else {
+            self.game
+                .register_linked_face_family_from_catalog(definition, &self.registry);
+            let temp_id =
+                self.game
+                    .create_object_from_definition(definition, player_id, Zone::Command);
             self.game
                 .move_object_by_effect(temp_id, zone)
                 .unwrap_or(temp_id)
         };
-        align_manual_add_stable_id(&mut self.game, object_id);
+        if !skip_triggers {
+            align_manual_add_stable_id(&mut self.game, object_id);
+        }
         if zone == Zone::Command {
             self.game.set_as_commander(object_id, player_id);
         }
-        ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+        if !skip_triggers {
+            ironsmith::game_loop::drain_pending_trigger_events(
+                &mut self.game,
+                &mut self.trigger_queue,
+            );
+        }
         Ok(object_id.0)
     }
 

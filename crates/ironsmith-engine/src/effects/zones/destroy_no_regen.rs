@@ -61,6 +61,10 @@ impl DestroyNoRegenerationEffect {
 }
 
 impl EffectExecutor for DestroyNoRegenerationEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Destroyed)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

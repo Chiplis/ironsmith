@@ -2757,7 +2757,12 @@ export default function BattlefieldRow({
             onMouseEnter={isLayoutHold ? undefined : ((event) => {
               if (mobileObjectGesturesEnabled) return;
               if (keyboardNavigationRef.current || handInspectionLockedRef.current) return;
-              if (!showManaPopover(event, card)) { closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true }); }
+              if ((paymentActionMap.get(Number(card.id)) || []).length) {
+                clearHover();
+                clearAnchoredCardPreview();
+                return;
+              }
+              closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true });
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
@@ -2765,6 +2770,7 @@ export default function BattlefieldRow({
               // Touch browsers focus the card before delivering its click.
               // Mobile focus must not open an inspector over the ability menu.
               if (mobileObjectGesturesEnabled) return;
+              if ((paymentActionMap.get(Number(card.id)) || []).length) return;
               if (handInspectionLockedRef.current && !keyboardNavigationRef.current) return;
               hoverCard(card.id);
               // Mouse focus is only hover. Keyboard focus is the user's

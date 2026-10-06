@@ -9,13 +9,12 @@ use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact};
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::{CreateTokenEffect, EffectExecutor, PutCountersEffect};
-use crate::effects::{ExecutionContext, ExecutionContextCheckpoint, ExecutionError};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{CardId, ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
-use crate::triggers::TriggerEvent;
 use crate::types::{CardType, Subtype};
 
 pub type EmpowerJaceEffect = ironsmith_core::EmpowerJaceEffect;
@@ -69,81 +68,112 @@ impl EffectExecutor for EmpowerJaceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        let checkpoint = game.clone();
-        let context_checkpoint = ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-            let mut outcomes = Vec::new();
-            let mut candidates = jace_token_candidates(game, ctx.controller);
-            if candidates.is_empty() {
-                outcomes
-                    .push(CreateTokenEffect::you(jace_token_definition(), 1).execute(game, ctx)?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+                let mut outcomes = Vec::new();
+                let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved(),
+                );
+                let mut candidates = jace_token_candidates(game, ctx.controller);
+                if candidates.is_empty() {
+                    let child = CreateTokenEffect::you(jace_token_definition(), 1)
+                        .execute_child_with_outputs(game, ctx)?;
+                    outcomes.push(child.outcome.clone());
+                    outputs.retain_owned_child(child);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    candidates = jace_token_candidates(game, ctx.controller);
                 }
-                candidates = jace_token_candidates(game, ctx.controller);
-            }
-            let action = TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
+                let action = KeywordActionEvent::new(
                     KeywordActionKind::EmpowerJace,
                     ctx.controller,
                     ctx.source,
                     amount,
-                ),
-                ctx.provenance,
-            );
-            if candidates.is_empty() {
-                // Token creation may have been prevented or replaced. There is
-                // still an empower action, but no eligible permanent to modify.
-                return Ok(EffectOutcome::aggregate(outcomes).with_event(action));
-            }
-            let chosen = if candidates.len() == 1 {
-                candidates[0]
-            } else {
-                let spec = ChooseObjectsSpec::new(
-                    ctx.source,
-                    "Choose a Jace planeswalker token you control to empower",
-                    candidates.clone(),
-                    1,
-                    Some(1),
                 );
-                let selected = make_decision(
-                    game,
-                    ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    spec,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+                if candidates.is_empty() {
+                    // Token creation may have been prevented or replaced. There is
+                    // still an empower action, but no eligible permanent to modify.
+                    return crate::effects::composition::complete_keyword_action_with_outputs(
+                        game,
+                        ctx,
+                        outputs.project_aggregate(EffectOutcome::aggregate(outcomes)),
+                        action,
+                    );
                 }
-                normalize_object_selection(selected, &candidates, 1)
-                    .first()
-                    .copied()
-                    .ok_or(ExecutionError::InvalidTarget)?
-            };
-            outcomes.push(
-                PutCountersEffect::new(
+                let chosen = if candidates.len() == 1 {
+                    candidates[0]
+                } else {
+                    let spec = ChooseObjectsSpec::new(
+                        ctx.source,
+                        "Choose a Jace planeswalker token you control to empower",
+                        candidates.clone(),
+                        1,
+                        Some(1),
+                    );
+                    let selected = make_decision(
+                        game,
+                        ctx.decision_maker,
+                        ctx.controller,
+                        Some(ctx.source),
+                        spec,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    normalize_object_selection(selected, &candidates, 1)
+                        .first()
+                        .copied()
+                        .ok_or(ExecutionError::InvalidTarget)?
+                };
+                let child = PutCountersEffect::new(
                     CounterType::Loyalty,
                     amount,
                     ChooseSpec::SpecificObject(chosen),
                 )
-                .execute(game, ctx)?,
-            );
-            // No state-based actions run between the zero-loyalty token's entry
-            // and this counter instruction. The enclosing resolution checks
-            // them only after the whole keyword action/spell has finished.
-            Ok(EffectOutcome::aggregate(outcomes)
-                .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen]))
-                .with_event(action))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        result
+                .execute_child_with_outputs(game, ctx)?;
+                outcomes.push(child.outcome.clone());
+                outputs.retain_owned_child(child);
+                // No state-based actions run between the zero-loyalty token's entry
+                // and this counter instruction. The enclosing resolution checks
+                // them only after the whole keyword action/spell has finished.
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                crate::effects::composition::complete_keyword_action_with_outputs(
+                    game,
+                    ctx,
+                    outputs.project_aggregate(
+                        EffectOutcome::aggregate(outcomes)
+                            .with_execution_fact(ExecutionFact::ChosenObjects(vec![chosen])),
+                    ),
+                    action,
+                )
+            },
+        )
     }
 }

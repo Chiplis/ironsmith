@@ -723,34 +723,6 @@ export function isSelfForfeitCommand(command, actorIndex) {
     && Number(command.player) === Number(actorIndex);
 }
 
-export function normalizedTurnToken(value) {
-  return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-}
-
-export function isMainPhaseName(phase) {
-  const normalized = normalizedTurnToken(phase);
-  return (
-    normalized === "firstmain"
-    || normalized === "firstmainphase"
-    || normalized === "nextmain"
-    || normalized === "nextmainphase"
-    || normalized === "secondmain"
-    || normalized === "secondmainphase"
-  );
-}
-
-export function isSorcerySpeedForfeitState(uiState, playerIndex) {
-  const player = Number(playerIndex);
-  const decision = uiState?.decision || null;
-  return (
-    decision?.kind === "priority"
-    && Number(decision.player) === player
-    && Number(uiState?.active_player ?? uiState?.activePlayer ?? player) === player
-    && Number(uiState?.stack_size || 0) === 0
-    && isMainPhaseName(uiState?.phase)
-  );
-}
-
 export function disconnectCertificateFromCommand(command) {
   const certificate = command?.disconnect_certificate || command?.disconnectCertificate || null;
   return certificate && typeof certificate === "object" ? certificate : null;

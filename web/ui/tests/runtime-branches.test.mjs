@@ -51,3 +51,14 @@ test('branch proxy routes background calls, copies losslessly, and releases its 
   await assert.rejects(branch.dispatch({}), /released/);
   assert.equal(branch.isCurrentSnapshot({}), false);
 });
+
+test('instance replacement expires branch calls and prevents old handles freeing new allocations', async () => {
+  const calls=[], proxy={runtimeGeneration:0};
+  attachRuntimeBranches(proxy,{ready:()=>true,call:async(method)=>{calls.push(method);return 1;},createProxy:call=>({dispatch:()=>call('dispatch',[])})});
+  const branch=await proxy.forkRuntimeBranch();
+  proxy.runtimeGeneration++;
+  await assert.rejects(branch.dispatch(),/expired/);
+  await assert.rejects(branch.copyToVisible(),/expired/);
+  await branch.release();
+  assert.deepEqual(calls,['createRuntimeSavepoint']);
+});

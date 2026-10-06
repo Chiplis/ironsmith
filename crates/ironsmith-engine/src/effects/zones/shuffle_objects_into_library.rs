@@ -1,17 +1,17 @@
 //! Shuffle specific objects into a library, then shuffle that library.
 
 use crate::effect::EffectOutcome;
-use crate::effects::{EffectExecutor, SimultaneousEffectCommit};
+use crate::effects::{CompletedEffectOutputs, EffectExecutor, SimultaneousEffectCommit};
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::ShuffleLibraryEvent;
+use crate::triggers::TriggerEvent;
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::ShuffleObjectsIntoLibraryEffect;
 
@@ -66,8 +66,8 @@ fn prepare_shuffle_objects_action_from_ids(
         {
             return None;
         }
-        Some(ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-    }).collect::<Vec<_>>();
+        Some(ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
+    }).collect::<Result<Vec<_>, ExecutionError>>()?;
 
     let shuffle_affected_owners =
         effect.owner_library_destination || uses_affected_object_owner(&effect.player);
@@ -212,9 +212,9 @@ impl ShuffleObjectsIntoLibraryProposal {
                 if result.final_zone == Zone::Library {
                     for &new_id in &result.new_object_ids {
                         if let Some(owner) = game.object(new_id).map(|object| object.owner) {
-                            game.move_library_card_to_bottom(
-                                owner, new_id, "card moved into library before shuffle",
-                            );
+                            crate::effects::cards::position_library_card(game, owner, new_id,
+                                crate::effects::cards::LibraryCardPosition::Bottom,
+                                "card moved into library before shuffle");
                         }
                     }
                     moved_ids.extend(result.new_object_ids.iter().copied());
@@ -235,7 +235,7 @@ impl ShuffleObjectsIntoLibraryProposal {
                 ShuffleLibraryEvent::new(player, ctx.cause.clone()), provenance,
             ));
         }
-        Ok(super::prepare_zone_instruction_completion(original, receipts, self.draws))
+        Ok(super::prepare_zone_instruction_completion(original, receipts, self.draws, ctx.iteration.iterated_player))
     }
 }
 
@@ -252,22 +252,26 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryPro
         (*self).commit_zones(game, ctx)
     }
 
-    fn commit(
-        mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-            crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-            if self.zones.is_none() { self.prepare_zones(game, ctx)?; }
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let committed = (*self).commit_zones(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            super::complete_zone_instruction(game, ctx, committed)
-            })
-        })
+    fn commit_original_with_outputs(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.commit_original(game, ctx).map(SimultaneousEffectCommit::into_retained)
+    }
+    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, true)
+            .map(CompletedEffectOutputs::into_outcome)
     }
 }
 
 impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![self.target.clone()]
+    }
+
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Shuffled)
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -282,18 +286,22 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         )))
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-            let prepared = prepare_shuffle_objects_action(self, game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            crate::effects::SimultaneousEffectProposal::commit(
-                Box::new(ShuffleObjectsIntoLibraryProposal::new(prepared)), game, ctx,
-            )
-        })
+    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx).map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(game, ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)), |game, ctx| {
+                let prepared = prepare_shuffle_objects_action(self, game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                }
+                crate::effects::composition::complete_prepared_original_with_outputs(
+                    Box::new(ShuffleObjectsIntoLibraryProposal::new(prepared)), game, ctx, true,
+                )
+            })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

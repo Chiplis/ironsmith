@@ -1,10 +1,11 @@
 //! Haunt exile effect: exiles the source card and schedules a delayed trigger
 //! to fire the haunt card's effects when the targeted (haunted) creature dies.
 
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::delayed::trigger_queue::{DelayedTriggerConfig, queue_delayed_trigger};
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::GameState;
 use crate::triggers::Trigger;
@@ -23,92 +24,130 @@ impl EffectExecutor for HauntExileEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        // Get the target creature (the one being haunted) from resolved targets.
-        let haunted_creature_id = ctx
-            .targets
-            .iter()
-            .find_map(|t| {
-                if let ResolvedTarget::Object(id) = t {
-                    Some(*id)
-                } else {
-                    None
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
+        }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+            |game, ctx| {
+                // Get the target creature (the one being haunted) from resolved targets.
+                let haunted_creature_id = ctx
+                    .targets
+                    .iter()
+                    .find_map(|t| {
+                        if let ResolvedTarget::Object(id) = t {
+                            Some(*id)
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(ExecutionError::InvalidTarget)?;
+
+                // Verify the haunted creature is still on the battlefield.
+                if game
+                    .object(haunted_creature_id)
+                    .is_none_or(|obj| obj.zone != Zone::Battlefield)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
+                    ));
                 }
-            })
-            .ok_or(ExecutionError::InvalidTarget)?;
 
-        // Verify the haunted creature is still on the battlefield.
-        if game
-            .object(haunted_creature_id)
-            .is_none_or(|obj| obj.zone != Zone::Battlefield)
-        {
-            return Ok(EffectOutcome::resolved());
-        }
+                // CR 702.55a: exile the haunt card from the graveyard. The dies (or
+                // "put into a graveyard during its resolution") trigger's source is
+                // the pre-move object; follow the zone change to the graveyard card.
+                let Some(graveyard_card) =
+                    crate::effects::helpers::resolve_source_object_id(game, ctx).filter(|&id| {
+                        game.object(id)
+                            .is_some_and(|obj| obj.zone == Zone::Graveyard)
+                    })
+                else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
+                    ));
+                };
+                let request = super::PreparedZoneMove::capture(
+                    game,
+                    graveyard_card,
+                    Zone::Graveyard,
+                    Zone::Exile,
+                    ctx.cause.clone(),
+                    None,
+                );
+                super::execute_zone_moves_with_outputs(
+                    game,
+                    ctx,
+                    vec![request],
+                    |game, ctx, receipts| {
+                        let (_, receipt) = &receipts[0];
+                        let arrivals = super::movement_arrivals(game, graveyard_card, receipt);
+                        let arrivals = arrivals
+                            .into_iter()
+                            .filter(|id| {
+                                game.object(*id)
+                                    .is_some_and(|object| object.zone == Zone::Exile)
+                            })
+                            .collect::<Vec<_>>();
+                        let memories = arrivals
+                            .iter()
+                            .filter_map(|id| {
+                                crate::effect::ObjectSnapshot::from_object_id(game, *id)
+                            })
+                            .collect::<Vec<_>>();
+                        let original = EffectOutcome::resolved()
+                            .with_affected_objects(arrivals.clone())
+                            .with_affected_object_memory(memories);
+                        if let Some(exiled_id) = arrivals.first().copied()
+                            && let Some(exiled_snapshot) = game.object(exiled_id).map(|object| {
+                                crate::snapshot::ObjectSnapshot::from_object(object, game)
+                            })
+                        {
+                            let haunting_tag = crate::tag::TagKey::from("__haunting_card");
 
-        // CR 702.55a: exile the haunt card from the graveyard. The dies (or
-        // "put into a graveyard during its resolution") trigger's source is
-        // the pre-move object; follow the zone change to the graveyard card.
-        let Some(graveyard_card) = crate::effects::helpers::resolve_source_object_id(game, ctx)
-            .filter(|&id| {
-                game.object(id)
-                    .is_some_and(|obj| obj.zone == Zone::Graveyard)
-            })
-        else {
-            return Ok(EffectOutcome::resolved());
-        };
-        let additional = ctx.additional_replacement_effects_snapshot();
-        let receipt = apply_zone_change_with_context_and_additional_effects(
-            game, graveyard_card, Zone::Graveyard, Zone::Exile, ctx.cause.clone(), ctx, &additional,
-        )?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-        let arrivals = match &receipt.original {
-            crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-            crate::events::processing::EventOutcome::Replaced => {
-                let ids = game.take_zone_change_results(graveyard_card);
-                if !ids.is_empty() { game.record_zone_change_results(graveyard_card, ids.clone()); }
-                ids
-            }
-            _ => Vec::new(),
-        };
-        let arrivals = arrivals.into_iter().filter(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Exile)).collect::<Vec<_>>();
-        let memories = arrivals.iter().filter_map(|id| crate::effect::OutcomeObjectMemory::from_object_id(game, *id)).collect::<Vec<_>>();
-        let original = EffectOutcome::resolved().with_affected_objects(arrivals.clone()).with_affected_object_memory(memories);
-        if let Some(exiled_id) = arrivals.first().copied()
-            && let Some(exiled_snapshot) = game.object(exiled_id).map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
-        {
-        let haunting_tag = crate::tag::TagKey::from("__haunting_card");
-
-        // Schedule a one-shot delayed trigger: when the haunted creature dies,
-        // execute the haunt card's effects. It only functions while the card
-        // is still in exile haunting that creature (CR 702.55c).
-        let mut config = DelayedTriggerConfig::new(
-            Trigger::this_dies(),
-            self.haunt_effects.clone(),
-            true, // one-shot
-            vec![haunted_creature_id],
-            ctx.controller,
-        )
-        .with_linked_exile_owner(ctx.linked_exile_owner.clone())
-        .with_source_number_owner(ctx.source_number_owner.clone())
-        .with_ability_source(Some(exiled_id))
-        .with_choices(self.haunt_choices.clone())
-        .with_tagged_objects(std::collections::HashMap::from([(
-            haunting_tag.clone(),
-            vec![exiled_snapshot],
-        )]));
-        config.while_any_tagged_object_in_zone = Some((haunting_tag, Zone::Exile));
-        queue_delayed_trigger(game, config);
-        }
-        // Authored haunting registration precedes any additional replacement program.
-        crate::effects::zones::finish_zone_change_receipts(game, ctx, original, vec![(graveyard_card, receipt)])
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::resolved()); }
-        instruction
+                            // Schedule a one-shot delayed trigger: when the haunted creature dies,
+                            // execute the haunt card's effects. It only functions while the card
+                            // is still in exile haunting that creature (CR 702.55c).
+                            let mut config = DelayedTriggerConfig::new(
+                                Trigger::this_dies(),
+                                self.haunt_effects.clone(),
+                                true, // one-shot
+                                vec![haunted_creature_id],
+                                ctx.controller,
+                            )
+                            .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+                            .with_source_number_owner(ctx.source_number_owner.clone())
+                            .with_ability_source(Some(exiled_id))
+                            .with_choices(self.haunt_choices.clone())
+                            .with_tagged_objects(
+                                std::collections::HashMap::from([(
+                                    haunting_tag.clone(),
+                                    vec![exiled_snapshot],
+                                )]),
+                            );
+                            config.while_any_tagged_object_in_zone =
+                                Some((haunting_tag, Zone::Exile));
+                            queue_delayed_trigger(game, config);
+                        }
+                        // Authored haunting registration precedes any additional replacement program.
+                        Ok(original)
+                    },
+                )
+            },
+        );
+        result
     }
 }
 

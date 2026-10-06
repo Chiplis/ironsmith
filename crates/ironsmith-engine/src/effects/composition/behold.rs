@@ -70,7 +70,8 @@ fn candidates(
             .iter()
             .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
             .filter(|(id, _)| {
-                game.current_controller(*id) == Some(chooser)
+                !game.is_phased_out(*id)
+                    && game.current_controller(*id) == Some(chooser)
                     && game.current_has_subtype(*id, subtype)
             })
             .map(|(id, _)| id),
@@ -116,7 +117,25 @@ impl EffectExecutor for BeholdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
+        super::execute_compound(game, ctx, |game, ctx| self.execute_behold(game, ctx))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        let subtype_name = self.subtype.to_string();
+        if self.count == 1 {
+            return Some(format!("Behold a {}", subtype_name));
+        }
+        Some(format!("Behold {} {}s", self.count, subtype_name))
+    }
+}
+
+impl BeholdEffect {
+    fn execute_behold(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::make_decision;
         use crate::decisions::specs::ChooseObjectsSpec;
 
@@ -217,31 +236,30 @@ impl EffectExecutor for BeholdEffect {
             return Ok(EffectOutcome::impossible());
         }
 
-        if !revealed_from_hand.is_empty() {
-            for viewer_idx in 0..game.players.len() {
-                let viewer = PlayerId::from_index(viewer_idx as u8);
-                let view_ctx = ViewCardsContext::new(
-                    viewer,
-                    chooser,
-                    Some(ctx.source),
-                    Zone::Hand,
-                    "Reveal cards from hand",
-                )
-                .with_public(true);
-                ctx.decision_maker
-                    .view_cards(game, viewer, &revealed_from_hand, &view_ctx);
-            }
+        let chosen_memory = chosen
+            .iter()
+            .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
+            .collect::<Vec<_>>();
+        let revealed = chosen_memory
+            .iter()
+            .filter(|snapshot| revealed_from_hand.contains(&snapshot.object_id))
+            .cloned()
+            .collect();
+        let reveal = crate::effects::cards::reveal_objects(
+            game,
+            ctx,
+            revealed,
+            Some(chooser),
+            "Reveal cards from hand",
+            None,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
-
-        Ok(EffectOutcome::with_objects(chosen))
-    }
-
-    fn cost_description(&self) -> Option<String> {
-        let subtype_name = self.subtype.to_string();
-        if self.count == 1 {
-            return Some(format!("Behold a {}", subtype_name));
-        }
-        Some(format!("Behold {} {}s", self.count, subtype_name))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::with_objects(chosen).with_chosen_object_memory(chosen_memory),
+            [reveal],
+        ))
     }
 }
 

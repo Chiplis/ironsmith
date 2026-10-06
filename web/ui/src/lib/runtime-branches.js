@@ -17,10 +17,13 @@ export async function inRuntimeBranch(game, handle, operation, reportPhase = () 
 export function attachRuntimeBranches(proxy, { call, createProxy, ready }) {
   proxy.forkRuntimeBranch = async () => {
     if (!ready()) throw new Error('Lossless runtime branches are unavailable');
+    const generation = proxy.runtimeGeneration;
     const handle = await call('createRuntimeSavepoint', []);
+    if (generation !== proxy.runtimeGeneration) throw new Error('Engine instance has expired');
     let released = false;
     const branchCall = (method, args) => {
       if (released) return Promise.reject(new Error('Runtime branch has been released'));
+      if (generation !== proxy.runtimeGeneration) return Promise.reject(new Error('Engine instance has expired'));
       return call(method, args, handle);
     };
     const branch = createProxy(branchCall);
@@ -31,11 +34,13 @@ export function attachRuntimeBranches(proxy, { call, createProxy, ready }) {
     branch.adoptSnapshotVersion = () => {};
     branch.copyToVisible = () => {
       if (released) return Promise.reject(new Error('Runtime branch has been released'));
+      if (generation !== proxy.runtimeGeneration) return Promise.reject(new Error('Engine instance has expired'));
       return call('copyRuntimeSavepoint', [handle]);
     };
     branch.release = async () => {
       if (released) return;
       released = true;
+      if (generation !== proxy.runtimeGeneration) return;
       await call('releaseRuntimeSavepoint', [handle]);
     };
     return branch;

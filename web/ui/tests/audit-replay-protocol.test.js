@@ -40,8 +40,8 @@ const action = { command: { type: "priority_action", action_ref: { kind: "pass_p
 test("all engine replay entry points reject old, absent and mismatched protocol before reading engine state", async () => {
   const entries = [replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame,
     verifyEndOfMatchDisclosuresWithGame];
-  const invalid = [14, 16, 17, 18, 19, 20, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
-  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
+  const invalid = [14, 16, 17, 18, 19, 20, 21, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
+  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 21), transcript(21, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
   for (const candidate of invalid) {
     for (const entry of entries) {
       const h = replayGame();
@@ -63,7 +63,7 @@ test("actions require successful initialization and recheck the session protocol
   const candidate = transcript();
   await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });
   h.calls.length = 0;
-  candidate.match.protocolVersion = 20;
+  candidate.match.protocolVersion = 21;
   await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
   assert.deepEqual(h.calls, []);
 });
@@ -77,29 +77,29 @@ test("a failed initial checkpoint comparison cannot authorize a later action", a
   assert.deepEqual(h.calls, []);
 });
 
-test("current replay requires v4 checkpoint exports before start and per-action mutation", async () => {
-  for (const version of [undefined, 2, 3, "4"]) {
+test("current replay requires v5 checkpoint exports before start and per-action mutation", async () => {
+  for (const version of [undefined, 2, 3, 4, "5"]) {
     for (const entry of [startAuditTranscriptReplayWithGame, replayAuditTranscriptWithGame,
       verifyEndOfMatchDisclosuresWithGame]) {
       const h = replayGame();
       h.setCheckpoint({ version });
-      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 4/);
+      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 5/);
       assert.deepEqual(h.calls, ["export"]);
     }
   }
   const h = replayGame();
   await startAuditTranscriptReplayWithGame({ game: h.game, transcript: transcript(), cryptoImpl: webcrypto });
   h.calls.length = 0;
-  h.setCheckpoint({ version: 3 });
-  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 4/);
+  h.setCheckpoint({ version: 4 });
+  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 5/);
   assert.deepEqual(h.calls, ["export"]);
 });
 
 test("current signed replay refuses a historical final digest before invoking its replay callback", async () => {
   let callbacks = 0;
-  await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version: 3 } }, webcrypto, {
+  await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version: 4 } }, webcrypto, {
     requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-  }), /checkpoint version 4/);
+  }), /checkpoint version 5/);
   assert.equal(callbacks, 0);
 });
 
@@ -176,4 +176,25 @@ test("historical v3 hashing preserves original bytes without injecting numeric p
   const chosenLarge = structuredClone(chosenZero);
   chosenLarge.objects[0].numericChoices.records[0].number = 4294967295;
   assert.notEqual(await publicCheckpointHash(chosenZero, webcrypto), await publicCheckpointHash(chosenLarge, webcrypto));
+});
+
+
+test("historical v4 hashing preserves nested claim commitments without prepared snapshot defaults", async () => {
+  const historicalContext = '{"effectOutcomes":[[1,{"status":"Success","value":{"Count":0},"execution_facts":[]}]]}';
+  const ledgerDigest = createHash("sha256").update(historicalContext).digest("hex");
+  const checkpoint = { version: 4, hiddenClaimLedgerDigest: ledgerDigest,
+    players: [], stack: [], objects: [] };
+  const before = structuredClone(checkpoint);
+  const canonical = '{"checkpoint":{"hiddenClaimLedgerDigest":"' + ledgerDigest
+    + '","objects":[],"players":[],"stack":[],"version":4},"domain":"ironsmith-public-audit-checkpoint-v1"}';
+  assert.equal(await publicCheckpointHash(checkpoint, webcrypto),
+    createHash("sha256").update(canonical).digest("hex"));
+  assert.deepEqual(checkpoint, before);
+  assert.equal(historicalContext.includes("stack_kind"), false);
+  assert.notEqual(await publicCheckpointHash(checkpoint, webcrypto),
+    await publicCheckpointHash({ ...checkpoint, version: 5 }, webcrypto));
+  const empty = { version: 4, players: [], stack: [], objects: [] };
+  assert.notEqual(await publicCheckpointHash(empty, webcrypto),
+    await publicCheckpointHash({ ...empty, hiddenClaimLedgerDigest: ledgerDigest }, webcrypto));
+  assert.equal(Object.hasOwn(empty, "hiddenClaimLedgerDigest"), false);
 });

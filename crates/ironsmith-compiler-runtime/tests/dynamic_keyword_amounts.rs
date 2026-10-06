@@ -523,6 +523,7 @@ fn avenger_reads_graveyard_quantity_at_resolution_and_retains_exact_token_cleanu
         let tokens = warrior_tokens(&game).into_iter().filter(|id| !existing.contains(id)).collect::<Vec<_>>();
         assert_eq!(tokens.len(), 3);
         for id in &tokens {
+            assert_eq!(game.object(*id).unwrap().name.as_ref(), "Warrior Token");
             assert_eq!(pt(&game, *id), (1, 1));
             assert_eq!(game.current_colors(*id), Some(ironsmith::color::ColorSet::RED));
             assert!(game.is_tapped(*id));
@@ -558,6 +559,7 @@ fn shield_pays_equip_then_uses_recipient_power_after_its_own_departure() {
         resolve_all(&mut game, &mut dm);
         let tokens = warrior_tokens(&game);
         assert_eq!(tokens.len(), 5);
+        assert!(tokens.iter().all(|id| game.object(*id).unwrap().name.as_ref() == "Warrior Token"));
         assert!(!has(&game, recipient, ironsmith::static_abilities::StaticAbilityId::Menace));
         phase_event(&mut game, TriggerEvent::new_with_provenance(
             ironsmith::events::BeginningOfEndStepEvent::new(B), Default::default()), &mut dm);

@@ -3,7 +3,7 @@ import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {SymbolText} from '@/lib/mana-symbols';
 import {mergeRegisteredLineSegments,registeredColumns,registeredFieldLayouts,registeredRuleAssignments,trimRegisteredNameCosts} from '@/lib/card-region-layout';
 import {profileSectionInk} from '@/lib/card-printing-profile';
-import {maskRegisteredRegion} from '@/lib/card-region-mask';
+import {maskRegisteredFrame} from '@/lib/card-region-mask';
 import CardFrameRulesBox from './CardFrameRulesBox';
 import GroupedManaAbility from './GroupedManaAbility';
 import {useI18n} from '@/i18n/I18nContext';
@@ -13,27 +13,20 @@ import './registered-card-frame.css';
 const position=b=>({left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.width*100}%`,height:`${b.height*100}%`});
 const same=(a,b)=>String(a||'').normalize('NFKC').replace(/\s+/g,' ').trim()===String(b||'').normalize('NFKC').replace(/\s+/g,' ').trim();
 const flows=field=>['rule','flavor'].includes(field.kind);
+const needsReplacement=(field,text,forceReplace)=>forceReplace || !same(text,field.printedText??field.text) || field.unprinted || field.errata;
 
-function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,imageUrl,typography,name,onActivate,highlighted,columnTop=0}) {
+function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceReplace,text,actions,group,maskReady,ink,typography,name,onActivate,highlighted,columnTop=0}) {
   const ui = useUiText();
   // Errata'd printings keep stale wording in the box: replace it even when the
   // live text already equals the current oracle text. A flowed column masks
   // every paragraph, since moved text would otherwise land on printed lines.
-  const changed=forceReplace || !same(text,field.printedText??field.text) || field.unprinted || field.errata;
-  const [patch,setPatch]=useState(null);
-  useEffect(()=>{
-    if(!changed || field.unprinted || !field.lines.length)return;
-    let active=true;
-    maskRegisteredRegion(imageUrl,field,typography[field.kind==='name'?'title':field.kind==='flavor'?'rules':field.kind]||typography.rules,typography.profile)
-      .then(value=>{if(active)setPatch({field,imageUrl,value});});
-    return ()=>{active=false;};
-  },[changed,field,imageUrl,typography]);
-  const ready=field.unprinted || (patch?.field===field && patch.imageUrl===imageUrl);
-  const showReplacement=changed&&ready;
-  const action=actions.find(a=>!a.payment_pending&&a.mana_payment_available!==false);
-  const available=Boolean(action&&onActivate);
+  const changed=needsReplacement(field,text,forceReplace);
+  const showReplacement=changed&&(field.unprinted||maskReady);
+  const action=actions.find(a=>!a.payment_pending&&a.mana_payment_available!==false)||actions[0];
+  const clickable=Boolean(action&&onActivate);
+  const available=clickable&&!action.payment_pending&&action.mana_payment_available!==false;
   const content=<SymbolText text={text} className="interactive-card-frame__rule-line" />;
-  const activate=event=>{event.stopPropagation();if(available)onActivate(action);};
+  const activate=event=>{event.stopPropagation();if(clickable)onActivate(action);};
   // Pixel sizes, not container units: Chromium resolves a var() fallback that
   // carries cq units lazily, so the fitter would measure text at a stale size.
   const style={...position(layout.bounds),'--registered-field-font-size':unit?`${layout.size*unit*scale}px`:`${layout.size*scale*100}cqw`,'--registered-field-line-height':layout.lineHeight};
@@ -50,26 +43,25 @@ function RegisteredField({field,layout,flow,unit,scale=1,onFit,onMeasure,forceRe
     if(style.height!=='auto')style.height=`${layout.bounds.height*height}px`;
     delete style.maxHeight;
   }
-  if(showReplacement&&patch?.value?.ink)style['--registered-field-ink']=patch.value.ink;
+  if(showReplacement&&ink)style['--registered-field-ink']=ink;
   if(showReplacement&&profileSectionInk(typography.profile,field.kind)==='light')
     style['--registered-field-shadow']='.035em .035em .025em rgb(0,0,0)';
   return <>
-    {showReplacement&&patch?.field===field&&<img className="registered-card-frame__patch" src={patch.value.image} alt="" style={{...position(patch.value.bounds),...(columnTop?{top:`${(patch.value.bounds.y-columnTop)*unit*680/488}px`,height:`${patch.value.bounds.height*unit*680/488}px`}:{})}} />}
     <div className="registered-card-frame__field" style={style} data-field-kind={field.kind}
       data-replaced={showReplacement?'true':'false'} data-live-text={text} data-printed-text={field.text} data-outlined={field.outlined?'true':undefined}
       data-stack-highlighted={highlighted?'true':undefined} data-unprinted={field.unprinted?'true':undefined}
       data-centred={layout.centred?'true':undefined} data-flow-top={flow?flow.top.toFixed(4):undefined} data-flow-bottom={flow?flow.bottom.toFixed(4):undefined} data-flow-limit={flow?flow.limit.toFixed(4):undefined}>
       {showReplacement ? <CardFrameRulesBox label={ui(text)} refitKey={`${unit}|${scale}`} onFit={onFit?fit=>onFit(fit*scale):undefined} onMeasure={onMeasure}>
         {group?<GroupedManaAbility group={group} name={name} onActivate={onActivate}/>:actions.length?
-          <button className="registered-card-frame__action" disabled={!available} onClick={activate} aria-label={ui("{0}: {1}", { 0: name, 1: text })}>{content}</button>:content}
+          <button className="registered-card-frame__action" data-available={available?'true':'false'} disabled={!clickable} onClick={activate} aria-label={ui("{0}: {1}", { 0: name, 1: text })}>{content}</button>:content}
       </CardFrameRulesBox>:group?<div className="registered-card-frame__mana-hotspots">
         {group.options.map((option,index)=>{
-          const selected=option.actions.find(a=>!a.payment_pending&&a.mana_payment_available!==false);
+          const selected=option.actions.find(a=>!a.payment_pending&&a.mana_payment_available!==false)||option.actions[0];
           return <button key={option.output} disabled={!selected||!onActivate} aria-label={ui("Activate {0}: {1}{2}{3}", { 0: name, 1: group.prefix, 2: option.output, 3: group.suffix })}
             style={{left:`${45+index*50/group.options.length}%`,width:`${50/group.options.length}%`}}
             onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();if(selected&&onActivate)onActivate(selected);}} />;
         })}
-      </div>:actions.length?<button className="registered-card-frame__hotspot" disabled={!available} aria-label={ui("{0}: {1}", { 0: name, 1: text })}
+      </div>:actions.length?<button className="registered-card-frame__hotspot" data-available={available?'true':'false'} disabled={!clickable} aria-label={ui("{0}: {1}", { 0: name, 1: text })}
         onPointerDown={event=>event.stopPropagation()} onClick={activate}><span className="sr-only">{text}</span></button>:<span className="sr-only">{text}</span>}
     </div>
   </>;
@@ -167,9 +159,29 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- measureVersion invalidates the measurement ref
   const columns=useMemo(()=>registeredColumns(fields,layouts,texts,measured.current,{unit,scale:sharedScale}),[fields,layouts,texts,unit,sharedScale,measureVersion]);
+  const maskRegions=useMemo(()=>fields.flatMap((field,index)=>{
+    const entry=entries[index];
+    if(!entry||field.unprinted||!needsReplacement(field,entry.text,flows(field)&&Boolean(columns?.forced.has(field.face))))return [];
+    return [{index,field,family:typography[field.kind==='name'?'title':field.kind==='flavor'?'rules':field.kind]||typography.rules,profile:typography.profile}];
+  }),[fields,entries,columns,typography]);
+  // Measurements can recreate the region list without changing the printed
+  // pixels to remove. Use a content key so fitting never resets a ready mask.
+  const maskKey=JSON.stringify([imageUrl,maskRegions]);
+  const [preparedMask,setPreparedMask]=useState(null);
+  useEffect(()=>{
+    const [url,regions]=JSON.parse(maskKey);
+    if(!regions.length)return;
+    let active=true;
+    maskRegisteredFrame(url,regions).then(value=>{
+      if(active)setPreparedMask({key:maskKey,value});
+    }).catch(()=>{if(active)setPreparedMask(null);});
+    return ()=>{active=false;};
+  },[maskKey]);
+  const readyMask=preparedMask?.key===maskKey?preparedMask.value:null;
+  const inks=new Map(maskRegions.map((region,i)=>[region.index,readyMask?.inks[i]]));
   return <article className="registered-card-frame" aria-label={name} data-registration-id={registration.id} data-rules-scale={sharedScale} data-rules-shrink={columns?columns.shrink.toFixed(3):undefined}>
     <div className="registered-card-frame__surface" ref={surfaceRef}>
-      <img className="registered-card-frame__scan" src={imageUrl} alt={name} referrerPolicy="no-referrer" />
+      <img className="registered-card-frame__scan" src={readyMask?.image||imageUrl} data-mask-ready={readyMask?'true':'false'} alt={name} referrerPolicy="no-referrer" />
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--tl" aria-hidden="true" />
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--tr" aria-hidden="true" />
       <span className="registered-card-frame__corner-fill registered-card-frame__corner-fill--bl" aria-hidden="true" />
@@ -198,7 +210,7 @@ export default function RegisteredCardFrame({registration,imageUrl,typography,ru
         const flow=shares?columns?.positions.get(index)||null:null;
         return <RegisteredField key={index} field={field} layout={layouts[index]} flow={flow} unit={unit} scale={shares?sharedScale:1}
           columnTop={columnTop} onMeasure={shares?px=>reportMeasure(index,px,{unit,scale:sharedScale,text:entry.text}):undefined}
-          forceReplace={shares&&Boolean(columns?.forced.has(field.face))} text={entry.text} actions={entry.actions} group={entry.group} imageUrl={imageUrl}
+          forceReplace={shares&&Boolean(columns?.forced.has(field.face))} text={entry.text} actions={entry.actions} group={entry.group} maskReady={Boolean(readyMask)&&field.lines.length>0} ink={inks.get(index)}
           typography={typography} name={name} onActivate={onActivate} highlighted={entry.isHighlighted}/>;
   }
 }

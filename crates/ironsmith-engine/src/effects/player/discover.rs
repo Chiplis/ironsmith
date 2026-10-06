@@ -5,10 +5,11 @@
 //! its mana cost or put it into your hand. Put the rest on the bottom of your
 //! library in a random order.
 
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::{Effect, EffectOutcome, OutcomeValue};
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+    LibraryBottomOrder, LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
 };
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -16,7 +17,6 @@ use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 
@@ -32,175 +32,246 @@ impl EffectExecutor for DiscoverEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let mut consultation = None;
-        let instruction = (|| -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let all_tag = TagKey::from("__discover_all");
-        let match_tag = TagKey::from("__discover_match");
-        consultation = Some(execute_library_consult(
+        let instruction = crate::effects::composition::execute_transaction(
             game,
             ctx,
-            player_id,
-            LibraryConsultMode::Exile,
-            LibraryConsultStopRule::FirstMatch,
-            Some(&all_tag),
-            Some(&match_tag),
-            |card, _| {
-                if card.is_land() {
-                    return false;
-                }
-                // CR 709.4: a split card's mana value is both halves' total.
-                (crate::filter::object_mana_value_for_filter(card).max(0) as u32) <= count
-            },
-        )?);
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-
-        let mut selected_object = None;
-        let mut casted_spell = None;
-        let mut phases = Vec::new();
-        if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
-            && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
-            && candidate_obj.zone == Zone::Exile
-        {
-            let candidate_id = candidate_snapshot.object_id;
-
-            let candidate_name = candidate_obj.name.to_string();
-            let choice_ctx = crate::decisions::context::BooleanContext::new(
-                player_id,
-                Some(candidate_id),
-                format!("Cast {candidate_name} without paying its mana cost?"),
-            );
-            let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            let mut put_in_hand = !should_cast;
-            if should_cast {
-                // CR 701.57a: any face whose resulting spell has mana value N
-                // or less may be cast (the other half of a split card, an
-                // Adventure, an MDFC back face).
-                let from_zone = candidate_obj.zone;
-                let filter = crate::target::ObjectFilter::nonland().with_mana_value(
-                    crate::filter::Comparison::LessThanOrEqual(count as i32),
-                );
-                let options = effect_driven_cast_options_for_card(
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                let count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
+                let all_tag = TagKey::from("__discover_all");
+                let match_tag = TagKey::from("__discover_match");
+                consultation = Some(execute_library_consult_with_outputs(
                     game,
+                    ctx,
                     player_id,
-                    ctx.source,
-                    candidate_id,
-                    from_zone,
-                    &filter,
-                );
-                let option = match options.len() {
-                    0 => None,
-                    1 => options.into_iter().next(),
-                    _ => {
-                        let choices = options
-                            .into_iter()
-                            .map(|option| (option.label.clone(), option))
-                            .collect::<Vec<_>>();
-                        let choice = crate::decisions::ask_choose_one(
+                    LibraryConsultMode::Exile,
+                    LibraryConsultStopRule::FirstMatch,
+                    Some(&all_tag),
+                    Some(&match_tag),
+                    |card, _| {
+                        if card.is_land() {
+                            return false;
+                        }
+                        // CR 709.4: a split card's mana value is both halves' total.
+                        (crate::filter::object_mana_value_for_filter(card).max(0) as u32) <= count
+                    },
+                )?);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let mut selected_object = None;
+                let mut casted_spell = None;
+                let mut phases = Vec::new();
+                if let Some(candidate_snapshot) = ctx.get_tagged(match_tag.as_str()).cloned()
+                    && let Some(candidate_obj) = game.object(candidate_snapshot.object_id)
+                    && candidate_obj.zone == Zone::Exile
+                {
+                    let candidate_id = candidate_snapshot.object_id;
+
+                    let candidate_name = candidate_obj.name.to_string();
+                    let choice_ctx = crate::decisions::context::BooleanContext::new(
+                        player_id,
+                        Some(candidate_id),
+                        format!("Cast {candidate_name} without paying its mana cost?"),
+                    );
+                    let should_cast = ctx.decision_maker.decide_boolean(game, &choice_ctx);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+
+                    let mut put_in_hand = !should_cast;
+                    if should_cast {
+                        // CR 701.57a: any face whose resulting spell has mana value N
+                        // or less may be cast (the other half of a split card, an
+                        // Adventure, an MDFC back face).
+                        let from_zone = candidate_obj.zone;
+                        let filter = crate::target::ObjectFilter::nonland().with_mana_value(
+                            crate::filter::Comparison::LessThanOrEqual(count as i32),
+                        );
+                        let options = effect_driven_cast_options_for_card(
                             game,
-                            ctx.decision_maker,
                             player_id,
                             ctx.source,
-                            &choices,
+                            candidate_id,
+                            from_zone,
+                            &filter,
                         );
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
+                        let option = match options.len() {
+                            0 => None,
+                            1 => options.into_iter().next(),
+                            _ => {
+                                let choices = options
+                                    .into_iter()
+                                    .map(|option| (option.label.clone(), option))
+                                    .collect::<Vec<_>>();
+                                let choice = crate::decisions::ask_choose_one(
+                                    game,
+                                    ctx.decision_maker,
+                                    player_id,
+                                    ctx.source,
+                                    &choices,
+                                );
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return Ok(CompletedEffectOutputs::aggregate_only(
+                                        EffectOutcome::count(0),
+                                    ));
+                                }
+                                choice
+                            }
+                        };
+                        let cast_result = match option {
+                            Some(option) => cast_effect_driven_spell_without_paying(
+                                game, ctx, player_id, &option,
+                            )?,
+                            None => None,
+                        };
+                        if let Some(result) = cast_result {
+                            selected_object = Some(result.new_id);
+                            casted_spell = Some(register_effect_driven_spell_cast(
+                                game,
+                                result.new_id,
+                                player_id,
+                                result.from_zone,
+                                ctx.provenance,
+                            )?);
+                        } else if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        } else {
+                            // CR 701.57a: "If you don't cast it, put that card into
+                            // your hand" — including when the cast attempt fails.
+                            put_in_hand = true;
                         }
-                        choice
                     }
-                };
-                let cast_result = match option {
-                    Some(option) => {
-                        cast_effect_driven_spell_without_paying(game, ctx, player_id, &option)?
+                    if put_in_hand
+                        && game
+                            .object(candidate_id)
+                            .is_some_and(|object| object.zone == Zone::Exile)
+                    {
+                        let request = crate::effects::zones::PreparedZoneMove::capture(
+                            game,
+                            candidate_id,
+                            Zone::Exile,
+                            Zone::Hand,
+                            ctx.cause.clone(),
+                            None,
+                        );
+                        phases.push(crate::effects::zones::execute_zone_moves_with_outputs(
+                            game,
+                            ctx,
+                            vec![request],
+                            |game, _ctx, receipts| {
+                                let arrivals = crate::effects::zones::movement_arrivals(
+                                    game,
+                                    candidate_id,
+                                    &receipts[0].1,
+                                );
+                                selected_object = arrivals.into_iter().find(|id| {
+                                    game.object(*id)
+                                        .is_some_and(|object| object.zone == Zone::Hand)
+                                });
+                                Ok(selected_object
+                                    .map(|id| EffectOutcome::with_objects(vec![id]))
+                                    .unwrap_or_else(|| EffectOutcome::count(0)))
+                            },
+                        )?);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
                     }
-                    None => None,
-                };
-                if let Some(result) = cast_result {
-                    selected_object = Some(result.new_id);
-                    casted_spell = Some(register_effect_driven_spell_cast(
-                        game, result.new_id, player_id, result.from_zone, ctx.provenance,
-                    )?);
-                } else if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                } else {
-                    // CR 701.57a: "If you don't cast it, put that card into
-                    // your hand" — including when the cast attempt fails.
-                    put_in_hand = true;
                 }
-            }
-            if put_in_hand && game.object(candidate_id).is_some_and(|object| object.zone == Zone::Exile) {
-                let additional = ctx.additional_replacement_effects_snapshot();
-                let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
-                    game, candidate_id, Zone::Exile, Zone::Hand, ctx.cause.clone(), ctx, &additional,
+                let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
+                let cleanup = crate::effects::execute_effect_with_outputs(
+                    game,
+                    &Effect::put_tagged_remainder_on_library_bottom(
+                        all_tag,
+                        keep_tagged,
+                        LibraryBottomOrder::Random,
+                        PlayerFilter::Specific(player_id),
+                    ),
+                    ctx,
                 )?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                let arrivals = match &receipt.original {
-                    crate::events::processing::EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-                    crate::events::processing::EventOutcome::Replaced => {
-                        let ids = game.take_zone_change_results(candidate_id);
-                        if !ids.is_empty() { game.record_zone_change_results(candidate_id, ids.clone()); }
-                        ids
-                    }
-                    _ => Vec::new(),
+
+                let value = if let Some(id) = selected_object {
+                    OutcomeValue::Objects(vec![id])
+                } else {
+                    OutcomeValue::Count(0)
                 };
-                selected_object = arrivals.into_iter().find(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Hand));
-                let original = selected_object.map(|id| EffectOutcome::with_objects(vec![id]))
-                    .unwrap_or_else(|| EffectOutcome::count(0));
-                phases.push(crate::effects::zones::finish_zone_change_receipts(game, ctx, original, vec![(candidate_id, receipt)])?);
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
 
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                // Cast observations were captured at the successful cast, before cleanup.
+                if let Some(event) = casted_spell {
+                    phases.insert(
+                        0,
+                        CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::resolved().with_event(event),
+                        ),
+                    );
+                }
+                phases.push(cleanup);
+                phases.push(CompletedEffectOutputs::aggregate_only(
+                    crate::effects::composition::complete_keyword_action(
+                        game,
+                        ctx,
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Discover,
+                            player_id,
+                            ctx.source,
+                            count,
+                        ),
+                    )?,
+                ));
+                let mut primary = EffectOutcome::resolved();
+                primary.set_value(value);
+                let aggregate = EffectOutcome::aggregate_with_primary_result(
+                    primary,
+                    phases.iter().map(|outputs| outputs.outcome.clone()),
+                );
+                let mut outputs = CompletedEffectOutputs::aggregate_only(aggregate);
+                outputs.retain_batch_children(phases);
+                Ok(outputs)
+            },
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return instruction
+                .map(|_| CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         }
-        let keep_tagged = selected_object.as_ref().map(|_| match_tag.clone());
-        let cleanup = crate::effects::execute_effect(
-            game,
-            &Effect::put_tagged_remainder_on_library_bottom(
-                all_tag,
-                keep_tagged,
-                LibraryBottomOrder::Random,
-                PlayerFilter::Specific(player_id),
-            ),
-            ctx,
-        )?;
-
-        let value = if let Some(id) = selected_object {
-            OutcomeValue::Objects(vec![id])
-        } else {
-            OutcomeValue::Count(0)
-        };
-
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        // Cast observations were captured at the successful cast, before cleanup.
-        if let Some(event) = casted_spell { phases.insert(0, EffectOutcome::resolved().with_event(event)); }
-        phases.push(cleanup);
-        phases.push(EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(KeywordActionKind::Discover, player_id, ctx.source, count), ctx.provenance,
-        )));
-        let mut outcome = EffectOutcome::aggregate(phases);
-        outcome.status = crate::effect::OutcomeStatus::Succeeded;
-        outcome.value = value;
-        Ok(outcome)
-        })();
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending || instruction.is_err() { *game = checkpoint; context_checkpoint.restore(ctx); }
-        if pending { return instruction.map(|_| EffectOutcome::count(0)); }
-        instruction.map(|outcome| {
+        instruction.map(|outputs| {
             if let Some(consult) = consultation {
-                let primary_status = outcome.status;
-                let primary_value = outcome.value.clone();
-                let mut combined = EffectOutcome::aggregate([consult.attach_to_outcome(EffectOutcome::resolved()), outcome]);
-                combined.status = primary_status;
-                combined.value = primary_value;
-                combined
-            } else { outcome }
+                let observations = consult.attach_to_outputs(EffectOutcome::resolved());
+                let aggregate = EffectOutcome::aggregate_with_primary_result(
+                    outputs.outcome.clone(),
+                    [observations.outcome.clone()],
+                );
+                let mut outputs = outputs.project_aggregate(aggregate);
+                outputs.retain_batch_children([observations]);
+                outputs
+            } else {
+                outputs
+            }
         })
     }
 }

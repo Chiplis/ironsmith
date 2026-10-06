@@ -129,7 +129,8 @@ pub(crate) fn pay_mana_interactively_in_context(
         // This checkpoint encloses every manual activation, not just the last
         // confirmed plan. Cancel, replay and failure cannot leak paid sources,
         // mana, trigger receipts or speculative hidden-information openings.
-        game.restore_execution_checkpoint(checkpoint, false);
+        game.restore_execution_checkpoint(checkpoint, dm.awaiting_choice()
+            && !matches!(&result, Err(CostPaymentError::ExecutionFailed(_))));
     }
     game.end_token_resource_scope(root, &meter);
     result
@@ -155,7 +156,7 @@ fn pay_mana_interactively_inner(
     loop {
         // Foreground prompts need one executable proposal. Source selection
         // remains available through constrained replanning below.
-        let plan = match plan_first_mana_payment(game, &request) {
+        let plan = match plan_prompt_mana_payment(game, &request, false) {
             Ok(plan) => plan,
             Err(ManaPaymentFailure::EffectExecutionFailed(error)) => return Err(CostPaymentError::ExecutionFailed(error)),
             Err(_) => unfunded_mana_payment_plan(game, &request),

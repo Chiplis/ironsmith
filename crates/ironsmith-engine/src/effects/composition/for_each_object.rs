@@ -7,10 +7,12 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
+use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
-use super::object_iteration::{ObjectIterationBinding, ObjectIterationProposal, ObjectIterationState, finish_original};
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 fn matching_objects(
@@ -75,68 +77,253 @@ fn matching_objects(
     }
 }
 
-fn object_bindings(effect: &ForEachObject, game: &GameState, ctx: &ExecutionContext)
-    -> Vec<ObjectIterationBinding> {
-    matching_objects(effect, game, ctx).into_iter().map(|(object, snapshot)| ObjectIterationBinding {
-        object, player: snapshot.controller, snapshot, previous: None,
-    }).collect()
+#[derive(Debug)]
+struct ForEachObjectProposal {
+    iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
 }
 
-fn run_objects(effect: &ForEachObject, game: &mut GameState, ctx: &mut ExecutionContext,
-    defer_draws: bool) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-    let bindings = object_bindings(effect, game, ctx);
-    let batched = if let [child] = effect.effects.as_slice()
-        && let Some(sequence) = child.downcast_ref::<crate::effects::SequenceEffect>() {
-        sequence.effects.as_slice()
-    } else { effect.effects.as_slice() };
-    if let [movement, shuffle] = batched
-        && let Some(movement_effect) = movement.downcast_ref::<crate::effects::MoveToZoneEffect>()
-        && matches!(movement_effect.target.base(), ChooseSpec::Iterated)
-        && let Some(shuffle) = shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
-        && matches!(&shuffle.player,
-            crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
-                if tag.as_str() == "__it__") {
-        let mut owners = Vec::new();
-        let mut iterations = Vec::new();
-        for binding in &bindings {
-            let proposal = binding.with_scope(ctx, |ctx| {
-                let owner = resolve_player_filter(game, &shuffle.player, ctx)?;
-                if !owners.contains(&owner) { owners.push(owner); }
-                movement.0.prepare_simultaneous_player_action(game, ctx)
-            })?;
-            iterations.push(vec![proposal]);
+impl SimultaneousEffectProposal for ForEachObjectProposal {
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        crate::effects::damage::DamageActionInputs::collect(
+            self.iterations
+                .iter()
+                .flatten()
+                .map(|proposal| proposal.damage_action_inputs()),
+        )
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        let mut bindings = Vec::new();
+        for proposal in self.iterations.into_iter().flatten() {
+            bindings.push(proposal.bind_damage_action(game, ctx, owner)?);
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
+                return Ok(crate::effects::DamageActionBinding::from_outcome(
+                    EffectOutcome::count(0),
+                ));
             }
         }
-        let mut proposal = Box::new(ObjectIterationProposal { bindings, iterations,
-            correlated: false, tagged_set: None, shuffle_owners: owners, attachments: vec![None] });
-        proposal.prepare_selection(game, ctx)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
-        }
-        proposal.prepare_original(game, ctx)?;
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::SimultaneousEffectCommit::finished(EffectOutcome::count(0)));
-        }
-        let pinned = crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
-        let opened = game.open_simultaneous_action();
-        let committed = proposal.commit_original(game, ctx);
-        game.close_simultaneous_action(opened);
-        crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned);
-        let committed = committed?;
-        return finish_original(committed, game, ctx, defer_draws);
+        Ok(crate::effects::DamageActionBinding::from_bindings(
+            bindings,
+            EffectOutcome::aggregate_summing_counts,
+        ))
     }
-    // Keep the existing simultaneous damage event boundary around the native
-    // cursor. Other authored object loops remain object-major.
-    let opened = effect.effects.iter().all(effect_only_deals_damage) && game.open_simultaneous_action();
-    let result = ObjectIterationState::new(bindings, effect.effects.clone(), false, false)
-        .run(game, ctx, defer_draws);
-    game.close_simultaneous_action(opened);
-    result
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.iterations
+            .iter()
+            .flatten()
+            .flat_map(|proposal| proposal.declared_payment_resources())
+            .collect()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
+        self.iterations
+            .iter()
+            .flatten()
+            .flat_map(|proposal| proposal.declared_life_payments())
+            .collect()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        for proposal in self.iterations.iter_mut().flatten() {
+            proposal.prepare_selection(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        for proposal in self.iterations.iter_mut().flatten() {
+            proposal.prepare_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        for proposal in self.iterations.iter_mut().flatten() {
+            proposal.seal_original(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        let mut receipts = Vec::new();
+        for proposal in self.iterations.into_iter().flatten() {
+            receipts.push(proposal.commit_original_with_outputs(game, ctx)?);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                ));
+            }
+        }
+        Ok(super::compose_original_commits_with_projection_outputs(
+            receipts,
+            Box::new(|outcomes| EffectOutcome::aggregate_summing_counts(outcomes)),
+        ))
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        super::complete_prepared_original(self, game, ctx)
+    }
+
+}
+
+struct ObjectIterationPlan {
+    matching: Vec<(crate::ids::ObjectId, ObjectSnapshot)>,
+    effects: Vec<Effect>,
+    shuffle: Option<crate::effects::ShuffleLibraryEffect>,
+    owners: Vec<crate::ids::PlayerId>,
+}
+impl super::iteration_program::SelectedIterationPlan for ObjectIterationPlan {
+    fn len(&self) -> usize {
+        self.matching.len()
+    }
+    fn effects(&self) -> &[Effect] {
+        &self.effects
+    }
+    fn select(
+        &mut self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        index: usize,
+    ) -> Result<super::iteration_program::IterationInput, ExecutionError> {
+        let (object, snapshot) = &self.matching[index];
+        let it = TagKey::from("__it__");
+        if let Some(shuffle) = &self.shuffle {
+            let owner = ctx.with_object_tag(it.clone(), vec![snapshot.clone()], |ctx| {
+                resolve_player_filter(game, &shuffle.player, ctx)
+            })?;
+            if !self.owners.contains(&owner) {
+                self.owners.push(owner);
+            }
+        }
+        Ok(super::iteration_program::IterationInput {
+            object: Some(*object),
+            player: snapshot.controller,
+            tags: vec![(it, vec![snapshot.clone()])],
+        })
+    }
+    fn postlude(&mut self) -> Vec<Effect> {
+        self.owners
+            .iter()
+            .map(|owner| {
+                crate::effects::cards::shuffle_library_action(
+                    *owner,
+                    &[],
+                    1,
+                    "library shuffled after iterated movement",
+                )
+            })
+            .collect()
+    }
+}
+fn object_iteration_cursor(
+    effect: &ForEachObject,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    let matching = matching_objects(effect, game, ctx);
+    let it_tag = TagKey::from("__it__");
+    let batched_effects = if let [child] = effect.effects.as_slice()
+        && let Some(sequence) = child.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        effect.effects.as_slice()
+    };
+    let (effects, shuffle) = if let [move_effect, shuffle_effect] = batched_effects
+        && let Some(movement) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && matches!(movement.target.base(), ChooseSpec::Iterated)
+        && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && matches!(&shuffle.player, crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)) if tag == &it_tag)
+    {
+        (vec![move_effect.clone()], Some(shuffle.clone()))
+    } else {
+        (effect.effects.clone(), None)
+    };
+    super::iteration_program::selected_iteration_cursor(
+        Box::new(ObjectIterationPlan {
+            matching,
+            effects,
+            shuffle,
+            owners: Vec::new(),
+        }),
+        ctx,
+    )
 }
 
 impl EffectExecutor for ForEachObject {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effects
+            .iter()
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if self.supports_damage_action_cohort() && self.supports_simultaneous_player_action() {
+            let proposal = self.prepare_simultaneous_player_action(game, ctx)?;
+            return Ok(Some(super::action_program::prepared_damage_program_cursor(
+                Effect::new(self.clone()),
+                proposal,
+            )));
+        }
+        Ok(Some(object_iteration_cursor(self, game, ctx)))
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        matches!(self.effects.as_slice(), [child] if
+            child.0.shares_iterated_damage_action() && child.0.supports_damage_action_cohort())
+    }
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -147,86 +334,146 @@ impl EffectExecutor for ForEachObject {
         }
     }
 
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        // A multi-instruction body is an ordered program. ForPlayers uses
-        // its native ordered-unit cursor for it, retaining a draw and the
-        // remaining authored tail instead of committing that tail early.
-        // Transparent wrappers also own result/tag/source unwind scopes, so
-        // their bodies use that cursor rather than full-commit proposals.
-        self.effects.len() == 1
-            && self
-                .effects
-                .iter()
-                .all(|effect| effect.transparent_child_effect().is_none()
-                    && effect.0.supports_simultaneous_player_action())
+        self.supports_damage_action_cohort()
+            && self.effects[0].0.supports_simultaneous_player_action()
     }
 
     fn prepare_simultaneous_player_action(
         &self, game: &GameState, ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
-        let bindings = object_bindings(self, game, ctx);
-        let mut iterations = Vec::new();
-        for binding in &bindings {
-            iterations.push(binding.with_scope(ctx, |ctx| self.effects.iter()
-                .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
-                .collect::<Result<Vec<_>, _>>())?);
-            if ctx.decision_maker.awaiting_choice() { break; }
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::Impossible(
+                "object iteration requires selected-program scheduling".into(),
+            ));
         }
-        Ok(Box::new(ObjectIterationProposal { bindings, iterations, correlated: false,
-            tagged_set: None, shuffle_owners: Vec::new(), attachments: vec![None; self.effects.len()] }))
+
+        let matching = matching_objects(self, game, ctx);
+        let it_tag = TagKey::from("__it__");
+        super::with_iteration_tags(ctx, vec![(it_tag.clone(), None)], |ctx| {
+            let mut iterations = Vec::with_capacity(matching.len());
+            for (object_id, snapshot) in &matching {
+                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
+                let proposals = super::with_object_iteration(
+                    ctx,
+                    *object_id,
+                    snapshot.controller,
+                    Vec::new(),
+                    |ctx| {
+                        self.effects
+                            .iter()
+                            .map_while(|effect| {
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return None;
+                                }
+                                Some(effect.prepare_simultaneous_player_action(game, ctx).map(
+                                    |inner| {
+                                        super::scope_prepared_iteration(
+                                            inner,
+                                            *object_id,
+                                            snapshot.controller,
+                                            vec![(it_tag.clone(), vec![snapshot.clone()])],
+                                        )
+                                    },
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, ExecutionError>>()
+                    },
+                )?;
+                iterations.push(proposals);
+                if ctx.decision_maker.awaiting_choice() {
+                    break;
+                }
+            }
+            Ok(Box::new(ForEachObjectProposal { iterations })
+                as Box<dyn SimultaneousEffectProposal>)
+        })
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| execute_object_iterations(self, game, ctx),
+        )
     }
 
     fn supports_replacement_draw_continuation(&self) -> bool {
         self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
     }
 
-    fn prepare_replacement_draw_continuation(&self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-        run_objects(self, game, ctx, true)
-    }
-
-    fn execute(&self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-            crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-                run_objects(self, game, ctx, false).map(|committed| committed.outcome)
-            })
-        })
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
     }
 
 }
 
-/// Whether `effect` only has an object deal damage (through tagging and
-/// source-rebinding wrappers).
-fn effect_only_deals_damage(effect: &Effect) -> bool {
-    if effect
-        .downcast_ref::<crate::effects::DealDamageEffect>()
-        .is_some()
+fn execute_object_iterations(
+    effect: &ForEachObject,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if !effect.effects.is_empty()
+        && effect
+            .effects
+            .iter()
+            .all(|child| child.0.shares_iterated_damage_action())
+        && effect.supports_damage_action_cohort()
     {
-        return true;
+        let proposal = effect.prepare_simultaneous_player_action(game, ctx)?;
+        let cursor = super::action_program::prepared_damage_program_cursor(
+            Effect::new(effect.clone()),
+            proposal,
+        );
+        return super::action_program::execute_action_program_with_outputs(
+            cursor,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        );
     }
-    if let Some(players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-        // A nested "to each opponent" keeps all source/recipient assignments
-        // in the outer simultaneous damage action. Explicitly sequential or
-        // early-stop player programs do not have that same event boundary.
-        return !players.sequential
-            && !players.stop_after_first_happened
-            && !players.effects.is_empty()
-            && players.effects.iter().all(effect_only_deals_damage);
-    }
-    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        return effect_only_deals_damage(&tagged.effect);
-    }
-    if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
-        return effect_only_deals_damage(&with_source.effect);
-    }
-    effect
-        .transparent_child_effect()
-        .is_some_and(effect_only_deals_damage)
+    let cursor = object_iteration_cursor(effect, game, ctx);
+    // A compound body contains distinct authored actions. Only a direct
+    // shared-damage child may keep one simultaneous instruction open.
+    let opened = effect.effects.len() <= 1
+        && effect
+            .effects
+            .iter()
+            .all(|child| child.0.shares_iterated_damage_action())
+        && game.open_simultaneous_action();
+    let result = super::action_program::execute_action_program_with_outputs(
+        cursor,
+        game,
+        ctx,
+        crate::effects::EffectExecutionPurpose::Action,
+    );
+    game.close_simultaneous_action(opened);
+    result
 }
 
 #[cfg(test)]
@@ -234,7 +481,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::CounterEffect;
-    use crate::events::{DamageEvent, DamageTarget, ShuffleLibraryEvent};
+    use crate::events::{DamageEvent, DamageTarget};
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

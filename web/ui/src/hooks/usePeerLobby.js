@@ -47,7 +47,6 @@ import {
   isProtocolResponseTimeoutForfeitCommand,
   isWitnessForfeitCommand,
   isSelfForfeitCommand,
-  isSorcerySpeedForfeitState,
   isTrustedMultiplayerSecurityMode,
   mergeAuditOpenings,
   mergePrivateViewProofs,
@@ -826,9 +825,6 @@ export function usePeerLobby({
         const isProtocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(command);
         const isWitnessForfeit = isWitnessForfeitCommand(command);
         const isSelfForfeit = isSelfForfeitCommand(command, session.localPlayerIndex);
-        if (isSelfForfeit && !isSorcerySpeedForfeitState(preSubmitState, session.localPlayerIndex)) {
-          throw new Error("Surrender is only available at sorcery speed");
-        }
         if (
           isForfeitCommand(command)
           && !isTimeoutForfeit
@@ -898,7 +894,8 @@ export function usePeerLobby({
             actorIndex: session.localPlayerIndex,
           });
         } else if (
-          expectedActor !== null
+          !isSelfForfeit
+          && expectedActor !== null
           && expectedActor !== undefined
           && Number(expectedActor) !== Number(session.localPlayerIndex)
         ) {
@@ -1476,7 +1473,8 @@ export function usePeerLobby({
         }
         const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
         if (
-          expectedActorBeforeApply !== null
+          !isSelfForfeit
+          && expectedActorBeforeApply !== null
           && expectedActorBeforeApply !== undefined
           && Number(expectedActorBeforeApply) !== Number(session.localPlayerIndex)
         ) {

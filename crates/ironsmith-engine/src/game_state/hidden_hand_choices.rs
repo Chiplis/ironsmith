@@ -325,6 +325,25 @@ pub struct PendingAutomaticDrawReveal {
     pub source_snapshot: crate::snapshot::ObjectSnapshot,
 }
 
+/// Late discovery from an opened card observes the original draw, rather than
+/// manufacturing another action with a new occurrence and lost draw context.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingDrawReveal {
+    pub player: PlayerId,
+    pub card: ObjectId,
+    pub event: crate::triggers::TriggerEvent,
+}
+
+/// A pending disclosure retains the observation policy of the action that
+/// scheduled it. Opening a hidden identity remains necessary even when setup
+/// suppresses history and triggers; postponement must not change that policy.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DeferredAutomaticDrawReveal {
+    pub reveal: PendingAutomaticDrawReveal,
+    pub parent_provenance: crate::provenance::ProvNodeId,
+    pub observations_suppressed: bool,
+}
+
 /// Prefix of every obligation violation message. The peer front end treats
 /// failures carrying it as a detected cheat.
 pub const HIDDEN_IDENTITY_VIOLATION_PREFIX: &str = "Hidden identity obligation violated";
@@ -352,37 +371,97 @@ pub(crate) fn identity_free_filter(filter: &ObjectFilter) -> ObjectFilter {
     generic
 }
 
+/// Receipt equality is public evidence; a native graph allocation ordinal is
+/// not. One claim context shares these labels across all of its outcomes and
+/// recursive original results. Traversal order, rather than native allocation
+/// order or HashMap iteration, determines the public first-occurrence labels.
+#[derive(Default)]
+struct PublicClaimReceiptIds {
+    native_to_public: std::collections::HashMap<crate::provenance::ProvNodeId, crate::provenance::ProvNodeId>,
+    // This private scratch allocator only constructs opaque representable IDs.
+    // Its nodes never enter the game's graph or any serialized gameplay state.
+    labels: crate::provenance::ProvenanceGraph,
+}
+
+impl PublicClaimReceiptIds {
+    fn project(&mut self, native: crate::provenance::ProvNodeId) -> crate::provenance::ProvNodeId {
+        // Preserve the unavailable/default sentinel; it is not evidence of a
+        // newly identified receipt. Missing facts are never manufactured here.
+        if native == crate::provenance::ProvNodeId::default() {
+            return native;
+        }
+        if let Some(public) = self.native_to_public.get(&native) {
+            return *public;
+        }
+        let public = self.labels.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        self.native_to_public.insert(native, public);
+        public
+    }
+}
+
 /// An effect outcome in public claim form (see
 /// `GameState::public_claim_filter_context`).
 fn public_claim_outcome(
     outcome: &crate::effect::EffectOutcome,
     hidden_match: bool,
+    receipt_ids: &mut PublicClaimReceiptIds,
 ) -> crate::effect::EffectOutcome {
-    use crate::effect::{ExecutionFact, OutcomeObjectMemory};
-    let memory = |memory: &OutcomeObjectMemory| {
-        if !(hidden_match && memory.zone.is_hidden()) {
-            return memory.clone();
-        }
-        OutcomeObjectMemory {
-            object_id: memory.object_id,
-            stable_id: memory.stable_id,
-            name: String::new(),
-            controller: memory.controller,
-            owner: memory.owner,
-            zone: memory.zone,
-            power: None,
-            toughness: None,
-            mana_value: 0,
-            card_types: Vec::new(),
-            colors: crate::color::ColorSet::default(),
-            subtypes: Vec::new(),
-            is_token: memory.is_token,
-        }
-    };
+    use crate::effect::ExecutionFact;
+    fn public_snapshot(
+        snapshot: &crate::snapshot::ObjectSnapshot,
+        hidden: bool,
+    ) -> crate::snapshot::ObjectSnapshot {
+        let mut public = if hidden && (snapshot.zone.is_hidden() || snapshot.face_down) {
+            let mut public = crate::snapshot::ObjectSnapshot::public_placeholder(
+                snapshot.object_id,
+                snapshot.stable_id,
+                snapshot.owner,
+                snapshot.controller,
+                snapshot.zone,
+            );
+            public.kind = snapshot.kind;
+            public.is_token = snapshot.is_token;
+            public.face_down = snapshot.face_down;
+            public.tapped = snapshot.tapped;
+            public.attacking = snapshot.attacking;
+            public.counters = snapshot.counters.clone();
+            public.attached_to = snapshot.attached_to;
+            public.attachments = snapshot.attachments.clone();
+            public.is_commander = snapshot.is_commander;
+            public
+        } else {
+            snapshot.clone()
+        };
+        public.strip_to_public_claim_form();
+        public.chosen_object = public
+            .chosen_object
+            .take()
+            .map(|snapshot| Box::new(public_snapshot(&snapshot, hidden)));
+        public.attachment_snapshots = public
+            .attachment_snapshots
+            .iter()
+            .map(|snapshot| public_snapshot(snapshot, hidden))
+            .collect();
+        public.mana_sources_spent_to_cast = public
+            .mana_sources_spent_to_cast
+            .iter()
+            .map(|snapshot| public_snapshot(snapshot, hidden))
+            .collect();
+        public
+    }
+    let memory =
+        |snapshot: &crate::snapshot::ObjectSnapshot| public_snapshot(snapshot, hidden_match);
     let execution_facts = outcome
         .execution_facts
         .iter()
         .map(|fact| match fact {
+            ExecutionFact::PreventedDamageReceipt { receipt, amount } => ExecutionFact::PreventedDamageReceipt {
+                receipt: receipt_ids.project(*receipt),
+                amount: *amount,
+            },
+            ExecutionFact::ResultObjectMemory(memories) => {
+                ExecutionFact::ResultObjectMemory(memories.iter().map(memory).collect())
+            }
             ExecutionFact::ChosenObjectMemory(memories) => {
                 ExecutionFact::ChosenObjectMemory(memories.iter().map(memory).collect())
             }
@@ -398,9 +477,6 @@ fn public_claim_outcome(
             ExecutionFact::RevealedCards(memories) => {
                 ExecutionFact::RevealedCards(memories.iter().map(memory).collect())
             }
-            ExecutionFact::CardsPutIntoHand { player, cards } => {
-                ExecutionFact::CardsPutIntoHand { player: *player, cards: cards.iter().map(memory).collect() }
-            }
             ExecutionFact::PlayerAffectedObjectMemory(entries) => {
                 ExecutionFact::PlayerAffectedObjectMemory(
                     entries
@@ -409,6 +485,19 @@ fn public_claim_outcome(
                         .collect(),
                 )
             }
+            ExecutionFact::ActionObjects {
+                action,
+                player,
+                objects,
+            } => ExecutionFact::ActionObjects {
+                action: *action,
+                player: *player,
+                objects: objects.iter().map(memory).collect(),
+            },
+            ExecutionFact::CardsPutIntoHand { player, cards } => ExecutionFact::CardsPutIntoHand {
+                player: *player,
+                cards: cards.iter().map(memory).collect(),
+            },
             other => other.clone(),
         })
         .collect();
@@ -418,7 +507,7 @@ fn public_claim_outcome(
         events: Vec::new(),
         execution_facts,
         instruction_result: outcome.instruction_result.as_deref().map(|original|
-            Box::new(public_claim_outcome(original, hidden_match))),
+            Box::new(public_claim_outcome(original, hidden_match, receipt_ids))),
     }
 }
 
@@ -561,7 +650,9 @@ impl GameState {
     ///   identically on every peer.
     /// * Effect outcomes keep their status, value and execution facts; events
     ///   are dropped and object memories of hidden-zone objects are reduced
-    ///   to identity, ownership and zone.
+    ///   to identity, ownership and zone. Prevention receipt IDs become
+    ///   context-local first-occurrence labels, preserving aliases across
+    ///   sorted effect outcomes and recursive original results.
     ///
     /// Outside peer matches (no hidden cards) nothing is ever recorded, so
     /// this never runs there.
@@ -592,10 +683,11 @@ impl GameState {
                 )
             })
             .collect();
-        public.effect_outcomes = ctx
-            .effect_outcomes
-            .iter()
-            .map(|(id, outcome)| (*id, public_claim_outcome(outcome, hidden_match)))
+        let mut outcomes = ctx.effect_outcomes.iter().collect::<Vec<_>>();
+        outcomes.sort_unstable_by_key(|(id, _)| id.0);
+        let mut receipt_ids = PublicClaimReceiptIds::default();
+        public.effect_outcomes = outcomes.into_iter()
+            .map(|(id, outcome)| (*id, public_claim_outcome(outcome, hidden_match, &mut receipt_ids)))
             .collect();
         public
     }
@@ -1576,7 +1668,7 @@ impl GameState {
 
     /// Record that `ids` were opened publicly on every peer. Only cards the
     /// mental-poker layer tracks are recorded.
-    pub(crate) fn mark_hidden_cards_publicly_revealed(&mut self, ids: &[ObjectId]) {
+    pub fn mark_hidden_cards_publicly_revealed(&mut self, ids: &[ObjectId]) {
         let tracked: Vec<ObjectId> = ids
             .iter()
             .copied()
@@ -1602,11 +1694,11 @@ impl GameState {
             .auxiliary_tracking
             .pending_hidden_draw_reveals
             .iter()
-            .any(|(_, card)| *card == id)
+            .any(|entry| entry.card == id)
         {
             self.auxiliary_tracking_mut()
                 .pending_hidden_draw_reveals
-                .retain(|(_, card)| *card != id);
+                .retain(|entry| entry.card != id);
         }
     }
 
@@ -1662,7 +1754,11 @@ impl GameState {
 
     /// Draw reveal windows not yet answered.
     pub fn pending_hidden_draw_reveals(&self) -> Vec<(PlayerId, ObjectId)> {
-        self.auxiliary_tracking.pending_hidden_draw_reveals.clone()
+        self.auxiliary_tracking
+            .pending_hidden_draw_reveals
+            .iter()
+            .map(|entry| (entry.player, entry.card))
+            .collect()
     }
 
     /// Open a draw reveal window for a hidden card drawn by an eligible player.
@@ -1675,6 +1771,9 @@ impl GameState {
         &mut self,
         event: &crate::triggers::TriggerEvent,
     ) {
+        if self.action_observations_suppressed() {
+            return;
+        }
         let Some(drawn) = event.downcast::<crate::events::other::CardsDrawnEvent>() else {
             return;
         };
@@ -1702,26 +1801,30 @@ impl GameState {
             .auxiliary_tracking
             .pending_hidden_draw_reveals
             .iter()
-            .any(|(_, pending)| *pending == card)
+            .any(|entry| entry.card == card)
         {
             return;
         }
         self.auxiliary_tracking_mut()
             .pending_hidden_draw_reveals
-            .push((drawn.player, card));
+            .push(PendingDrawReveal {
+                player: drawn.player,
+                card,
+                event: event.clone(),
+            });
     }
 
     /// Take the next unanswered draw reveal window whose card is still a
     /// hidden-tracked card in its owner's hand (private, or already opened
     /// publicly by another owner-answered reveal).
-    pub(crate) fn next_pending_hidden_draw_reveal(&mut self) -> Option<(PlayerId, ObjectId)> {
+    pub(crate) fn next_pending_hidden_draw_reveal(&mut self) -> Option<PendingDrawReveal> {
         loop {
             let next = self
                 .auxiliary_tracking
                 .pending_hidden_draw_reveals
                 .first()
-                .copied()?;
-            let (player, card) = next;
+                .cloned()?;
+            let (player, card) = (next.player, next.card);
             // A card another owner-answered reveal already opened publicly
             // (e.g. "reveal the first card you draw each turn") stays in the
             // window: its draw is re-checked without asking again.
@@ -1744,17 +1847,24 @@ impl GameState {
     pub(crate) fn defer_hidden_automatic_draw_reveal(
         &mut self,
         pending: PendingAutomaticDrawReveal,
+        parent_provenance: crate::provenance::ProvNodeId,
     ) {
         if self
             .auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
-            .contains(&pending)
+            .iter()
+            .any(|entry| entry.reveal == pending)
         {
             return;
         }
+        let deferred = DeferredAutomaticDrawReveal {
+            reveal: pending,
+            parent_provenance,
+            observations_suppressed: self.action_observations_suppressed(),
+        };
         self.auxiliary_tracking_mut()
             .pending_hidden_automatic_draw_reveals
-            .push(pending);
+            .push(deferred);
     }
 
     /// Take the next deferred automatic draw reveal whose card is still in
@@ -1762,7 +1872,7 @@ impl GameState {
     /// dropped (their object no longer exists). Symmetric across peers.
     pub(crate) fn next_pending_hidden_automatic_draw_reveal(
         &mut self,
-    ) -> Option<PendingAutomaticDrawReveal> {
+    ) -> Option<DeferredAutomaticDrawReveal> {
         loop {
             let next = self
                 .auxiliary_tracking
@@ -1770,8 +1880,10 @@ impl GameState {
                 .first()
                 .cloned()?;
             let in_hand = self
-                .object(next.card)
-                .is_some_and(|object| object.zone == Zone::Hand && object.owner == next.player);
+                .object(next.reveal.card)
+                .is_some_and(|object| {
+                    object.zone == Zone::Hand && object.owner == next.reveal.player
+                });
             if in_hand {
                 return Some(next);
             }
@@ -1788,21 +1900,23 @@ impl GameState {
     ) {
         self.auxiliary_tracking_mut()
             .pending_hidden_automatic_draw_reveals
-            .retain(|entry| entry != pending);
+            .retain(|entry| entry.reveal != *pending);
     }
 
     /// Deferred automatic draw reveals not yet answered.
     pub fn pending_hidden_automatic_draw_reveals(&self) -> Vec<PendingAutomaticDrawReveal> {
         self.auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
-            .clone()
+            .iter()
+            .map(|entry| entry.reveal.clone())
+            .collect()
     }
 
     /// Close the draw reveal window for `card`.
     pub(crate) fn finish_pending_hidden_draw_reveal(&mut self, card: ObjectId) {
         self.auxiliary_tracking_mut()
             .pending_hidden_draw_reveals
-            .retain(|(_, pending)| *pending != card);
+            .retain(|entry| entry.card != card);
     }
 
     /// Settle the pool of a random choice among hand cards matching `filter`
@@ -2089,36 +2203,47 @@ impl GameState {
 #[cfg(test)]
 mod replacement_public_claim_contract_tests {
     use super::*;
-    use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+    use crate::effect::EffectOutcome;
     #[test]
     fn public_claim_sanitizes_original_and_auxiliary_hidden_memories() {
         let id = crate::ids::ObjectId::from_raw(941);
         let player = crate::ids::PlayerId::from_index(0);
-        let memory = OutcomeObjectMemory {
-            object_id: id, stable_id: crate::ids::StableId::from(id),
-            name: "Private card identity".into(), controller: player, owner: player,
-            zone: crate::zone::Zone::Hand, power: Some(8), toughness: Some(9),
-            mana_value: 7, card_types: vec![crate::types::CardType::Creature],
-            colors: crate::color::ColorSet::COLORLESS, subtypes: Vec::new(), is_token: false,
+        let memory = {
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                id,
+                crate::ids::StableId::from(id),
+                player,
+                player,
+                crate::zone::Zone::Hand,
+            );
+            snapshot.name = "Private card identity".into();
+            snapshot.power = Some(8);
+            snapshot.toughness = Some(9);
+            snapshot.linked_face_mana_value = Some((7) as u32);
+            snapshot.card_types = vec![crate::types::CardType::Creature];
+            snapshot.colors = crate::color::ColorSet::COLORLESS;
+            snapshot.subtypes = Vec::new();
+            snapshot.is_token = false;
+            snapshot
         };
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
             EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()])
                 .with_execution_fact(crate::effect::ExecutionFact::CardsPutIntoHand { player, cards: vec![memory.clone()] })
                 .with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(vec![memory.clone()])),
             [EffectOutcome::count(2).with_chosen_object_memory(vec![memory])]);
-        let claim = public_claim_outcome(&outcome, true);
+        let claim = public_claim_outcome(&outcome, true, &mut PublicClaimReceiptIds::default());
         assert!(claim.instruction_result.is_some());
         let original = &claim.affected_object_memory().unwrap()[0];
         assert_eq!(original.object_id, id);
         assert!(original.name.is_empty());
         assert_eq!(original.power, None);
         assert_eq!(original.toughness, None);
-        assert_eq!(original.mana_value, 0);
+        assert_eq!(original.mana_value(), 0);
         assert!(original.card_types.is_empty());
         for fact in &claim.execution_facts {
             if let crate::effect::ExecutionFact::ChosenObjectMemory(memories) = fact {
                 assert!(memories[0].name.is_empty());
-                assert_eq!(memories[0].mana_value, 0);
+                assert_eq!(memories[0].mana_value(), 0);
             }
         }
         for receipt in [&claim, claim.instruction_result()] {
@@ -2132,12 +2257,112 @@ mod replacement_public_claim_contract_tests {
                 assert_eq!(memories[0].object_id, id);
                 assert!(memories[0].name.is_empty());
                 assert!(memories[0].card_types.is_empty());
-                assert_eq!(memories[0].mana_value, 0);
+                assert_eq!(memories[0].mana_value(), 0);
             }
         }
         assert!(claim.events.is_empty());
         assert!(claim.instruction_result().events.is_empty());
-        let visible = public_claim_outcome(&outcome, false);
+        let visible = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
         assert_eq!(visible.affected_object_memory().unwrap()[0].name, "Private card identity");
+    }
+}
+
+#[cfg(test)]
+mod public_prevention_receipt_identity_tests {
+    use super::*;
+    use crate::effect::{EffectId, EffectOutcome, ExecutionFact};
+    use crate::provenance::{ProvNodeId, ProvenanceGraph};
+
+    fn fact(receipt: ProvNodeId, amount: u32) -> ExecutionFact {
+        ExecutionFact::PreventedDamageReceipt { receipt, amount }
+    }
+
+    fn receipts(outcome: &EffectOutcome) -> Vec<(u64, u32)> {
+        outcome.execution_facts.iter().filter_map(|fact| match fact {
+            ExecutionFact::PreventedDamageReceipt { receipt, amount } => Some((receipt.raw(), *amount)),
+            _ => None,
+        }).collect()
+    }
+
+    // Authored only: public labels preserve equality, including nested original aliases.
+    #[test]
+    fn public_receipt_labels_preserve_recursive_aliases_and_distinct_events() {
+        let mut graph = ProvenanceGraph::new();
+        graph.alloc_root_event(crate::events::EventKind::Damage);
+        let first = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let second = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let mut outcome = EffectOutcome::count(0).with_execution_facts([
+            fact(first, 3), fact(first, 3), fact(second, 3),
+        ]);
+        outcome.instruction_result = Some(Box::new(EffectOutcome::count(0)
+            .with_execution_facts([fact(second, 3), fact(first, 3)])));
+        let public = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
+        assert_eq!(receipts(&public), vec![(1, 3), (1, 3), (2, 3)]);
+        assert_eq!(receipts(public.instruction_result.as_ref().unwrap()), vec![(2, 3), (1, 3)]);
+        assert!(public.events.is_empty());
+        assert!(public.instruction_result.as_ref().unwrap().events.is_empty());
+        assert_eq!(receipts(&outcome), vec![(first.raw(), 3), (first.raw(), 3), (second.raw(), 3)]);
+    }
+
+    fn context(first: ProvNodeId, second: ProvNodeId, reverse_insertion: bool) -> FilterContext {
+        let mut context = FilterContext::new(PlayerId::from_index(0));
+        let earlier = EffectOutcome::count(0).with_execution_facts([fact(first, 2), fact(second, 5)]);
+        let later = EffectOutcome::count(0).with_execution_fact(fact(second, 5));
+        if reverse_insertion {
+            context.effect_outcomes.insert(EffectId(20), later);
+            context.effect_outcomes.insert(EffectId(3), earlier);
+        } else {
+            context.effect_outcomes.insert(EffectId(3), earlier);
+            context.effect_outcomes.insert(EffectId(20), later);
+        }
+        context
+    }
+
+    #[test]
+    fn public_context_is_independent_of_native_allocation_and_map_insertion_order() {
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut left_graph = ProvenanceGraph::new();
+        let left_first = left_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let left_second = left_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let mut right_graph = ProvenanceGraph::new();
+        for _ in 0..7 { right_graph.alloc_root_event(crate::events::EventKind::Damage); }
+        // The same semantic receipts may have opposite native allocation order.
+        let right_second = right_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let right_first = right_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let before = game.provenance_graph().node_count();
+        let left = game.public_claim_filter_context(&context(left_first, left_second, false));
+        let right = game.public_claim_filter_context(&context(right_first, right_second, true));
+        assert_eq!(left.effect_outcomes, right.effect_outcomes);
+        assert_eq!(receipts(&left.effect_outcomes[&EffectId(3)]), vec![(1, 2), (2, 5)]);
+        assert_eq!(receipts(&left.effect_outcomes[&EffectId(20)]), vec![(2, 5)],
+            "related outcomes must share the same receipt label map");
+        assert_eq!(game.provenance_graph().node_count(), before);
+        assert_eq!(game.public_claim_filter_context(&left).effect_outcomes, left.effect_outcomes,
+            "public projection is idempotent");
+        #[cfg(feature = "serialization")]
+        {
+            let encode = |context: &FilterContext| {
+                let mut outcomes = context.effect_outcomes.iter().map(|(id, outcome)| (id.0, outcome)).collect::<Vec<_>>();
+                outcomes.sort_by_key(|(id, _)| *id);
+                serde_json::to_vec(&outcomes).unwrap()
+            };
+            assert_eq!(encode(&left), encode(&right), "claim digest input bytes must agree");
+        }
+    }
+
+    #[test]
+    fn missing_and_empty_evidence_is_not_replaced_with_a_receipt() {
+        let absent = EffectOutcome::count(0);
+        let projected = public_claim_outcome(&absent, false, &mut PublicClaimReceiptIds::default());
+        assert!(projected.execution_facts.is_empty());
+        assert!(projected.instruction_result.is_none());
+        let mut graph = ProvenanceGraph::new();
+        let actual = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let outcome = EffectOutcome::count(0).with_execution_facts([
+            fact(ProvNodeId::default(), 4), fact(actual, 0),
+        ]);
+        let projected = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
+        assert_eq!(receipts(&projected), vec![(0, 4), (1, 0)],
+            "unavailable identity and an actual zero-amount receipt stay distinct");
     }
 }

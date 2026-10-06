@@ -4082,7 +4082,9 @@ pub(super) fn describe_structural_fabricate_keyword(
 }
 
 pub(super) fn is_fabricate_servo_token(create: &crate::effects::CreateTokenEffect) -> bool {
-    if create.controller != PlayerFilter::You
+    if create.text_roles.as_ref() != Some(&ironsmith_core::TokenTextRoles::rules_implied(
+        ironsmith_core::TokenNameTextRole::SubtypeDerived, create.token.abilities.len()))
+        || create.controller != PlayerFilter::You
         || create.controller_target.is_some()
         || create.suppress_aura_attachment_choice
         || create.enters_tapped
@@ -4097,7 +4099,6 @@ pub(super) fn is_fabricate_servo_token(create: &crate::effects::CreateTokenEffec
 
     let token = &create.token;
     token.card.is_token
-        && token.card.name == "Servo"
         && token.card.color_indicator.is_none()
         && token.card.card_types == [CardType::Artifact, CardType::Creature]
         && token.card.subtypes == [Subtype::Servo]
@@ -4991,7 +4992,9 @@ pub(super) fn describe_structural_afterlife_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
-    if create.controller != PlayerFilter::You
+    if create.text_roles.as_ref() != Some(&ironsmith_core::TokenTextRoles::rules_implied(
+        ironsmith_core::TokenNameTextRole::SubtypeDerived, create.token.abilities.len()))
+        || create.controller != PlayerFilter::You
         || create.controller_target.is_some()
         || create.suppress_aura_attachment_choice
         || create.enters_tapped
@@ -5011,7 +5014,6 @@ pub(super) fn describe_structural_afterlife_keyword(
     }
     let token = &create.token;
     if !token.card.is_token
-        || token.card.name != "Spirit"
         || token.card.color_indicator
             != Some(crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLACK))
         || token.card.card_types != [CardType::Creature]
@@ -5290,7 +5292,10 @@ pub(super) fn describe_structural_mobilize_keyword(
         return None;
     };
     let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
-    if create.controller != PlayerFilter::You
+    let token = &create.token;
+    if create.text_roles.as_ref() != Some(&ironsmith_core::TokenTextRoles::rules_implied(
+        ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len()))
+        || create.controller != PlayerFilter::You
         || create.controller_target.is_some()
         || !create.enters_tapped
         || !create.enters_attacking
@@ -5298,8 +5303,12 @@ pub(super) fn describe_structural_mobilize_keyword(
         || create.sacrifice_at_end_of_combat
         || !create.sacrifice_at_next_end_step
         || create.exile_at_next_end_step
-        || !describe_create_token_blueprint(create)
-            .eq_ignore_ascii_case("1/1 red Warrior creature token")
+        || !token.card.is_token
+        || token.card.colors() != crate::color::ColorSet::RED
+        || token.card.card_types != [CardType::Creature]
+        || token.card.subtypes != [Subtype::Warrior]
+        || token.card.power_toughness != Some(crate::card::PowerToughness::fixed(1, 1))
+        || !token.abilities.is_empty()
     {
         return None;
     }

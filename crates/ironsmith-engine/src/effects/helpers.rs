@@ -12,8 +12,8 @@ use crate::cost::OptionalCostsPaid;
 use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 use crate::effect::{
-    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeObjectMemory,
-    OutcomeStatus, PriorEffectMetricQuery, Value,
+    EffectMetric, EffectMetricSource, EffectOutcome, EventValueSpec, OutcomeStatus,
+    PriorEffectMetricQuery, Value,
 };
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
@@ -617,67 +617,26 @@ pub fn get_optional_costs_paid<'a>(
     &ctx.optional_costs_paid
 }
 
-fn memories_from_object_ids(game: &GameState, ids: &[ObjectId]) -> Vec<OutcomeObjectMemory> {
-    ids.iter()
-        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
-        .collect()
-}
-
 fn effect_metric_memory(
-    game: &GameState,
+    _game: &GameState,
     outcome: &EffectOutcome,
     source: EffectMetricSource,
-) -> Vec<OutcomeObjectMemory> {
+) -> Vec<ObjectSnapshot> {
+    let outcome = outcome.instruction_result();
     match source {
         EffectMetricSource::AffectedObjects => outcome
             .affected_object_memory()
-            .map(<[OutcomeObjectMemory]>::to_vec)
-            .unwrap_or_else(|| {
-                outcome
-                    .affected_objects()
-                    .map(|ids| memories_from_object_ids(game, ids))
-                    .unwrap_or_default()
-            }),
-        EffectMetricSource::ChosenObjects => outcome
-            .chosen_object_memory()
-            .map(<[OutcomeObjectMemory]>::to_vec)
-            .unwrap_or_else(|| {
-                outcome
-                    .chosen_objects()
-                    .map(|ids| memories_from_object_ids(game, ids))
-                    .unwrap_or_default()
-            }),
-        EffectMetricSource::Outcome => {
-            if let Some(ids) = outcome.explicit_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            if let Some(memory) = outcome.chosen_object_memory()
-                && !memory.is_empty()
-            {
-                return memory.to_vec();
-            }
-            if let Some(ids) = outcome.chosen_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            if let Some(memory) = outcome.affected_object_memory()
-                && !memory.is_empty()
-            {
-                return memory.to_vec();
-            }
-            if let Some(ids) = outcome.affected_objects() {
-                let memory = memories_from_object_ids(game, ids);
-                if !memory.is_empty() {
-                    return memory;
-                }
-            }
-            Vec::new()
+            .unwrap_or_default()
+            .to_vec(),
+        EffectMetricSource::ChosenObjects => {
+            outcome.chosen_object_memory().unwrap_or_default().to_vec()
         }
+        EffectMetricSource::Outcome => outcome
+            .result_object_memory()
+            .or_else(|| outcome.chosen_object_memory())
+            .or_else(|| outcome.affected_object_memory())
+            .unwrap_or_default()
+            .to_vec(),
     }
 }
 
@@ -760,6 +719,7 @@ fn resolve_effect_metric(
         return Ok(0);
     };
 
+    let outcome = outcome.instruction_result();
     let object_memory = || effect_metric_memory(game, outcome, source);
 
     let resolved = match metric {
@@ -799,7 +759,26 @@ fn resolve_effect_metric(
                 _ => None,
             })
             .sum(),
-        EffectMetric::DamagePrevented => 0,
+        EffectMetric::DamagePrevented => {
+            let receipts = outcome
+                .execution_facts
+                .iter()
+                .filter_map(|fact| match fact {
+                    crate::effect::ExecutionFact::PreventedDamageReceipt { amount, .. } => {
+                        Some(i64::from(*amount))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if receipts.is_empty() {
+                outcome
+                    .events_of_type::<crate::events::DamagePreventedEvent>()
+                    .map(|event| i64::from(event.amount))
+                    .sum()
+            } else {
+                receipts.into_iter().sum()
+            }
+        }
         EffectMetric::FirstPower => object_memory()
             .into_iter()
             .find_map(|memory| memory.power.map(i64::from))
@@ -810,7 +789,7 @@ fn resolve_effect_metric(
             .unwrap_or(0),
         EffectMetric::FirstManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .next()
             .unwrap_or(0),
         EffectMetric::TotalPower => object_memory()
@@ -823,7 +802,7 @@ fn resolve_effect_metric(
             .sum(),
         EffectMetric::TotalManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .sum(),
         EffectMetric::GreatestPower => object_memory()
             .into_iter()
@@ -837,7 +816,7 @@ fn resolve_effect_metric(
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => object_memory()
             .into_iter()
-            .map(|memory| i64::from(memory.mana_value))
+            .map(|memory| i64::from(memory.mana_value()))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => object_memory()
@@ -1050,11 +1029,21 @@ fn resolve_prior_effect_metric(
         };
         let reveal_outcome = ctx.get_outcome(effect_id).ok_or_else(||
             ExecutionError::IncompleteEvidence("hand reveal has no completed receipt".into()))?;
-        let reveals = reveal_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
-            crate::effect::ExecutionFact::RevealedCards(cards) => Some(cards), _ => None,
-        }).collect::<Vec<_>>();
-        let [cards] = reveals.as_slice() else {
-            return Err(ExecutionError::IncompleteEvidence("hand reveal receipt is missing or ambiguous".into()));
+        // The shared reveal owner records the exact producer's action set,
+        // including an explicitly empty completed reveal. Legacy native
+        // receipts remain readable, but unrelated additions are never borrowed.
+        let cards = if let Some(cards) = crate::effects::outcome_recording::action_objects(
+            reveal_outcome, ironsmith_core::PriorEffectAction::Revealed, None,
+        ) {
+            cards
+        } else {
+            let reveals = reveal_outcome.instruction_result().execution_facts.iter().filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::RevealedCards(cards) => Some(cards), _ => None,
+            }).collect::<Vec<_>>();
+            let [cards] = reveals.as_slice() else {
+                return Err(ExecutionError::IncompleteEvidence("hand reveal receipt is missing or ambiguous".into()));
+            };
+            (*cards).clone()
         };
         return i64::try_from(cards.iter().filter(|card| card.colors.contains(*color)).count())
             .map_err(|_| ExecutionError::UnresolvableValue("revealed card count exceeds supported range".into()));
@@ -1093,6 +1082,7 @@ fn resolve_prior_effect_metric(
     let Some(outcome) = ctx.get_outcome(effect_id) else {
         return Ok(0);
     };
+    let outcome = outcome.instruction_result();
     let filter_ctx = ctx.filter_context(game);
     let selected_players = query
         .player
@@ -1107,6 +1097,13 @@ fn resolve_prior_effect_metric(
             EffectMetric::Count | EffectMetric::AffectedCount
         )
     {
+        if let Some(objects) = crate::effects::outcome_recording::action_objects(
+            outcome,
+            ironsmith_core::PriorEffectAction::Drawn,
+            selected_players.as_deref(),
+        ) {
+            return Ok(objects.len() as i64);
+        }
         return outcome
             .events_of_type::<crate::events::CardsDrawnEvent>()
             .filter(|event| {
@@ -1159,7 +1156,21 @@ fn resolve_prior_effect_metric(
         });
     }
 
+    let action_memory = if query.source == EffectMetricSource::AffectedObjects {
+        query.action.and_then(|action| {
+            crate::effects::outcome_recording::action_objects(
+                outcome,
+                action,
+                selected_players.as_deref(),
+            )
+        })
+    } else {
+        None
+    };
+    let has_action_memory = action_memory.is_some();
     let mut memory = if let Some(memory) = destination_memory {
+        memory
+    } else if let Some(memory) = action_memory {
         memory
     } else if let Some(selected_players) = selected_players.as_ref()
         && let Some(partitions) = outcome.player_affected_object_memory()
@@ -1174,6 +1185,7 @@ fn resolve_prior_effect_metric(
     };
 
     if let Some(selected_players) = selected_players.as_ref()
+        && !has_action_memory
         && outcome.player_affected_object_memory().is_none()
     {
         memory.retain(|object| selected_players.contains(&object.controller));
@@ -1189,8 +1201,7 @@ fn resolve_prior_effect_metric(
         for branch in &mut filter.any_of {
             branch.zone = None;
         }
-        memory
-            .retain(|object| filter.matches_snapshot(&object.to_snapshot(game), &filter_ctx, game));
+        memory.retain(|object| filter.matches_snapshot(object, &filter_ctx, game));
     }
 
     let resolved = match query.metric {
@@ -1207,7 +1218,7 @@ fn resolve_prior_effect_metric(
             .unwrap_or(0),
         EffectMetric::FirstManaValue => memory
             .first()
-            .map_or(0, |object| i64::from(object.mana_value)),
+            .map_or(0, |object| i64::from(object.mana_value())),
         EffectMetric::TotalPower => memory
             .iter()
             .map(|object| i64::from(object.power.unwrap_or(0)))
@@ -1218,7 +1229,7 @@ fn resolve_prior_effect_metric(
             .sum(),
         EffectMetric::TotalManaValue => memory
             .iter()
-            .map(|object| i64::from(object.mana_value))
+            .map(|object| i64::from(object.mana_value()))
             .sum(),
         EffectMetric::GreatestPower => memory
             .iter()
@@ -1232,7 +1243,7 @@ fn resolve_prior_effect_metric(
             .unwrap_or(0),
         EffectMetric::GreatestManaValue => memory
             .iter()
-            .map(|object| i64::from(object.mana_value))
+            .map(|object| i64::from(object.mana_value()))
             .max()
             .unwrap_or(0),
         EffectMetric::ColorsAmong => memory
@@ -3232,17 +3243,23 @@ pub fn resolve_single_object_for_effect(
 /// is authoritative for the characteristics, and it alone suffices when no
 /// live object remains.
 ///
-/// Returns `None` only when neither a live object nor a tagged snapshot
-/// exists.
+/// A pending or empty source choice has no binding. Locked references may
+/// still resolve from tagged last known information after departure.
 pub(crate) fn resolve_effect_source_with_lki(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_for_effect(game, ctx, spec)
-        .ok()
-        .filter(|id| game.object(*id).is_some());
-    retain_effect_source_lki(game, ctx, spec, live)
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    let selected = resolve_single_object_for_effect(game, ctx, spec).ok();
+    if ctx.decision_maker.awaiting_choice()
+        || (selected.is_none() && !source_binding_is_locked(spec))
+    {
+        return None;
+    }
+    retain_effect_source_lki(game, ctx, spec, selected)
 }
 
 /// Immutable source specifications refer to announced/locked objects. Share
@@ -3252,23 +3269,65 @@ pub(crate) fn resolve_effect_source_from_spec_with_lki(
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
-    let live = resolve_single_object_from_spec(game, spec, ctx)
-        .ok()
-        .filter(|id| game.object(*id).is_some());
-    retain_effect_source_lki(game, ctx, spec, live)
+    let selected = resolve_single_object_from_spec(game, spec, ctx).ok();
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    retain_effect_source_lki(game, ctx, spec, selected)
+}
+
+/// A bounded selection from tagged objects is a new source choice, even
+/// though its base specification names an existing collection. Keep the same
+/// capability contract for live LKI fallback and prepared source adapters.
+pub(crate) fn source_binding_is_locked(spec: &ChooseSpec) -> bool {
+    if spec.is_target() {
+        return true;
+    }
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => source_binding_is_locked(spec),
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _)
+            if matches!(inner.base(), ChooseSpec::Tagged(_)) =>
+        {
+            false
+        }
+        _ => matches!(
+            spec.base(),
+            ChooseSpec::Source
+                | ChooseSpec::SpecificObject(_)
+                | ChooseSpec::Tagged(_)
+                | ChooseSpec::Iterated
+        ),
+    }
 }
 
 fn retain_effect_source_lki(
     game: &GameState,
     ctx: &ExecutionContext,
     spec: &ChooseSpec,
-    live: Option<ObjectId>,
+    selected: Option<ObjectId>,
 ) -> Option<(ObjectId, Option<ObjectSnapshot>)> {
+    let live = selected.filter(|id| game.object(*id).is_some());
     let tagged = match spec.base() {
-        ChooseSpec::Tagged(tag) => ctx
-            .get_tagged(format!("__pre_move_history__{}", tag.as_str()))
-            .or_else(|| ctx.get_tagged(tag))
-            .cloned(),
+        ChooseSpec::Tagged(tag) => {
+            let history = ctx.get_tagged_all(format!("__pre_move_history__{}", tag.as_str()));
+            let current = ctx.get_tagged_all(tag);
+            let snapshots = history
+                .into_iter()
+                .flatten()
+                .chain(current.into_iter().flatten());
+            match selected {
+                Some(id) => snapshots
+                    .filter(|snapshot| {
+                        snapshot.object_id == id
+                            || game
+                                .object(id)
+                                .is_some_and(|object| object.stable_id == snapshot.stable_id)
+                    })
+                    .next(),
+                None => snapshots.into_iter().next(),
+            }
+            .cloned()
+        }
         _ => None,
     };
     let departed = tagged
@@ -4637,10 +4696,10 @@ mod tests {
             alice,
             vec![CardType::Creature],
         );
-        let chosen_memory = vec![OutcomeObjectMemory::from_object_id(&game, chosen).unwrap()];
+        let chosen_memory = vec![ObjectSnapshot::from_object_id(&game, chosen).unwrap()];
         let affected_memory = vec![
-            OutcomeObjectMemory::from_object_id(&game, affected_a).unwrap(),
-            OutcomeObjectMemory::from_object_id(&game, affected_b).unwrap(),
+            ObjectSnapshot::from_object_id(&game, affected_a).unwrap(),
+            ObjectSnapshot::from_object_id(&game, affected_b).unwrap(),
         ];
         let effect_id = crate::effect::EffectId(17);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
@@ -4706,10 +4765,7 @@ mod tests {
             .expect("first creature should move");
         game.move_object_by_effect(creature_b, Zone::Exile)
             .expect("second creature should move");
-        let memory = snapshots
-            .iter()
-            .map(OutcomeObjectMemory::from_snapshot)
-            .collect::<Vec<_>>();
+        let memory = snapshots.iter().map(Clone::clone).collect::<Vec<_>>();
         let effect_id = crate::effect::EffectId(18);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.store_outcome(
@@ -4749,8 +4805,8 @@ mod tests {
         let source_id = game.new_object_id();
         let alice_creature = add_custom_creature(&mut game, 422, "Alice Creature", alice, 3, 4, 2);
         let bob_creature = add_custom_creature(&mut game, 423, "Bob Creature", bob, 6, 7, 5);
-        let alice_memory = OutcomeObjectMemory::from_object_id(&game, alice_creature).unwrap();
-        let bob_memory = OutcomeObjectMemory::from_object_id(&game, bob_creature).unwrap();
+        let alice_memory = ObjectSnapshot::from_object_id(&game, alice_creature).unwrap();
+        let bob_memory = ObjectSnapshot::from_object_id(&game, bob_creature).unwrap();
         let effect_id = crate::effect::EffectId(20);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
         ctx.store_outcome(
@@ -4798,7 +4854,7 @@ mod tests {
         );
         let memory = [artifact_creature, red_enchantment]
             .into_iter()
-            .map(|id| OutcomeObjectMemory::from_object_id(&game, id).unwrap())
+            .map(|id| ObjectSnapshot::from_object_id(&game, id).unwrap())
             .collect::<Vec<_>>();
         let effect_id = crate::effect::EffectId(19);
         let mut ctx = ExecutionContext::new_default(source_id, alice);
@@ -6895,5 +6951,45 @@ mod discarded_incarnation_receipt_tests {
         let retained = &ctx.get_tagged_all("discarded").unwrap()[0];
         assert_eq!(retained.object_id, origin);
         assert_eq!(resolve_tagged_object_id(&game, &ctx, retained), None);
+    }
+}
+
+#[cfg(test)]
+mod reconciled_reveal_receipt_tests {
+    use super::*;
+    use crate::effect::{EffectId, ExecutionFact};
+
+    // Authored only: native reveal action facts are the exact producer's evidence.
+    #[test]
+    fn chosen_color_reads_native_reveal_action_without_borrowing_additions() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let player = PlayerId::from_index(0);
+        let source = ObjectId::from_raw(9001);
+        let color = EffectId(20);
+        let reveal = EffectId(21);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, player, &mut dm);
+        let mut query = PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+            .with_action(ironsmith_core::PriorEffectAction::Revealed)
+            .with_filter(crate::target::ObjectFilter::default().of_chosen_color());
+        query.color_choice = Some(ironsmith_core::ColorChoiceReference::Effect(color));
+        ctx.store_outcome(color, EffectOutcome::count(1)
+            .with_execution_fact(ExecutionFact::ChosenColor(crate::color::Color::Blue)));
+        let mut card = ObjectSnapshot::for_testing(ObjectId::from_raw(9002), player, "Original blue reveal");
+        card.colors = crate::color::ColorSet::BLUE;
+        let receipt = |cards| EffectOutcome::count(0).with_execution_fact(ExecutionFact::ActionObjects {
+            action: ironsmith_core::PriorEffectAction::Revealed, player: Some(player), objects: cards,
+        });
+        ctx.store_outcome(reveal, receipt(vec![card.clone()]));
+        assert_eq!(resolve_prior_effect_metric(&game, &ctx, reveal, &query).unwrap(), 1);
+        ctx.store_outcome(reveal, EffectOutcome::aggregate_replacement_outcomes(
+            receipt(Vec::new()), [receipt(vec![card.clone()])],
+        ));
+        assert_eq!(resolve_prior_effect_metric(&game, &ctx, reveal, &query).unwrap(), 0);
+        ctx.store_outcome(reveal, EffectOutcome::aggregate_replacement_outcomes(
+            EffectOutcome::count(0), [receipt(vec![card])],
+        ));
+        assert!(matches!(resolve_prior_effect_metric(&game, &ctx, reveal, &query),
+            Err(ExecutionError::IncompleteEvidence(_))));
     }
 }

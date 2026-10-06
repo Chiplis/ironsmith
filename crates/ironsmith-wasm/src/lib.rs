@@ -2658,6 +2658,9 @@ struct ActionView {
     /// None means affordability cannot be determined before making choices.
     #[serde(skip_serializing_if = "Option::is_none")]
     mana_payment_available: Option<bool>,
+    /// Timing-legal announcements remain clickable while payment is unproven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    payment_proven: Option<bool>,
     from_zone: Option<String>,
     to_zone: Option<String>,
     drag_requires_targets: bool,
@@ -3294,6 +3297,28 @@ impl DecisionView {
                         build_action_view(game, perspective, viewed_cards, index, action, cost)
                     })
                     .collect();
+                // Publish non-mana eligibility separately from affordability.
+                // Announcing an action still requires authoritative payment.
+                for (view, action) in actions.iter_mut().zip(priority.actions.iter()) {
+                    view.payment_proven = Some(priority.payment_proven_actions.as_ref().is_none_or(|proven| proven.contains(action)));
+                }
+                let gameplay_priority = !priority.actions.iter().any(|action| matches!(action,
+                    LegalAction::KeepOpeningHand | LegalAction::TakeMulligan
+                    | LegalAction::ContinuePregame | LegalAction::BeginGame
+                    | LegalAction::UsePregameAction { .. }));
+                for actor in game.priority_team_players().into_iter().filter(|_| gameplay_priority) {
+                    let eligible = ironsmith::decision::compute_actions_assuming_mana_for_presentation(game, actor, None)
+                        .unwrap_or_default();
+                    for candidate in eligible {
+                        if !matches!(candidate, LegalAction::CastSpell { .. } | LegalAction::ActivateAbility { .. } | LegalAction::ActivateManaAbility { .. })
+                            || priority.actions.iter().any(|action| action == &candidate) {
+                            continue;
+                        }
+                        let mut action = build_action_view(game, perspective, viewed_cards, actions.len(), &candidate, None);
+                        action.payment_proven = Some(false);
+                        actions.push(action);
+                    }
+                }
                 if decision_player == perspective
                     && let Some(stable_id) = undo_land_stable_id
                     && let Some(action) = build_untap_land_action_view(

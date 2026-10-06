@@ -3,20 +3,15 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{ProliferateSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{
-    TraitEventResult, process_trait_event_with_execution_context,
-};
+use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
-use crate::triggers::TriggerEvent;
 pub use ironsmith_core::ProliferateEffect;
-
-use crate::effects::composition::mechanic_actions::execute_keyword_action_replacement_effects;
 
 /// Effect that proliferates (adds counters to permanents/players with counters).
 ///
@@ -34,279 +29,313 @@ impl EffectExecutor for ProliferateEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-            if count == 0 {
-                return Ok(EffectOutcome::resolved());
-            }
-
-            let mut proliferated_total = 0;
-            let mut outcome = EffectOutcome::count(0);
-
-            for _ in 0..count {
-                let would_event = Event::new_with_provenance(
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Proliferate,
-                        ctx.controller,
-                        ctx.source,
-                        1,
-                    ).with_snapshot(game.object(ctx.source)
-                        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
-                        .or_else(|| ctx.source_snapshot.clone())),
-                    ctx.provenance,
-                );
-                let replacement_result = process_trait_event_with_execution_context(game, would_event, ctx)?;
-                let iteration_outcome = crate::effects::replacement::execute_event_expansion_with_bindings(game, ctx, replacement_result, |game, ctx, original| {
-                    let mut outcome = EffectOutcome::count(0);
-                    match original {
-                        TraitEventResult::Replaced { effects, source, controller, context, .. } => {
-                            let snapshot = context.event.inner().snapshot().cloned();
-                            return execute_keyword_action_replacement_effects(game, ctx, effects, source, controller, &context, snapshot);
-                        }
-                        TraitEventResult::Prevented => return Ok(EffectOutcome::prevented()),
-                        TraitEventResult::NeedsChoice { .. } | TraitEventResult::NeedsInteraction { .. } => {
-                            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                            return Err(ExecutionError::InternalError("proliferate suspended without a captured decision".into()));
-                        }
-                        TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {}
-                        TraitEventResult::Expanded { .. } => return Err(ExecutionError::InternalError("proliferate commit received an unflattened result".into())),
-                    }
-
-                let mut proliferated_count = 0;
-                let mut proliferated_permanents = Vec::new();
-
-                let eligible_permanents: Vec<crate::ids::ObjectId> = game
-                    .battlefield
-                    .iter()
-                    // CR 702.26b: phased-out permanents can't be chosen.
-                    .filter(|&&perm_id| !game.is_phased_out(perm_id))
-                    .filter_map(|&perm_id| {
-                        game.object(perm_id).and_then(|obj| {
-                            if obj.counters.is_empty() || game.is_phased_out(perm_id) {
-                                None
-                            } else {
-                                Some(perm_id)
-                            }
-                        })
-                    })
-                    .collect();
-
-                let eligible_players: Vec<crate::ids::PlayerId> = game
-                    .players
-                    .iter()
-                    .filter_map(|p| {
-                        let has_counters = !p.counter_types_with_counters().is_empty();
-                        (p.is_in_game() && has_counters).then_some(p.id)
-                    })
-                    .collect();
-
-                let selections = make_decision_with_fallback(
-                    game,
-                    &mut ctx.decision_maker,
-                    ctx.controller,
-                    Some(ctx.source),
-                    ProliferateSpec::new(
-                        ctx.source,
-                        eligible_permanents.clone(),
-                        eligible_players.clone(),
-                    ),
-                    FallbackStrategy::Maximum,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+                if count == 0 {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::resolved(),
+                    ));
                 }
 
-                let mut chosen_permanents: Vec<_> = selections
-                    .permanents
-                    .into_iter()
-                    .filter(|perm_id| eligible_permanents.contains(perm_id))
-                    .collect();
-                let mut chosen_players: Vec<_> = selections
-                    .players
-                    .into_iter()
-                    .filter(|player_id| eligible_players.contains(player_id))
-                    .collect();
-                chosen_permanents.sort_unstable();
-                chosen_permanents.dedup();
-                chosen_players.sort_unstable();
-                chosen_players.dedup();
+                let mut proliferated_total = 0;
+                let mut outcome = EffectOutcome::count(0);
+                let mut outputs = CompletedEffectOutputs::aggregate_only(outcome.clone());
 
-                // CR 701.34b: one selected player per shared-poison team receives
-                // poison. Other kinds of counters still go to every selected
-                // player. Choose the recipient before committing any counters.
-                let mut poison_recipients = Vec::new();
-                let mut handled_team_members = Vec::new();
-                for &player in &chosen_players {
-                    if handled_team_members.contains(&player) {
-                        continue;
-                    }
-                    let members = game
-                        .two_headed_giant_team_members(player)
-                        .unwrap_or_else(|| vec![player]);
-                    handled_team_members.extend(members.iter().copied());
-                    let selected: Vec<_> = chosen_players
-                        .iter()
-                        .copied()
-                        .filter(|id| members.contains(id))
-                        .filter(|id| game.player(*id).is_some_and(|p| p.poison_counters > 0))
-                        .collect();
-                    let recipient = if selected.len() > 1 {
-                        let options: Vec<_> = selected
-                            .iter()
-                            .map(|id| (game.player(*id).unwrap().name.to_string(), *id))
-                            .collect();
-                        crate::decisions::ask_choose_one(
-                            game,
-                            &mut ctx.decision_maker,
+                for _ in 0..count {
+                    let would_event = Event::new_with_provenance(
+                        KeywordActionEvent::new(
+                            KeywordActionKind::Proliferate,
                             ctx.controller,
                             ctx.source,
-                            &options,
-                        )
-                    } else {
-                        selected.first().copied()
-                    };
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    if let Some(recipient) = recipient {
-                        poison_recipients.push(recipient);
-                    }
-                }
-
-                // One proliferate is one simultaneous counter-placing event
-                // (CR 603.2c).
-                let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
-                for perm_id in chosen_permanents {
-                    let Some(counter_types): Option<Vec<CounterType>> =
-                        game.object(perm_id).and_then(|obj| {
-                            (!obj.counters.is_empty())
-                                .then(|| obj.counters.keys().copied().collect())
-                        })
-                    else {
-                        continue;
-                    };
-
-                    for ct in counter_types {
-                        let event = Event::put_counters(perm_id, ct, 1, ctx.cause.clone())
-                            .with_provenance(ctx.provenance);
-                        let mut placement =
-                            super::execute_object_counter_placement(game, ctx, event)?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0));
-                        }
-                        if placement.count_or_zero() > 0 {
-                            if let Some(objects) = placement.affected_objects() {
-                                proliferated_permanents.extend_from_slice(objects);
-                            }
-                        }
-                        for event in &mut placement.events {
-                            if event.kind() == crate::events::EventKind::MarkersChanged {
-                                let batch = *counter_batch.get_or_insert_with(|| {
-                                    game.alloc_child_event_provenance(
-                                        ctx.provenance,
-                                        crate::events::EventKind::MarkersChanged,
-                                    )
-                                });
-                                *event = event.clone().with_simultaneous_batch(batch);
-                            }
-                        }
-                        outcome = EffectOutcome::aggregate([outcome, placement]);
-                    }
-                }
-                proliferated_permanents.sort_unstable();
-                proliferated_permanents.dedup();
-                proliferated_count += proliferated_permanents.len() as i32;
-
-                for player_id in chosen_players {
-                    let Some(counters) = game
-                        .player(player_id)
-                        .map(crate::player::Player::counter_types_with_counters)
-                    else {
-                        continue;
-                    };
-                    if counters.is_empty() {
-                        continue;
-                    }
-
-                    let mut received_counter = false;
-                    for counter_type in counters {
-                        if counter_type == CounterType::Poison
-                            && !poison_recipients.contains(&player_id)
-                        {
-                            continue;
-                        }
-                        // Player-counter placement already runs through the
-                        // replacement/prevention pipeline inside this centralized
-                        // helper. Do not pre-process it here or replacements such
-                        // as counter doubling would be applied twice.
-                        let event = Event::put_player_counters(
-                            player_id,
-                            counter_type,
                             1,
-                            ctx.cause.clone(),
                         )
-                        .with_provenance(ctx.provenance);
-                        let placement = crate::effects::counters::execute_player_counter_placement(
-                            game, ctx, event,
+                        .with_snapshot(
+                            game.object(ctx.source)
+                                .map(|object| {
+                                    ObjectSnapshot::from_object_with_calculated_characteristics(
+                                        object, game,
+                                    )
+                                })
+                                .or_else(|| ctx.source_snapshot.clone()),
+                        ),
+                        ctx.provenance,
+                    );
+                    let iteration_outcome =
+                        crate::effects::composition::execute_keyword_action_with_outputs(
+                            game,
+                            ctx,
+                            would_event,
+                            crate::effects::composition::KeywordActionOutput::Body,
+                            crate::effects::composition::KeywordActionAmount::Repetitions,
+                            |game, ctx, action| {
+                                let mut outcome = EffectOutcome::count(0);
+                                let mut body_outputs =
+                                    CompletedEffectOutputs::aggregate_only(outcome.clone());
+
+                                let mut proliferated_count = 0;
+                                let mut proliferated_permanents = Vec::new();
+
+                                let eligible_permanents: Vec<crate::ids::ObjectId> = game
+                                    .battlefield
+                                    .iter()
+                                    // CR 702.26b: phased-out permanents can't be chosen.
+                                    .filter(|&&perm_id| !game.is_phased_out(perm_id))
+                                    .filter_map(|&perm_id| {
+                                        game.object(perm_id).and_then(|obj| {
+                                            if obj.counters.is_empty()
+                                                || game.is_phased_out(perm_id)
+                                            {
+                                                None
+                                            } else {
+                                                Some(perm_id)
+                                            }
+                                        })
+                                    })
+                                    .collect();
+
+                                let eligible_players: Vec<crate::ids::PlayerId> = game
+                                    .players
+                                    .iter()
+                                    .filter_map(|p| {
+                                        let has_counters =
+                                            !p.counter_types_with_counters().is_empty();
+                                        (p.is_in_game() && has_counters).then_some(p.id)
+                                    })
+                                    .collect();
+
+                                let selections = make_decision_with_fallback(
+                                    game,
+                                    &mut ctx.decision_maker,
+                                    ctx.controller,
+                                    Some(ctx.source),
+                                    ProliferateSpec::new(
+                                        ctx.source,
+                                        eligible_permanents.clone(),
+                                        eligible_players.clone(),
+                                    ),
+                                    FallbackStrategy::Maximum,
+                                );
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return Ok(CompletedEffectOutputs::aggregate_only(
+                                        EffectOutcome::count(0),
+                                    ));
+                                }
+
+                                let mut chosen_permanents: Vec<_> = selections
+                                    .permanents
+                                    .into_iter()
+                                    .filter(|perm_id| eligible_permanents.contains(perm_id))
+                                    .collect();
+                                let mut chosen_players: Vec<_> = selections
+                                    .players
+                                    .into_iter()
+                                    .filter(|player_id| eligible_players.contains(player_id))
+                                    .collect();
+                                chosen_permanents.sort_unstable();
+                                chosen_permanents.dedup();
+                                chosen_players.sort_unstable();
+                                chosen_players.dedup();
+
+                                // CR 701.34b: one selected player per shared-poison team receives
+                                // poison. Other kinds of counters still go to every selected
+                                // player. Choose the recipient before committing any counters.
+                                let mut poison_recipients = Vec::new();
+                                let mut handled_team_members = Vec::new();
+                                for &player in &chosen_players {
+                                    if handled_team_members.contains(&player) {
+                                        continue;
+                                    }
+                                    let members = game
+                                        .two_headed_giant_team_members(player)
+                                        .unwrap_or_else(|| vec![player]);
+                                    handled_team_members.extend(members.iter().copied());
+                                    let selected: Vec<_> = chosen_players
+                                        .iter()
+                                        .copied()
+                                        .filter(|id| members.contains(id))
+                                        .filter(|id| {
+                                            game.player(*id).is_some_and(|p| p.poison_counters > 0)
+                                        })
+                                        .collect();
+                                    let recipient = if selected.len() > 1 {
+                                        let options: Vec<_> = selected
+                                            .iter()
+                                            .map(|id| {
+                                                (game.player(*id).unwrap().name.to_string(), *id)
+                                            })
+                                            .collect();
+                                        crate::decisions::ask_choose_one(
+                                            game,
+                                            &mut ctx.decision_maker,
+                                            ctx.controller,
+                                            ctx.source,
+                                            &options,
+                                        )
+                                    } else {
+                                        selected.first().copied()
+                                    };
+                                    if ctx.decision_maker.awaiting_choice() {
+                                        return Ok(CompletedEffectOutputs::aggregate_only(
+                                            EffectOutcome::count(0),
+                                        ));
+                                    }
+                                    if let Some(recipient) = recipient {
+                                        poison_recipients.push(recipient);
+                                    }
+                                }
+
+                                // Freeze every recipient/kind before any placement or addition.
+                                let mut requests = Vec::new();
+                                let mut recipients = Vec::new();
+                                for id in chosen_permanents {
+                                    let kinds = game
+                                        .object(id)
+                                        .map(|object| {
+                                            object.counters.keys().copied().collect::<Vec<_>>()
+                                        })
+                                        .unwrap_or_default();
+                                    for kind in kinds {
+                                        requests.push(
+                                            Event::put_counters(id, kind, 1, ctx.cause.clone())
+                                                .with_provenance(ctx.provenance),
+                                        );
+                                        recipients.push(crate::game_state::Target::Object(id));
+                                    }
+                                }
+                                for player in chosen_players {
+                                    let kinds = game
+                                        .player(player)
+                                        .map(crate::player::Player::counter_types_with_counters)
+                                        .unwrap_or_default();
+                                    for kind in kinds {
+                                        if kind == CounterType::Poison
+                                            && !poison_recipients.contains(&player)
+                                        {
+                                            continue;
+                                        }
+                                        requests.push(
+                                            Event::put_player_counters(
+                                                player,
+                                                kind,
+                                                1,
+                                                ctx.cause.clone(),
+                                            )
+                                            .with_provenance(ctx.provenance),
+                                        );
+                                        recipients.push(crate::game_state::Target::Player(player));
+                                    }
+                                }
+                                let placements =
+                                    super::execute_counter_batch_with_outputs(game, ctx, requests)?;
+                                if ctx.decision_maker.awaiting_choice() {
+                                    return Ok(CompletedEffectOutputs::aggregate_only(
+                                        EffectOutcome::count(0),
+                                    ));
+                                }
+                                let mut counted_players = Vec::new();
+                                for (recipient, placement) in recipients.into_iter().zip(placements)
+                                {
+                                    if placement.outcome.instruction_result().count_or_zero() > 0 {
+                                        match recipient {
+                                            crate::game_state::Target::Object(_) => {
+                                                if let Some(objects) = placement
+                                                    .outcome
+                                                    .instruction_result()
+                                                    .affected_objects()
+                                                {
+                                                    proliferated_permanents
+                                                        .extend_from_slice(objects);
+                                                }
+                                            }
+                                            crate::game_state::Target::Player(player) => {
+                                                if !counted_players.contains(&player) {
+                                                    counted_players.push(player);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    outcome = EffectOutcome::aggregate([
+                                        outcome,
+                                        placement.outcome.clone(),
+                                    ]);
+                                    body_outputs.retain_owned_child(placement);
+                                }
+                                proliferated_permanents.sort_unstable();
+                                proliferated_permanents.dedup();
+                                proliferated_count +=
+                                    (proliferated_permanents.len() + counted_players.len()) as i32;
+
+                                proliferated_total += proliferated_count;
+                                outcome = outcome.with_affected_objects(proliferated_permanents);
+                                outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(
+                                    proliferated_count,
+                                )));
+                                Ok(
+                                crate::effects::composition::complete_keyword_action_with_outputs(
+                                    game,
+                                    ctx,
+                                    body_outputs.project_aggregate(outcome),
+                                    KeywordActionEvent::new(
+                                        KeywordActionKind::Proliferate,
+                                        action.player,
+                                        action.source,
+                                        1,
+                                    ),
+                                )?,
+                            )
+                            },
                         )?;
-                        received_counter |= placement.count_or_zero() > 0;
-                        outcome = EffectOutcome::aggregate([outcome, placement]);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(outcome);
-                        }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
                     }
-                    if received_counter {
-                        proliferated_count += 1;
-                    }
+                    outcome =
+                        EffectOutcome::aggregate([outcome, iteration_outcome.outcome.clone()]);
+                    outputs.retain_owned_child(iteration_outcome);
                 }
 
-                proliferated_total += proliferated_count;
-                outcome = outcome.with_affected_objects(proliferated_permanents);
-                outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(proliferated_count)));
-                Ok(outcome.with_event(TriggerEvent::new_with_provenance(
-                    KeywordActionEvent::new(KeywordActionKind::Proliferate, ctx.controller, ctx.source, 1), ctx.provenance,
-                )))
-                }, |_, context, _| {
-                    let action = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
-                        .filter(|action| action.action == KeywordActionKind::Proliferate)
-                        .ok_or_else(|| ExecutionError::InternalError("proliferate addition captured an incompatible event".into()))?;
-                    let object_tags = action.snapshot.as_ref().map(|snapshot| vec![
-                        ("__it__".to_owned(), vec![snapshot.clone()]), ("it".to_owned(), vec![snapshot.clone()]),
-                    ]).unwrap_or_default();
-                    Ok(crate::effects::replacement::ReplacementProgramBindings { targets: None, object_tags })
-                })?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                outcome = EffectOutcome::aggregate([outcome, iteration_outcome]);
-            }
-
-            // Counter-placement receipts and the keyword summary can name the
-            // same permanent. Report the affected set once, retaining additions.
-            let mut affected = Vec::new();
-            outcome.execution_facts.retain(|fact| {
-                if let crate::effect::ExecutionFact::AffectedObjects(ids) = fact {
-                    for id in ids {
-                        if !affected.contains(id) { affected.push(*id); }
+                // Counter-placement receipts and the keyword summary can name the
+                // same permanent. Report the affected set once, retaining additions.
+                let mut affected = Vec::new();
+                outcome.execution_facts.retain(|fact| {
+                    if let crate::effect::ExecutionFact::AffectedObjects(ids) = fact {
+                        for id in ids {
+                            if !affected.contains(id) {
+                                affected.push(*id);
+                            }
+                        }
+                        false
+                    } else {
+                        true
                     }
-                    false
-                } else { true }
-            });
-            outcome = outcome.with_affected_objects(affected);
-            outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(proliferated_total)));
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() && result.is_ok() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
+                });
+                outcome = outcome.with_affected_objects(affected);
+                outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(
+                    proliferated_total,
+                )));
+                Ok(outputs.project_aggregate(outcome))
+            },
+        );
         result
     }
 }

@@ -1,6 +1,7 @@
 use crate::effects::ExecutionContext;
 use crate::effects::ExecutionError;
 use crate::effects::helpers::resolve_value;
+#[cfg(test)]
 use crate::events::EnterBattlefieldEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -45,7 +46,17 @@ pub(crate) fn finish_battlefield_entry_receipts(
     original: crate::effect::EffectOutcome,
     receipts: Vec<BattlefieldEntryReceipt>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    super::finish_zone_change_receipts(
+    finish_battlefield_entry_receipts_with_outputs(game, ctx, original, receipts)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn finish_battlefield_entry_receipts_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    original: crate::effect::EffectOutcome,
+    receipts: Vec<BattlefieldEntryReceipt>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::finish_zone_change_receipts_with_outputs(
         game,
         ctx,
         original,
@@ -367,20 +378,14 @@ fn finish_battlefield_entry(
     game.add_battlefield_put_with_source_link(ctx.source, new_id);
     let enters_tapped = result.enters_tapped;
 
-    // "This creature enters prepared." The permanent is on the battlefield by
-    // now, which is what the prepare spell copy's existence is tied to.
-    let event = if enters_tapped {
-        TriggerEvent::new_with_provenance(
-            EnterBattlefieldEvent::tapped(new_id, old_zone),
-            ProvNodeId::default(),
-        )
-    } else {
-        TriggerEvent::new_with_provenance(
-            EnterBattlefieldEvent::new(new_id, old_zone),
-            ProvNodeId::default(),
-        )
-    };
-    notifications.push(event);
+    notifications.push(super::battlefield_entry_observation(
+        game,
+        new_id,
+        old_zone,
+        enters_tapped,
+        ProvNodeId::default(),
+        Vec::new(),
+    )?);
     Ok(BattlefieldEntryOutcome::Moved(new_id))
 }
 
@@ -397,35 +402,59 @@ pub(crate) fn move_to_battlefield_batch_with_options(
     ctx: &mut ExecutionContext,
     requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
 ) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
-    move_to_battlefield_batch_with_options_and_zone_proposals(
+    move_to_battlefield_batch_with_companions(
         game,
         ctx,
         requests,
         std::collections::HashMap::new(),
+        |_, _| Ok(()),
     )
+    .map(|completed| completed.map(|(receipts, ())| receipts).unwrap_or_default())
 }
 
-pub(crate) fn move_to_battlefield_batch_with_options_and_zone_proposals(
+/// Prepare every entry before companion originals commit, retaining prospective
+/// entry views and reservations in the staged world. Commit both groups there;
+/// no preparation clone can overwrite an independently committed sibling.
+/// The enclosing movement adapter completes authored arrival work and additions.
+pub(crate) fn move_to_battlefield_batch_with_companions<'a, T>(
     game: &mut GameState,
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'a>,
     requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
     zone_proposals: std::collections::HashMap<
         ObjectId,
         crate::events::processing::PreparedBattlefieldZoneChange,
     >,
-) -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
-    let checkpoint = game.clone();
-    let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = (|| {
-        let Some(prepared) = prepare_battlefield_entry_batch(game, ctx, requests, zone_proposals, None)? else { return Ok(Vec::new()); };
-        if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-        prepared.commit(game, ctx)
-    })();
-    if result.is_err() || ctx.decision_maker.awaiting_choice() {
-        *game = checkpoint;
-        context_checkpoint.restore(ctx);
+    companions: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, ExecutionError>,
+) -> Result<Option<(Vec<BattlefieldEntryReceipt>, T)>, ExecutionError> {
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || None,
+        |game, ctx| {
+            move_to_battlefield_batch_with_options_inner(
+                game,
+                ctx,
+                requests,
+                zone_proposals,
+                companions,
+            )
+        },
+    )
+}
+
+fn move_to_battlefield_batch_with_options_inner<'a, T>(
+    game: &mut GameState, ctx: &mut ExecutionContext<'a>,
+    requests: Vec<(ObjectId, BattlefieldEntryOptions)>,
+    zone_proposals: std::collections::HashMap<ObjectId, crate::events::processing::PreparedBattlefieldZoneChange>,
+    companions: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, ExecutionError>,
+) -> Result<Option<(Vec<BattlefieldEntryReceipt>, T)>, ExecutionError> {
+    if requests.is_empty() {
+        return companions(game, ctx).map(|other| Some((Vec::new(), other)));
     }
-    result
+    let Some(prepared) = prepare_battlefield_entry_batch(game, ctx, requests, zone_proposals, None)? else {
+        return Ok(None);
+    };
+    prepared.commit_with_companions(game, ctx, companions)
 }
 
 #[derive(Debug)]
@@ -798,15 +827,18 @@ impl PreparedBattlefieldEntryBatch {
         -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.commit_inner(game, ctx);
+        let result = self.commit_with_companions(game, ctx, |_, _| Ok(()))
+            .map(|value| value.map(|(receipts, ())| receipts).unwrap_or_default());
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             game.restore_execution_checkpoint(checkpoint, ctx.decision_maker.awaiting_choice() && result.is_ok());
             context_checkpoint.restore(ctx);
         }
         result
     }
-    fn commit_inner(self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<Vec<BattlefieldEntryReceipt>, ExecutionError> {
+    pub(crate) fn commit_with_companions<'a, T>(
+        self, game: &mut GameState, ctx: &mut ExecutionContext<'a>,
+        companions: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>) -> Result<T, ExecutionError>,
+    ) -> Result<Option<(Vec<BattlefieldEntryReceipt>, T)>, ExecutionError> {
         let Self { requests, mut prepared_entries, controllers, mut deferred_programs,
             mut replaced_entries, mut provisional_effects, provisional_entry_effects,
             transformed_entry_states, mut projections } = self;
@@ -818,6 +850,11 @@ impl PreparedBattlefieldEntryBatch {
     // CR 603.2c: the entries are one simultaneous event, so "whenever one or
     // more creatures enter" sees them together.
     let opened_batch = working.open_simultaneous_action();
+    let other = companions(&mut working, ctx)?;
+    if ctx.decision_maker.awaiting_choice() {
+        game.retain_pending_decision_controllers_from(&mut working);
+        return Ok(None);
+    }
     let mut outcomes = vec![BattlefieldEntryOutcome::Prevented; requests.len()];
     for (index, (object, options)) in requests.iter().enumerate() {
         let Some((old_zone, prepared_entry)) = prepared_entries[index].take() else {
@@ -836,7 +873,8 @@ impl PreparedBattlefieldEntryBatch {
         );
         let mut committed = committed?;
         if committed.pending || ctx.decision_maker.awaiting_choice() {
-            return Ok(Vec::new());
+            game.retain_pending_decision_controllers_from(&mut working);
+            return Ok(None);
         }
         deferred_programs[index].append(&mut committed.programs);
         let result = match committed.original {
@@ -886,7 +924,8 @@ impl PreparedBattlefieldEntryBatch {
         let Some(ordered) =
             choose_simultaneous_timestamp_order(&working, ctx.decision_maker, &relevant_entrants)
         else {
-            return Ok(Vec::new());
+            game.retain_pending_decision_controllers_from(&mut working);
+            return Ok(None);
         };
         for id in ordered {
             working.effect_store.continuous_effects.record_entry(id);
@@ -932,7 +971,7 @@ impl PreparedBattlefieldEntryBatch {
         working.queue_trigger_event(ctx.provenance, event);
     }
     *game = working;
-    Ok(outcomes
+    let receipts = outcomes
         .into_iter()
         .enumerate()
         .map(|(index, outcome)| {
@@ -962,7 +1001,8 @@ impl PreparedBattlefieldEntryBatch {
                 },
             }
         })
-        .collect())
+        .collect();
+    Ok(Some((receipts, other)))
     }
 }
 
@@ -1063,7 +1103,6 @@ impl BattlefieldEntryReceipt {
         &self.outcome
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

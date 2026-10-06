@@ -9,16 +9,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 8 coordinates exact numeric-choice acquisitions/producer receipts with
-// typed counted-counter transfers and authored token word roles/derived names.
-// Earlier definitions must be recompiled from
-// original source, never relabeled or repaired from display/card names. Version
-// 7's authored/intrinsic mana distinction and required text metadata still apply.
-// The schema compatibility fingerprint and its exact descriptor are documented
-// in architecture/card-failure-numeric-counter-compatibility.md.
-pub const FORMAT_VERSION: u32 = 8;
+// Version 9 admits ordered Vote payloads, retained predefined/native token
+// definitions, and prepared-action execution with complete snapshot evidence.
+// Earlier definitions require recompilation from original source; relabeling
+// an envelope cannot migrate its model or execution semantics.
+// The exact compatibility descriptor is documented in
+// architecture/card-failure-prepared-main-compatibility.md.
+pub const FORMAT_VERSION: u32 = 9;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "cb108f20f047d8702f593fc004a8f8e4cebc1c7cd29a9b0eef7b7590cf9adcad";
+    "b3895accd8d36443d5ec72a6985ebf4e96650975eaa53d8581e484040dd312d7";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -454,22 +453,40 @@ mod tests {
     fn previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata() {
         let mut previous = fixture();
         previous.format_version = 4;
-        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 8 })));
+        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 9 })));
         assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v3.json")).is_err());
         let mut missing_keyword_identity = fixture();
         missing_keyword_identity.format_version = 5;
         missing_keyword_identity.refresh_checksum();
-        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 8 })));
+        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 9 })));
         let mut ambiguous_mana_origin = fixture();
         ambiguous_mana_origin.format_version = 6;
         ambiguous_mana_origin.refresh_checksum();
-        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: 8 })));
+        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: 9 })));
         assert!(CompiledCardArtifact::from_json(&ambiguous_mana_origin.to_json().unwrap()).is_err());
         let mut missing_numeric_counter_owners = fixture();
         missing_numeric_counter_owners.format_version = 7;
         missing_numeric_counter_owners.refresh_checksum();
-        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: 8 })));
+        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: 9 })));
         assert!(CompiledCardArtifact::from_json(&missing_numeric_counter_owners.to_json().unwrap()).is_err());
+    }
+
+    #[test]
+    fn pre_prepared_artifacts_require_recompilation_even_with_valid_checksums() {
+        let mut old_format = fixture();
+        old_format.format_version = 8;
+        old_format.refresh_checksum();
+        assert!(matches!(old_format.validate(),
+            Err(ArtifactValidationError::UnsupportedFormat { found: 8, expected: 9 })));
+        assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
+
+        let mut old_schema = fixture();
+        old_schema.engine_schema_hash =
+            "cb108f20f047d8702f593fc004a8f8e4cebc1c7cd29a9b0eef7b7590cf9adcad".into();
+        old_schema.refresh_checksum();
+        assert!(matches!(old_schema.validate(),
+            Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
+        assert!(CompiledCardArtifact::from_json(&old_schema.to_json().unwrap()).is_err());
     }
 
     #[test]
@@ -488,7 +505,7 @@ mod tests {
         artifact.engine_schema_hash =
             "3f9f096868c6ec7f6437ea2d249befbab23ffefe8604470d4ea4b0018f6c2b08".to_string();
         artifact.refresh_checksum();
-        assert_eq!(artifact.format_version, 8);
+        assert_eq!(artifact.format_version, 9);
         assert!(matches!(artifact.validate(), Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
         assert!(CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).is_err());
     }

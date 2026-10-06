@@ -1104,6 +1104,19 @@ fn delirium_ability_ordering_preserves_graveyard_type_changes_and_zone_changes()
     let (mut game, source, graveyard) = delirium_layer_fixture();
     game.refresh_continuous_state().unwrap();
     assert_delirium_characteristics(&game, source, false);
+    let chars = game.calculated_characteristics(source).unwrap();
+    assert_eq!(
+        chars
+            .abilities
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| {
+                matches!(chars.abilities.origin(*index), Some(AbilityOrigin::Printed(_)))
+            })
+            .count(),
+        3,
+        "conditional rules remain abilities even while their effects are inactive"
+    );
 
     // A real layer-4 effect makes the land also an artifact. Printed types
     // alone would incorrectly leave delirium off.

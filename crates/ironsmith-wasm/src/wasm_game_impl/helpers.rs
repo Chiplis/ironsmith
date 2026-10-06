@@ -40,6 +40,7 @@ pub(super) fn build_action_view(
         object_id: source_visible.then_some(object_id).flatten(),
         ability_index,
         mana_payment_available: None,
+        payment_proven: None,
         from_zone: source_visible.then_some(from_zone).flatten(),
         to_zone: source_visible.then_some(to_zone).flatten(),
         drag_requires_targets: source_visible && drag_requires_targets,
@@ -428,6 +429,7 @@ pub(super) fn build_untap_land_action_view(
         object_id: Some(object_id.0),
         ability_index: None,
         mana_payment_available: None,
+        payment_proven: None,
         from_zone: Some(zone_name(Zone::Battlefield)),
         to_zone: Some(zone_name(Zone::Battlefield)),
         drag_requires_targets: false,
@@ -1411,6 +1413,26 @@ pub(super) fn resolve_priority_action(
 ) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
+        // The live context already establishes who has priority. Passing has
+        // no payment or target requirements, even while the card menu is still
+        // being analyzed. Do not run any affordability query for this action.
+        if matches!(action_ref, PriorityActionRef::PassPriority) {
+            return Ok(priority.actions.iter().find(|action| matches!(action, LegalAction::PassPriority)).cloned());
+        }
+        if matches!(action_ref, PriorityActionRef::CastSpell { .. } | PriorityActionRef::ActivateAbility { .. } | PriorityActionRef::ActivateManaAbility { .. }) {
+            let source = match action_ref {
+                PriorityActionRef::CastSpell { spell_id, .. } => *spell_id,
+                PriorityActionRef::ActivateAbility { source, .. } | PriorityActionRef::ActivateManaAbility { source, .. } => *source,
+                _ => unreachable!(),
+            };
+            for player in game.priority_team_players() {
+                if let Some(action) = ironsmith::decision::compute_actions_assuming_mana_for_presentation(game, player, Some(ObjectId::from_raw(source)))?
+                    .into_iter().find(|action| priority_action_ref(action) == *action_ref) {
+                    return Ok(Some(action));
+                }
+            }
+            return Ok(None);
+        }
         if priority.analysis_complete && let Some(action) = priority.actions.iter().find(|action| priority_action_ref(action) == *action_ref) {
             return Ok(Some(action.clone()));
         }

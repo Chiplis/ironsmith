@@ -782,7 +782,7 @@ pub(super) fn calculate_with_layers(
     prune_ability_gain_prohibitions(&mut chars);
     calc_guard.update(&chars);
 
-    retain_active_static_abilities(&mut chars, ctx.game, object.id);
+    refresh_active_static_abilities(&mut chars, ctx.game, object.id);
     calc_guard.update(&chars);
 
     chars

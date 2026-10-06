@@ -8,6 +8,25 @@ use crate::game_state::GameState;
 pub type ChooseModeEffect = ironsmith_core::ChooseModeEffect<crate::effect::Effect>;
 
 impl EffectExecutor for ChooseModeEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        self.common_prefix_effects
+            .iter()
+            .chain(self.modes.iter().flat_map(|mode| mode.effects.iter()))
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        Ok(
+            super::choose_mode_runtime::select_mode_program(self, game, ctx)?.map(|program| {
+                super::choose_mode_runtime::selected_mode_cursor(self, program, ctx)
+            }),
+        )
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -52,6 +71,19 @@ impl EffectExecutor for ChooseModeEffect {
         super::choose_mode_runtime::run_choose_mode(self, game, ctx)
     }
 
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::choose_mode_runtime::run_choose_mode_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
+    }
+
     fn get_modal_spec(&self) -> Option<ModalSpec> {
         if self.chooser.is_some() {
             return None;
@@ -91,11 +123,73 @@ impl EffectExecutor for ChooseModeEffect {
 }
 
 impl CostExecutableEffect for ChooseModeEffect {
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::choose_mode_runtime::run_choose_mode_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let mut replacement = self.clone();
+        let mut changed = false;
+        if let Some(effects) = crate::effects::canonical_cost_children(&self.common_prefix_effects)
+        {
+            replacement.common_prefix_effects = effects;
+            changed = true;
+        }
+        for mode in &mut replacement.modes {
+            if let Some(effects) = crate::effects::canonical_cost_children(&mode.effects) {
+                mode.effects = effects;
+                changed = true;
+            }
+        }
+        changed.then(|| crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            self,
+            game,
+            source,
+            controller,
+            crate::costs::PaymentReason::Other,
+        )
+    }
+
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut execution =
+            ExecutionContext::new(source, controller, &mut decision_maker).with_x(0);
+        CostExecutableEffect::can_execute_as_cost_with_context(self, game, &mut execution, reason)
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
         match self.choose_count {
             Value::Fixed(_) => {}
@@ -114,20 +208,28 @@ impl CostExecutableEffect for ChooseModeEffect {
             }
         };
 
-        let legal_mode_count = self
-            .modes
-            .iter()
-            .filter(|mode| {
-                mode.effects.iter().all(|effect| {
-                    effect.0.as_cost_executable().is_some_and(|_| {
-                        effect
-                            .0
-                            .can_execute_as_cost(game, source, controller)
-                            .is_ok()
-                    })
-                })
-            })
-            .count();
+        if min_modes == 0 {
+            return crate::costs::check_effect_cost_program(
+                &self.common_prefix_effects,
+                game,
+                ctx,
+                reason,
+            );
+        }
+        let mut legal_mode_count = 0;
+        for mode in &self.modes {
+            let program = self
+                .common_prefix_effects
+                .iter()
+                .chain(&mode.effects)
+                .cloned()
+                .collect::<Vec<_>>();
+            // The shared cost query owner isolates speculative bindings.
+            let result = crate::costs::check_effect_cost_program(&program, game, ctx, reason);
+            if result.is_ok() {
+                legal_mode_count += 1;
+            }
+        }
 
         if legal_mode_count >= min_modes {
             Ok(())

@@ -65,7 +65,7 @@ fn candidates(
     game: &GameState,
     originals: &[SimultaneousDamageEvent],
     proposals: &mut [Proposal],
-    scope: &crate::effects::ReplacementExecutionContext,
+    scopes: &[&crate::effects::ReplacementExecutionContext],
     additional_ids: &mut std::collections::HashMap<ReplacementEffectKey, ReplacementEffectId>,
 ) -> Result<Vec<Candidate>, crate::effects::ExecutionError> {
     let mut candidates: Vec<Candidate> = Vec::new();
@@ -80,7 +80,7 @@ fn candidates(
         // Redirected recipients acquire their own shield counters. New shields
         // created by a replacement payload must likewise be discovered here.
         proposal.additional = damage_additional_replacements(
-            game, damage.target, originals[proposal.original].source_snapshot.as_ref(), None, scope,
+            game, damage.target, originals[proposal.original].source_snapshot.as_ref(), None, scopes[proposal.original],
         );
         for effect in &mut proposal.additional {
             let next_id = ReplacementEffectId(u64::MAX / 4 + additional_ids.len() as u64);
@@ -229,6 +229,7 @@ fn append_result(into: &mut ProcessedDamageResult, addition: ProcessedDamageResu
     into.assignments.extend(addition.assignments);
     into.replacement_prevented |= addition.replacement_prevented;
     into.programs.extend(addition.programs);
+    into.original_payloads.extend(addition.original_payloads);
     if let Some(payload) = addition.payload_outcome {
         into.payload_outcome = Some(crate::effect::EffectOutcome::aggregate(
             into.payload_outcome.take().into_iter().chain(std::iter::once(payload)),
@@ -253,14 +254,38 @@ fn finish_proposal(
     )
 }
 
+/// Retain each prevention addition's original assignment and captured scope.
+/// Redirected branches share the original owner; separate assignments do not.
+fn with_follow_up_owner<T>(
+    game: &mut GameState,
+    scope: &crate::effects::ReplacementExecutionContext,
+    original: usize,
+    owners: &mut Vec<usize>,
+    body: impl FnOnce(&mut GameState) -> Result<T, crate::effects::ExecutionError>,
+) -> Result<T, crate::effects::ExecutionError> {
+    let before = game.effect_store.prevention_effects.pending_follow_up_count();
+    game.effect_store.prevention_effects.begin_follow_up_replacement_scope(scope);
+    let result = body(game);
+    game.effect_store.prevention_effects.end_follow_up_replacement_scope();
+    let value = result?;
+    let after = game.effect_store.prevention_effects.pending_follow_up_count();
+    let added = after.checked_sub(before).ok_or_else(||
+        crate::effects::ExecutionError::InternalError(
+            "damage proposal consumed another assignment's prevention follow-ups".into(),
+        ))?;
+    owners.extend(std::iter::repeat_n(original, added));
+    Ok(value)
+}
+
 pub(super) fn process(
     game: &mut GameState,
     originals: &[SimultaneousDamageEvent],
     dm: &mut dyn DecisionMaker,
-    scope: &crate::effects::ReplacementExecutionContext,
-) -> Result<Vec<ProcessedDamageResult>, DamageProcessingError> {
+    scopes: &[&crate::effects::ReplacementExecutionContext],
+) -> Result<(Vec<ProcessedDamageResult>, Vec<usize>), DamageProcessingError> {
     let mut proposals = Vec::with_capacity(originals.len());
     for (original, item) in originals.iter().enumerate() {
+        let scope = scopes[original];
         proposals.push(Proposal {
             original,
             event: prepare_damage_proposal(
@@ -279,30 +304,31 @@ pub(super) fn process(
     }
     let mut results = vec![ProcessedDamageResult {
         assignments: Vec::new(), replacement_prevented: false,
-        payload_outcome: None, programs: Vec::new(),
+        payload_outcome: None, original_payloads: Vec::new(), programs: Vec::new(),
     }; originals.len()];
     let mut failed_source = originals[0].source;
     let mut additional_ids = std::collections::HashMap::new();
-    game.effect_store.prevention_effects.begin_follow_up_replacement_scope(scope);
+    let mut follow_up_owners = Vec::new();
     let operation = (|| -> Result<_, crate::effects::ExecutionError> {
         loop {
             game.update_cant_effects();
             game.update_replacement_effects()
                 .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-            let choices = candidates(game, originals, &mut proposals, scope, &mut additional_ids)?;
+            let choices = candidates(game, originals, &mut proposals, scopes, &mut additional_ids)?;
             if choices.is_empty() {
                 break;
             }
             let Some(chosen) = choose_candidate(game, &proposals, &choices, dm)? else {
-                return Ok(Vec::new());
+                return Ok((results, follow_up_owners));
             };
             let candidate = &choices[chosen];
             let Some(quotas) = allocate(game, &proposals, candidate, dm)? else {
-                return Ok(Vec::new());
+                return Ok((results, follow_up_owners));
             };
             for ((index, original_effect), quota) in candidate.members.iter().zip(quotas) {
                 let proposal = &mut proposals[*index];
                 let original = &originals[proposal.original];
+                let scope = scopes[proposal.original];
                 failed_source = original.source;
                 let mut effect = original_effect.clone();
                 if candidate.budget.is_some() {
@@ -318,45 +344,49 @@ pub(super) fn process(
                         _ => unreachable!("only finite damage replacements have quotas"),
                     }
                 }
-                proposal.state.increment();
-                let applied = apply_trait_replacement_retaining_damage_branches(
-                    game, proposal.event.clone(), &effect, &mut proposal.state,
-                )?;
-                // Per-branch ephemeral prevention descriptors retain their own
-                // original identity even though the application uses a quota.
-                mark_applied_replacement_choice(&mut proposal.state, original_effect);
-                consume_one_shot_if_applied(game, effect.id, &applied);
-                let remainders = std::mem::take(&mut proposal.state.damage_remainders);
-                match applied {
-                    TraitApplyResult::Modified(event) | TraitApplyResult::Unchanged(event) => {
-                        proposal.event = event;
+                let original_index = proposal.original;
+                let remainders = with_follow_up_owner(game, scope, original_index, &mut follow_up_owners, |game| {
+                    proposal.state.increment();
+                    let applied = apply_trait_replacement_retaining_damage_branches(
+                        game, proposal.event.clone(), &effect, &mut proposal.state,
+                    )?;
+                    // Per-branch ephemeral prevention descriptors retain their own
+                    // original identity even though the application uses a quota.
+                    mark_applied_replacement_choice(&mut proposal.state, original_effect);
+                    consume_one_shot_if_applied(game, effect.id, &applied);
+                    let remainders = std::mem::take(&mut proposal.state.damage_remainders);
+                    match applied {
+                        TraitApplyResult::Modified(event) | TraitApplyResult::Unchanged(event) => {
+                            proposal.event = event;
+                        }
+                        TraitApplyResult::Prevented => {
+                            let completed = finish_proposal(
+                                game, proposal, originals, TraitEventResult::Prevented, scope, dm,
+                            )?;
+                            append_result(&mut results[proposal.original], completed);
+                        }
+                        TraitApplyResult::Replaced(effects) => {
+                            let result = TraitEventResult::Replaced {
+                                context: Box::new(ReplacementEventContext::new(
+                                    game, proposal.event.clone(), &proposal.state,
+                                )),
+                                effects, effect_id: effect.id,
+                                replacement: effect.replacement.clone(),
+                                source: effect.source, controller: effect.controller,
+                            };
+                            let completed = finish_proposal(game, proposal, originals, result, scope, dm)?;
+                            append_result(&mut results[proposal.original], completed);
+                        }
+                        TraitApplyResult::NeedsInteraction { .. } => {
+                            return Err(crate::effects::ExecutionError::InternalError(
+                                "damage replacement requested an unsupported interaction".into(),
+                            ));
+                        }
                     }
-                    TraitApplyResult::Prevented => {
-                        let completed = finish_proposal(
-                            game, proposal, originals, TraitEventResult::Prevented, scope, dm,
-                        )?;
-                        append_result(&mut results[proposal.original], completed);
-                    }
-                    TraitApplyResult::Replaced(effects) => {
-                        let result = TraitEventResult::Replaced {
-                            context: Box::new(ReplacementEventContext::new(
-                                game, proposal.event.clone(), &proposal.state,
-                            )),
-                            effects, effect_id: effect.id,
-                            replacement: effect.replacement.clone(),
-                            source: effect.source, controller: effect.controller,
-                        };
-                        let completed = finish_proposal(game, proposal, originals, result, scope, dm)?;
-                        append_result(&mut results[proposal.original], completed);
-                    }
-                    TraitApplyResult::NeedsInteraction { .. } => {
-                        return Err(crate::effects::ExecutionError::InternalError(
-                            "damage replacement requested an unsupported interaction".into(),
-                        ));
-                    }
-                }
+                    Ok(remainders)
+                })?;
                 if dm.awaiting_choice() {
-                    return Ok(Vec::new());
+                    return Ok((results, follow_up_owners));
                 }
                 let original_index = proposal.original;
                 if let Some(damage) = crate::events::downcast_event::<DamageEvent>(proposal.event.inner())
@@ -390,15 +420,18 @@ pub(super) fn process(
             if !proposal.complete {
                 failed_source = originals[proposal.original].source;
                 let result = TraitEventResult::Proceed(proposal.event.clone());
-                let completed = finish_proposal(game, proposal, originals, result, scope, dm)?;
+                let original = proposal.original;
+                let completed = with_follow_up_owner(
+                    game, scopes[original], original, &mut follow_up_owners,
+                    |game| finish_proposal(game, proposal, originals, result, scopes[original], dm),
+                )?;
                 append_result(&mut results[proposal.original], completed);
                 if dm.awaiting_choice() {
-                    return Ok(Vec::new());
+                    return Ok((results, follow_up_owners));
                 }
             }
         }
-        Ok(results)
+        Ok((results, follow_up_owners))
     })();
-    game.effect_store.prevention_effects.end_follow_up_replacement_scope();
     operation.map_err(|error| DamageProcessingError { source: failed_source, error })
 }

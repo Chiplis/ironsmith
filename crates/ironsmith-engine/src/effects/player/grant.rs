@@ -79,7 +79,7 @@ impl EffectExecutor for GrantEffect {
             .with_source_type(crate::continuous::EffectSourceType::Resolution {
                 locked_targets: vec![target_id],
             })
-            .execute(game, ctx);
+            .execute_child(game, ctx);
         }
 
         // Calculate expiration

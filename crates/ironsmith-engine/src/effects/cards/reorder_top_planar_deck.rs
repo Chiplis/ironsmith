@@ -1,6 +1,8 @@
 //! Look at and reorder the top of a planar deck.
 
-use crate::decisions::context::{SelectObjectsContext, SelectableObject, ViewCardsContext};
+#[cfg(test)]
+use crate::decisions::context::ViewCardsContext;
+use crate::decisions::context::{SelectObjectsContext, SelectableObject};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_player_filter, resolve_player_filter_as_chooser};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
@@ -44,15 +46,18 @@ impl EffectExecutor for ReorderTopPlanarDeckEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let view_context = ViewCardsContext::new(
+        let observation = super::look_at_cards(
+            game,
+            ctx,
             chooser,
             player,
-            Some(ctx.source),
             Zone::Command,
+            &top_to_bottom,
             "Look at cards from the top of a planar deck",
         );
-        ctx.decision_maker
-            .view_cards(game, chooser, &top_to_bottom, &view_context);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let candidates = top_to_bottom
             .iter()
@@ -83,7 +88,10 @@ impl EffectExecutor for ReorderTopPlanarDeckEffect {
         game.move_planar_deck_card_to_bottom(player, chosen)
             .map_err(ExecutionError::Impossible)?;
 
-        Ok(EffectOutcome::resolved().with_affected_objects(vec![chosen]))
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved().with_affected_objects(vec![chosen]),
+            [observation],
+        ))
     }
 }
 

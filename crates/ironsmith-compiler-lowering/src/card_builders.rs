@@ -462,10 +462,10 @@ impl CardDefinitionBuilder {
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_dies(),
-            vec![crate::effect::Effect::create_tokens(
+            vec![crate::effect::Effect::new(Self::keyword_token_instruction(
                 Self::afterlife_spirit_token(),
                 amount,
-            )],
+            ))],
         ))
     }
 
@@ -491,10 +491,10 @@ impl CardDefinitionBuilder {
             ),
             crate::effect::EffectMode::new(
                 create_description,
-                vec![crate::effect::Effect::create_tokens(
+                vec![crate::effect::Effect::new(Self::keyword_token_instruction(
                     Self::fabricate_servo_token(),
                     amount,
-                )],
+                ))],
             ),
         ];
 
@@ -1989,7 +1989,7 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
-                crate::effect::Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1)
+                crate::effect::Effect::new(Self::keyword_token_instruction(Self::for_mirrodin_rebel_token(), 1))
                     .tag(created_tag.clone()),
                 crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
                     created_tag.key.clone(),
@@ -2003,7 +2003,7 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
-                crate::effect::Effect::create_tokens(Self::job_select_hero_token(), 1)
+                crate::effect::Effect::new(Self::keyword_token_instruction(Self::job_select_hero_token(), 1))
                     .tag(created_tag.clone()),
                 crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
                     created_tag.key.clone(),
@@ -2017,7 +2017,7 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability::triggered(
             crate::triggers::Trigger::this_enters_battlefield(),
             vec![
-                crate::effect::Effect::create_tokens(Self::living_weapon_germ_token(), 1)
+                crate::effect::Effect::new(Self::keyword_token_instruction(Self::living_weapon_germ_token(), 1))
                     .tag(created_tag.clone()),
                 crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(
                     created_tag.key.clone(),
@@ -2058,10 +2058,9 @@ impl CardDefinitionBuilder {
     }
 
     pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
-        let effect = crate::effects::CreateTokenEffect::new(
+        let effect = Self::keyword_token_instruction(
             Self::mobilize_warrior_token(),
             amount,
-            crate::target::PlayerFilter::You,
         )
         .tapped()
         .attacking()
@@ -2542,8 +2541,18 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// These callers own wordless keyword expansions. Do not use this profile
+    /// for an ordinary described token or infer it from a finished card name.
+    fn keyword_token_instruction(token: CardDefinition, count: impl Into<crate::effect::Value>)
+        -> crate::effects::CreateTokenEffect
+    {
+        let roles = ironsmith_core::TokenTextRoles::rules_implied(
+            ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
+        crate::effects::CreateTokenEffect::you(token, count).with_text_roles(roles)
+    }
+
     fn fabricate_servo_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Servo")
+        CardDefinitionBuilder::new(CardId::new(), "Servo Token")
             .token()
             .card_types(vec![CardType::Artifact, CardType::Creature])
             .subtypes(vec![Subtype::Servo])
@@ -2552,7 +2561,7 @@ impl CardDefinitionBuilder {
     }
 
     fn afterlife_spirit_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Spirit")
+        CardDefinitionBuilder::new(CardId::new(), "Spirit Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Spirit])
@@ -2563,7 +2572,7 @@ impl CardDefinitionBuilder {
     }
 
     fn for_mirrodin_rebel_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Rebel")
+        CardDefinitionBuilder::new(CardId::new(), "Rebel Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Rebel])
@@ -2573,7 +2582,7 @@ impl CardDefinitionBuilder {
     }
 
     fn job_select_hero_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Hero")
+        CardDefinitionBuilder::new(CardId::new(), "Hero Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Hero])
@@ -2582,7 +2591,7 @@ impl CardDefinitionBuilder {
     }
 
     fn living_weapon_germ_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ")
+        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
@@ -2592,7 +2601,7 @@ impl CardDefinitionBuilder {
     }
 
     fn mobilize_warrior_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Warrior")
+        CardDefinitionBuilder::new(CardId::new(), "Warrior Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Warrior])

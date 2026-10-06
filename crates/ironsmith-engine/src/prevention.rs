@@ -293,6 +293,9 @@ pub struct PreventionFollowUp {
 /// A prevention follow-up paired with the exact damage event it modified.
 #[derive(Debug, Clone)]
 pub struct PendingPreventionFollowUp {
+    /// Authored instructions whose damage produced this follow-up. Retained
+    /// across deferral; empty means the caller supplied no routing association.
+    pub(crate) participant_scopes: Vec<crate::effects::EffectOutcomeScope>,
     pub(crate) replacement_scope: crate::effects::ReplacementExecutionContext,
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// LKI of the damage source, distinct from the prevention ability's source.
@@ -414,6 +417,7 @@ impl PreventionEffectManager {
         damage_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     ) {
         self.pending_follow_ups.push(PendingPreventionFollowUp {
+            participant_scopes: Vec::new(),
             replacement_scope: self.follow_up_replacement_scopes.last().cloned().unwrap_or_default(),
             source_snapshot,
             damage_source_snapshot,
@@ -450,6 +454,12 @@ impl PreventionEffectManager {
     ) -> Vec<PendingPreventionFollowUp> {
         self.follow_up_deferral_depth -= 1;
         self.pending_follow_ups.split_off(start)
+    }
+
+    /// Queue position used by the damage batch owner to retain assignment
+    /// ownership without draining or executing any pending follow-up.
+    pub(crate) fn pending_follow_up_count(&self) -> usize {
+        self.pending_follow_ups.len()
     }
 
     pub(crate) fn has_pending_follow_ups(&self) -> bool {

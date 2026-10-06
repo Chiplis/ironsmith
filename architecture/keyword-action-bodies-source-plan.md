@@ -83,3 +83,12 @@ Local grammar regressions exercise complete pairs, both branches, invalid
 suffixes, chain retention, “again,” strict qualified counts and malformed player
 comparisons. Text regressions assert the hand qualifier and repetition survive
 rendering. No assertion in this packet has been executed.
+
+
+## Current prepared-main disposition
+
+The bounded corrections and their prepared-main port are source-reviewed and
+admitted as unvalidated proposals in `card-failure-stage97-source-admission.md`.
+That record supersedes the earlier pending-admission wording above. The complete
+frozen body fixtures and all authored scenarios remain unrun; measured recovery
+is unchanged. The coordinated source boundary is artifact9 / digest5 / audit22.

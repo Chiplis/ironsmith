@@ -238,7 +238,7 @@ test("transaction rollback preserves a dispute recorded after its savepoint", as
     updateMultiplayer: (fn) => { multiplayerRef.current = fn(multiplayerRef.current); },
   };
   const restore = compile(between(crypto, "  async function restoreSequencedActionValidationSnapshot(", "\n\n  return {") + "return restoreSequencedActionValidationSnapshot;", context);
-  await restore({ runtimeHandle: 9, actionHistoryCursor: {}, liveAuditTranscript: { actions: null },
+  await restore({ game: context.gameRef.current, runtimeHandle: 9, actionHistoryCursor: {}, liveAuditTranscript: { actions: null },
     matchStartPayload: {}, auditStateHash: "accepted-516", matchClockConfig: {}, matchClock: acceptedClock(),
     ziffleHandRevealKey: "", lastAppliedSequence: 516 });
   assert.deepEqual(transcript.current.disputes, [{ reason: "signed fork evidence" }]);
@@ -280,6 +280,7 @@ function clockDisputeHarness() {
       resumePersistence = (success) => success ? resolve() : reject(new Error("Durable append failed"));
     }); },
     markActionStage() {}, clearPendingActionIntent() {}, currentAuditMatchId: () => "match",
+    captureLocalRuntimeRecoveryIfDue: async () => {},
     auditStateHashRef: { current: "hash516" },
     gameRef: { current: { restoreRuntimeSavepoint: async () => {}, uiState: async () => ({ sequence: 516 }) } },
     resolveLocalPlayerIndex: () => 0, restoreActionCursor: (value) => value,
@@ -297,7 +298,7 @@ function clockDisputeHarness() {
   const api = compile(declarations + "return { stageLocalMatchClockAudit, commitMatchClockAudit, markMatchDisputed, appendAppliedSequencedAction, restoreSequencedActionValidationSnapshot, restoreMatchClockRuntime };", context);
   return { ...api, multiplayerRef, matchClockRef, actions, prospective, waitingPersistence,
     resumePersistence: (success) => resumePersistence(success),
-    snapshot: { runtimeHandle: 1, actionHistoryCursor: [accepted], liveAuditTranscript: { actions: null },
+    snapshot: { game: context.gameRef.current, runtimeHandle: 1, actionHistoryCursor: [accepted], liveAuditTranscript: { actions: null },
       matchStartPayload: {}, auditStateHash: "hash516", matchClockConfig: policy,
       matchClock: acceptedClock(), lastAppliedSequence: 516 },
   };

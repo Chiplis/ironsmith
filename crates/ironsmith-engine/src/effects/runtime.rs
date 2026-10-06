@@ -139,7 +139,8 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
 ) -> bool {
-    if !game.effect_store.per_event_trigger_matching
+    if game.action_observations_suppressed()
+        || !game.effect_store.per_event_trigger_matching
         || game.has_open_simultaneous_action()
         || game.effect_store.trigger_matching_holds > 0
         || ctx.decision_maker.awaiting_choice()
@@ -199,7 +200,8 @@ fn capture_triggers_before_added_program_inner<'a>(
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a mut crate::triggers::TriggerEvent>,
 ) -> Result<bool, ExecutionError> {
-    if game.has_open_simultaneous_action()
+    if game.action_observations_suppressed()
+        || game.has_open_simultaneous_action()
         || game.effect_store.trigger_matching_holds > 0
         || ctx.decision_maker.awaiting_choice()
         || next.is_some_and(effect_chooses_new_targets_for_copy)
@@ -232,6 +234,9 @@ fn capture_triggers_before_added_program_inner<'a>(
     game.defer_trigger_entries(matched.take_all());
     for event in &mut reported {
         event.mark_triggers_captured();
+        // Completed receipts in history retain the matching proof too, so an
+        // older alias cannot lose it after the local alias map is cleared.
+        game.stage_turn_history_event(event);
     }
     Ok(true)
 }
@@ -239,6 +244,9 @@ fn capture_triggers_before_added_program_inner<'a>(
 /// Whether a boundary inside the current resolution already matched `event`.
 fn outcome_event_already_matched(game: &GameState, event: &crate::triggers::TriggerEvent) -> bool {
     event.triggers_captured()
+        || game
+            .retained_action_observations()
+            .any(|receipt| receipt.ptr_eq(event) && receipt.triggers_captured())
         || game
             .effect_store
             .matched_outcome_events
@@ -287,19 +295,12 @@ fn settle_hidden_hand_all_matching_specs(
     if !game.tracks_hidden_cards() || effect.0.transparent_child_effect().is_some() {
         return true;
     }
-    // Only the instruction's own object spec: composite effects expose their
-    // children's specs for previews, and each child is settled when it runs.
+    // A selected program acquires a child's inputs only when it reaches that
+    // child. Preview traversal cannot reveal an untaken optional branch.
     let mut filters: Vec<crate::filter::ObjectFilter> = Vec::new();
-    if let Some(crate::target::ChooseSpec::All(filter)) =
-        effect.0.get_target_spec().map(|spec| spec.base())
-    {
-        filters.push(filter.clone());
-    }
-    if effect.0.supports_replacement_draw_continuation() {
-        for spec in effect.0.decision_related_object_specs() {
-            if let ChooseSpec::All(filter) = spec.base() {
-                if !filters.contains(filter) { filters.push(filter.clone()); }
-            }
+    for spec in effect.0.own_preflight_object_specs() {
+        if let ChooseSpec::All(filter) = spec.base() {
+            if !filters.contains(filter) { filters.push(filter.clone()); }
         }
     }
     if let Some(tag_matching) = effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
@@ -331,19 +332,248 @@ fn settle_hidden_hand_all_matching_specs(
     true
 }
 
+/// Acquire only the reached instruction's own inputs before it freezes a
+/// native program. Ordinary dispatch and prepared selection share this gate.
+pub(crate) fn prepare_reached_effect_inputs(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<bool, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() { return Ok(false); }
+    game.establish_control_transition_boundary().map_err(ExecutionError::ContinuousDiscovery)?;
+    if effect.0.directly_mentions_player_filter(&crate::target::PlayerFilter::Defending)
+        && !ctx.bind_defending_player(game)? { return Ok(false); }
+    Ok(settle_hidden_hand_all_matching_specs(game, effect, ctx))
+}
+
+pub(crate) fn select_reached_action_program(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+    if !prepare_reached_effect_inputs(game, effect, ctx)? { return Ok(None); }
+    let previous = ctx.executing_effect;
+    ctx.executing_effect = Some(effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize);
+    let result = effect.0.select_prepared_action_program(game, ctx);
+    ctx.executing_effect = previous;
+    result
+}
+
+/// Aggregate adapter for the same instruction owner used by retained callers.
 pub fn execute_effect(
     game: &mut GameState,
     effect: &Effect,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    execute_effect_with_outputs(game, effect, ctx)
+        .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+/// Execute once through the ordinary resource, identity and recording boundary.
+pub fn execute_effect_with_outputs(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_effect_with_outputs_for_purpose(
+        game,
+        effect,
+        ctx,
+        EffectExecutionPurpose::Action,
+        effect,
+    )
+}
+
+/// Payment uses the ordinary identity/resource/recording owner. Only dispatch
+/// selects the cost owner's captured action contract; fallback actions keep
+/// their existing executor until that owner advertises prepared payment.
+pub(crate) fn execute_effect_payment_with_outputs(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let origin = effect;
+    // Factories own compound normalization. Nested dispatch normalizes leaf
+    // payment aliases without cloning optional/limited program identities.
+    let mut has_children = false;
+    effect.0.visit_child_effects(&mut |_| has_children = true);
+    let canonical = if has_children {
+        None
+    } else {
+        effect
+            .0
+            .as_cost_executable()
+            .and_then(|cost| cost.canonical_cost_effect())
+    };
+    let effect = canonical.as_ref().unwrap_or(effect);
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            execute_effect_with_outputs_for_purpose(
+                game,
+                effect,
+                ctx,
+                EffectExecutionPurpose::Payment,
+                origin,
+            )
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum EffectExecutionPurpose {
+    Action,
+    Payment,
+}
+
+impl EffectExecutionPurpose {
+    pub(crate) fn execute(
+        self,
+        game: &mut GameState,
+        effect: &Effect,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        match self {
+            Self::Action => execute_effect_with_outputs(game, effect, ctx),
+            Self::Payment => execute_effect_payment_with_outputs(game, effect, ctx),
+        }
+    }
+}
+
+/// Completed payments export their owner-validated bindings exactly once.
+/// A compound explicitly delegates these exports to executed payment children;
+/// captured decorators instead acknowledge their original proposal here.
+fn finish_effect_payment(
+    game: &GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+    outputs: &crate::effects::CompletedEffectOutputs,
+) -> Result<(), ExecutionError> {
+    let Some(cost) = effect.0.as_cost_executable() else {
+        return Ok(());
+    };
+    cost.validate_payment_outcome(&outputs.outcome)
+        .map_err(|error| {
+            match error {
+                crate::effects::CostValidationError::ExecutionFailed(error) => error,
+                other => ExecutionError::Impossible(format!("effect payment was not acknowledged: {other:?}")),
+            }
+        })?;
+    if !cost.supports_prepared_payment() && cost.payment_bindings_are_owned_by_children() {
+        return Ok(());
+    }
+    if ctx.x_value.is_none() {
+        ctx.x_value = cost
+            .payment_x_from_outcome(&outputs.outcome, ctx)
+            .map_err(|error| {
+                match error {
+                    crate::effects::CostValidationError::ExecutionFailed(error) => error,
+                    other => ExecutionError::Impossible(format!("effect payment X was not acknowledged: {other:?}")),
+                }
+            })?;
+    }
+    let payment_x = ctx.x_value;
+    cost.finalize_payment_bindings(game, &outputs.outcome, ctx, payment_x)
+        .map_err(|error| match error {
+            crate::cost::CostPaymentError::ExecutionFailed(error) => error,
+            other => ExecutionError::Impossible(format!(
+                "effect payment bindings were not acknowledged: {other}"
+            )),
+        })
+}
+
+fn execute_owned_instruction(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+    purpose: EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let cost = match purpose {
+        EffectExecutionPurpose::Payment => effect.0.as_cost_executable(),
+        EffectExecutionPurpose::Action => None,
+    };
+    let Some(cost) = cost else {
+        return effect.0.execute_with_outputs(game, ctx);
+    };
+    if !cost.supports_prepared_payment() {
+        return cost.execute_payment_with_outputs(game, ctx);
+    }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    game.clear_pending_decision_controllers();
+    crate::effects::composition::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            // The enclosing runtime records this instruction once. Decorator
+            // constructors still record their actual nested child proposals.
+            let proposal = cost.prepare_simultaneous_payment(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            if !cost.accepts_prepared_payment(proposal.as_ref()) {
+                return Err(ExecutionError::Impossible(
+                    "effect payment was not accepted by its owner".into(),
+                ));
+            }
+            let simultaneous = proposal.has_simultaneous_originals();
+            crate::effects::composition::complete_prepared_original_with_outputs(
+                proposal,
+                game,
+                ctx,
+                simultaneous,
+            )
+        },
+    )
+}
+
+fn execute_effect_with_outputs_for_purpose(
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext,
+    purpose: EffectExecutionPurpose,
+    origin: &Effect,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let (root, meter) = game.begin_token_resource_scope();
     let checkpoint = root.then(|| game.clone());
     let context_checkpoint =
         root.then(|| crate::effects::context::ExecutionContextCheckpoint::capture(ctx));
+    game.effect_store
+        .instruction_result_records
+        .push(Vec::new());
     let mut result = match game.token_resource_failure() {
         Some(error) => Err(error),
-        None => execute_effect_with_resource_scope(game, effect, ctx),
+        None => execute_effect_with_resource_scope(game, effect, ctx, purpose, origin),
     };
+    let recorded = game
+        .effect_store
+        .instruction_result_records
+        .pop()
+        .unwrap_or_default();
+    if let Ok(outputs) = &mut result {
+        let outcome = &mut outputs.outcome;
+        if !ctx.decision_maker.awaiting_choice() {
+            crate::effects::outcome_recording::complete_outcome(
+                game,
+                effect.0.result_action(),
+                Some(ctx.controller),
+                outcome,
+                recorded,
+            );
+            outputs.synchronize_observations();
+        }
+    }
+    if matches!(purpose, EffectExecutionPurpose::Payment) && !ctx.decision_maker.awaiting_choice() {
+        if let Ok(outputs) = &result {
+            if let Err(error) = finish_effect_payment(game, effect, ctx, outputs) {
+                result = Err(error);
+            }
+        }
+    }
     if let Err(error) = &result {
         game.record_token_resource_failure(error);
     }
@@ -370,18 +600,35 @@ fn execute_effect_with_resource_scope(
     game: &mut GameState,
     effect: &Effect,
     ctx: &mut ExecutionContext,
-) -> Result<EffectOutcome, ExecutionError> {
-    execute_effect_with_resource_scope_using(game, effect, ctx,
-        |effect, game, ctx| effect.0.execute(game, ctx))
+    purpose: EffectExecutionPurpose,
+    origin: &Effect,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_effect_with_resource_scope_using(game, effect, ctx, origin,
+        |effect, game, ctx| execute_owned_instruction(game, effect, ctx, purpose))
 }
 
-/// Native replacement continuations use the same effect preflight, chooser
-/// retry, execution identity and event-publication owner as ordinary execution.
-pub(crate) fn prepare_effect_draw_continuation(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
-) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-    prepare_effect_original_with(game, effect, ctx,
-        |effect, game, ctx| effect.0.prepare_replacement_draw_continuation(game, ctx))
+/// Native deferred originals share ordinary preflight, chooser replay, identity,
+/// checked resource rollback and immutable result publication.
+pub(crate) fn prepare_effect_original_with_outputs<'a>(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
+    mut prepare: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
+        -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>,
+) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    crate::effects::tokens::execute_resource_transaction_with_pending_value(
+        game, ctx,
+        || crate::effects::SimultaneousEffectCommit::finished(
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+        |game, ctx| {
+            let mut completion = None;
+            let outcome = execute_effect_with_resource_scope_using(game, effect, ctx, effect,
+                |effect, game, ctx| {
+                    let committed = prepare(effect, game, ctx)?;
+                    completion = committed.completion;
+                    Ok(committed.outcome)
+                })?;
+            Ok(crate::effects::SimultaneousEffectCommit { outcome, completion })
+        },
+    )
 }
 
 pub(crate) fn prepare_effect_original_with<'a>(
@@ -389,21 +636,34 @@ pub(crate) fn prepare_effect_original_with<'a>(
     mut prepare: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
         -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>,
 ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
-    let mut completion = None;
-    let outcome = crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        execute_effect_with_resource_scope_using(game, effect, ctx, |effect, game, ctx| {
-            let committed = prepare(effect, game, ctx)?;
-            completion = committed.completion;
-            Ok(committed.outcome)
-        })
-    })?;
-    Ok(crate::effects::SimultaneousEffectCommit { outcome, completion })
+    prepare_effect_original_with_outputs(game, effect, ctx,
+        |effect, game, ctx| prepare(effect, game, ctx).map(crate::effects::SimultaneousEffectCommit::into_retained))
+        .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+}
+
+pub(crate) fn prepare_effect_draw_continuation_with_outputs(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    prepare_effect_original_with_outputs(game, effect, ctx,
+        |effect, game, ctx| effect.0.prepare_replacement_draw_continuation_with_outputs(game, ctx))
+}
+
+/// Aggregate compatibility boundary for native callers that do not retain routing.
+pub(crate) fn prepare_effect_draw_continuation(
+    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext,
+) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+    prepare_effect_draw_continuation_with_outputs(game, effect, ctx)
+        .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
 }
 
 fn execute_effect_with_resource_scope_using<'a>(
-    game: &mut GameState, effect: &Effect, ctx: &mut ExecutionContext<'a>,
-    mut execute: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>) -> Result<EffectOutcome, ExecutionError>,
-) -> Result<EffectOutcome, ExecutionError> {
+    game: &mut GameState,
+    effect: &Effect,
+    ctx: &mut ExecutionContext<'a>,
+    origin: &Effect,
+    mut execute: impl FnMut(&Effect, &mut GameState, &mut ExecutionContext<'a>)
+        -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     // CR 724.1b/724.2b stop the resolving spell or ability immediately. Composite
     // executors route child effects through this function, so this guard also
     // suppresses later instructions inside a sequence, modal branch, loop, or
@@ -411,19 +671,16 @@ fn execute_effect_with_resource_scope_using<'a>(
     if ctx.resolution_stopped() || game.turn_store.end_turn_procedure_pending
         || game.turn_store.end_combat_phase_procedure_pending
     {
-        return Ok(EffectOutcome::resolved());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved(),
+        ));
     }
-    game.establish_control_transition_boundary()
-        .map_err(ExecutionError::ContinuousDiscovery)?;
-    if effect.0.directly_mentions_player_filter(&crate::target::PlayerFilter::Defending)
-        && !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
-
-    if !settle_hidden_hand_all_matching_specs(game, effect, ctx) {
-        return Ok(EffectOutcome::count(0));
+    if !prepare_reached_effect_inputs(game, effect, ctx)? {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
     }
     let previous_effect = ctx.executing_effect;
     let effect_identity =
-        effect.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
+        origin.0.as_ref() as *const dyn crate::effects::EffectExecutor as *const () as usize;
     ctx.executing_effect = Some(effect_identity);
     let mut execution = execute(effect, game, ctx);
     // A singular untargeted "an opponent" with several opponents is chosen
@@ -453,7 +710,9 @@ fn execute_effect_with_resource_scope_using<'a>(
             );
             if ctx.decision_maker.awaiting_choice() {
                 ctx.executing_effect = previous_effect;
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             if let Some(chosen) = chosen {
                 ctx.set_tagged_players(
@@ -493,7 +752,9 @@ fn execute_effect_with_resource_scope_using<'a>(
             );
             if ctx.decision_maker.awaiting_choice() {
                 ctx.executing_effect = previous_effect;
-                return Ok(EffectOutcome::count(0));
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
             }
             if let Some(chosen) = chosen {
                 ctx.combat.chosen_player = Some(chosen);
@@ -502,7 +763,7 @@ fn execute_effect_with_resource_scope_using<'a>(
         }
     }
     ctx.executing_effect = previous_effect;
-    let mut outcome = match execution {
+    let mut outputs = match execution {
         Ok(outcome) => outcome,
         // A "that player" reference whose choice was made with no player
         // available (explicitly bound empty) refers to nothing, so the
@@ -513,21 +774,26 @@ fn execute_effect_with_resource_scope_using<'a>(
                 .and_then(|rest| rest.strip_suffix('\''))
                 .is_some_and(|tag| ctx.get_tagged_players(tag).is_some_and(Vec::is_empty)) =>
         {
-            EffectOutcome::count(0)
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
         }
         // CR 801.10: only the out-of-range portion does nothing. Treat that
         // instruction as resolved so later instructions still happen.
-        Err(ExecutionError::OutOfRange) => EffectOutcome::resolved(),
+        Err(ExecutionError::OutOfRange) => {
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved())
+        }
         // An instruction that refers to an object an earlier instruction
         // would have produced ("its controller", "that card", "the exiled
         // card") when that earlier instruction affected nothing — zero
         // optional targets chosen, a mass destroy that found nothing, nothing
         // exiled with the source — refers to a nonexistent object and does
         // nothing (CR 608.2c, 609.3); later instructions still happen.
-        Err(ExecutionError::TagNotFound(_)) => EffectOutcome::target_invalid(),
+        Err(ExecutionError::TagNotFound(_)) => {
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::target_invalid())
+        }
         Err(error) => return Err(error),
     };
 
+    let outcome = &mut outputs.outcome;
     if !outcome.events.is_empty() {
         let execution_node = game.provenance_graph_mut().alloc_child(
             ctx.provenance,
@@ -552,5 +818,6 @@ fn execute_effect_with_resource_scope_using<'a>(
         }
     }
 
-    Ok(outcome)
+    outputs.synchronize_observations();
+    Ok(outputs)
 }

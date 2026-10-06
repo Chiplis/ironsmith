@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { manaPaymentActionMap } from "@/lib/mana-payment-actions";
+import { manaPaymentActionMap, manaPaymentFrameActions, manaActivationCommand } from "@/lib/mana-payment-actions";
+import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import { useCastTargeting, useDragSession } from "@/context/DragContext";
 import { useGame } from "@/context/GameContext";
 import {
@@ -328,7 +329,8 @@ export default function FloatingCardPreview({
 }) {
   const previewSuppressed = useCardPreviewSuppressed();
   const disabled = externallyDisabled || previewSuppressed;
-  const { state, dispatch, cancelDecision } = useGame();
+  const { state, dispatch, cancelDecision, cancelBackgroundDispatch } = useGame();
+  const paymentEditor = useManaPaymentEditor();
   const manaPaymentActions = useMemo(() => manaPaymentActionMap(state), [state]);
   const hoveredObjectId = useHoveredObjectId();
   const anchoredCardPreview = useAnchoredCardPreview();
@@ -454,13 +456,16 @@ export default function FloatingCardPreview({
   const interactiveActions = useMemo(() => {
     if (renderedObjectId == null) return [];
     const decision = state?.decision;
+    const familyIds = objectFamilyIds(state, renderedObjectId);
+    if (decision?.kind === "mana_payment") {
+      return manaPaymentFrameActions(state, familyIds);
+    }
     if (
       decision?.kind !== "priority"
       || !samePlayerId(decision?.player, state?.perspective)
     ) {
       return [];
     }
-    const familyIds = objectFamilyIds(state, renderedObjectId);
     return (decision.actions || []).filter((action) => (
       ["activate_ability", "activate_mana_ability", "untap_land"].includes(action?.kind)
       && action?.object_id != null
@@ -528,6 +533,15 @@ export default function FloatingCardPreview({
 
   const triggerInteractiveAction = (requestedAction) => {
     const decision = state?.decision;
+    if (decision?.kind === "mana_payment") {
+      if (paymentEditor) {
+        void paymentEditor.activate(requestedAction);
+      } else {
+        cancelBackgroundDispatch?.();
+        dispatch(manaActivationCommand(requestedAction), requestedAction.label, { waitForPaymentReady: true });
+      }
+      return;
+    }
     if (decision?.kind !== "priority") return;
     const liveAction = (decision.actions || []).find((action) => (
       Number(action?.index) === Number(requestedAction?.index)

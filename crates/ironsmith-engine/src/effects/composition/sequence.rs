@@ -4,8 +4,121 @@
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
+use crate::effects::{ExecutionContext, ExecutionError, rebase_target_scope};
 use crate::game_state::GameState;
+
+/// Failure policy belongs to the authored program, not the child action owner.
+#[derive(Clone, Copy)]
+enum ProgramFailurePolicy {
+    Continue,
+    Stop,
+}
+
+/// Own the ordered child execution once. Callers retain their target/context,
+/// aggregate and transaction contracts; each child keeps its action identity.
+fn execute_program_children_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    failure_policy: ProgramFailurePolicy,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let mut children = Vec::new();
+    for effect in effects {
+        if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
+            break;
+        }
+        let outputs = purpose.execute(game, effect, ctx)?;
+        let failed = outputs.outcome.status.is_failure();
+        children.push(outputs);
+        if ctx.decision_maker.awaiting_choice()
+            || (failed && matches!(failure_policy, ProgramFailurePolicy::Stop))
+        {
+            break;
+        }
+    }
+    Ok(children)
+}
+
+/// Execute an ordinary ordered program in its caller-owned scope. Authored
+/// failures do not stop subsequent instructions; a pending choice always does.
+/// The enclosing compound owns rollback and the aggregate result contract.
+pub(crate) fn execute_ordered_children_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    execute_ordered_children_for_purpose(
+        game,
+        ctx,
+        effects,
+        crate::effects::EffectExecutionPurpose::Action,
+    )
+}
+
+/// Share ordered execution while the caller explicitly chooses payment semantics.
+pub(super) fn execute_ordered_children_for_purpose(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    execute_program_children_with_outputs(
+        game,
+        ctx,
+        effects,
+        ProgramFailurePolicy::Continue,
+        purpose,
+    )
+}
+
+/// Run a checked program in its caller-owned target/context scope. Payment
+/// and failure programs stop after the first failed or pending child; ordinary
+/// authored SequenceEffect retains its separate target and result contracts.
+pub(crate) fn execute_checked_program_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_checked_program_for_purpose(
+        game,
+        ctx,
+        effects,
+        crate::effects::EffectExecutionPurpose::Action,
+    )
+}
+
+pub(super) fn execute_checked_payment_program_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    execute_checked_program_for_purpose(
+        game,
+        ctx,
+        effects,
+        crate::effects::EffectExecutionPurpose::Payment,
+    )
+}
+
+fn execute_checked_program_for_purpose(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let children = execute_program_children_with_outputs(
+        game,
+        ctx,
+        effects,
+        ProgramFailurePolicy::Stop,
+        purpose,
+    )?;
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        children,
+        EffectOutcome::aggregate,
+    ))
+}
 
 /// Effect that executes multiple effects in sequence.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,19 +139,6 @@ impl SequenceEffect {
             surface: ironsmith_core::SequenceSurface::Sequential,
             result_label: None,
         }
-    }
-
-    /// Keep each child's complete filter and context-sensitive semantics when
-    /// validating this sequence as a cost. Canonical cost conversion can reduce
-    /// some effects to specialized count/color components, which is unsuitable
-    /// for a preflight that must check the exact program execution will use.
-    pub(crate) fn cost_components(&self) -> Result<crate::cost::TotalCost, String> {
-        self.effects
-            .iter()
-            .cloned()
-            .map(crate::costs::Cost::try_effect)
-            .collect::<Result<Vec<_>, _>>()
-            .map(crate::cost::TotalCost::from_costs)
     }
 
     pub fn sentence_leading_then(effects: Vec<Effect>) -> Self {
@@ -99,6 +199,37 @@ impl SequenceEffect {
 }
 
 impl EffectExecutor for SequenceEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effects
+            .iter()
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        Ok(Some(sequence_cursor(self, ctx)))
+    }
+
+    fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
+        let mut bindings = crate::effects::CostChoiceBindings::default();
+        for effect in &self.effects {
+            bindings.append(effect.0.cost_choice_bindings());
+        }
+        bindings
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effects
             .iter()
@@ -121,121 +252,21 @@ impl EffectExecutor for SequenceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
-        if self.effects.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-        let mut outcomes = Vec::with_capacity(self.effects.len());
-        let mut events = Vec::new();
-        // A one-child wrapper is presentation provenance left after
-        // normalization removes a sibling marker (such as "repeat this
-        // process"). It is semantically transparent and must not restart the
-        // target-assignment cursor at zero around its only child. Multi-child
-        // wrappers, including authored `, then` sequences, must scope a
-        // lowering-only target declaration and its following consumer to the
-        // same announced target instead of exposing every target on the stack.
-        let child_assignments = (self.effects.len() > 1 && !ctx.target_assignments.is_empty())
-            .then(|| ctx.target_assignments.clone());
-        let chosen_modes = ctx.chosen_modes.clone();
-        let mut consumed_modal_selection = false;
-        let mut coordinated_target_state = crate::game_loop::CoordinatedTargetState::default();
-        let mut assignment_cursor = 0usize;
-        let mut active_scope = None;
-
-        for (index, effect) in self.effects.iter().enumerate() {
-            let assignment_count = if child_assignments.is_some() {
-                if self.surface.is_coordinated() {
-                    crate::game_loop::count_target_selection_slots_for_coordinated_child(
-                        effect,
-                        chosen_modes.as_deref(),
-                        &mut consumed_modal_selection,
-                        &mut coordinated_target_state,
-                    )
-                } else {
-                    crate::game_loop::count_target_selection_slots_for_isolated_effect(
-                        effect,
-                        chosen_modes.as_deref(),
-                        &mut consumed_modal_selection,
-                    )
-                }
-            } else {
-                0
-            };
-            // Every announced assignment already belongs to an earlier child:
-            // this child's target is the one a synthetic target prelude
-            // declared for it ("Target ...: put a counter on this; it deals 2
-            // damage to that target"), so it keeps that scope rather than an
-            // empty one.
-            let assignments_exhausted = child_assignments
-                .as_ref()
-                .is_some_and(|assignments| assignment_cursor >= assignments.len())
-                && active_scope.is_some();
-            if assignment_count > 0 && !assignments_exhausted {
-                let assignments = child_assignments
-                    .as_ref()
-                    .expect("child assignments checked above");
-                let end = assignment_cursor
-                    .saturating_add(assignment_count)
-                    .min(assignments.len());
-                let scoped_assignments = assignments[assignment_cursor..end].to_vec();
-                assignment_cursor = end;
-                active_scope = Some(rebase_target_scope(&ctx.targets, &scoped_assignments));
-            }
-            let previous_search_reveal = std::mem::replace(
-                &mut ctx.public_search_reveal_tag,
-                super::choose_objects_runtime::revealed_search_tag(
-                    effect,
-                    self.effects.get(index + 1),
-                ),
-            );
-            let previous_entry_attachment = std::mem::replace(
-                &mut ctx.pending_entry_attachment,
-                crate::effects::permanents::entry_attachment_for_move(
-                    effect,
-                    self.effects.get(index + 1),
-                ),
-            );
-            let outcome = if let Some((scoped_targets, scoped_assignments)) = &active_scope {
-                ctx.with_temp_targets(scoped_targets.clone(), |ctx| {
-                    ctx.with_temp_target_assignments(scoped_assignments.clone(), |ctx| {
-                        execute_effect(game, effect, ctx)
-                    })
-                })
-            } else {
-                execute_effect(game, effect, ctx)
-            };
-            ctx.public_search_reveal_tag = previous_search_reveal;
-            ctx.pending_entry_attachment = previous_entry_attachment;
-            // CR 608.2b: an instruction whose targets have become illegal
-            // does nothing; the remaining instructions still resolve.
-            // The stack resolver already stops a spell when all its targets
-            // are illegal. Treat an individual empty scope as an outcome.
-            let outcome = match outcome {
-                Err(ExecutionError::InvalidTarget) => EffectOutcome::target_invalid(),
-                other => other?,
-            };
-            events.extend(outcome.events.clone());
-
-            // CR 608.2c: carry out instructions in order, doing as much as
-            // possible. "Then" orders actions without requiring success;
-            // explicit conditional effects implement "if you do" gates.
-            outcomes.push(outcome);
-            if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::aggregate_terminal(outcomes));
-            }
-            if let Some(next) = self.effects.get(index + 1) {
-                crate::effects::match_triggers_at_instruction_boundary(
-                    game,
-                    ctx,
-                    Some(next),
-                    events.iter(),
-                );
-            }
-        }
-
-        Ok(EffectOutcome::aggregate_terminal(outcomes))
-        })
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_sequence_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -255,7 +286,243 @@ impl EffectExecutor for SequenceEffect {
     }
 }
 
+fn execute_sequence_with_outputs(
+    sequence: &SequenceEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    crate::effects::tokens::execute_resource_transaction_with_pending_value(
+        game, ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| super::action_program::execute_action_program_with_outputs(
+            sequence_cursor(sequence, ctx), game, ctx, purpose,
+        ),
+    )
+}
+
+struct SequenceCursor {
+    effects: Vec<Effect>,
+    coordinated: bool,
+    next: usize,
+    child_assignments: Option<Vec<crate::game_state::TargetAssignment>>,
+    chosen_modes: Option<Vec<usize>>,
+    consumed_modal_selection: bool,
+    coordinated_target_state: crate::game_loop::CoordinatedTargetState,
+    assignment_cursor: usize,
+    active_scope: Option<(
+        Vec<crate::effects::ResolvedTarget>,
+        Vec<crate::game_state::TargetAssignment>,
+    )>,
+    outputs: crate::effects::CompletedEffectOutputs,
+    outcomes: Vec<EffectOutcome>,
+    events: Vec<crate::events::RawEvent>,
+    facts: Vec<crate::effect::ExecutionFact>,
+    unit_ends: Vec<usize>,
+}
+impl std::fmt::Debug for SequenceCursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SequenceCursor")
+            .field("next", &self.next)
+            .finish_non_exhaustive()
+    }
+}
+fn sequence_cursor(
+    sequence: &SequenceEffect,
+    ctx: &ExecutionContext,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    let mut outputs =
+        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+    outputs.projections_complete = true;
+    Box::new(SequenceCursor {
+        effects: sequence.effects.clone(),
+        coordinated: sequence.surface.is_coordinated(),
+        next: 0,
+        // Presentation-only one-child sequences inherit their caller's scope.
+        child_assignments: (sequence.effects.len() > 1 && !ctx.target_assignments.is_empty())
+            .then(|| ctx.target_assignments.clone()),
+        chosen_modes: ctx.chosen_modes.clone(),
+        consumed_modal_selection: false,
+        coordinated_target_state: crate::game_loop::CoordinatedTargetState::default(),
+        assignment_cursor: 0,
+        active_scope: None,
+        outputs,
+        outcomes: Vec::new(),
+        events: Vec::new(),
+        facts: Vec::new(),
+        unit_ends: super::action_units::partition_action_units(
+            &sequence.effects,
+            |_| None,
+            |_, _| true,
+        )
+        .into_iter()
+        .filter_map(|unit| unit.last().copied())
+        .collect(),
+    })
+}
+impl SequenceCursor {
+    fn completed(mut self, pending: bool) -> crate::effects::CompletedEffectOutputs {
+        let Some(_) = self.outcomes.last() else {
+            return crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+        };
+        if pending {
+            self.outputs.projections_complete = false;
+        }
+        let mut outcome = EffectOutcome::aggregate_terminal(self.outcomes);
+        outcome.events = self.events;
+        outcome.execution_facts = self.facts;
+        self.outputs.project_aggregate(outcome)
+    }
+}
+impl crate::effects::ActionProgramCursor for SequenceCursor {
+    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        Ok(crate::effects::ProgramCompletion::new((*self).completed(false)))
+    }
+    fn next_action(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
+        if ctx.resolution_stopped() { return Ok(None); }
+        let Some(effect) = self.effects.get(self.next) else {
+            return Ok(None);
+        };
+        if self.next > 0 {
+            crate::effects::match_triggers_at_instruction_boundary(
+                game,
+                ctx,
+                Some(effect),
+                self.events.iter(),
+            );
+        }
+        let assignment_count = if self.child_assignments.is_some() {
+            if self.coordinated {
+                crate::game_loop::count_target_selection_slots_for_coordinated_child(
+                    effect,
+                    self.chosen_modes.as_deref(),
+                    &mut self.consumed_modal_selection,
+                    &mut self.coordinated_target_state,
+                )
+            } else {
+                crate::game_loop::count_target_selection_slots_for_isolated_effect(
+                    effect,
+                    self.chosen_modes.as_deref(),
+                    &mut self.consumed_modal_selection,
+                )
+            }
+        } else {
+            0
+        };
+        let assignments_exhausted = self
+            .child_assignments
+            .as_ref()
+            .is_some_and(|assignments| self.assignment_cursor >= assignments.len())
+            && self.active_scope.is_some();
+        if assignment_count > 0 && !assignments_exhausted {
+            let assignments = self
+                .child_assignments
+                .as_ref()
+                .expect("child assignments checked above");
+            let end = self
+                .assignment_cursor
+                .saturating_add(assignment_count)
+                .min(assignments.len());
+            let selected = assignments[self.assignment_cursor..end].to_vec();
+            self.assignment_cursor = end;
+            self.active_scope = Some(rebase_target_scope(&ctx.targets, &selected));
+        }
+        let index = self.next;
+        self.next += 1;
+        Ok(Some(crate::effects::ProgramAction {
+            native: None,
+            effect: effect.clone(),
+            identity: vec![index],
+            scope: crate::effects::ProgramActionScope {
+                targets: self.active_scope.clone(),
+                public_search_reveal_tag: Some(super::choose_objects_runtime::revealed_search_tag(
+                    effect,
+                    self.effects.get(index + 1),
+                )),
+                pending_entry_attachment: Some(
+                    crate::effects::permanents::entry_attachment_for_move(
+                        effect,
+                        self.effects.get(index + 1),
+                    ),
+                ),
+                ..Default::default()
+            },
+        }))
+    }
+    fn accept_action(
+        &mut self,
+        child: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        let outcome = child.outcome.clone();
+        let outputs = std::mem::replace(
+            &mut self.outputs,
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        );
+        self.outputs = outputs.append_owned_child(child);
+        self.events.extend(outcome.events.clone());
+        self.facts.extend(outcome.execution_facts.clone());
+        self.outcomes.push(outcome);
+        Ok(())
+    }
+    fn ends_action_unit(&self) -> bool {
+        self.next
+            .checked_sub(1)
+            .is_some_and(|index| self.unit_ends.contains(&index))
+    }
+    fn continues_past_illegal_targets(&self) -> bool {
+        true
+    }
+    fn finish(self: Box<Self>) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        Ok(crate::effects::ProgramCompletion::new(
+            (*self).completed(false),
+        ))
+    }
+    fn finish_pending(
+        self: Box<Self>,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        Ok((*self).completed(true))
+    }
+}
+
 impl CostExecutableEffect for SequenceEffect {
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_sequence_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        crate::costs::check_effect_cost_program(&self.effects, game, ctx, reason)
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let effects = crate::effects::canonical_cost_children(&self.effects)?;
+        let mut replacement = self.clone();
+        replacement.effects = effects;
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -278,12 +545,10 @@ impl CostExecutableEffect for SequenceEffect {
         controller: crate::ids::PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        // Preserve dependencies between a choice cost and its tagged consumer.
-        // CostEffect additionally carries existing tags and resolution context
-        // when this sequence is nested in another payment transaction.
-        let total = self.cost_components().map_err(CostValidationError::Other)?;
-        crate::cost::can_pay_cost_with_reason(game, source, controller, &total, reason)
-            .map_err(|error| CostValidationError::Other(error.to_string()))
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut execution =
+            ExecutionContext::new(source, controller, &mut decision_maker).with_x(0);
+        CostExecutableEffect::can_execute_as_cost_with_context(self, game, &mut execution, reason)
     }
 }
 

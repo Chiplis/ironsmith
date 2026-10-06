@@ -30,6 +30,8 @@ test("mana sources stay active during payment, replace inspection, and yield to 
     assert.equal(await page.locator("[data-hover]").textContent(),"1");
     const prism = page.locator('.battlefield-row-card[data-object-id="2"]');
     await prism.hover();
+    assert.equal(await popover.count(), 0, "hover does not open the ability chooser");
+    await prism.click();
     await popover.waitFor();
     assert.equal(await popover.locator("[data-action-row]").count(),2);
     await popover.locator("[data-action-row]").nth(1).hover();
@@ -42,15 +44,19 @@ test("mana sources stay active during payment, replace inspection, and yield to 
     // Nested choices restore the pinned inspector; unpin it before testing the board.
     await page.getByRole("button", {name:"Unpin inspector"}).click();
     await prism.hover();
+    await page.waitForFunction(() => document.querySelector("[data-hover]").textContent === "2");
     assert.equal(await page.locator("[data-hover]").textContent(),"2");
     await page.getByRole("button",{name:"Resume payment"}).click();
     await prism.hover();
+    await prism.click();
     await popover.waitFor();
     assert.equal(await page.locator("[data-inspected]").textContent(),"none");
     await page.keyboard.press("Escape");
     await popover.waitFor({state:"hidden"});
     await page.getByRole("button",{name:"Switch payer"}).click();
+    await page.getByRole("button",{name:"Toggle busy"}).hover();
     await prism.hover();
+    await page.waitForFunction(() => document.querySelector("[data-hover]").textContent === "2");
     assert.equal(await popover.count(),0);
     assert.equal(await page.locator("[data-hover]").textContent(),"2");
     await page.getByRole("button",{name:"Switch payer"}).click();

@@ -1,8 +1,8 @@
 //! Move all counters effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
@@ -86,184 +86,228 @@ impl EffectExecutor for MoveAllCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let contextual_target_pair = if matches!(self.from.base(), ChooseSpec::Object(_))
-                && matches!(self.to.base(), ChooseSpec::Object(_))
-                && crate::game_loop::requires_target_selection(&self.from)
-                && crate::game_loop::requires_target_selection(&self.to)
-            {
-                match super::assigned_counter_transfer_pair(ctx) {
-                    Some((from_id, to_id)) => {
-                        // Endpoint relations refer to preceding roles, never
-                        // to the complete set containing the candidate itself.
-                        let mut filter_ctx = ctx.filter_context(game);
-                        filter_ctx.target_objects.clear();
-                        let from_valid = match self.from.base() {
-                            ChooseSpec::Object(filter) => game
-                                .object(from_id)
-                                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
-                            _ => false,
-                        };
-                        if let Some(from) = game.object(from_id) {
-                            filter_ctx.target_objects.push(crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(from, game));
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let contextual_target_pair = if matches!(self.from.base(), ChooseSpec::Object(_))
+                    && matches!(self.to.base(), ChooseSpec::Object(_))
+                    && crate::game_loop::requires_target_selection(&self.from)
+                    && crate::game_loop::requires_target_selection(&self.to)
+                {
+                    match super::assigned_counter_transfer_pair(ctx) {
+                        Some((from_id, to_id)) => {
+                            // Endpoint relations refer to preceding roles, never
+                            // to the complete set containing the candidate itself.
+                            let mut filter_ctx = ctx.filter_context(game);
+                            filter_ctx.target_objects.clear();
+                            let from_valid = match self.from.base() {
+                                ChooseSpec::Object(filter) => game
+                                    .object(from_id)
+                                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+                                _ => false,
+                            };
+                            if let Some(from) = game.object(from_id) {
+                                filter_ctx.target_objects.push(crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(from, game));
+                            }
+                            let to_valid = match self.to.base() {
+                                ChooseSpec::Object(filter) => game
+                                    .object(to_id)
+                                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+                                _ => false,
+                            };
+                            if !from_valid || !to_valid {
+                                return Ok(CompletedEffectOutputs::aggregate_only(
+                                    EffectOutcome::target_invalid(),
+                                ));
+                            }
+                            Some((from_id, to_id))
                         }
-                        let to_valid = match self.to.base() {
-                            ChooseSpec::Object(filter) => game
-                                .object(to_id)
-                                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
-                            _ => false,
-                        };
-                        if !from_valid || !to_valid {
-                            return Ok(EffectOutcome::target_invalid());
+                        None => {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::target_invalid(),
+                            ));
                         }
-                        Some((from_id, to_id))
                     }
-                    None => return Ok(EffectOutcome::target_invalid()),
-                }
-            } else {
-                None
-            };
-
-            let to_id = if let Some((_, to_id)) = contextual_target_pair {
-                to_id
-            } else {
-                let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
-                    .first()
-                    .copied()
-                else {
-                    return Ok(EffectOutcome::target_invalid());
+                } else {
+                    None
                 };
-                to_id
-            };
 
-            let from_id = if let Some((from_id, _)) = contextual_target_pair {
-                Some(from_id)
-            } else {
-                resolve_objects_for_effect(game, ctx, &self.from)?
-                    .first()
-                    .copied()
-            };
-            let from_is_source = matches!(self.from.base(), ChooseSpec::Source);
-            let from_tag = match self.from.base() {
-                ChooseSpec::Tagged(tag) => Some(tag),
-                _ => None,
-            };
-            let counters_to_move: Vec<(CounterType, u32)> = if let Some(from_id) = from_id {
-                if let Some(obj) = game.object(from_id) {
-                    let tagged_snapshot = from_tag.and_then(|tag| {
-                        ctx.get_tagged_all(tag).and_then(|snapshots| {
-                            snapshots
+                let to_id = if let Some((_, to_id)) = contextual_target_pair {
+                    to_id
+                } else {
+                    let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
+                        .first()
+                        .copied()
+                    else {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::target_invalid(),
+                        ));
+                    };
+                    to_id
+                };
+
+                let from_id = if let Some((from_id, _)) = contextual_target_pair {
+                    Some(from_id)
+                } else {
+                    resolve_objects_for_effect(game, ctx, &self.from)?
+                        .first()
+                        .copied()
+                };
+                let from_is_source = matches!(self.from.base(), ChooseSpec::Source);
+                let from_tag = match self.from.base() {
+                    ChooseSpec::Tagged(tag) => Some(tag),
+                    _ => None,
+                };
+                let counters_to_move: Vec<(CounterType, u32)> = if let Some(from_id) = from_id {
+                    if let Some(obj) = game.object(from_id) {
+                        let tagged_snapshot = from_tag.and_then(|tag| {
+                            ctx.get_tagged_all(tag).and_then(|snapshots| {
+                                snapshots
+                                    .iter()
+                                    .find(|snapshot| snapshot.object_id == from_id)
+                                    .or_else(|| snapshots.first())
+                            })
+                        });
+                        if from_is_source && source_reference_uses_lki(ctx, from_id, obj.zone) {
+                            source_counter_snapshot(ctx).unwrap_or_default()
+                        } else if let Some(snapshot) = tagged_snapshot
+                            && snapshot.zone != obj.zone
+                        {
+                            snapshot
+                                .counters
                                 .iter()
-                                .find(|snapshot| snapshot.object_id == from_id)
-                                .or_else(|| snapshots.first())
-                        })
-                    });
-                    if from_is_source && source_reference_uses_lki(ctx, from_id, obj.zone) {
+                                .map(|(ct, &count)| (*ct, count))
+                                .collect()
+                        } else {
+                            obj.counters
+                                .iter()
+                                .map(|(ct, &count)| (*ct, count))
+                                .collect()
+                        }
+                    } else if from_is_source {
                         source_counter_snapshot(ctx).unwrap_or_default()
-                    } else if let Some(snapshot) = tagged_snapshot
-                        && snapshot.zone != obj.zone
-                    {
-                        snapshot
-                            .counters
-                            .iter()
-                            .map(|(ct, &count)| (*ct, count))
-                            .collect()
+                    } else if let Some(tag) = from_tag {
+                        tagged_counter_snapshot(ctx, tag, Some(from_id)).unwrap_or_default()
                     } else {
-                        obj.counters
-                            .iter()
-                            .map(|(ct, &count)| (*ct, count))
-                            .collect()
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::target_invalid(),
+                        ));
                     }
                 } else if from_is_source {
                     source_counter_snapshot(ctx).unwrap_or_default()
                 } else if let Some(tag) = from_tag {
-                    tagged_counter_snapshot(ctx, tag, Some(from_id)).unwrap_or_default()
+                    tagged_counter_snapshot(ctx, tag, None).unwrap_or_default()
                 } else {
-                    return Ok(EffectOutcome::target_invalid());
-                }
-            } else if from_is_source {
-                source_counter_snapshot(ctx).unwrap_or_default()
-            } else if let Some(tag) = from_tag {
-                tagged_counter_snapshot(ctx, tag, None).unwrap_or_default()
-            } else {
-                return Ok(EffectOutcome::target_invalid());
-            };
-
-            if counters_to_move.is_empty() {
-                return Ok(EffectOutcome::count(0));
-            }
-            // CR 122.5: counters that can't be put onto the destination aren't
-            // removed from the source either.
-            let counters_to_move: Vec<(CounterType, u32)> = counters_to_move
-                .into_iter()
-                .filter(|(counter_type, _)| {
-                    super::move_destination_can_receive_counters(game, to_id, *counter_type)
-                })
-                .collect();
-            if counters_to_move.is_empty() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            // Bind live movement versus historical placement once, before
-            // replacement programs can change the source's incarnation/zone.
-            // A live source that later departs must not turn into an LKI placement.
-            let live_source = from_id.filter(|id| {
-                game.object(*id).is_some_and(|obj| {
-                    if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
-                        return false;
-                    }
-                    from_tag.and_then(|tag| {
-                        ctx.get_tagged_all(tag).and_then(|snapshots| snapshots.iter()
-                            .find(|snapshot| snapshot.object_id == *id).or_else(|| snapshots.first()))
-                    }).is_none_or(|snapshot| snapshot.zone == obj.zone)
-                })
-            }).and_then(|id| game.object(id).map(|object| (id, object.zone)))
-                .filter(|_| self.remove_from_source);
-            if self.remove_from_source && live_source.is_none() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if live_source.is_some_and(|(id, _)| id == to_id) {
-                return Ok(EffectOutcome::count(0));
-            }
-            let mut total_moved = 0i64;
-            let mut outcome = EffectOutcome::count(0);
-            for (counter_type, count) in counters_to_move {
-                let budget = if let Some((from_id, zone)) = live_source {
-                    if game.is_phased_out(from_id)
-                        || !game.object(from_id).is_some_and(|object| object.zone == zone)
-                        || !super::move_destination_can_receive_counters(game, to_id, counter_type)
-                    {
-                        continue;
-                    }
-                    let budget = count.min(game.counter_count(from_id, counter_type));
-                    if budget == 0 { continue; }
-                    let removed = super::remove_moved_counters(game, ctx, from_id, counter_type, budget)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    outcome = EffectOutcome::aggregate([outcome, removed]);
-                    budget
-                } else {
-                    // CR 122.8/122.9: historical counters are placement only.
-                    count
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
                 };
-                if budget == 0 { continue; }
-                total_moved = total_moved.checked_add(i64::from(budget)).ok_or_else(||
-                    ExecutionError::InternalError("counter movement total exceeds the supported wide count range".into()))?;
-                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, budget)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                outcome = EffectOutcome::aggregate([outcome, placed]);
-            }
 
-            outcome.set_value(crate::effect::OutcomeValue::Count(total_moved));
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+                if counters_to_move.is_empty() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                // CR 122.5: counters that can't be put onto the destination aren't
+                // removed from the source either.
+                let counters_to_move: Vec<(CounterType, u32)> = counters_to_move
+                    .into_iter()
+                    .filter(|(counter_type, _)| {
+                        super::move_destination_can_receive_counters(game, to_id, *counter_type)
+                    })
+                    .collect();
+                if counters_to_move.is_empty() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                // Bind live movement versus historical placement once, before
+                // replacement programs can change the source's incarnation/zone.
+                // A live source that later departs must not turn into an LKI placement.
+                let live_source = from_id
+                    .filter(|id| {
+                        game.object(*id).is_some_and(|obj| {
+                            if from_is_source && source_reference_uses_lki(ctx, *id, obj.zone) {
+                                return false;
+                            }
+                            from_tag
+                                .and_then(|tag| {
+                                    ctx.get_tagged_all(tag).and_then(|snapshots| {
+                                        snapshots
+                                            .iter()
+                                            .find(|snapshot| snapshot.object_id == *id)
+                                            .or_else(|| snapshots.first())
+                                    })
+                                })
+                                .is_none_or(|snapshot| snapshot.zone == obj.zone)
+                        })
+                    })
+                    .and_then(|id| game.object(id).map(|object| (id, object.zone)))
+                    .filter(|_| self.remove_from_source);
+                if self.remove_from_source && live_source.is_none() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                if live_source.is_some_and(|(id, _)| id == to_id) {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let mut total_moved = 0i64;
+                let mut children = Vec::new();
+                for (kind, count) in counters_to_move {
+                    let transferred = super::transfer_counters_with_outputs(
+                        game,
+                        ctx,
+                        live_source,
+                        to_id,
+                        kind,
+                        count,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    total_moved = total_moved
+                        .checked_add(transferred.outcome.instruction_result().count_or_zero())
+                        .ok_or_else(|| {
+                            ExecutionError::InternalError(
+                                "counter movement total exceeds the supported wide count range"
+                                    .into(),
+                            )
+                        })?;
+                    children.push(transferred);
+                }
+                let outcome = EffectOutcome::aggregate_with_primary_result(
+                    EffectOutcome::count(total_moved),
+                    children.iter().map(|child| child.outcome.clone()),
+                );
+                let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
+                for child in children {
+                    outputs.retain_owned_child(child);
+                }
+                Ok(outputs)
+            },
+        );
+        // A genuine failure takes precedence over a simultaneously pending
+        // choice. The transaction already restored the complete action.
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

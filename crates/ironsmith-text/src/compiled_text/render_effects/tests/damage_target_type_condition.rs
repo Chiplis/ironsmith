@@ -63,7 +63,7 @@ fn damage_target_type_condition_survives_prevention() {
                 .battlefield
                 .iter()
                 .filter_map(|id| game.object(*id))
-                .filter(|o| o.name == "Incubator")
+                .filter(|o| o.name == "Incubator Token")
                 .collect();
             assert_eq!(incubators.len(), 1);
             assert_eq!(game.controller_of(incubators[0]), alice);

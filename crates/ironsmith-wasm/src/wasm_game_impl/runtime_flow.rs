@@ -201,12 +201,22 @@ impl WasmGame {
 
     fn rollback_live_action_chain_to_checkpoint(
         &mut self,
-        checkpoint: ReplayCheckpoint,
+        mut checkpoint: ReplayCheckpoint,
+        error: &ironsmith::game_loop::GameLoopError,
+        disclosed_game: &GameState,
     ) -> Result<JsValue, JsValue> {
         if self.payment_disclosure.is_some() {
-            return Err(payment_disclosure_error("committed disclosure payment failed; resume the retained command instead of undoing its announcement"));
+            // An impossible rules payment is an accepted rollback on every
+            // peer. Only an execution fault needs the exact-command retry.
+            if !matches!(error, ironsmith::game_loop::GameLoopError::ActionCancelled(_)) {
+                return Err(payment_disclosure_error("committed disclosure payment failed; resume the retained command instead of undoing its announcement"));
+            }
+            self.retain_payment_disclosure_in_checkpoint(&mut checkpoint, disclosed_game);
+            self.finish_payment_disclosure();
         }
+        let crypto_before = self.pending_crypto_audit_before.take();
         self.restore_live_action_chain_to_checkpoint(checkpoint)?;
+        self.pending_crypto_audit_before = crypto_before;
         self.snapshot()
     }
 
@@ -875,7 +885,11 @@ impl WasmGame {
                     }
                     dispatch_perf.outcome_kind = "rolled_back_action_error".to_string();
                     self.store_dispatch_perf(dispatch_started_at, dispatch_perf);
-                    return self.rollback_live_action_chain_to_checkpoint(checkpoint);
+                    return self.rollback_live_action_chain_to_checkpoint(
+                        checkpoint,
+                        &err,
+                        &step_checkpoint.game,
+                    );
                 }
                 self.restore_replay_checkpoint(&step_checkpoint);
                 if should_track_action_checkpoint {
@@ -1005,7 +1019,11 @@ impl WasmGame {
             ),
             Err(err) => {
                 if let Some(checkpoint) = self.live_action_error_checkpoint(None) {
-                    return self.rollback_live_action_chain_to_checkpoint(checkpoint);
+                    return self.rollback_live_action_chain_to_checkpoint(
+                        checkpoint,
+                        &err,
+                        &continuation.checkpoint.game,
+                    );
                 }
                 self.restore_replay_checkpoint(&continuation.checkpoint);
                 self.priority_state.pending_continuation = None;
@@ -2431,6 +2449,9 @@ mod live_action_rollback_tests {
         wasm.game.turn.priority_player = Some(alice);
         wasm.game.turn.phase = Phase::FirstMain;
         wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
         wasm.runner_awaiting_priority = true;
 
         let source_definition = CardDefinitionBuilder::new(CardId::new(), "Fixed Mana Undo Probe")
@@ -2557,6 +2578,74 @@ mod live_action_rollback_tests {
                 },
             },
         );
+    }
+
+    #[test]
+    fn cancel_payment_restores_sacrificed_treasure_and_preannouncement_state() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, _) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Treasure")
+            .card_types(vec![CardType::Artifact])
+            .token()
+            .parse_text("{T}, Sacrifice this artifact: Add {R}.")
+            .unwrap();
+        let treasure = wasm.game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let before_life = wasm.game.player(alice).unwrap().life;
+        let before_pool = wasm.game.player(alice).unwrap().mana_pool.clone();
+        let before_battlefield = wasm.game.battlefield.clone();
+        let spell = begin_manual_payment_spell_with_cost(&mut wasm, ManaCost::new().add_generic(2));
+        let spell_stable_id = wasm.game.object(spell).unwrap().stable_id;
+        activate_manual_source(&mut wasm, treasure, 0);
+        assert!(!wasm.game.battlefield.contains(&treasure));
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 1);
+        assert!(wasm.is_cancelable(), "sacrificing mana during an unfinished payment must leave the root action cancelable");
+        wasm.cancel_decision().expect("cancel entire payment transaction");
+        assert_eq!(wasm.game.battlefield, before_battlefield);
+        wasm.game.object(treasure).expect("Treasure is restored");
+        assert!(!wasm.game.is_tapped(treasure));
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool, before_pool);
+        assert_eq!(wasm.game.player(alice).unwrap().life, before_life);
+        assert!(wasm.game.player(alice).unwrap().hand.iter().any(|id| wasm.game.object(*id).is_some_and(|object| object.stable_id == spell_stable_id)));
+        assert!(wasm.game.stack.is_empty());
+        assert!(wasm.priority_state.pending_cast.is_none());
+    }
+
+    #[test]
+    fn unfunded_announcement_opens_payment_and_manual_mana_fills_its_pips() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut wasm, mountain) = manual_payment_fixture();
+        let alice = PlayerId::from_index(0);
+        // Two red pips and only one source: there is provably no full plan.
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Unfunded manual spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red, ManaSymbol::Red]))
+            .build();
+        let spell = wasm.game.create_object_from_definition(&definition, alice, Zone::Hand);
+        let ctx = ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap();
+        assert!(!ctx.actions.iter().any(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)));
+        let action = ironsmith::decision::compute_actions_assuming_mana_for_presentation(&wasm.game, alice, Some(spell)).unwrap()
+            .into_iter().find(|action| matches!(action, LegalAction::CastSpell { .. })).unwrap();
+        wasm.dispatch_live_priority_response(DecisionContext::Priority(ctx), UiCommand::PriorityAction {
+            action_index: None, action_ref: Some(priority_action_ref(&action)),
+        }).unwrap();
+        let before = wasm.current_mana_payment_view().unwrap_or_else(|| panic!("unfunded cast should open payment; decision={:?}, cast={:?}", wasm.pending_decision, wasm.priority_state.pending_cast));
+        assert!(!before.can_confirm);
+        assert!(before.allocations.is_empty());
+        activate_manual_source(&mut wasm, mountain, 0);
+        let after = wasm.current_mana_payment_view().unwrap();
+        assert_eq!(after.pool_before.red, 1, "manual mana enters the pool of the enclosing payment");
+        assert!(!after.can_confirm, "one red mana cannot pay two red pips");
+        // A second real source can now fund the remainder, and payment consumes
+        // both floating mana units rather than losing the first activation.
+        let second = wasm.game.create_object_from_definition(&ironsmith_registry_test::cards::definitions::basic_mountain(), alice, Zone::Battlefield);
+        activate_manual_source(&mut wasm, second, 0);
+        let ready = wasm.current_mana_payment_view().unwrap();
+        assert!(ready.can_confirm);
+        assert_eq!(ready.pool_before.red, 2);
+        confirm_pending_mana_payment(&mut wasm);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 0);
+        assert!(wasm.priority_state.pending_cast.is_none());
     }
 
     #[test]

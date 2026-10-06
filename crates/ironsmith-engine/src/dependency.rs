@@ -697,6 +697,9 @@ fn evaluate_value(
                 you: Some(effect_controller),
                 source: Some(source),
                 source_snapshot: None,
+                // This history selector only calls PlayerFilterExt::matches_player;
+                // it does not evaluate a source-number value or object predicate.
+                source_number_owner: None,
                 caster: None,
                 prospective_cast: None,
                 active_player: None,
@@ -739,6 +742,9 @@ fn evaluate_value(
                 you: Some(effect_controller),
                 source: Some(source),
                 source_snapshot: None,
+                // This history selector only calls PlayerFilterExt::matches_player;
+                // it does not evaluate a source-number value or object predicate.
+                source_number_owner: None,
                 caster: None,
                 prospective_cast: None,
                 active_player: None,

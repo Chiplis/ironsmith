@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::decisions::{ModesSpec, make_decision, specs::ModeOption};
 use crate::effect::{EffectMode, EffectOutcome, ExecutionFact};
 use crate::effects::helpers::resolve_value;
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
+use crate::effects::{ExecutionContext, ExecutionError, rebase_target_scope};
 use crate::game_state::GameState;
 use crate::game_state::TargetAssignment;
 use crate::ids::{ObjectId, PlayerId};
@@ -238,25 +238,68 @@ fn endure_token_mode_when_permanent_is_gone(
     gone.then_some(1)
 }
 
-/// CR 608.2b: an instruction whose targets have all become illegal does
-/// nothing, but the spell or ability still performs its other instructions
-/// and modes. Executors that report an empty target scope as
-/// `Err(InvalidTarget)` are mapped to a target-invalid outcome so sibling
-/// instructions and later modes keep resolving.
-fn continue_past_illegal_target(
-    outcome: Result<EffectOutcome, ExecutionError>,
-) -> Result<EffectOutcome, ExecutionError> {
-    match outcome {
-        Err(ExecutionError::InvalidTarget) => Ok(EffectOutcome::target_invalid()),
-        other => other,
-    }
-}
-
 pub(crate) fn run_choose_mode(
     effect: &ChooseModeEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
+    run_choose_mode_with_outputs(
+        effect,
+        game,
+        ctx,
+        crate::effects::EffectExecutionPurpose::Action,
+    )
+    .map(crate::effects::CompletedEffectOutputs::into_outcome)
+}
+
+pub(crate) fn run_choose_mode_with_outputs(
+    effect: &ChooseModeEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| execute_chosen_modes_with_outputs(effect, game, ctx, purpose),
+    )
+}
+
+fn completed_modal_outputs(
+    children: Vec<crate::effects::CompletedEffectOutputs>,
+    chosen_indices: Vec<usize>,
+) -> crate::effects::CompletedEffectOutputs {
+    let outputs =
+        crate::effects::CompletedEffectOutputs::from_children(children, EffectOutcome::aggregate);
+    let outcome = outputs
+        .outcome
+        .clone()
+        .with_execution_fact(ExecutionFact::ChosenOptions(chosen_indices));
+    outputs.project_aggregate(outcome)
+}
+
+/// Captured modal decisions, before any selected child action executes.
+/// A pending decision has no plan. NoAction is a completed empty recipient
+/// instruction; Actions retains authored order and the existing target policy.
+#[derive(Debug)]
+pub(super) enum SelectedModeProgram {
+    NoAction,
+    Actions {
+        chosen_indices: Vec<usize>,
+        include_common_prefix: bool,
+        use_target_scopes: bool,
+    },
+}
+
+/// Own modal range/legality/random choice and genuine mode-history recording.
+/// Preparation adapters can retain this plan without replaying those decisions
+/// or executing common prefixes, selected actions, or replacement additions.
+pub(super) fn select_mode_program(
+    effect: &ChooseModeEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Option<SelectedModeProgram>, ExecutionError> {
     // A resolving counter-kind choice has no decision to make when its shared
     // recipient was omitted. Casting-time modes still follow the normal path.
     if effect.chooser.is_some() && effect.common_prefix_effects.is_empty() {
@@ -283,7 +326,7 @@ pub(crate) fn run_choose_mode(
                 Err(_) => false,
             }
         {
-            return Ok(EffectOutcome::resolved());
+            return Ok(Some(SelectedModeProgram::NoAction));
         }
     }
     // CR 701.63a endure: "create an N/N Spirit token unless they put N +1/+1
@@ -291,12 +334,11 @@ pub(crate) fn run_choose_mode(
     // the counters can't be put on it, so the token is created regardless of
     // the choice.
     if let Some(token_mode) = endure_token_mode_when_permanent_is_gone(effect, game, ctx) {
-        let mut outcomes = Vec::new();
-        for token_effect in &effect.modes[token_mode].effects {
-            outcomes.push(execute_effect(game, token_effect, ctx)?);
-        }
-        return Ok(EffectOutcome::aggregate(outcomes)
-            .with_execution_fact(ExecutionFact::ChosenOptions(vec![token_mode])));
+        return Ok(Some(SelectedModeProgram::Actions {
+            chosen_indices: vec![token_mode],
+            include_common_prefix: false,
+            use_target_scopes: false,
+        }));
     }
     let chooser = effect
         .chooser
@@ -319,12 +361,11 @@ pub(crate) fn run_choose_mode(
     }
 
     if effect.modes.is_empty() || max_modes == 0 {
-        let mut outcomes = Vec::new();
-        for common in &effect.common_prefix_effects {
-            outcomes.push(execute_effect(game, common, ctx)?);
-        }
-        return Ok(EffectOutcome::aggregate(outcomes)
-            .with_execution_fact(ExecutionFact::ChosenOptions(Vec::new())));
+        return Ok(Some(SelectedModeProgram::Actions {
+            chosen_indices: Vec::new(),
+            include_common_prefix: true,
+            use_target_scopes: false,
+        }));
     }
 
     let source_ability_index = if effect.disallow_previously_chosen_modes {
@@ -426,7 +467,7 @@ pub(crate) fn run_choose_mode(
         )
     };
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(EffectOutcome::count(0));
+        return Ok(None);
     }
 
     // Validate selected mode indices while preserving selection order.
@@ -483,81 +524,215 @@ pub(crate) fn run_choose_mode(
         }
     }
 
-    let mut outcomes = Vec::new();
-    let available_assignments = ctx.target_assignments.clone();
-    let mut assignment_cursor = 0usize;
-    let mut consumed_modal_selection = false;
-    let mut common_scope: Option<(Vec<crate::effects::ResolvedTarget>, Vec<TargetAssignment>)> =
-        None;
-    for common in &effect.common_prefix_effects {
-        let assignments = active_target_assignments_for_inner_effect(
-            game,
-            common,
-            ctx,
-            &mut consumed_modal_selection,
-            &available_assignments,
-            &mut assignment_cursor,
-        );
-        if !assignments.is_empty() {
-            let (targets, assignments) = rebase_target_scope(&ctx.targets, &assignments);
-            common_scope = Some((targets, assignments));
-        }
-        let outcome = if let Some((targets, assignments)) = &common_scope {
-            ctx.with_temp_targets(targets.clone(), |ctx| {
-                ctx.with_temp_target_assignments(assignments.clone(), |ctx| {
-                    execute_effect(game, common, ctx)
-                })
-            })
-        } else {
-            execute_effect(game, common, ctx)
-        };
-        outcomes.push(continue_past_illegal_target(outcome)?);
-    }
-    for &idx in &valid_chosen_indices {
-        if let Some(mode) = effect.modes.get(idx) {
-            let previous_context = game.replace_resolving_mode_context(
-                Some((ctx.source, mode.source_text.clone())),
-            );
-            let mode_result = (|| -> Result<(), ExecutionError> {
-                let mut active_scope: Option<(
-                    Vec<crate::effects::ResolvedTarget>,
-                    Vec<TargetAssignment>,
-                )> = None;
-                for inner in &mode.effects {
-                    let inner_target_assignments = active_target_assignments_for_inner_effect(
-                        game,
-                        inner,
-                        ctx,
-                        &mut consumed_modal_selection,
-                        &available_assignments,
-                        &mut assignment_cursor,
-                    );
-                    if !inner_target_assignments.is_empty() {
-                        let (inner_targets, inner_target_assignments) =
-                            rebase_target_scope(&ctx.targets, &inner_target_assignments);
-                        active_scope = Some((inner_targets, inner_target_assignments));
-                    }
-                    let outcome = if let Some((inner_targets, inner_target_assignments)) = &active_scope
-                    {
-                        ctx.with_temp_targets(inner_targets.clone(), |ctx| {
-                            ctx.with_temp_target_assignments(inner_target_assignments.clone(), |ctx| {
-                                execute_effect(game, inner, ctx)
-                            })
-                        })
-                    } else {
-                        execute_effect(game, inner, ctx)
-                    };
-                    outcomes.push(continue_past_illegal_target(outcome)?);
-                }
-                Ok(())
-            })();
-            game.replace_resolving_mode_context(previous_context);
-            mode_result?;
-        }
-    }
+    Ok(Some(SelectedModeProgram::Actions {
+        chosen_indices: valid_chosen_indices,
+        include_common_prefix: true,
+        use_target_scopes: true,
+    }))
+}
 
-    Ok(EffectOutcome::aggregate(outcomes)
-        .with_execution_fact(ExecutionFact::ChosenOptions(valid_chosen_indices)))
+fn execute_chosen_modes_with_outputs(
+    effect: &ChooseModeEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let Some(program) = select_mode_program(effect, game, ctx)? else {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    };
+    execute_selected_mode_program_with_outputs(effect, program, game, ctx, purpose)
+}
+
+/// Consume a selected program without replaying its decisions or history.
+/// Target assignment cursors remain in execution, so a preceding child can
+/// establish the bindings that the next child needs before its scope is read.
+pub(super) fn execute_selected_mode_program_with_outputs(
+    effect: &ChooseModeEffect,
+    program: SelectedModeProgram,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::action_program::execute_action_program_with_outputs(
+        selected_mode_cursor(effect, program, ctx),
+        game,
+        ctx,
+        purpose,
+    )
+}
+
+struct ModalProgramChild {
+    group: usize,
+    effect: crate::effect::Effect,
+    label: Option<String>,
+    identity: Vec<usize>,
+}
+
+struct SelectedModalCursor {
+    children: Vec<ModalProgramChild>,
+    next: usize,
+    chosen_indices: Vec<usize>,
+    no_action: bool,
+    use_target_scopes: bool,
+    available_assignments: Vec<TargetAssignment>,
+    assignment_cursor: usize,
+    consumed_modal_selection: bool,
+    active_group: Option<usize>,
+    active_scope: Option<(Vec<crate::effects::ResolvedTarget>, Vec<TargetAssignment>)>,
+    mode_source: Option<ObjectId>,
+    outputs: Vec<crate::effects::CompletedEffectOutputs>,
+    unit_ends: Vec<usize>,
+}
+impl std::fmt::Debug for SelectedModalCursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SelectedModalCursor")
+            .field("next", &self.next)
+            .finish_non_exhaustive()
+    }
+}
+
+pub(super) fn selected_mode_cursor(
+    effect: &ChooseModeEffect,
+    program: SelectedModeProgram,
+    ctx: &ExecutionContext,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    let mut children = Vec::new();
+    let (chosen_indices, no_action, use_target_scopes) = match program {
+        SelectedModeProgram::NoAction => (Vec::new(), true, false),
+        SelectedModeProgram::Actions {
+            chosen_indices,
+            include_common_prefix,
+            use_target_scopes,
+        } => {
+            if include_common_prefix {
+                for (index, child) in effect.common_prefix_effects.iter().enumerate() {
+                    children.push(ModalProgramChild {
+                        group: 0,
+                        effect: child.clone(),
+                        label: None,
+                        identity: vec![0, index],
+                    });
+                }
+            }
+            for (occurrence, &mode_index) in chosen_indices.iter().enumerate() {
+                if let Some(mode) = effect.modes.get(mode_index) {
+                    for (index, child) in mode.effects.iter().enumerate() {
+                        children.push(ModalProgramChild {
+                            group: occurrence + 1,
+                            effect: child.clone(),
+                            label: use_target_scopes.then(|| mode.source_text.clone()),
+                            identity: vec![1, occurrence, mode_index, index],
+                        });
+                    }
+                }
+            }
+            (chosen_indices, false, use_target_scopes)
+        }
+    };
+    let effects = children
+        .iter()
+        .map(|child| child.effect.clone())
+        .collect::<Vec<_>>();
+    let unit_ends = super::action_units::partition_action_units(
+        &effects,
+        |_| None,
+        |left, right| children[left].group == children[right].group,
+    )
+    .into_iter()
+    .filter_map(|unit| unit.last().copied())
+    .collect();
+    Box::new(SelectedModalCursor {
+        children,
+        next: 0,
+        chosen_indices,
+        no_action,
+        use_target_scopes,
+        available_assignments: ctx.target_assignments.clone(),
+        assignment_cursor: 0,
+        consumed_modal_selection: false,
+        active_group: None,
+        active_scope: None,
+        mode_source: None,
+        outputs: Vec::new(),
+        unit_ends,
+    })
+}
+
+impl crate::effects::ActionProgramCursor for SelectedModalCursor {
+    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        self.finish()
+    }
+    fn next_action(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
+        let Some(child) = self.children.get(self.next) else {
+            return Ok(None);
+        };
+        if self.active_group != Some(child.group) {
+            self.active_group = Some(child.group);
+            self.active_scope = None;
+            self.mode_source = child.label.as_ref().map(|_| ctx.source);
+        }
+        if self.use_target_scopes {
+            let assignments = active_target_assignments_for_inner_effect(
+                game,
+                &child.effect,
+                ctx,
+                &mut self.consumed_modal_selection,
+                &self.available_assignments,
+                &mut self.assignment_cursor,
+            );
+            if !assignments.is_empty() {
+                self.active_scope = Some(rebase_target_scope(&ctx.targets, &assignments));
+            }
+        }
+        self.next += 1;
+        Ok(Some(crate::effects::ProgramAction {
+            native: None,
+            effect: child.effect.clone(),
+            scope: crate::effects::ProgramActionScope {
+                targets: self.active_scope.clone(),
+                mode_label: self.mode_source.zip(child.label.clone()),
+                ..Default::default()
+            },
+            identity: child.identity.clone(),
+        }))
+    }
+    fn accept_action(
+        &mut self,
+        outputs: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        self.outputs.push(outputs);
+        Ok(())
+    }
+    fn ends_action_unit(&self) -> bool {
+        self.next
+            .checked_sub(1)
+            .is_some_and(|index| self.unit_ends.contains(&index))
+    }
+    fn continues_past_illegal_targets(&self) -> bool {
+        true
+    }
+    fn finish(self: Box<Self>) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        if self.no_action {
+            return Ok(crate::effects::ProgramCompletion {
+                outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::resolved(),
+                ),
+                facts: Vec::new(),
+            });
+        }
+        let facts = vec![ExecutionFact::ChosenOptions(self.chosen_indices.clone())];
+        Ok(crate::effects::ProgramCompletion {
+            outputs: completed_modal_outputs(self.outputs, self.chosen_indices),
+            facts,
+        })
+    }
 }
 
 #[cfg(test)]

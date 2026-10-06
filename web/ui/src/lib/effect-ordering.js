@@ -9,13 +9,47 @@ import {
 import { buildObjectControllerById, buildObjectNameById } from "./decision-object-meta";
 import { playerDisplayName } from "./player-display";
 
-export function isReplacementOrderingDecision(decision) {
+function isReplacementChoice(decision) {
   if (decision?.kind !== "select_options" || (decision.options || []).length <= 1) return false;
   if (Number(decision.min ?? 1) !== 1 || Number(decision.max ?? 1) !== 1) return false;
   const reason = String(decision.reason || "").trim().toLowerCase();
   const description = String(decision.description || "").trim().toLowerCase();
   return reason === "replacement effect"
     || description.startsWith("choose which replacement effect to apply");
+}
+
+// A replacement and its explicit decline are one optional action, not an order.
+export function optionalReplacementChoice(decision) {
+  if (!isReplacementChoice(decision) || decision.options.length !== 2) return null;
+  const decline = decision.options.find(option => /^Do not apply /i.test(String(option.description || "").trim()));
+  if (!decline) return null;
+  const apply = decision.options.find(option => option !== decline);
+  const name = String(decline.description).trim().replace(/^Do not apply /i, "");
+  const applyName = String(apply.description || "").trim().replace(/^Apply /i, "");
+  if (!name || applyName !== name) return null;
+  if (apply.object_id != null && decline.object_id != null
+      && String(apply.object_id) !== String(decline.object_id)) return null;
+  return { apply, decline, name };
+}
+
+export function presentOptionalReplacementDecision(decision) {
+  const choice = optionalReplacementChoice(decision);
+  if (!choice) return decision;
+  return {
+    ...decision,
+    reason: "May ability",
+    description: `You may apply the replacement effect from ${choice.name}.`,
+    source_id: choice.apply.object_id ?? decision.source_id,
+    source_name: choice.name,
+    options: [
+      { ...choice.apply, object_id: null, related_object_ids: undefined, description: "Yes" },
+      { ...choice.decline, object_id: null, related_object_ids: undefined, description: "No" },
+    ],
+  };
+}
+
+export function isReplacementOrderingDecision(decision) {
+  return isReplacementChoice(decision) && !optionalReplacementChoice(decision);
 }
 
 export function isEffectOrderingDecision(decision) {

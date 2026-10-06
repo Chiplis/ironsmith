@@ -101,3 +101,12 @@ Army name and allocation rollback for missing canonical subtype evidence.
 Existing Investigate witnesses assert the real Clue Token and its ability.
 Older witnesses that observed the same native Investigate route were corrected;
 the explicit named `Clue` token-copy fixture was deliberately retained.
+
+
+## Current prepared-main disposition
+
+The bounded corrections and their prepared-main port are source-reviewed and
+admitted as unvalidated proposals in `card-failure-stage97-source-admission.md`.
+That record supersedes the earlier pending-admission wording above. The complete
+frozen body fixtures and all authored scenarios remain unrun; measured recovery
+is unchanged. The coordinated source boundary is artifact9 / digest5 / audit22.

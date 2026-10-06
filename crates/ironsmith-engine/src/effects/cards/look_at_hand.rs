@@ -1,5 +1,6 @@
 //! Look at hand effect implementation.
 
+#[cfg(test)]
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
@@ -10,6 +11,10 @@ use crate::target::ChooseSpec;
 pub type LookAtHandEffect = ironsmith_core::LookAtHandEffect;
 
 impl EffectExecutor for LookAtHandEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        self.reveal
+            .then_some(crate::effect::PriorEffectAction::Revealed)
+    }
     /// "Reveal your hand" can be paid as a cost (Land Grant's alternative
     /// cost); an empty hand can still be revealed.
     fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
@@ -63,51 +68,33 @@ impl EffectExecutor for LookAtHandEffect {
         }
 
         let mut total_cards = 0;
-        let mut exact_reveal = Vec::new();
+        let mut outcome = EffectOutcome::count(0);
+        let mut all_snapshots = Vec::new();
         for player_id in players {
             let cards = game
                 .player(player_id)
                 .map(|p| p.hand.clone())
                 .unwrap_or_default();
             total_cards += cards.len() as i32;
-
+            let snapshots = cards
+                .iter()
+                .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, *id))
+                .collect::<Vec<_>>();
+            all_snapshots.extend(snapshots.iter().cloned());
             if self.reveal {
-                // Record the revealed cards so a later "... revealed this
-                // way" reference (e.g. a card-name choice) can validate
-                // against exactly this set.
-                let mut revealed: Vec<crate::snapshot::ObjectSnapshot> = ctx
-                    .get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
-                    .cloned()
-                    .unwrap_or_default();
-                for card_id in cards.iter().copied() {
-                    if let Some(object) = game.object(card_id)
-                        && revealed
-                            .iter()
-                            .all(|snapshot| snapshot.object_id != card_id)
-                    {
-                        revealed.push(crate::snapshot::ObjectSnapshot::from_object(object, game));
-                    }
-                }
-                ctx.set_tagged_objects(
-                    crate::tag::TagKey::from(crate::effects::REVEALED_THIS_WAY_TAG),
-                    revealed,
-                );
-                view_hidden_candidate_objects(
+                let reveal = super::reveal_objects(
                     game,
                     ctx,
-                    ctx.controller,
-                    &cards,
+                    snapshots.clone(),
+                    Some(player_id),
                     "Reveal that player's hand",
-                    true,
-                );
-                for id in &cards {
-                    let memory = crate::effect::OutcomeObjectMemory::try_from_object_id(game, *id)?
-                        .ok_or_else(|| ExecutionError::IncompleteEvidence(
-                            "revealed hand card is unavailable at completed capture".into(),
-                        ))?;
-                    exact_reveal.push(memory);
+                    None,
+                )?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                for snapshot in reveal.chosen_object_memory().unwrap_or_default().iter().cloned() {
+                    ctx.tag_object(crate::effects::REVEALED_THIS_WAY_TAG, snapshot);
                 }
-
+                outcome = EffectOutcome::aggregate([outcome, reveal]);
             } else {
                 // Record exactly the looked-at cards so a following "exile
                 // those cards" acts on this set. The set lives only in this
@@ -121,17 +108,29 @@ impl EffectExecutor for LookAtHandEffect {
                         );
                     }
                 }
-                let view_ctx =
-                    ViewCardsContext::look_at_hand(ctx.controller, player_id, Some(ctx.source));
-                ctx.decision_maker
-                    .view_cards(game, ctx.controller, &cards, &view_ctx);
+                let look = super::look_at_cards(
+                    game,
+                    ctx,
+                    ctx.controller,
+                    player_id,
+                    crate::zone::Zone::Hand,
+                    &cards,
+                    "Look at that player's hand",
+                );
+                outcome = EffectOutcome::aggregate([outcome, look]);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
             }
         }
 
-        let outcome = EffectOutcome::count(total_cards);
-        Ok(if self.reveal {
-            outcome.with_execution_fact(crate::effect::ExecutionFact::RevealedCards(exact_reveal))
-        } else { outcome })
+        outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(total_cards)));
+        if !self.reveal {
+            outcome = outcome
+                .with_chosen_object_memory(all_snapshots.clone())
+                .with_affected_object_memory(all_snapshots);
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

@@ -14,7 +14,7 @@ use crate::color::ColorSet;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::PermanentTappedEvent;
 use crate::game_state::GameState;
@@ -64,6 +64,15 @@ impl EffectExecutor for ConspireCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let controller = ctx.controller;
         let source = ctx.source;
         let candidates = conspire_candidates(game, controller, source);
@@ -82,7 +91,9 @@ impl EffectExecutor for ConspireCostEffect {
         );
         let mut chosen = make_decision(game, ctx.decision_maker, controller, Some(source), spec);
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         chosen.sort();
         chosen.dedup();
@@ -104,21 +115,20 @@ impl EffectExecutor for ConspireCostEffect {
             ));
         }
 
-        let before = crate::events::other::before_tap_state_snapshots(game);
-        let mut events = Vec::new();
-        for id in chosen {
-            if game.object(id).is_some() && !game.is_tapped(id) {
-                game.tap(id);
-                events.push(TriggerEvent::new_with_provenance(
-                    PermanentTappedEvent::capture(game, id, Some(ctx.controller)),
-                    ctx.provenance,
-                ));
-            }
-        }
+        let taps = super::tap::tap_cost_objects_with_outputs(game, ctx, &chosen)?;
+        let events = taps.outcome.events.clone();
 
-        crate::events::other::bind_before_tap_state_snapshots(&mut events, &before);
-        crate::events::other::group_tap_state_events(game, &mut events, ctx.provenance);
-        Ok(EffectOutcome::resolved().with_events(events))
+        let aggregate = EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::resolved().with_events(events),
+            [{
+                let mut receipts = taps.outcome.clone();
+                receipts.events.clear();
+                receipts
+            }],
+        );
+        let mut outputs = CompletedEffectOutputs::aggregate_only(aggregate);
+        outputs.retain_batch_children([taps]);
+        Ok(outputs)
     }
 
     fn cost_description(&self) -> Option<String> {

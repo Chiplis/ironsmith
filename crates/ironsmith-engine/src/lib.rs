@@ -301,6 +301,7 @@ pub use events::{
     PutCountersEvent,
     RegenerationShieldMatcher,
     RemoveCountersEvent,
+    RemovePlayerCountersEvent,
     ReplacementMatcher,
     ReplacementPriority as NewReplacementPriority,
     SacrificeEvent,

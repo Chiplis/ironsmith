@@ -255,184 +255,27 @@ pub fn can_pay_cost_with_reason(
     cost: &TotalCost,
     reason: crate::costs::PaymentReason,
 ) -> Result<(), CostPaymentError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
-    // CR 800.4f: if an effect requires a player who left the game to pay a
-    // cost, that cost is not paid.
-    if !game
-        .player(player)
-        .is_some_and(|candidate| candidate.is_in_game())
-    {
-        return Err(CostPaymentError::Other(
-            "a player who left the game cannot pay costs".to_string(),
-        ));
-    }
-
-    // Choice-backed costs can pass objects to a later component through a tag
-    // (for example, "choose half your lands, then sacrifice the chosen
-    // lands"). The ordinary component-by-component check has no tag state, so
-    // route those totals through the context-aware checker that can construct a
-    // legal speculative selection without making the player's actual choice.
-    fn has_waterbend(cost: &TotalCost) -> bool {
-        match cost.kind() {
-            ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost|
-                cost.mana_cost_ref().is_some_and(|mana| mana.has_waterbend_obligation())),
-            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(has_waterbend),
-        }
-    }
-    if total_cost_has_tagged_choice_consumer(cost) || has_waterbend(cost) {
-        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-        let mut execution_ctx =
-            crate::effects::ExecutionContext::new(source_id, player, &mut decision_maker);
-        return crate::special_actions::can_pay_total_cost_with_reason_in_context(
-            game,
-            player,
-            source_id,
-            cost,
-            reason,
-            &mut execution_ctx,
-        );
-    }
-
-    let ctx = CostCheckContext::new(source_id, player).with_reason(reason);
-
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => {
-            for cost_component in costs {
-                let adjusted_component =
-                    adjusted_component_for_check(game, player, source_id, cost_component, reason)?;
-                game.validate_cost_for_payment_reason(
-                    player,
-                    source_id,
-                    &adjusted_component,
-                    reason,
-                )?;
-                can_pay_with_check_context(&*adjusted_component.0, game, &ctx)?;
-            }
-            Ok(())
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            if branches.iter().any(|branch| {
-                can_pay_cost_with_reason(game, source_id, player, branch, reason).is_ok()
-            }) {
-                Ok(())
-            } else {
-                Err(CostPaymentError::Other(
-                    "no payable alternative cost branch".to_string(),
-                ))
-            }
-        }
-    }
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut execution =
+        crate::effects::ExecutionContext::new(source_id, player, &mut decision_maker);
+    crate::special_actions::can_pay_total_cost_with_reason_in_context(
+        game,
+        player,
+        source_id,
+        cost,
+        reason,
+        &mut execution,
+    )
 }
 
-fn total_cost_has_tagged_choice_consumer(cost: &TotalCost) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(components) => {
-            (0..components.len()).any(|idx| tagged_choice_pair_at(components, idx).is_some())
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            branches.iter().any(total_cost_has_tagged_choice_consumer)
-        }
-    }
-}
-
-/// The tag named by a filter that selects exactly "the tagged objects".
-fn filter_consumed_tag(filter: &crate::target::ObjectFilter) -> Option<&crate::tag::TagKey> {
-    (!filter.tagged_constraints.is_empty()
-        && filter.tagged_constraints.iter().all(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && constraint.tag == filter.tagged_constraints[0].tag
-        }))
-    .then(|| &filter.tagged_constraints[0].tag)
-}
-
-fn spec_consumed_tag(spec: &ChooseSpec) -> Option<&crate::tag::TagKey> {
-    match spec.base() {
-        ChooseSpec::Tagged(tag) => Some(tag),
-        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter_consumed_tag(filter),
-        _ => None,
-    }
-}
-
-/// The choice tag an effect-backed cost component consumes: a sacrifice,
-/// exile, return, move, unattach, tap (or any other effect whose object spec
-/// is exactly "the chosen objects") that pays with the objects a preceding
-/// `ChooseObjectsEffect` cost published under that tag. Transparent wrappers
-/// (such as `WithIdEffect`) are peeled first.
+/// Compatibility projection for callers that check one adjacent choice/consumer
+/// pair. The effect owner declares all external choice inputs; ordered compound
+/// owners account for their preceding internal publications. Whole-program
+/// dependency/affordability validation remains with the cost query owner.
 pub(crate) fn effect_consumed_choice_tag(
     effect: &crate::effect::Effect,
 ) -> Option<crate::tag::TagKey> {
-    let mut consumer = effect;
-    while let Some(inner) = consumer.transparent_child_effect() {
-        consumer = inner;
-    }
-    // A sequence that selects its own payment objects must execute that
-    // producer before requiring the consumer's tag. The whole cost's
-    // preflight simulates the dependency without an existing external tag.
-    if let Some(sequence) = consumer.downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.effects.iter().any(|effect| {
-            let mut inner = effect;
-            while let Some(child) = inner.transparent_child_effect() {
-                inner = child;
-            }
-            inner
-                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-                .is_some()
-        })
-    {
-        return None;
-    }
-    if consumer
-        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        .is_some()
-    {
-        return None;
-    }
-    if let Some(sacrifice) = consumer.downcast_ref::<crate::effects::SacrificeEffect>() {
-        return (sacrifice.player == crate::target::PlayerFilter::You)
-            .then(|| filter_consumed_tag(&sacrifice.filter).cloned())
-            .flatten();
-    }
-    if let Some(sacrifice) = consumer.downcast_ref::<ironsmith_core::SacrificePlayerEffect>() {
-        return (sacrifice.player == crate::target::PlayerFilter::You)
-            .then(|| filter_consumed_tag(&sacrifice.filter).cloned())
-            .flatten();
-    }
-    if let Some(discard) = consumer.downcast_ref::<crate::effects::DiscardEffect>() {
-        return discard
-            .card_filter
-            .as_ref()
-            .and_then(filter_consumed_tag)
-            .cloned();
-    }
-    if let Some(reveal) = consumer.downcast_ref::<crate::effects::RevealTaggedEffect>() {
-        return Some(reveal.tag.clone());
-    }
-    if let Some(exile) = consumer.downcast_ref::<crate::effects::ExileEffect>() {
-        return spec_consumed_tag(&exile.spec).cloned();
-    }
-    if let Some(returned) = consumer.downcast_ref::<crate::effects::ReturnToHandEffect>() {
-        return spec_consumed_tag(&returned.spec).cloned();
-    }
-    if let Some(moved) = consumer.downcast_ref::<crate::effects::MoveToZoneEffect>() {
-        return spec_consumed_tag(&moved.target).cloned();
-    }
-    if let Some(unattach) = consumer.downcast_ref::<crate::effects::UnattachObjectsEffect>() {
-        return spec_consumed_tag(&unattach.objects).cloned();
-    }
-    if let Some(tap) = consumer.downcast_ref::<crate::effects::TapEffect>() {
-        return spec_consumed_tag(&tap.target).cloned();
-    }
-    if let Some(untap) = consumer.downcast_ref::<crate::effects::UntapEffect>() {
-        return spec_consumed_tag(&untap.target).cloned();
-    }
-    consumer
-        .0
-        .get_target_spec()
-        .into_iter()
-        .cloned()
-        .chain(consumer.0.decision_related_object_specs())
-        .find_map(|spec| spec_consumed_tag(&spec).cloned())
+    effect.0.cost_choice_bindings().required.into_iter().next()
 }
 
 /// The choice tag a cost component consumes (see [`effect_consumed_choice_tag`]).
@@ -456,67 +299,23 @@ pub(crate) fn tagged_choice_pair_at(
     (cost_consumed_choice_tag(consumer).as_ref() == Some(&choose.tag)).then_some(choose)
 }
 
-/// Check the "choose objects, then consume them" pair starting at
-/// `components[idx]` together, building a representative legal selection for
-/// the choice without prompting.
-pub(crate) fn tagged_choice_pair_is_payable(
-    game: &GameState,
-    payer: PlayerId,
-    source: ObjectId,
+/// An object-choice cost cannot also consume the source state reserved for
+/// its tap/untap symbol. The selected action owner declares the state change;
+/// scoped sources retain their own identity rather than borrowing this claim.
+pub(crate) fn cost_choice_reserves_source_state(
+    choose: &crate::effects::ChooseObjectsEffect,
+    consumer: &Cost,
     components: &[Cost],
-    idx: usize,
-    reason: crate::costs::PaymentReason,
-    x_value: Option<u32>,
 ) -> bool {
-    let Some(choose) = tagged_choice_pair_at(components, idx) else {
-        return false;
-    };
-    let mut choose_cost = components[idx].clone();
-    let consumer = &components[idx + 1];
-    // "{T}, Tap two untapped creatures you control": the source is tapped by
-    // its own {T} component, so it can't also be one of the chosen untapped
-    // creatures (Harmonized Trio). Likewise {Q} consumes its tapped state
-    // before a separate written untap cost (Crackleburr).
-    let state_change = consumer.effect_ref().and_then(|effect| {
-        let mut effect = effect;
-        while let Some(inner) = effect.transparent_child_effect() {
-            effect = inner;
-        }
-        if effect.downcast_ref::<crate::effects::TapEffect>().is_some() {
-            Some(true)
-        } else if effect
-            .downcast_ref::<crate::effects::UntapEffect>()
-            .is_some()
-        {
-            Some(false)
-        } else {
-            None
-        }
-    });
-    let source_state_reserved = match state_change {
+    let state_change = consumer
+        .effect_ref()
+        .and_then(|effect| effect.0.as_cost_executable())
+        .and_then(|cost| cost.cost_choice_tap_state());
+    match state_change {
         Some(true) => choose.filter.untapped && components.iter().any(Cost::requires_tap),
         Some(false) => choose.filter.tapped && components.iter().any(Cost::requires_untap),
         None => false,
-    };
-    if source_state_reserved && !choose.filter.other {
-        let mut choose = choose.clone();
-        choose.filter.other = true;
-        choose_cost = Cost::validated_effect(crate::effect::Effect::new(choose));
     }
-    let pair = TotalCost::from_costs(vec![choose_cost, consumer.clone()]);
-    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
-    let mut execution_ctx =
-        crate::effects::ExecutionContext::new(source, payer, &mut decision_maker);
-    execution_ctx.x_value = x_value;
-    crate::special_actions::can_pay_total_cost_with_reason_in_context(
-        game,
-        payer,
-        source,
-        &pair,
-        reason,
-        &mut execution_ctx,
-    )
-    .is_ok()
 }
 
 /// The branch of an optional spell cost that is paid when the optional cost

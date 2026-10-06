@@ -732,6 +732,7 @@ mod tests {
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 Some(ObjectSnapshot {
+                    stack_kind: None,
                     ability_origins: None,
                     chosen_subtype: None,
                 numeric_choice_memory: None,

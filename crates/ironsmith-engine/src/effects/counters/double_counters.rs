@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
-use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
+use crate::effects::{CompletedEffectOutputs, EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 use crate::target::ChooseSpec;
@@ -41,111 +41,95 @@ impl EffectExecutor for DoubleCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         game.clear_pending_decision_controllers();
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            if double_counters_targets_players(&self.target) {
-                let player_ids = resolve_players_from_spec(game, &self.target, ctx)?;
-                let mut outcomes = Vec::new();
-                for player_id in player_ids {
-                    for (counter_type, count) in
-                        player_counter_counts(game, player_id, self.counter_type)?
-                    {
-                        let event = crate::events::Event::put_player_counters(
-                            player_id,
-                            counter_type,
-                            count,
-                            ctx.cause.clone(),
-                        )
-                        .with_provenance(ctx.provenance);
-                        outcomes.push(crate::effects::counters::execute_player_counter_placement(
-                            game, ctx, event,
-                        )?);
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                // Capture every authored amount before any placement or its
+                // replacement additions can change a later recipient's counters.
+                let mut requests = Vec::new();
+                if double_counters_targets_players(&self.target) {
+                    for player_id in resolve_players_from_spec(game, &self.target, ctx)? {
+                        for (counter_type, count) in
+                            player_counter_counts(game, player_id, self.counter_type)?
+                        {
+                            requests.push(
+                                crate::events::Event::put_player_counters(
+                                    player_id,
+                                    counter_type,
+                                    count,
+                                    ctx.cause.clone(),
+                                )
+                                .with_provenance(ctx.provenance),
+                            );
                         }
                     }
-                }
-
-                return Ok(if outcomes.is_empty() {
-                    EffectOutcome::resolved()
                 } else {
-                    EffectOutcome::aggregate_summing_counts(outcomes)
-                });
-            }
-
-            let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
-            if target_ids.is_empty() {
-                return Ok(EffectOutcome::resolved());
-            }
-
-            let mut outcomes = Vec::new();
-            // One doubling is one simultaneous counter-placing event (CR 603.2c).
-            let mut counter_batch: Option<crate::provenance::ProvNodeId> = None;
-            for target_id in target_ids {
-                let counters = game
-                    .object(target_id)
-                    .map(|object| {
-                        object
-                            .counters
-                            .iter()
-                            .filter_map(|(counter_type, count)| {
-                                (*count > 0
+                    for target_id in resolve_objects_for_effect(game, ctx, &self.target)? {
+                        if let Some(object) = game.object(target_id) {
+                            for (&counter_type, &count) in &object.counters {
+                                if count > 0
                                     && self
                                         .counter_type
-                                        .is_none_or(|wanted| wanted == *counter_type))
-                                .then_some((*counter_type, *count))
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-
-                for (counter_type, count) in counters {
-                    let event = crate::events::Event::put_counters(
-                        target_id,
-                        counter_type,
-                        count,
-                        ctx.cause.clone(),
-                    )
-                    .with_provenance(ctx.provenance);
-                    let mut outcome = super::execute_object_counter_placement(game, ctx, event)?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
-                    for event in &mut outcome.events {
-                        if event.kind() == crate::events::EventKind::MarkersChanged {
-                            let batch = *counter_batch.get_or_insert_with(|| {
-                                game.alloc_child_event_provenance(
-                                    ctx.provenance,
-                                    crate::events::EventKind::MarkersChanged,
-                                )
-                            });
-                            *event = event.clone().with_simultaneous_batch(batch);
+                                        .is_none_or(|wanted| wanted == counter_type)
+                                {
+                                    requests.push(
+                                        crate::events::Event::put_counters(
+                                            target_id,
+                                            counter_type,
+                                            count,
+                                            ctx.cause.clone(),
+                                        )
+                                        .with_provenance(ctx.provenance),
+                                    );
+                                }
+                            }
                         }
                     }
-                    outcomes.push(outcome);
                 }
-            }
-
-            let outcome = if outcomes.is_empty() {
-                EffectOutcome::resolved()
-            } else {
-                EffectOutcome::aggregate_summing_counts(outcomes)
-            };
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() && result.is_ok() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        result
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                // The shared owner prepares replacements, commits and groups
+                // originals, freezes observations, then runs deferred additions.
+                let children = super::execute_counter_batch_with_outputs(game, ctx, requests)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let outcome = if children.is_empty() {
+                    EffectOutcome::resolved()
+                } else {
+                    EffectOutcome::aggregate_summing_counts(
+                        children.iter().map(|child| child.outcome.clone()),
+                    )
+                };
+                let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
+                for child in children {
+                    outputs.retain_owned_child(child);
+                }
+                Ok(outputs)
+            },
+        )
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

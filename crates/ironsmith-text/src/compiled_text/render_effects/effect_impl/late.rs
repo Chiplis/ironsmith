@@ -6002,6 +6002,32 @@
         );
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
+        if !vote.payloads.is_empty() {
+            let mut initiation = vote.clone();
+            initiation.payloads.clear();
+            if let crate::effects::VoteChoice::NamedOptions(options) = &mut initiation.choice {
+                for option in options {
+                    option.effects_per_vote.clear();
+                }
+            }
+            let mut clauses = vec![describe_effect(&Effect::new(initiation))];
+            for payload in &vote.payloads {
+                let clause = match payload {
+                    ironsmith_core::VotePayload::Effects(effects) => describe_effect_list(effects),
+                    ironsmith_core::VotePayload::ForEachVote { option, effects } => format!(
+                        "For each {} vote, {}",
+                        option.to_ascii_lowercase(),
+                        lowercase_first(describe_effect_list(effects).trim().trim_end_matches('.')),
+                    ),
+                };
+                if !clause.trim().is_empty() {
+                    clauses.push(clause);
+                }
+            }
+            return clauses.into_iter().map(|clause| {
+                clause.trim().trim_end_matches('.').to_string()
+            }).collect::<Vec<_>>().join(". ");
+        }
         if let Some(compact) = describe_named_vote_per_vote_effects(vote) {
             return compact;
         }

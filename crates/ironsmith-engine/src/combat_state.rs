@@ -12,8 +12,7 @@ use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::{
-    can_attack_target, can_block, has_vigilance_with_game, maximum_blockers,
-    minimum_blockers_with_game,
+    can_attack_target, can_block, maximum_blockers, minimum_blockers_with_game,
 };
 use crate::static_abilities::StaticAbility;
 use crate::zone::Zone;
@@ -312,6 +311,8 @@ pub enum CombatError {
         blocker: ObjectId,
         attacker: ObjectId,
     },
+    /// The shared declaration procedure rejected the whole declaration.
+    InvalidDeclaration(String),
     /// Checked cost evaluation failed; this is not an illegal declaration.
     ExecutionFailed(crate::effects::ExecutionError),
 }
@@ -327,6 +328,7 @@ impl std::fmt::Display for CombatError {
         }
 
         match self {
+            CombatError::InvalidDeclaration(message) => write!(f, "Invalid declaration: {message}"),
             CombatError::ExecutionFailed(error) => write!(f, "Combat cost execution failed: {error}"),
             CombatError::CreatureCannotAttack(id) => {
                 write!(f, "Creature {} cannot attack", object_label(id))
@@ -533,23 +535,6 @@ pub(crate) fn max_creatures_can_attack_defending_player_each_combat(
         .min()
 }
 
-fn generic_mana_cost(amount: u32) -> crate::mana::ManaCost {
-    use crate::mana::ManaSymbol;
-
-    if amount == 0 {
-        return crate::mana::ManaCost::new();
-    }
-
-    let mut pips = Vec::new();
-    let mut remaining = amount;
-    while remaining > 0 {
-        let chunk = remaining.min(u8::MAX as u32) as u8;
-        pips.push(vec![ManaSymbol::Generic(chunk)]);
-        remaining -= chunk as u32;
-    }
-    crate::mana::ManaCost::from_pips(pips)
-}
-
 /// Declares attackers for combat.
 ///
 /// This function validates all attackers and taps those without vigilance.
@@ -571,7 +556,6 @@ pub fn declare_attackers(
     let active_player = game.turn.active_player;
     let declared_attackers: Vec<ObjectId> = declarations.iter().map(|(id, _)| *id).collect();
     let all_effects = game.all_continuous_effects();
-    let mut additional_attack_mana_cost = 0u32;
 
     // First pass: validate all declarations
     let mut seen_attackers = std::collections::HashSet::new();
@@ -706,13 +690,6 @@ pub fn declare_attackers(
             {
                 return Err(CombatError::CreatureCannotAttack(*creature_id));
             }
-            if let Some(cost) = ability.generic_attack_mana_cost_for_source(
-                game,
-                creature.id,
-                game.controller_of(creature),
-            ) {
-                additional_attack_mana_cost = additional_attack_mana_cost.saturating_add(cost);
-            }
         }
     }
 
@@ -754,83 +731,31 @@ pub fn declare_attackers(
         }
     }
 
-    // Pay non-mana attacker costs from "can't attack unless ..." restrictions.
-    for (creature_id, _target) in &declarations {
-        let Some(creature) = game.object(*creature_id) else {
-            return Err(CombatError::NotOnBattlefield(*creature_id));
-        };
-        let creature_source = creature.id;
-        let creature_controller = game.controller_of(creature);
-        let abilities = game
-            .calculated_characteristics(creature_source)
-            .map(|c| c.static_abilities)
-            .unwrap_or_else(|| {
-                creature
-                    .abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        crate::ability::AbilityKind::Static(static_ability) => {
-                            Some(static_ability.clone())
-                        }
-                        _ => None,
-                    })
-                    .collect()
-            });
-        for ability in abilities {
-            if let Some(result) =
-                ability.pay_non_mana_attack_cost(game, creature_source, creature_controller)
-                && result.is_err()
-            {
-                return Err(CombatError::CreatureCannotAttack(*creature_id));
-            }
+    // The game-loop declaration owner stages taps before costs, freezes
+    // vigilance and attack requirements, restores failed payments, and owns
+    // attack history plus trigger qualification. This API retains its typed
+    // declaration diagnostics but must not own a second commit procedure.
+    let declarations = declarations
+        .into_iter()
+        .map(|(creature, target)| crate::decision::AttackerDeclaration { creature, target })
+        .collect::<Vec<_>>();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    match crate::game_loop::apply_attacker_declarations(
+        game,
+        combat,
+        &mut trigger_queue,
+        &declarations,
+    ) {
+        Ok(()) => {
+            game.defer_trigger_entries(trigger_queue.take_all());
+            Ok(())
         }
+        Err(crate::game_loop::GameLoopError::CombatError(error)) => Err(error),
+        Err(crate::game_loop::GameLoopError::ExecutionFailed(error)) => {
+            Err(CombatError::ExecutionFailed(error))
+        }
+        Err(error) => Err(CombatError::InvalidDeclaration(error.to_string())),
     }
-
-    // Pay aggregated generic mana attacker costs after validation.
-    if additional_attack_mana_cost > 0
-        && let Some((first_attacker, _)) = declarations.first()
-    {
-        let mana_cost = generic_mana_cost(additional_attack_mana_cost);
-        if !game.can_pay_mana_cost(active_player, None, &mana_cost, 0)
-            || !game.try_pay_mana_cost(active_player, None, &mana_cost, 0)
-                .map_err(CombatError::ExecutionFailed)?
-        {
-            return Err(CombatError::CreatureCannotAttack(*first_attacker));
-        }
-    }
-
-    let had_to_attack: HashSet<ObjectId> = declarations
-        .iter()
-        .filter_map(|(creature_id, _)| {
-            let creature = game.object(*creature_id)?;
-            crate::rules::combat::must_attack_with_game(creature, game).then_some(*creature_id)
-        })
-        .collect();
-
-    // Second pass: apply declarations and tap attackers without vigilance
-    combat.block_declaration_complete = false;
-    for (creature_id, target) in declarations {
-        // Add to attackers list
-        combat.attackers.push(AttackerInfo {
-            creature: creature_id,
-            target,
-        });
-
-        // Initialize empty blocker list
-        combat.blockers.insert(creature_id, Vec::new());
-        if had_to_attack.contains(&creature_id) {
-            combat.had_to_attack_this_combat.insert(creature_id);
-        }
-
-        // Tap the creature unless it has vigilance
-        let creature = game.object(creature_id).unwrap();
-        if !has_vigilance_with_game(creature, game) {
-            game.tap(creature_id);
-        }
-    }
-    combat.record_attacked_permanent_types(game);
-
-    Ok(())
 }
 
 /// Declares blockers for combat.

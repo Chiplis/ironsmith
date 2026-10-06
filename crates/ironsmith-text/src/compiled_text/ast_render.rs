@@ -30411,6 +30411,11 @@ fn describe_structural_equipment_token_keyword(ability: &Ability) -> Option<Stri
     if !matches!(&attach.target, ChooseSpec::Tagged(found) if found == tag) {
         return None;
     }
+    if create.text_roles.as_ref() != Some(&ironsmith_core::TokenTextRoles::rules_implied(
+        ironsmith_core::TokenNameTextRole::SubtypeDerived, create.token.abilities.len()))
+    {
+        return None;
+    }
     if is_living_weapon_germ_token(&create.token) {
         return Some("Living weapon".to_string());
     }
@@ -30442,7 +30447,6 @@ fn tagged_create_token_effect_for_keyword(
 
 fn is_living_weapon_germ_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Phyrexian Germ"
         && token.card.colors() == crate::color::ColorSet::BLACK
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Phyrexian, Subtype::Germ]
@@ -30458,7 +30462,6 @@ fn is_living_weapon_germ_token(token: &CardDefinition) -> bool {
 
 fn is_job_select_hero_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Hero"
         && token.card.colors().is_empty()
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Hero]
@@ -30474,7 +30477,6 @@ fn is_job_select_hero_token(token: &CardDefinition) -> bool {
 
 fn is_for_mirrodin_rebel_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Rebel"
         && token.card.colors() == crate::color::ColorSet::RED
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Rebel]

@@ -54,7 +54,7 @@ impl EffectExecutor for RegisterEnterWithCountersReplacementEffect {
                 effect: replacement,
                 mode: self.mode,
             }
-            .execute(game, ctx)?;
+            .execute_child(game, ctx)?;
         }
         Ok(EffectOutcome::resolved())
     }

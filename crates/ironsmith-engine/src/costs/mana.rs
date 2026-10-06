@@ -17,12 +17,26 @@ pub(crate) fn pay_mana_cost_with_choices(
     reason: crate::costs::PaymentReason,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Result<(), CostPaymentError> {
-    pay_mana_cost_with_choices_in_context(game, payer, source, cost, x_value, reason, decision_maker, None)
+    pay_mana_cost_with_choices_in_context(
+        game,
+        payer,
+        source,
+        cost,
+        x_value,
+        reason,
+        decision_maker,
+        None,
+    )
 }
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pay_mana_cost_with_choices_in_context(
-    game: &mut GameState, payer: crate::ids::PlayerId, source: Option<crate::ids::ObjectId>, cost: &ManaCost,
-    x_value: u32, reason: crate::costs::PaymentReason, decision_maker: &mut dyn crate::decision::DecisionMaker,
+    game: &mut GameState,
+    payer: crate::ids::PlayerId,
+    source: Option<crate::ids::ObjectId>,
+    cost: &ManaCost,
+    x_value: u32,
+    reason: crate::costs::PaymentReason,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
     execution: Option<&crate::effects::ExecutionContextCheckpoint>,
 ) -> Result<(), CostPaymentError> {
     use crate::mana::ManaSymbol;
@@ -115,19 +129,22 @@ pub(crate) fn pay_mana_cost_with_choices_in_context(
         };
         pips[index] = vec![chosen];
     }
-    if game.try_pay_mana_cost_with_payment_options_in_context(
-        payer,
-        source,
-        &cost.with_pips(pips),
-        x_value,
-        reason,
-        &policy,
-        true,
-        false,
-        false,
-        decision_maker,
-        execution,
-    ).map_err(CostPaymentError::ExecutionFailed)? {
+    if game
+        .try_pay_mana_cost_with_payment_options_in_context(
+            payer,
+            source,
+            &cost.with_pips(pips),
+            x_value,
+            reason,
+            &policy,
+            true,
+            false,
+            false,
+            decision_maker,
+            execution,
+        )
+        .map_err(CostPaymentError::ExecutionFailed)?
+    {
         Ok(())
     } else {
         Err(CostPaymentError::InsufficientMana)
@@ -166,6 +183,7 @@ impl CostPayer for ManaPaymentCost {
             request.allow_mana_abilities = false;
             request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
             request.activation_excluded_sources.extend(ctx.interactive_mana_exclusions.iter().flatten().copied());
+            request.allow_black_life = game.player_can_pay_black_with_life_for_reason(ctx.payer, Some(ctx.source), ctx.reason);
             return crate::mana_payment::check_mana_payment(game, &request)
                 .map_err(|error| match error {
                     crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
@@ -182,6 +200,7 @@ impl CostPayer for ManaPaymentCost {
             x_value,
             ctx.reason,
         ) {
+            if let Some(error) = game.token_resource_failure() { return Err(CostPaymentError::ExecutionFailed(error)); }
             return Err(CostPaymentError::InsufficientMana);
         }
 
@@ -193,30 +212,53 @@ impl CostPayer for ManaPaymentCost {
         game: &GameState,
         ctx: &CostContext,
     ) -> Result<(), CostPaymentError> {
+        let view = crate::derived_view::DerivedGameView::new(game);
+        self.can_potentially_pay_with_query(
+            game,
+            ctx,
+            &crate::costs::PotentialManaQuery::new(&view),
+        )
+    }
+
+    fn can_potentially_pay_with_query(
+        &self,
+        game: &GameState,
+        ctx: &CostContext,
+        query: &crate::costs::PotentialManaQuery<'_, '_>,
+    ) -> Result<(), CostPaymentError> {
         let x_value = ctx.x_value.unwrap_or(0);
-        if self.cost.has_waterbend_obligation() {
-            let mut request = crate::mana_payment::ManaPaymentRequest::new(ctx.payer, ctx.source, ctx.reason, self.cost.clone())
-                .with_x(x_value).with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
+        if self.cost.has_waterbend_obligation() || query.payment.is_some()
+            || !ctx.reserved_tap_sources.is_empty()
+        {
+            let mut request = crate::mana_payment::ManaPaymentRequest::new(
+                ctx.payer, ctx.source, ctx.reason, self.cost.clone(),
+            ).with_x(x_value).with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
             request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
             request.activation_excluded_sources.extend(ctx.interactive_mana_exclusions.iter().flatten().copied());
-            request.allow_black_life = game.player_can_pay_black_with_life_for_reason(ctx.payer, Some(ctx.source), ctx.reason);
+            if let Some(outer) = query.payment {
+                request.activation_excluded_sources.extend(outer.activation_excluded_sources.iter().copied());
+                request.reserved_tap_sources.extend(outer.reserved_tap_sources.iter().copied());
+                request.reserved_graveyard_sources.extend(outer.reserved_graveyard_sources.iter().copied());
+                request.reserved_permanent_sources.extend(outer.reserved_permanent_sources.iter().copied());
+            }
+            request.allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                ctx.payer, Some(ctx.source), ctx.reason,
+            );
             return crate::mana_payment::check_mana_payment(game, &request).map_err(|failure| match failure {
                 crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
                 _ => CostPaymentError::InsufficientMana,
             });
         }
-
-        let view = crate::derived_view::DerivedGameView::new(game);
-        if !view.can_potentially_pay_with_reason(
+        if !query.view.can_potentially_pay_with_reason(
             ctx.payer,
             Some(ctx.source),
             &self.cost,
             x_value,
             ctx.reason,
         ) {
+            if let Some(error) = game.token_resource_failure() { return Err(CostPaymentError::ExecutionFailed(error)); }
             return Err(CostPaymentError::InsufficientMana);
         }
-
         Ok(())
     }
 

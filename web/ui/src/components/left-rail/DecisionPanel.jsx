@@ -1,7 +1,10 @@
+import { priorityStepKey } from '@/lib/priority-stops';
+import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
+import SurrenderConfirmation from "@/components/decisions/SurrenderConfirmation";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
@@ -9,7 +12,7 @@ import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText, translateKnownDecisionText } from "@/components/decisions/decisionText";
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
-import { currentPriorityPhaseLabel, isMainPhase, nextPriorityAdvanceLabel } from "@/lib/constants";
+import { currentPriorityPhaseLabel, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import {
   buildBattlefieldFamilies,
@@ -18,8 +21,7 @@ import {
 } from "@/lib/priority-action-groups";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Flag, Undo2 } from "lucide-react";
+import { Undo2 } from "lucide-react";
 import { useI18n } from "@/i18n/I18nContext";
 import { endOfMatchDisclosureEntries, endOfMatchDisclosureStatusLabel } from "@/lib/end-of-match-disclosure-view";
 
@@ -106,19 +108,19 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     state,
     dispatch,
     cancelDecision,
+    postActionPriorityWindow,
     holdRule,
-    setHoldRule,
     multiplayer,
-    setStatus,
     startRematchSideboarding,
     readyForRematch,
     submitMultiplayerCommand,
     playerAccentOverrides,
+    surrenderRequested,
+    setSurrenderRequested,
   } = useGame();
   const { t } = useI18n();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
-  const [surrendering, setSurrendering] = useState(false);
   const [visibleHoverGroups, setVisibleHoverGroups] = useState([]);
   const hideHoverGroupsTimerRef = useRef(null);
   const decision = state?.decision;
@@ -184,12 +186,12 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
         ? ""
         : holdingPriority
           ? translateKnownDecisionText(passAction?.label || "Pass priority", t)
-          : `-> ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize, t)}`);
+          : `-> ${nextPriorityAdvanceLabel(state?.phase, priorityStepKey(state), stackSize, t)}`);
   const translatedPassCurrentLabel = resolvingStackPriority
     ? t("action.resolve")
     : (hasCustomPassLabel
         ? translateKnownDecisionText(passAction.label, t)
-        : currentPriorityPhaseLabel(state?.phase, state?.step, t));
+        : currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t));
   const translatedPassHelpAdvanceLabel = resolvingStackPriority
     ? t("action.resolve")
     : (hasCustomPassLabel ? translateKnownDecisionText(passAction.label, t) : translatedPassAdvanceLabel);
@@ -201,16 +203,14 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     && !localPlayerLeft
     && submitMultiplayerCommand
   );
-  const canSurrender = Boolean(
-    showSurrender
-    && !surrendering
-    && !multiplayer?.submittingAction
-    && isPriorityDecision
-    && canAct
-    && samePlayerId(state?.active_player, localPlayerIndex)
-    && Number(stackSize || 0) === 0
-    && isMainPhase(state?.phase)
-  );
+  const confirmingSurrender = surrenderRequested && showSurrender;
+
+  useEffect(() => {
+    if (!showSurrender && surrenderRequested) {
+      const timer = setTimeout(() => setSurrenderRequested(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [showSurrender, surrenderRequested, setSurrenderRequested]);
 
   const undoAvailable = !!state?.cancelable && (!decision || canAct);
   const undoDisabled = cancelling || !undoAvailable;
@@ -281,37 +281,6 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     startRematchSideboarding,
   ]);
 
-  const handleSurrender = useCallback(async () => {
-    if (!canSurrender) return;
-    const playerName = playerDisplayName(players, localPlayer) || `Player ${Number(localPlayerIndex) + 1}`;
-    if (!window.confirm(ui("Surrender as {0}? This will be signed and broadcast to the match.", { 0: playerName }))) {
-      return;
-    }
-    setSurrendering(true);
-    try {
-      await submitMultiplayerCommand?.(
-        {
-          type: "forfeit_player",
-          player: Number(localPlayerIndex),
-          reason: "surrender",
-        },
-        `${playerName} surrendered`
-      );
-    } catch (err) {
-      setStatus?.(`Surrender failed: ${err?.message || err}`, true);
-    } finally {
-      setSurrendering(false);
-    }
-  }, [
-    canSurrender,
-    localPlayer,
-    localPlayerIndex,
-    players,
-    setStatus,
-    submitMultiplayerCommand,
-    ui,
-  ]);
-
   return (
     <KeywordHelpersProvider enabled={false}>
       <section className="relative z-30 flex h-full min-h-0 flex-1 flex-col overflow-visible border-t border-[rgba(128,107,78,0.46)] bg-[linear-gradient(180deg,rgba(41,35,31,0.98),rgba(15,14,14,0.98))] backdrop-blur-[1.5px]">
@@ -362,6 +331,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 </div>
               )}
             </div>
+          ) : confirmingSurrender ? (
+            <div className="flex h-full min-h-[110px] items-center px-2 text-[16px] font-bold text-[#ff9b9b]">
+              {t("action.surrenderConfirm")}
+            </div>
           ) : decision ? (
             <DecisionRouter
               decision={decision}
@@ -376,7 +349,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
         </div>
 
         <div className="relative shrink-0 px-1.5 py-1 border-t border-[rgba(128,107,78,0.36)]">
-          {isPriorityDecision && (
+          {!confirmingSurrender && isPriorityDecision && (
             <div
               className={`overflow-hidden pointer-events-none transition-all duration-200 ease-out ${
                 showHoverOptions
@@ -438,10 +411,17 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             </div>
           )}
 
-          {!showGameOverPanel && isPriorityDecision && passAction && (
+          {confirmingSurrender && (
+            <SurrenderConfirmation />
+          )}
+
+          {!confirmingSurrender && !showGameOverPanel && isPriorityDecision && passAction && (
             <div className="pb-1">
               <div className="relative">
                 <PeerWaitPopover peerWait={peerWait}>
+                  {postActionPriorityWindow && canAct && !peerWaiting ? (
+                    <PriorityHoldButton className="h-auto min-h-10 w-full px-3 py-1.5 text-[15px] font-bold uppercase" disabled={peerWaitLocked} />
+                  ) : (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -465,7 +445,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                         advanceLabel={translatedPassAdvanceLabel}
                       />
                     )}
-                  </Button>
+                  </Button>                  )}
+
                 </PeerWaitPopover>
                 {!peerWaiting && (
                   <PhaseHelpPopover
@@ -483,23 +464,6 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             <h3 className="m-0 text-[12px] font-bold whitespace-nowrap uppercase tracking-wider text-[#8ec4ff]">{t("action.action")}</h3>
             <span className="text-muted-foreground text-[11px] truncate flex-1 min-w-0">{ui(metaText)}</span>
             <div className="flex items-center gap-1">
-              {showSurrender ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-5 w-5 p-0 shrink-0 transition-all ${
-                    canSurrender
-                      ? "text-[#f7b267]/70 hover:bg-[#f7b267]/10 hover:text-[#ffd7a1] hover:shadow-[0_0_8px_rgba(247,178,103,0.15)]"
-                      : "text-muted-foreground/35 opacity-65"
-                  }`}
-                  disabled={!canSurrender}
-                  onClick={handleSurrender}
-                  title={ui(canSurrender ? t("action.surrender") : t("action.surrenderSorcery"))}
-                  aria-label={ui(canSurrender ? t("action.surrender") : t("action.surrenderUnavailable"))}
-                >
-                  <Flag className="h-3.5 w-3.5" />
-                </Button>
-              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
@@ -508,21 +472,14 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                     ? "text-[#f76969]/60 hover:text-[#f76969] hover:bg-[#f76969]/10 hover:shadow-[0_0_8px_rgba(247,105,105,0.15)]"
                     : "text-muted-foreground/35 opacity-65"
                 }`}
-                disabled={undoDisabled}
+                disabled={undoDisabled || confirmingSurrender}
                 onClick={handleCancel}
                 title={ui(undoAvailable ? t("action.undo") : t("action.undoUnavailable"))}
                 aria-label={ui(undoAvailable ? t("action.undo") : t("action.undoUnavailable"))}
               >
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
-              <label className="flex items-center gap-1 shrink-0 text-[11px] uppercase tracking-wider cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
-                <Checkbox
-                  checked={holdRule === "always"}
-                  onCheckedChange={(v) => setHoldRule(v ? "always" : "never")}
-                  className="h-3 w-3"
-                />
-                {t("action.hold")}
-              </label>
+
             </div>
           </div>
         </div>

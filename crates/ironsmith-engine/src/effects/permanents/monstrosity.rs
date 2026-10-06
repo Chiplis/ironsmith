@@ -1,12 +1,10 @@
 //! Monstrosity effect implementation.
 
-use crate::effect::{Effect, EffectOutcome};
-use crate::effects::helpers::resolve_value;
-use crate::effects::{EffectExecutor, PutCountersEffect};
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, execute_effect};
+use crate::effect::EffectOutcome;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
-use crate::target::ChooseSpec;
 pub use ironsmith_core::MonstrosityEffect;
 
 /// Effect that makes a creature monstrous.
@@ -37,58 +35,82 @@ impl EffectExecutor for MonstrosityEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let n_value = resolve_value(game, &self.n, ctx)?.max(0) as u32;
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        // Monstrosity targets the source (the creature with the ability)
-        let source_id = ctx.source;
-
-        // Check if already monstrous
-        if game.object(source_id).is_none() {
-            return Ok(EffectOutcome::target_invalid());
-        }
-        if game.is_monstrous(source_id) {
-            // Already monstrous - do nothing
-            return Ok(EffectOutcome::count(0));
-        }
-
-        // Put N +1/+1 counters on it and mark as monstrous
-        // The counter events reach trigger matching only through the outcome,
-        // so they are chained into ours (CR 701.37a, 603.2).
-        let mut counter_events = Vec::new();
-        if n_value > 0 {
-            let counters_outcome = ctx.with_temp_targets(vec![ResolvedTarget::Object(source_id)], |ctx| {
-                let counters_effect = PutCountersEffect::new(
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let source = ctx.source;
+                if game.object(source).is_none() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
+                }
+                if !game
+                    .object(source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    || game.is_phased_out(source)
+                    || super::designation::PermanentDesignation::Monstrous.is_present(game, source)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let amount = crate::effects::helpers::resolve_nonnegative_u32(game, &self.n, ctx)?;
+                let event = crate::events::Event::put_counters(
+                    source,
                     CounterType::PlusOnePlusOne,
-                    n_value,
-                    ChooseSpec::AnyTarget,
+                    amount,
+                    ctx.cause.clone(),
+                )
+                .with_provenance(ctx.provenance);
+                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
+                    game, ctx, event,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let designation = super::designation::apply_designation(
+                    game,
+                    ctx,
+                    source,
+                    super::designation::PermanentDesignation::Monstrous,
+                    amount,
+                )?;
+                let outcome = EffectOutcome::aggregate_with_primary_result(
+                    designation.summary_projection(),
+                    [placement.outcome.clone(), designation.clone()],
                 );
-                execute_effect(game, &Effect::new(counters_effect), ctx)
-            })?;
-            counter_events = counters_outcome.events;
+                let mut outputs = placement;
+                outputs
+                    .retain_batch_children([CompletedEffectOutputs::aggregate_only(designation)]);
+                Ok(outputs.project_aggregate(outcome))
+            },
+        );
+        // Preserve this adapter's existing neutral result for a suspended child,
+        // including a child that failed after opening its decision. The shared
+        // transaction owns rollback; an ordinary failure still propagates.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
-        game.set_monstrous(source_id);
-        if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
-            game.record_ui_effect_event(
-                "level_up",
-                Some(ctx.controller),
-                None,
-                vec![stable_id],
-                Some(i64::from(n_value)),
-                Some("monstrous".to_string()),
-            );
-        }
-
-        // "When this creature becomes monstrous" triggers now, and its X is
-        // the monstrosity X (CR 701.37b-c).
-        Ok(
-            EffectOutcome::monstrosity_applied(source_id, n_value)
-                .with_events(counter_events)
-                .with_event(
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::BecameMonstrousEvent::new(source_id, ctx.controller, n_value),
-                    ctx.provenance,
-                ),
-            ),
-        )
+        result
     }
 }

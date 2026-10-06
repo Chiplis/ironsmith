@@ -301,7 +301,7 @@ fn job_select_adds_etb_create_and_attach_trigger() {
         .unwrap();
     assert_eq!(create.count, Value::Fixed(1));
     assert_eq!(create.controller, PlayerFilter::You);
-    assert_eq!(create.token.card.name, "Hero");
+    assert_eq!(create.token.card.name, "Hero Token");
     assert_eq!(create.token.card.subtypes, vec![Subtype::Hero]);
     assert!(create.token.card.colors().is_empty());
     assert_eq!(

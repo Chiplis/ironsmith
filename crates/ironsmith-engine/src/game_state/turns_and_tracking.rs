@@ -541,10 +541,9 @@ impl GameState {
         player: PlayerId,
     ) -> impl Iterator<Item = &TurnEventRecord> {
         self.turn_store
-            .action_history_by_player
-            .get(&player)
-            .into_iter()
-            .flat_map(|records| records.iter().map(Arc::as_ref))
+            .action_history
+            .iter()
+            .filter(move |record| record.involves_player(player))
     }
 
     /// Actions from a player's most recent turn.
@@ -3473,41 +3472,30 @@ impl GameState {
                     vec![chosen.clone()],
                 );
             }
-            let source_is_aura = source_obj.subtypes.contains(&crate::types::Subtype::Aura)
-                || (source_obj
-                    .card_types
-                    .contains(&crate::types::CardType::Enchantment)
-                    && source_obj.aura_attach_filter.is_some());
-            let source_is_equipment = source_obj
-                .subtypes
-                .contains(&crate::types::Subtype::Equipment);
             if let Some(attached_target) = source_obj.attached_to {
                 match attached_target {
                     AttachmentTarget::Object(attached_id) => {
                         if let Some(attached_obj) = self.object(attached_id) {
                             let attached_snapshot =
                                 crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
-                            if source_is_aura {
+                            // Both authored references name this source's host.
+                            // Copy/type effects can change Aura into Equipment
+                            // without changing the attachment relation or the
+                            // printed fields stored on Object. Read the relation,
+                            // not those fields (or recursively calculated types).
+                            for tag in ["enchanted", "equipped"] {
                                 tagged_objects.insert(
-                                    crate::tag::TagKey::from("enchanted"),
+                                    crate::tag::TagKey::from(tag),
                                     vec![attached_snapshot.clone()],
-                                );
-                            }
-                            if source_is_equipment {
-                                tagged_objects.insert(
-                                    crate::tag::TagKey::from("equipped"),
-                                    vec![attached_snapshot],
                                 );
                             }
                         }
                     }
                     AttachmentTarget::Player(attached_player) => {
-                        if source_is_aura {
-                            tagged_players.insert(
-                                crate::tag::TagKey::from("enchanted"),
-                                vec![attached_player],
-                            );
-                        }
+                        tagged_players.insert(
+                            crate::tag::TagKey::from("enchanted"),
+                            vec![attached_player],
+                        );
                     }
                 }
             }
@@ -3548,6 +3536,7 @@ impl GameState {
             you: Some(controller),
             source,
             source_snapshot: None,
+            source_number_owner: None,
             caster: None,
             prospective_cast: None,
             active_player: self.active_player_id(),
@@ -3562,7 +3551,7 @@ impl GameState {
             your_commanders,
             iterated_player: None,
             x_value: None,
-                counter_removal_declaration: None,
+            counter_removal_declaration: None,
             chosen_player: source.and_then(|source_id| self.chosen_player(source_id)),
             target_players: Vec::new(),
             target_objects: Vec::new(),

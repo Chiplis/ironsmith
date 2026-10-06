@@ -2,9 +2,9 @@
 // live programs and continuations. Never send this journal to another seat.
 const errorMessage = error => String(error?.message ?? error);
 
-export function createLocalAnalysisJournal(runtime, epoch) {
-  let identityOrigin = structuredClone(runtime.getRuntimeIdentityOrigin());
-  const operations = [];
+export function createLocalAnalysisJournal(runtime, epoch, restored = null) {
+  let identityOrigin = structuredClone(restored?.identityOrigin ?? runtime.getRuntimeIdentityOrigin());
+  const operations = restored ? structuredClone(restored.operations) : [];
   const wrappers = new Map();
   const game = new Proxy(runtime, {
     get(target, method) {
@@ -44,6 +44,19 @@ export function createLocalAnalysisJournal(runtime, epoch) {
     },
   });
   return { game, capture: () => ({ epoch, identityOrigin, operations: operations.slice() }) };
+}
+
+// An instance image retains Rust's branch map, but its old JS owners expired.
+// Release those branches and journal their lifetimes so auxiliary replicas do
+// not retain orphan handles or eventually exhaust the native branch limit.
+export function releaseRestoredRuntimeSavepoints(journal) {
+  const handles = new Set();
+  for (const operation of journal.capture().operations) {
+    if (operation.failed) continue;
+    if (operation.method === 'createRuntimeSavepoint') handles.add(operation.handle);
+    if (/^(restore|release)RuntimeSavepoint$/.test(operation.method)) handles.delete(operation.args[0]);
+  }
+  for (const handle of handles) journal.game.releaseRuntimeSavepoint(handle);
 }
 
 export function createLocalAnalysisReplica(createGame) {

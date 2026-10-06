@@ -81,7 +81,7 @@ impl EffectExecutor for PutCounterOfChosenKindEffect {
             };
             outcomes.push(
                 PutCountersEffect::new(counter_type, 1, ChooseSpec::SpecificObject(target_id))
-                    .execute(game, ctx)?,
+                    .execute_child(game, ctx)?,
             );
         }
 

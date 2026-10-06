@@ -225,8 +225,8 @@ pub(crate) fn mana_payment_is_assumed() -> bool {
 }
 
 /// Recompute current timing, targets and non-mana costs without an affordability
-/// search. Only presentation callers may intersect these candidates with a
-/// previously confirmed menu; dispatch never uses this assumption.
+/// search. These candidates may start an announcement; payment remains an
+/// independently validated step before the action can complete.
 pub(crate) fn with_assumed_mana_for_presentation<T>(compute: impl FnOnce() -> T) -> T {
     struct Restore(bool);
     impl Drop for Restore {

@@ -1,11 +1,9 @@
 //! Fight effect implementation.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
-use crate::events::processing::{
-    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
-};
+use crate::events::processing::SimultaneousDamageEvent;
 use crate::events::{DamageTarget, EventKind};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt;
@@ -298,18 +296,22 @@ impl FightEffect {
 }
 
 impl FightEffect {
-    fn execute_bound(
+    fn execute_bound_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         // Direct executor callers need the same checked frame as execute_effect
         // before any target/type/power query can use legacy infallible adapters.
         game.establish_control_transition_boundary()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let (creature1_id, creature2_id) = match self.resolve_fighters(game, ctx) {
             Ok(fighters) => fighters,
-            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(ExecutionError::InvalidTarget) => {
+                return Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::target_invalid(),
+                ));
+            }
             Err(err) => return Err(err),
         };
         let both_valid_fighters = [creature1_id, creature2_id].into_iter().all(|id| {
@@ -319,7 +321,9 @@ impl FightEffect {
                 && game.current_is_creature(id)
         });
         if !both_valid_fighters {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
 
         // Use calculated power so continuous effects (pumps/shrinks) are respected.
@@ -381,21 +385,21 @@ impl FightEffect {
             None,
             fight_events.iter_mut(),
         )?;
-        let source = ctx.source;
-        let controller = ctx.controller;
-        let cause = ctx.cause.clone();
-        let provenance = ctx.provenance;
-        let scope = ctx.replacement.clone();
-        let batch = game.alloc_child_event_provenance(provenance, EventKind::Damage);
-        let outcome =
-            with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
-                let mut parent = ExecutionContext::new(source, controller, dm)
-                    .with_cause(cause)
-                    .with_provenance(provenance);
-                parent.replacement = scope;
-                crate::effects::damage::commit_damage_batch(game, &mut parent, events, Some(batch))
-            })?;
-        Ok(outcome.with_events(fight_events))
+        let batch = game.alloc_child_event_provenance(ctx.provenance, EventKind::Damage);
+        let mut outputs = crate::effects::damage::execute_damage_batch_with_outputs(
+            game,
+            ctx,
+            events,
+            Some(batch),
+        )?;
+        // Keep the existing aggregate projection and captured notification order.
+        // The damage owner supplies participant routing; Fight's notifications
+        // belong to the enclosing action rather than an individual assignment.
+        let outcome = outputs.outcome.clone().with_events(fight_events.clone());
+        outputs.retain_batch_children([CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::resolved().with_events(fight_events),
+        )]);
+        Ok(outputs.project_aggregate(outcome))
     }
 }
 
@@ -405,13 +409,25 @@ impl EffectExecutor for FightEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let result = crate::effects::tokens::execute_resource_transaction_atomically(
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
-            |game, ctx| self.execute_bound(game, ctx),
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(Vec::new())),
+            |game, ctx| self.execute_bound_with_outputs(game, ctx),
         );
         if ctx.decision_maker.awaiting_choice() && result.is_ok() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

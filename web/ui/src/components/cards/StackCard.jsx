@@ -8,6 +8,7 @@ import { samePlayerId } from "@/lib/player-display";
 import { stackEntryAimedObjectIds, stackEntryIsLegalTarget, stackEntryTargetObjectIds } from "@/lib/stack-targets";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import { STACK_EXIT_MS } from "@/hooks/useStackPresence";
 import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
@@ -72,7 +73,7 @@ export default function StackCard({
     () => (targetObjectIdKey ? targetObjectIdKey.split(",").map(Number) : []),
     [targetObjectIdKey],
   );
-  const isLegalTarget = targetingMode && stackEntryIsLegalTarget(targetDecision, entry);
+  const isLegalTarget = !isLeaving && targetingMode && stackEntryIsLegalTarget(targetDecision, entry);
   const castObjectHovered = useCastObjectHovered(targetObjectIds);
   const isCastTargetHovered = isLegalTarget && castObjectHovered;
   // A tile that owns its click (the desktop rails) also owns the pick. The
@@ -184,7 +185,7 @@ export default function StackCard({
         opacity: [1, 0],
         y: [0, -14],
         scale: [1, 0.97],
-        duration: 360,
+        duration: STACK_EXIT_MS,
         ease: "out(2)",
       });
     } else if (isNew) {

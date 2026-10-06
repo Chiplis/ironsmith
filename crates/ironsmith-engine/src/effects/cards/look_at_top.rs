@@ -1,7 +1,7 @@
 //! Look at top cards effect implementation.
 
 use crate::decisions::context::ViewCardsContext;
-use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_player_filter, resolve_player_filter_as_chooser, resolve_value,
@@ -18,16 +18,13 @@ impl EffectExecutor for LookAtTopCardsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        if !self.reveal || ctx.iteration.iterated_player.is_none() { ctx.clear_object_tag(self.tag.as_str()); }
         let Some(player) = game.player(player_id) else {
             return Ok(EffectOutcome::count(0));
         };
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        ctx.clear_object_tag(self.tag.as_str());
         if count == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -37,29 +34,9 @@ impl EffectExecutor for LookAtTopCardsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        // The dispatcher discovers openings from the view callbacks below.
-        // On replay, hydrate only this finite top set and only for its rules
-        // viewers, using openings already authenticated by that dispatcher.
         let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
         let viewers = game.private_information_viewers_for(viewer, crate::zone::Zone::Library);
         game.hydrate_verified_library_replay_view(&top_cards, &viewers, self.reveal);
-        if self.reveal {
-            // A public view requires the owner's authenticated opening of the
-            // exact exposed set. Callback discovery alone is not completion.
-            let private: Vec<_> = top_cards.iter().copied().filter(|id| game.hidden_identity_is_private(*id)).collect();
-            let Some(opened) = game.reveal_private_hidden_cards_publicly(
-                &mut *ctx.decision_maker, player_id, ctx.source, &top_cards,
-                "Reveal cards from the top of a library", false,
-            ) else { return Ok(EffectOutcome::count(0)); };
-            if private.iter().any(|id| !opened.contains(id) && !game.is_publicly_revealed_hidden_card(*id))
-                || top_cards.iter().any(|id| game.is_hidden_card_placeholder(*id))
-            {
-                return Err(ExecutionError::IncompleteEvidence(
-                    "a public top-card reveal lacks an authenticated identity".into(),
-                ));
-            }
-        }
-
         let snapshots: Vec<ObjectSnapshot> = top_cards
             .iter()
             .filter_map(|&id| {
@@ -72,69 +49,21 @@ impl EffectExecutor for LookAtTopCardsEffect {
         }
 
         if self.reveal {
-            ctx.tag_objects_unique(self.tag.clone(), snapshots.clone());
-            ctx.tag_objects(crate::effects::PUBLIC_REVEALED_TAG, snapshots.clone());
-            for viewer_idx in 0..game.players.len() {
-                let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                let view_ctx = ViewCardsContext::new(
-                    viewer,
-                    player_id,
-                    Some(ctx.source),
-                    crate::zone::Zone::Library,
-                    "Reveal cards from the top of a library",
-                )
-                .with_public(true);
-                ctx.decision_maker
-                    .view_cards(game, viewer, &top_cards, &view_ctx);
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let outcome = super::reveal_objects(game, ctx, snapshots, Some(player_id),
+                "Reveal cards from the top of a library", None)?;
+            if !ctx.decision_maker.awaiting_choice() {
+                ctx.tag_objects_unique(self.tag.clone(), outcome.chosen_object_memory().unwrap_or_default().to_vec());
             }
+            Ok(outcome)
         } else {
-            for entitled_viewer in viewers {
-                let view_ctx = ViewCardsContext::new(
-                    entitled_viewer, player_id, Some(ctx.source), crate::zone::Zone::Library,
-                    "Look at cards from the top of a library",
-                );
-                ctx.decision_maker.view_cards(game, entitled_viewer, &top_cards, &view_ctx);
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            }
+            let viewer = resolve_player_filter_as_chooser(game, &self.viewer, ctx)?;
+            let observed = super::look_at_cards(game, ctx, viewer, player_id,
+                crate::zone::Zone::Library, &top_cards, "Look at cards from the top of a library");
             ctx.remember_face_down_exile_viewers(&top_cards, viewer);
-            ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
+            ctx.set_tagged_objects(self.tag.clone(), snapshots);
+            Ok(observed)
         }
-
-        let memory: Vec<_> = snapshots
-            .iter()
-            .map(OutcomeObjectMemory::from_snapshot)
-            .collect();
-        let mut outcome = EffectOutcome::count(snapshots.len() as i32)
-            .with_chosen_object_memory(memory.clone())
-            .with_affected_object_memory(memory);
-        if self.reveal {
-            outcome = outcome.with_events(top_cards.iter().map(|card_id| {
-                let provenance = game.alloc_child_event_provenance(
-                    ctx.provenance, crate::events::EventKind::CardRevealed,
-                );
-                let snapshot = game
-                    .object(*card_id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game));
-                crate::triggers::TriggerEvent::new_with_provenance(
-                    crate::events::CardRevealedEvent::new(
-                        player_id,
-                        *card_id,
-                        crate::zone::Zone::Library,
-                        Some(ctx.source),
-                        snapshot,
-                    ),
-                    provenance,
-                )
-            }));
-        }
-        Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, false);
-            context_checkpoint.restore(ctx);
-        }
-        result
+        })
     }
 
     fn is_read_only_simultaneous_player_action(&self) -> bool {
@@ -213,7 +142,7 @@ mod tests {
         let ids: std::collections::HashSet<_> = outcome.events.iter().map(|event| event.provenance()).collect();
         assert_eq!(ids.len(), 3);
         assert!(!ids.contains(&parent));
-        assert!(ids.iter().all(|id| game.provenance_graph().node(*id).unwrap().parent == Some(parent)));
+        assert!(ids.iter().all(|id| game.provenance_graph().is_descendant_of(*id, parent)));
         let history = &mut game.turn_store.turn_history;
         for event in &outcome.events {
             history.stage_event(event, None, None);

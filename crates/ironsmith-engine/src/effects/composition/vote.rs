@@ -82,17 +82,34 @@ pub type VoteChoice = ironsmith_core::VoteChoice<Effect>;
 /// ```
 pub type VoteEffect = ironsmith_core::VoteEffect<Effect>;
 
+/// Ordered payloads replace legacy option-local bodies. Metadata must follow
+/// the program actually executed, so unused legacy targets are not selected.
+fn vote_child_effect_groups(vote: &VoteEffect) -> Vec<&[Effect]> {
+    if !vote.payloads.is_empty() {
+        return vote
+            .payloads
+            .iter()
+            .map(|payload| payload.effects())
+            .collect();
+    }
+    match &vote.choice {
+        VoteChoice::NamedOptions(options) => options
+            .iter()
+            .map(|option| option.effects_per_vote.as_slice())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 impl EffectExecutor for VoteEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
-        if let VoteChoice::NamedOptions(options) = &self.choice {
-            for option in options {
-                for effect in &option.effects_per_vote {
-                    visitor(effect);
-                }
+        for group in vote_child_effect_groups(self) {
+            for effect in group {
+                visitor(effect);
             }
         }
     }
@@ -105,47 +122,31 @@ impl EffectExecutor for VoteEffect {
         super::vote_runtime::run_vote(self, game, ctx)
     }
 
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        super::vote_runtime::run_vote_with_outputs(self, game, ctx)
+    }
+
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        let VoteChoice::NamedOptions(options) = &self.choice else {
-            return None;
-        };
-        let groups: Vec<&[Effect]> = options
-            .iter()
-            .map(|option| option.effects_per_vote.as_slice())
-            .collect();
+        let groups = vote_child_effect_groups(self);
         super::target_metadata::first_target_spec(&groups)
     }
 
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
-        let VoteChoice::NamedOptions(options) = &self.choice else {
-            return Vec::new();
-        };
-        let groups: Vec<&[Effect]> = options
-            .iter()
-            .map(|option| option.effects_per_vote.as_slice())
-            .collect();
+        let groups = vote_child_effect_groups(self);
         super::target_metadata::related_object_specs(&groups)
     }
 
     fn target_description(&self) -> &'static str {
-        let VoteChoice::NamedOptions(options) = &self.choice else {
-            return "target";
-        };
-        let groups: Vec<&[Effect]> = options
-            .iter()
-            .map(|option| option.effects_per_vote.as_slice())
-            .collect();
+        let groups = vote_child_effect_groups(self);
         super::target_metadata::first_target_description(&groups, "target")
     }
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        let VoteChoice::NamedOptions(options) = &self.choice else {
-            return None;
-        };
-        let groups: Vec<&[Effect]> = options
-            .iter()
-            .map(|option| option.effects_per_vote.as_slice())
-            .collect();
+        let groups = vote_child_effect_groups(self);
         super::target_metadata::first_target_count(&groups)
     }
 }

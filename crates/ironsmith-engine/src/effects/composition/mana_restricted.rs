@@ -46,7 +46,7 @@ impl EffectExecutor for ManaRestrictedEffect {
         ctx.mana
             .mana_usage_restrictions
             .extend(self.restrictions.clone());
-        let result = SequenceEffect::new(self.effects.clone()).execute(game, ctx);
+        let result = SequenceEffect::new(self.effects.clone()).execute_child(game, ctx);
         ctx.mana.mana_usage_restrictions = saved;
         result
     }

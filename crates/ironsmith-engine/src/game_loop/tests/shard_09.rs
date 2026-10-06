@@ -599,7 +599,7 @@ pub(super) fn hexplate_wallbreaker_for_mirrodin_creates_and_equips_rebel() {
         .copied()
         .filter(|id| {
             game.object(*id).is_some_and(|object| {
-                object.name == "Rebel"
+                object.name == "Rebel Token"
                     && object.kind == ObjectKind::Token
                     && object.has_subtype(Subtype::Rebel)
                     && game.controller_of(object) == alice

@@ -41,9 +41,9 @@ pub fn compute_global_actions(
 ) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
     compute_scoped_actions(game, player, ActionScope::Globals)
 }
-/// Current non-mana eligibility for a previously confirmed presentation action.
-/// Timing/restrictions/targets are recomputed normally; this is never an oracle
-/// for execution or a way to introduce a newly seen action into the menu.
+/// Current timing, restrictions, targets and non-mana cost eligibility.
+/// These candidates authorize starting an announcement, never completing it:
+/// mana payment must still be validated by the payment transaction.
 pub fn compute_actions_assuming_mana_for_presentation(
     game: &GameState,
     player: PlayerId,
@@ -1106,6 +1106,18 @@ fn add_hand_alternative_cast_actions(
         if !summary.has_any_alternative_branch(hand_has_active_grants) {
             continue;
         }
+        // Granted prices (including no mana cost) get the first payment-search
+        // budget, before native alternatives and the printed mana cost.
+        if hand_has_active_grants {
+            append_hand_granted_alternative_cast_actions_for_card(
+                game,
+                actions,
+                player,
+                summary.card_id,
+                summary.card,
+                view,
+            );
+        }
         if summary.can_cast_face_down
             && can_cast_spell_with_context(summary.card, &CastingMethod::FaceDown, cast_ctx)
         {
@@ -1151,16 +1163,6 @@ fn add_hand_alternative_cast_actions(
                     });
                 }
             }
-        }
-        if hand_has_active_grants {
-            append_hand_granted_alternative_cast_actions_for_card(
-                game,
-                actions,
-                player,
-                summary.card_id,
-                summary.card,
-                view,
-            );
         }
     }
 }
@@ -1593,6 +1595,21 @@ fn compute_legal_actions_checked(
     )?;
     perf.lands_ms = lands_started_at.elapsed_ms();
 
+    // Evaluate alternative prices first, while retaining the established menu
+    // order (normal before alternative) when the results are displayed.
+    let hand_alternatives_started_at = PerfTimer::start();
+    let mut hand_alternatives = Vec::new();
+    add_hand_alternative_cast_actions(
+        game,
+        &mut hand_alternatives,
+        player,
+        &hand_summaries,
+        hand_has_active_grants,
+        &view,
+        &cast_ctx,
+    );
+    perf.hand_alternatives_ms = hand_alternatives_started_at.elapsed_ms();
+
     let hand_casts_started_at = PerfTimer::start();
     add_hand_normal_cast_actions(&mut actions, &hand_summaries, &cast_ctx);
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
@@ -1645,17 +1662,7 @@ fn compute_legal_actions_checked(
         )?;
     }
 
-    let hand_alternatives_started_at = PerfTimer::start();
-    add_hand_alternative_cast_actions(
-        game,
-        &mut actions,
-        player,
-        &hand_summaries,
-        hand_has_active_grants,
-        &view,
-        &cast_ctx,
-    );
-    perf.hand_alternatives_ms = hand_alternatives_started_at.elapsed_ms();
+    actions.extend(hand_alternatives);
 
     // Price grants supply no origins. Build the product of independently
     // authorized origins and eligible prices before ordinary affordability or
@@ -1961,13 +1968,32 @@ fn total_cost_branch_is_payable_with_view(
     reason: crate::costs::PaymentReason,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(costs) => activation_printed_costs_precheck_with_view(
-            game, controller, source, costs, reason, view,
-        ),
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-            total_cost_branch_is_payable_with_view(game, controller, source, branch, reason, view)
-        }),
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut execution =
+        crate::effects::ExecutionContext::new(source, controller, &mut decision_maker);
+    if view.has_activated_ability_cost_modifiers()
+        || view.source_has_activated_ability_cost_modifiers(source)
+    {
+        crate::special_actions::can_pay_cost_before_mana_funding_in_context(
+            game,
+            controller,
+            source,
+            cost,
+            reason,
+            &mut execution,
+        )
+        .is_ok()
+    } else {
+        crate::special_actions::can_potentially_pay_total_cost_in_context_with_view(
+            game,
+            controller,
+            source,
+            cost,
+            reason,
+            &mut execution,
+            view,
+        )
+        .is_ok()
     }
 }
 
@@ -2148,155 +2174,6 @@ fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
             )
         })
     })
-}
-
-fn activation_cost_component_precheck_with_view(
-    game: &GameState,
-    controller: PlayerId,
-    source: ObjectId,
-    cost: &crate::costs::Cost,
-    reason: crate::costs::PaymentReason,
-    view: &DerivedGameView<'_>,
-) -> bool {
-    if let Some(amount) = cost.life_amount() {
-        return game.can_pay_life_with_reason(controller, amount, reason);
-    }
-
-    if let Some((count, card_type)) = cost.discard_details() {
-        let Some(player) = game.player(controller) else {
-            return false;
-        };
-        let placeholders = match card_type {
-            // Peers cannot see the type of hidden hand cards; count their
-            // placeholders as payable (see `game_state::hidden_hand_choices`).
-            Some(required_type) => game.hidden_hand_payable_placeholders(
-                &crate::filter::ObjectFilter::default()
-                    .in_zone(crate::zone::Zone::Hand)
-                    .with_type(required_type),
-                &crate::filter::FilterContext::new(controller).with_source(source),
-                player.hand.iter().copied(),
-            ),
-            None => Vec::new(),
-        };
-        let available = player
-            .hand
-            .iter()
-            .filter_map(|object_id| game.object(*object_id))
-            .filter(|object| {
-                placeholders.contains(&object.id)
-                    || card_type
-                        .is_none_or(|required_type| object.card_types.contains(&required_type))
-            })
-            .count();
-        return available >= count as usize;
-    }
-
-    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
-        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
-    }
-
-    if game
-        .validate_cost_for_payment_reason(controller, source, cost, reason)
-        .is_err()
-    {
-        return false;
-    }
-
-    if let Some(mana_cost) = cost.mana_cost_ref() {
-        // Modifiers are evaluated after the precheck. Otherwise require a
-        // payable plan using floating mana or legal mana abilities; opening
-        // the payment window cannot manufacture an unavailable resource.
-        return view.has_activated_ability_cost_modifiers()
-            || view.source_has_activated_ability_cost_modifiers(source)
-            || view.can_potentially_pay_with_reason(
-                controller,
-                Some(source),
-                mana_cost,
-                0,
-                reason,
-            );
-    }
-    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
-    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
-}
-
-fn dynamic_activation_mana_cost_resolves(
-    game: &GameState,
-    controller: PlayerId,
-    source: ObjectId,
-    dynamic_mana: &ironsmith_core::DynamicManaCost,
-) -> bool {
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
-    crate::special_actions::resolve_dynamic_mana_cost(game, dynamic_mana, &mut ctx).is_ok()
-}
-
-fn activation_printed_costs_precheck_with_view(
-    game: &GameState,
-    controller: PlayerId,
-    source: ObjectId,
-    costs: &[crate::costs::Cost],
-    reason: crate::costs::PaymentReason,
-    view: &DerivedGameView<'_>,
-) -> bool {
-    for mana in costs.iter().filter_map(|cost| cost.mana_cost_ref()).filter(|cost| cost.has_waterbend_obligation()) {
-        let adjusted = game.adjust_mana_cost_for_payment_reason(controller, Some(source), mana, reason);
-        let mut request = crate::mana_payment::ManaPaymentRequest::new(controller, source, reason, adjusted)
-            .with_spend_policy(game.mana_spend_policy(controller, Some(source)));
-        if costs.iter().any(|cost| cost.requires_tap()) { request.reserved_tap_sources.push(source); }
-        request.allow_black_life = game.player_can_pay_black_with_life_for_reason(controller, Some(source), reason);
-        if !super::mana::check_scoped_mana_payment(game, &request) { return false; }
-    }
-    let mut idx = 0usize;
-    while idx < costs.len() {
-        if let Some(choose) = costs[idx]
-            .effect_ref()
-            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-            && let Some(next) = costs.get(idx + 1)
-            && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
-        {
-            let payable_cost = match &step {
-                crate::game_loop::ActivationCostStep::Cost(cost)
-                | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
-                crate::game_loop::ActivationCostStep::CardChoice(_) => &costs[idx],
-            };
-            if !activation_cost_component_precheck_with_view(
-                game,
-                controller,
-                source,
-                payable_cost,
-                reason,
-                view,
-            ) {
-                return false;
-            }
-            idx += 2;
-            continue;
-        }
-        if crate::cost::tagged_choice_pair_at(costs, idx).is_some() {
-            if !crate::cost::tagged_choice_pair_is_payable(
-                game, controller, source, &costs, idx, reason, None,
-            ) {
-                return false;
-            }
-            idx += 2;
-            continue;
-        }
-
-        if !activation_cost_component_precheck_with_view(
-            game,
-            controller,
-            source,
-            &costs[idx],
-            reason,
-            view,
-        ) {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
 }
 
 fn activation_precheck_with_view(
@@ -2628,48 +2505,6 @@ fn activation_requires_solved_case(activated: &crate::ability::ActivatedAbility)
     })
 }
 
-fn activation_card_cost_choice_cost(
-    choice: &crate::game_loop::ActivationCardCostChoice,
-) -> &crate::costs::Cost {
-    match choice {
-        crate::game_loop::ActivationCardCostChoice::Discard { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileFromGraveyard { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ExileChosenObject { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::RevealFromHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::ReturnToHand { cost, .. }
-        | crate::game_loop::ActivationCardCostChoice::MoveChosenObjectToZone { cost, .. } => cost,
-    }
-}
-
-fn activation_cost_is_payable_with_view(
-    game: &GameState,
-    controller: PlayerId,
-    source: ObjectId,
-    cost: &crate::costs::Cost,
-    _view: &DerivedGameView<'_>,
-    reason: crate::costs::PaymentReason,
-) -> bool {
-    if game
-        .validate_cost_for_payment_reason(controller, source, cost, reason)
-        .is_err()
-    {
-        return false;
-    }
-
-    if cost.mana_cost_ref().is_some() {
-        // Mana is paid only after the activation has opened its mana-ability
-        // window. This must match the printed-cost precheck above even when a
-        // continuous modifier rebuilt the total cost.
-        return true;
-    }
-    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
-        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
-    }
-    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
-    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
-}
-
 pub(crate) fn activation_total_cost_is_payable_with_view(
     game: &GameState,
     controller: PlayerId,
@@ -2678,101 +2513,19 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
     view: &DerivedGameView<'_>,
     reason: crate::costs::PaymentReason,
 ) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(components) => {
-            let mut idx = 0usize;
-            while idx < components.len() {
-                if let Some(choose) = components[idx]
-                    .effect_ref()
-                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-                    && let Some(next) = components.get(idx + 1)
-                    && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
-                {
-                    let paired_cost = match &step {
-                        crate::game_loop::ActivationCostStep::Cost(cost)
-                        | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
-                        crate::game_loop::ActivationCostStep::CardChoice(choice) => {
-                            activation_card_cost_choice_cost(choice)
-                        }
-                    };
-                    if !activation_cost_is_payable_with_view(
-                        game,
-                        controller,
-                        source,
-                        paired_cost,
-                        view,
-                        reason,
-                    ) {
-                        return false;
-                    }
-                    idx += 2;
-                    continue;
-                }
-                if crate::cost::tagged_choice_pair_at(components, idx).is_some() {
-                    if !crate::cost::tagged_choice_pair_is_payable(
-                        game,
-                        controller,
-                        source,
-                        &components,
-                        idx,
-                        reason,
-                        None,
-                    ) {
-                        return false;
-                    }
-                    idx += 2;
-                    continue;
-                }
-
-                if !activation_cost_is_payable_with_view(
-                    game,
-                    controller,
-                    source,
-                    &components[idx],
-                    view,
-                    reason,
-                ) {
-                    return false;
-                }
-                idx += 1;
-            }
-            true
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-            activation_total_cost_is_payable_with_view(game, controller, source, branch, view, reason)
-        }),
-    }
-}
-
-fn activation_cost_branch_is_payable_with_view(
-    game: &GameState,
-    controller: PlayerId,
-    source: ObjectId,
-    cost: &crate::costs::Cost,
-    view: &DerivedGameView<'_>,
-    reason: crate::costs::PaymentReason,
-) -> bool {
-    if game
-        .validate_cost_for_payment_reason(controller, source, cost, reason)
-        .is_err()
-    {
-        return false;
-    }
-
-    if let Some(mana_cost) = cost.mana_cost_ref() {
-        return view.can_potentially_pay_with_reason(
-            controller,
-            Some(source),
-            mana_cost,
-            0,
-            reason,
-        );
-    }
-    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
-        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
-    }
-    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
-    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let mut execution =
+        crate::effects::ExecutionContext::new(source, controller, &mut decision_maker);
+    crate::special_actions::can_potentially_pay_total_cost_in_context_with_view(
+        game,
+        controller,
+        source,
+        cost,
+        reason,
+        &mut execution,
+        view,
+    )
+    .is_ok()
 }
 
 pub(crate) fn activation_total_cost_branch_is_payable_with_view(
@@ -2783,72 +2536,7 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
     view: &DerivedGameView<'_>,
     reason: crate::costs::PaymentReason,
 ) -> bool {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::All(components) => {
-            let mut idx = 0usize;
-            while idx < components.len() {
-                if let Some(choose) = components[idx]
-                    .effect_ref()
-                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-                    && let Some(next) = components.get(idx + 1)
-                    && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
-                {
-                    let paired_cost = match &step {
-                        crate::game_loop::ActivationCostStep::Cost(cost)
-                        | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
-                        crate::game_loop::ActivationCostStep::CardChoice(choice) => {
-                            activation_card_cost_choice_cost(choice)
-                        }
-                    };
-                    if !activation_cost_branch_is_payable_with_view(
-                        game,
-                        controller,
-                        source,
-                        paired_cost,
-                        view,
-                        reason,
-                    ) {
-                        return false;
-                    }
-                    idx += 2;
-                    continue;
-                }
-                if crate::cost::tagged_choice_pair_at(components, idx).is_some() {
-                    if !crate::cost::tagged_choice_pair_is_payable(
-                        game,
-                        controller,
-                        source,
-                        &components,
-                        idx,
-                        reason,
-                        None,
-                    ) {
-                        return false;
-                    }
-                    idx += 2;
-                    continue;
-                }
-
-                if !activation_cost_branch_is_payable_with_view(
-                    game,
-                    controller,
-                    source,
-                    &components[idx],
-                    view,
-                    reason,
-                ) {
-                    return false;
-                }
-                idx += 1;
-            }
-            true
-        }
-        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
-            activation_total_cost_branch_is_payable_with_view(
-                game, controller, source, branch, view, reason,
-            )
-        }),
-    }
+    activation_total_cost_is_payable_with_view(game, controller, source, cost, view, reason)
 }
 
 pub(crate) fn can_activate_ability_with_restrictions_with_view(

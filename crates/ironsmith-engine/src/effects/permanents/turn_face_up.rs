@@ -34,14 +34,20 @@ impl EffectExecutor for TurnFaceUpEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
         game.clear_pending_decision_controllers();
         let checkpoint = game.clone();
         let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         let result = (|| {
-            game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-            let targets = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            game.refresh_continuous_state()
+                .map_err(ExecutionError::ContinuousDiscovery)?;
+            let targets =
+                crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             if targets.is_empty() {
                 return Ok(EffectOutcome::target_invalid());
             }
@@ -69,59 +75,85 @@ impl EffectExecutor for TurnFaceUpEffect {
                 }
             }
 
-            let mut turned = 0;
-            let mut completed = Vec::new();
-            for object_id in targets {
-                let Some(object) = game.object(object_id) else {
-                    continue;
-                };
-                if !game.is_face_down(object_id) {
-                    continue;
-                }
-                let on_battlefield = object.zone == Zone::Battlefield;
-                game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-                if !game.set_face_up(object_id).map_err(ExecutionError::ContinuousDiscovery)? {
-                    continue;
-                }
-                game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
-                turned += 1;
-                if on_battlefield {
-                    // CR 708.11: "As this is turned face up" abilities apply
-                    // whatever turns the permanent face up, and a characteristic
-                    // choice made "as it enters or is turned face up" (Aquamorph
-                    // Entity) is made now, as in the special-action path.
-                    let controller = game.current_controller(object_id).unwrap_or(ctx.controller);
-                    game.execute_as_enters_effect_programs_for_turn_face_up(
-                        object_id,
-                        controller,
-                        &mut *ctx.decision_maker,
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    game.apply_power_toughness_choice_as_enters_or_turns_face_up(
-                        object_id,
-                        controller,
-                        &mut *ctx.decision_maker,
-                    );
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    let event_provenance = game.alloc_child_event_provenance(
-                        ctx.provenance,
-                        crate::events::EventKind::TurnedFaceUp,
-                    );
-                    completed.push(TriggerEvent::new_with_provenance(
-                        crate::events::TurnedFaceUpEvent::new(object_id, ctx.controller),
-                        event_provenance,
-                    ));
-                }
-            }
+            let ((turned, mut completed), observations) =
+                crate::effects::with_action_observations(game, |game| {
+                    let mut turned = 0;
+                    let mut completed = Vec::new();
+                    for object_id in targets {
+                        let Some(object) = game.object(object_id) else {
+                            continue;
+                        };
+                        if !game.is_face_down(object_id) {
+                            continue;
+                        }
+                        let on_battlefield = object.zone == Zone::Battlefield;
+                        game.refresh_continuous_state()
+                            .map_err(ExecutionError::ContinuousDiscovery)?;
+                        if !game
+                            .set_face_up(object_id)
+                            .map_err(ExecutionError::ContinuousDiscovery)?
+                        {
+                            continue;
+                        }
+                        game.refresh_continuous_state()
+                            .map_err(ExecutionError::ContinuousDiscovery)?;
+                        turned += 1;
+                        if on_battlefield {
+                            // CR 708.11: "As this is turned face up" abilities apply
+                            // whatever turns the permanent face up, and a characteristic
+                            // choice made "as it enters or is turned face up" (Aquamorph
+                            // Entity) is made now, as in the special-action path.
+                            let controller =
+                                game.current_controller(object_id).unwrap_or(ctx.controller);
+                            game.execute_as_enters_effect_programs_for_turn_face_up(
+                                object_id,
+                                controller,
+                                &mut *ctx.decision_maker,
+                            )?;
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok((turned, completed));
+                            }
+                            game.apply_power_toughness_choice_as_enters_or_turns_face_up(
+                                object_id,
+                                controller,
+                                &mut *ctx.decision_maker,
+                            );
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok((turned, completed));
+                            }
+                            let event_provenance = game.alloc_child_event_provenance(
+                                ctx.provenance,
+                                crate::events::EventKind::TurnedFaceUp,
+                            );
+                            completed.push(TriggerEvent::new_with_provenance(
+                                crate::events::TurnedFaceUpEvent::new(object_id, ctx.controller),
+                                event_provenance,
+                            ));
+                        }
+                    }
 
+                    Ok((turned, completed))
+                })?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
             // One instruction changes all selected permanents before any of
             // its event filters observe the completed characteristics.
-            crate::events::other::freeze_completed_lifecycle_events(game, &mut completed)?;
-            for event in completed { game.queue_trigger_event(ctx.provenance, event); }
+            crate::effects::observe_lifecycle_completions_with_observations(
+                game,
+                &mut completed,
+                &observations,
+            )?;
+            for event in completed {
+                game.queue_trigger_event(ctx.provenance, event);
+            }
             Ok(EffectOutcome::count(turned))
         })();
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
+            );
             context_checkpoint.restore(ctx);
         }
         result

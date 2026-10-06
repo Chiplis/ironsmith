@@ -1,3 +1,4 @@
+import { createPriorityStops } from "@/lib/priority-stops";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
 import { improvePayment } from "@/lib/payment-analysis.js";
@@ -825,6 +826,13 @@ export function GameProvider({ children }) {
   const [autoPassEnabled, setAutoPassEnabled] = useState(true);
   const [autoResolveEnabled, setAutoResolveEnabled] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
+  const [priorityStops] = useState(createPriorityStops);
+  const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
+  const cyclePriorityStop = useCallback(key => priorityStops.cycleStop(key, stateRef.current), [priorityStops, stateRef]);
+  const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
+  useEffect(() => subscribeState(priorityStops.observe), [subscribeState, priorityStops]);
+  useEffect(() => { priorityStops.reset(); }, [game, priorityStops]);
+  const [surrenderRequested, setSurrenderRequested] = useState(false);
   const [fixedStartingBoard, setFixedStartingBoard] = useState(readFixedStartingBoard);
   const [uiFont, setUiFont] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_UI_FONT;
@@ -846,6 +854,14 @@ export function GameProvider({ children }) {
   const multiplayerActiveRef = useRef(false);
   const multiplayerAutomationAttemptRef = useRef("");
   const multiplayerSubmitInFlightRef = useRef(false);
+  const [multiplayerSubmissionRevision, setMultiplayerSubmissionRevision] = useState(0);
+  const finishMultiplayerSubmission = useCallback(() => {
+    if (!multiplayerSubmitInFlightRef.current) return;
+    multiplayerSubmitInFlightRef.current = false;
+    // The next decision can render while this guard is still held. Releasing
+    // a ref alone cannot wake the automation effect that skipped that render.
+    setMultiplayerSubmissionRevision(revision => revision + 1);
+  }, []);
   const stickyViewedCardsRef = useRef(null);
   const stickyGameOverRef = useRef(null);
   const queuedSyncedCancelRef = useRef(false);
@@ -1081,6 +1097,7 @@ export function GameProvider({ children }) {
 
   const opponentHoldReason = useCallback(
     (decision, currentState) => (
+      priorityStops.observe(currentState),
       priorityHoldReason({
         autoPassEnabled,
         holdRule,
@@ -1089,12 +1106,12 @@ export function GameProvider({ children }) {
         perspectiveMode: "opponent",
       })
     ),
-    [autoPassEnabled, holdRule]
+    [autoPassEnabled, holdRule, priorityStops]
   );
 
   const localTurnHoldReason = useCallback(
     (decision, currentState) => (
-      priorityHoldReason({
+      priorityStops.stopReason(currentState) || priorityHoldReason({
         autoPassEnabled,
         holdRule,
         decision,
@@ -1104,12 +1121,12 @@ export function GameProvider({ children }) {
         manualResolveOnLocalStack: true,
       })
     ),
-    [autoPassEnabled, holdRule]
+    [autoPassEnabled, holdRule, priorityStops]
   );
 
   const localOffTurnHoldReason = useCallback(
     (decision, currentState) => (
-      priorityHoldReason({
+      priorityStops.stopReason(currentState) || priorityHoldReason({
         autoPassEnabled,
         holdRule,
         decision,
@@ -1118,7 +1135,7 @@ export function GameProvider({ children }) {
         manualResolveOnLocalStack: true,
       })
     ),
-    [autoPassEnabled, holdRule]
+    [autoPassEnabled, holdRule, priorityStops]
   );
 
   const settleLocalStackPriority = useCallback(
@@ -1475,6 +1492,7 @@ export function GameProvider({ children }) {
     ) => {
       const finalizeStartedAt = performance.now();
       let st = currentState;
+      priorityStops.observe(st);
       const settleStartedAt = performance.now();
       const autoResult = allowOpponentAutomation
         ? await settlePriorityAutomation(currentGame, st)
@@ -1573,6 +1591,7 @@ export function GameProvider({ children }) {
       autoResolveTrivialDecisions,
       settleNoop,
       settlePriorityAutomation,
+      priorityStops,
       setStatus,
     ]
   );
@@ -1823,6 +1842,8 @@ export function GameProvider({ children }) {
 
     const currentState = state;
     const forcedObjects = localForcedObjectSelectionCommand(currentState);
+    if (!forcedObjects && (priorityStops.stopReason(currentState)
+      || (Number(currentState?.stack_size || 0) > 0 && !autoResolveEnabled))) return;
     const result = forcedObjects ? { command: forcedObjects } : buildMultiplayerSmartAutoPass({
       autoPassEnabled,
       holdRule,
@@ -1873,13 +1894,18 @@ export function GameProvider({ children }) {
         console.error(err);
       })
       .finally(() => {
-        multiplayerSubmitInFlightRef.current = false;
+        finishMultiplayerSubmission();
       });
   }, [
     autoPassEnabled,
+    autoResolveEnabled,
+    priorityStops,
+    priorityStopsState,
+    finishMultiplayerSubmission,
     holdRule,
     multiplayer.matchStarted,
     multiplayer.submittingAction,
+    multiplayerSubmissionRevision,
     setStatus,
     state,
     stateRef,
@@ -2056,9 +2082,11 @@ export function GameProvider({ children }) {
           }
           if (!backgroundIsCurrent()) return;
           let multiplayerTraceId = null;
+          let priorityCheckpoint = null;
           try {
             if (isTargetSubmit) armTargetSubmitDebounce();
             const syncedCommand = serializeMultiplayerCommand(command, currentState);
+            priorityCheckpoint = priorityStops.beforeCommand(command, currentState);
             multiplayerSubmitInFlightRef.current = true;
             multiplayerTraceId = beginActionTrace({
               label: describeCommandLabel(command),
@@ -2080,16 +2108,17 @@ export function GameProvider({ children }) {
                 );
               }
             } finally {
-              multiplayerSubmitInFlightRef.current = false;
+              finishMultiplayerSubmission();
             }
             if (isTargetSubmit) settleTargetSubmitDebounce();
           } catch (err) {
-            multiplayerSubmitInFlightRef.current = false;
+            finishMultiplayerSubmission();
             if (isTargetSubmit) clearTargetSubmitDebounce();
             completeActionTrace(multiplayerTraceId, {
               outcome: "failed",
               meta: { error: err instanceof Error ? err.message : String(err) },
             });
+            priorityStops.rollbackAction(priorityCheckpoint, stateRef.current);
             emitSyncFailureNotice(
               "Sync failed",
               err instanceof Error ? err.message : String(err)
@@ -2108,6 +2137,7 @@ export function GameProvider({ children }) {
           mode: "local",
         });
 
+        let priorityCheckpoint = null;
         try {
           console.debug("[ironsmith] dispatch:start", {
             command: commandSummary,
@@ -2117,6 +2147,7 @@ export function GameProvider({ children }) {
 
           const dispatchStartedAt = performance.now();
           if (isTargetSubmit) armTargetSubmitDebounce();
+          priorityCheckpoint = priorityStops.beforeCommand(command, stateRef.current);
           let st = await game.dispatch(command);
           st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => game.dispatch(nextCommand));
           const workerRoundTripMs = performance.now() - dispatchStartedAt;
@@ -2176,6 +2207,7 @@ export function GameProvider({ children }) {
             });
           }
         } catch (err) {
+          priorityStops.rollbackAction(priorityCheckpoint, stateRef.current);
           const errorMessage = err instanceof Error ? err.message : String(err);
           let decisionAfterError = null;
           if (isTargetSubmit) clearTargetSubmitDebounce();
@@ -2221,6 +2253,8 @@ export function GameProvider({ children }) {
       applyStickyViewedCards,
       clearTargetSubmitDebounce,
       finalizeState,
+      priorityStops,
+      finishMultiplayerSubmission,
       game,
       multiplayer.matchStarted,
       multiplayer.role,
@@ -2234,6 +2268,49 @@ export function GameProvider({ children }) {
   useEffect(() => {
     if (state?.decision?.kind !== "mana_payment") manuallyControlledPaymentRef.current = null;
   }, [state?.decision?.kind]);
+
+  // The visual drain and this deadline share the same origin. Only submit a
+  // normal local pass, and revalidate authoritative state after any input/sync.
+  useEffect(() => {
+    const window = priorityStopsState.window;
+    if (!window) return;
+    // Start the two seconds once the authoritative priority snapshot is drawn.
+    if (window.startedAt === null) {
+      if (state === stateRef.current && isSnapshotRendered() && priorityStops.windowFor(state)) priorityStops.armWindow(window.id);
+      return;
+    }
+    if (!autoPassEnabled || holdRule === "always") {
+      priorityStops.hold(stateRef.current);
+      return;
+    }
+    let timer;
+    const passWhenReady = () => {
+      const current = stateRef.current;
+      priorityStops.observe(current);
+      if (priorityStops.getSnapshot().window?.id !== window.id) return;
+      const remaining = window.startedAt + window.duration - performance.now();
+      if (remaining > 0) {
+        timer = setTimeout(passWhenReady, Math.ceil(remaining));
+        return;
+      }
+      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
+        || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
+        timer = setTimeout(passWhenReady, 25);
+        return;
+      }
+      const pass = findPassPriorityAction(current?.decision);
+      if (!pass || (pass.label && pass.label !== "Pass priority")) {
+        priorityStops.hold(current);
+        return;
+      }
+      if (priorityStops.expire(window.id, current)) {
+        void dispatch(priorityCommandForAction(pass), "Passed priority");
+      }
+    };
+    timer = setTimeout(passWhenReady, Math.max(0, Math.ceil(window.startedAt + window.duration - performance.now())));
+    return () => clearTimeout(timer);
+  }, [priorityStops, priorityStopsState.window, autoPassEnabled, holdRule, dispatch,
+    isSnapshotRendered, multiplayer.submittingAction, stateRef, state]);
 
   // "Resolve all": keep passing the local player's priority while the stack
   // drains. It stops once the stack is empty, the turn changes, the pass is a
@@ -2249,6 +2326,10 @@ export function GameProvider({ children }) {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
     if (stackSize <= 0) return;
+    const pass = findPassPriorityAction(current?.decision);
+    if (pass && samePlayerId(current?.decision?.player, current?.perspective)) {
+      priorityStops.beforeCommand(priorityCommandForAction(pass), current);
+    }
     resolveAllRef.current = {
       turn: current?.turn_number ?? null,
       stackSize,
@@ -2257,7 +2338,7 @@ export function GameProvider({ children }) {
       dispatchedFrom: null,
     };
     setResolveAllTick((tick) => tick + 1);
-  }, [stateRef]);
+  }, [stateRef, priorityStops]);
 
   useEffect(() => {
     const run = resolveAllRef.current;
@@ -2282,6 +2363,7 @@ export function GameProvider({ children }) {
     const decision = state.decision;
     if (decision?.kind !== "priority" || !samePlayerId(decision.player, state.perspective)) return;
     if (run?.dispatchedFrom === state) return;
+    if (priorityStops.stopReason(state) || holdRule === "always") return;
     const passAction = findPassPriorityAction(decision);
     if (!passAction || (passAction.label && passAction.label !== "Pass priority")) {
       stopResolveAll();
@@ -2320,7 +2402,7 @@ export function GameProvider({ children }) {
     }, 25);
     return () => clearTimeout(timer);
   }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
-    resolveAllTick, state, stateRef, stopResolveAll]);
+    resolveAllTick, state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule]);
 
   // Ranking is read-only and sliced. Only a finished, still-current suggestion
   // becomes an ordinary synchronized command; manual input wins every race.
@@ -2363,6 +2445,13 @@ export function GameProvider({ children }) {
     }
   }, [dispatch, game, setState, stateRef]);
 
+  useEffect(() => {
+    if (surrenderRequested && (!multiplayer.matchStarted || state?.game_over)) {
+      const timer = setTimeout(() => setSurrenderRequested(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [surrenderRequested, multiplayer.matchStarted, state?.game_over]);
+
   const cancelDecision = useCallback(
     async ({ waitForPaymentReady = false } = {}) => {
       if (!game) return;
@@ -2381,6 +2470,7 @@ export function GameProvider({ children }) {
         }
         : runWasmInteraction;
       return runCancel(async () => {
+        priorityStops.cancelAction();
         if (multiplayer.matchStarted) {
           const currentState = stateRef.current;
           if (!currentState?.decision) {
@@ -2801,6 +2891,7 @@ export function GameProvider({ children }) {
       state: state
         ? {
             snapshot_id: state.snapshot_id,
+            game_over: state.game_over || null,
             perspective: state.perspective,
             turn_number: state.turn_number,
             active_player: state.active_player,
@@ -2936,6 +3027,10 @@ export function GameProvider({ children }) {
       setAutoResolveEnabled,
       holdRule,
       setHoldRule,
+      priorityStops: priorityStopsState.stops,
+      postActionPriorityWindow: priorityStops.windowFor(state) ? priorityStopsState.window : null,
+      cyclePriorityStop,
+      holdPostActionPriority,
       fixedStartingBoard,
       setFixedStartingBoard,
       uiFont,
@@ -2970,6 +3065,8 @@ export function GameProvider({ children }) {
       beginAuditReplaySession,
       setAuditReplayPosition,
       exitAuditReplaySession,
+      surrenderRequested,
+      setSurrenderRequested,
       submitMultiplayerCommand,
       sendLobbyChat,
       submitMultiplayerAddCardCheat,
@@ -2992,6 +3089,7 @@ export function GameProvider({ children }) {
       setStatus,
       runWasmInteraction,
       dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, autoResolveEnabled, holdRule, uiFont,
+      priorityStopsState, cyclePriorityStop, holdPostActionPriority,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeEffectOrderingState, moveEffectOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,
@@ -3005,6 +3103,8 @@ export function GameProvider({ children }) {
       beginAuditReplaySession,
       setAuditReplayPosition,
       exitAuditReplaySession,
+      surrenderRequested,
+      setSurrenderRequested,
       submitMultiplayerCommand,
       sendLobbyChat,
       submitMultiplayerAddCardCheat,

@@ -748,11 +748,17 @@ fn trigger_source_matches_duplication_filter(
     let Some(source_obj) = game.object(entry.source) else {
         return false;
     };
-    let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+    let snapshot = match ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
         source_obj,
         game,
         view.effects(),
-    );
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            game.record_token_resource_failure(&error);
+            return false;
+        }
+    };
     filter.matches_snapshot(&snapshot, &ctx, game)
 }
 
@@ -1475,6 +1481,9 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
         game.record_token_resource_failure(&error);
         return Vec::new();
@@ -1492,9 +1501,9 @@ pub fn check_triggers(
         trigger_event.kind(),
         crate::events::traits::EventKind::Sacrifice
             | crate::events::traits::EventKind::CardDiscarded
-    ) && trigger_event
-        .snapshot()
-        .is_some_and(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+    ) && trigger_event.snapshot().is_some_and(|snapshot| {
+        snapshot_may_subscribe_to_event(snapshot, trigger_event.kind())
+    });
 
     if !trigger_event_can_have_synthetic_triggers(trigger_event)
         && !game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
@@ -1517,6 +1526,9 @@ pub(crate) fn check_triggers_batch(
     game: &GameState,
     trigger_events: &[TriggerEvent],
 ) -> Vec<Vec<TriggeredAbilityEntry>> {
+    if game.action_observations_suppressed() {
+        return trigger_events.iter().map(|_| Vec::new()).collect();
+    }
     if trigger_events.is_empty() {
         return Vec::new();
     }
@@ -1532,10 +1544,13 @@ pub(crate) fn check_triggers_batch(
     let should_check = trigger_events
         .iter()
         .map(|trigger_event| {
-            let lki_may_subscribe = trigger_event
-                .lookback_source_snapshots()
-                .iter()
-                .any(|snapshot| snapshot_may_subscribe_to_event(snapshot, trigger_event.kind()));
+            let lki_may_subscribe =
+                trigger_event
+                    .lookback_source_snapshots()
+                    .iter()
+                    .any(|snapshot| {
+                        snapshot_may_subscribe_to_event(snapshot, trigger_event.kind())
+                    });
             let direct_snapshot_may_subscribe = matches!(
                 trigger_event.kind(),
                 crate::events::traits::EventKind::Sacrifice
@@ -1548,7 +1563,9 @@ pub(crate) fn check_triggers_batch(
                     || *kind_may_subscribe
                         .entry(trigger_event.kind())
                         .or_insert_with(|| {
-                            game.may_have_triggered_abilities_for_event_kind(trigger_event.kind())
+                            game.may_have_triggered_abilities_for_event_kind(
+                                trigger_event.kind(),
+                            )
                         });
 
             current_state_may_subscribe || lki_may_subscribe || direct_snapshot_may_subscribe
@@ -1730,7 +1747,7 @@ fn add_flanking_triggers(
 
     let source_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
         game.object(blocked.attacker)
-            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+            .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
     });
     let Some((controller, source_stable_id, source_name)) = source_snapshot
         .as_ref()
@@ -1834,7 +1851,9 @@ fn add_ward_triggers(
     let Some(object) = game.object(target) else {
         return;
     };
-    let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+    let Some(source_snapshot) = ObjectSnapshot::capture_for_execution(object, game) else {
+        return;
+    };
     for (instance, ward) in wards.into_iter().enumerate() {
         let ability = TriggeredAbility {
             trigger: Trigger::custom(
@@ -1901,9 +1920,7 @@ fn add_intrinsic_siege_defeat_trigger(
         .find(|snapshot| snapshot.object_id == source)
         .cloned()
         .or_else(|| {
-            game.object(source).map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-            })
+            game.object(source).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
         });
     let Some(source_snapshot) = source_snapshot else {
         return;
@@ -2078,9 +2095,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .blocker_snapshot
             .clone()
             .or_else(|| {
-                game.object(event.blocker).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                })
+                game.object(event.blocker).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
             })
             .into_iter()
             .collect::<Vec<_>>()
@@ -2094,9 +2109,7 @@ fn tagged_objects_for_matched_trigger_with_view(
                 .blockers
                 .iter()
                 .filter_map(|id| {
-                    game.object(*id).map(|object| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                    })
+                    game.object(*id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
                 })
                 .collect()
         }
@@ -2148,9 +2161,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .flatten()
             .filter(|attacker| attacks.matches_attacker_info(attacker, ctx))
             .filter_map(|attacker| {
-                game.object(attacker.creature).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                })
+                game.object(attacker.creature).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
             })
             .collect::<Vec<_>>();
         if !attackers.is_empty() {
@@ -2170,7 +2181,7 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event
             .object_id()
             .and_then(|id| game.object(id))
-            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+            .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
     }) {
         tagged.insert(
             crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG),
@@ -2244,7 +2255,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .filter_map(|(source, _)| game.object(source))
             .filter(|source| damage.filter.matches(source, &ctx.filter_ctx, game))
             .filter(|source| seen.insert(source.stable_id))
-            .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
+            .filter_map(|source| ObjectSnapshot::capture_for_execution(source, game))
             .collect::<Vec<_>>();
         if !sources.is_empty() {
             tagged.insert(
@@ -2272,14 +2283,12 @@ fn tagged_objects_for_matched_trigger_with_view(
                 && let Some(object) = game.object(granting)
             {
                 let chars = view.calculated_characteristics_arc(granting);
-                tagged.insert(
-                    crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
-                    vec![ObjectSnapshot::from_object_with_known_characteristics(
-                        object,
-                        game,
-                        chars.as_deref(),
-                    )],
-                );
+                match ObjectSnapshot::try_from_object_with_known_characteristics(object, game, chars.as_deref()) {
+                    Ok(snapshot) => {
+                        tagged.insert(crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG), vec![snapshot]);
+                    }
+                    Err(error) => game.record_token_resource_failure(&error),
+                }
             }
         } else {
             game.insert_granting_source_tag(ctx.source_id, ability_index, &mut tagged);
@@ -2968,15 +2977,11 @@ fn lookback_source_filter_context(
     }
 
     let leaving_snapshots = zone_change.snapshots();
-    if source_snapshot.subtypes.contains(&Subtype::Aura) {
+    // Membership in attached_sources proves the source/host relation. Both
+    // authored host aliases must survive copy/type changes and detachment.
+    for tag in ["enchanted", "equipped"] {
         filter_ctx.tagged_objects.insert(
-            crate::tag::TagKey::from("enchanted"),
-            leaving_snapshots.to_vec(),
-        );
-    }
-    if source_snapshot.subtypes.contains(&Subtype::Equipment) {
-        filter_ctx.tagged_objects.insert(
-            crate::tag::TagKey::from("equipped"),
+            crate::tag::TagKey::from(tag),
             leaving_snapshots.to_vec(),
         );
     }
@@ -2998,6 +3003,9 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
         game.record_token_resource_failure(&error);
         return Vec::new();
@@ -3005,7 +3013,8 @@ fn check_triggers_with_view_and_registry(
     if trigger_event.triggers_captured() {
         return Vec::new();
     }
-    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects())) {
+    if suppresses_creature_etb_triggers_with_effects(game, trigger_event, Some(view.effects()))
+    {
         return Vec::new();
     }
 
@@ -3017,8 +3026,15 @@ fn check_triggers_with_view_and_registry(
         assert_trigger_registry_matches_legacy_scan(game, trigger_event, view, registry)
     });
 
-    for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id()) {
-        check_battlefield_trigger_subscriber(game, trigger_event, view, subscriber, &mut triggered);
+    for subscriber in registry.subscribers_for(trigger_event.kind(), trigger_event.object_id())
+    {
+        check_battlefield_trigger_subscriber(
+            game,
+            trigger_event,
+            view,
+            subscriber,
+            &mut triggered,
+        );
     }
 
     // A permanent can see itself being sacrificed. The sacrifice event carries
@@ -3290,7 +3306,8 @@ fn check_triggers_with_view_and_registry(
                 abilities
                     .iter()
                     .filter(|static_ability| {
-                        if static_ability.id() == crate::static_abilities::StaticAbilityId::Cascade
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::Cascade
                         {
                             return true;
                         }
@@ -3351,7 +3368,9 @@ fn check_triggers_with_view_and_registry(
         && let Some(entry) = game.stack.iter().find(|e| e.object_id == cast.spell)
         && let Some(obj) = game.object(cast.spell)
     {
-        for (cost_index, (reference, times)) in entry.optional_costs_paid.costs.iter().enumerate() {
+        for (cost_index, (reference, times)) in
+            entry.optional_costs_paid.costs.iter().enumerate()
+        {
             if *times == 0
                 || !matches!(
                     reference.kind,
@@ -3652,6 +3671,12 @@ pub fn check_state_triggers(
     game: &GameState,
     pending: &[TriggeredAbilityEntry],
 ) -> (Vec<TriggeredAbilityEntry>, HashSet<ActiveStateTriggerKey>) {
+    if game.action_observations_suppressed() {
+        return (
+            Vec::new(),
+            game.effect_store.active_state_trigger_conditions.clone(),
+        );
+    }
     let view = crate::derived_view::DerivedGameView::new(game);
     let mut triggered = Vec::new();
     let mut active = HashSet::new();
@@ -3838,6 +3863,9 @@ pub fn check_delayed_triggers_for_simultaneous_events(
     game: &mut GameState,
     trigger_events: &[TriggerEvent],
 ) -> Vec<TriggeredAbilityEntry> {
+    if game.action_observations_suppressed() {
+        return Vec::new();
+    }
     if game.effect_store.delayed_triggers.is_empty() {
         return Vec::new();
     }
@@ -3953,7 +3981,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
 
                 // Each object of a multi-object zone change is its own event for
                 // a delayed trigger watching one object (CR 603.2c, 603.7c).
-                for instance in trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx)
+                for instance in
+                    trigger_instance_events(game, &delayed.trigger, trigger_event, &ctx)
                 {
                     let trigger_event = &instance;
                     fired = true;
@@ -4006,7 +4035,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         .map(|shield_id| {
                             game.effect_store
                                 .prevention_effects
-                                .prevented_by_shield(shield_id) as i32
+                                .prevented_by_shield(shield_id)
+                                as i32
                         })
                         .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
                     let entry = TriggeredAbilityEntry {

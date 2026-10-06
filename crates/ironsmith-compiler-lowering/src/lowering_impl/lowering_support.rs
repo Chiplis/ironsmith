@@ -6296,10 +6296,17 @@ fn validate_effect_for_iterated_player(
         return Ok(());
     }
     if let Some(vote) = effect.downcast_ref::<crate::effects::VoteEffect>() {
-        if let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice {
+        if vote.payloads.is_empty()
+            && let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice
+        {
             for option in options {
                 validate_effects_for_iterated_player(&option.effects_per_vote, true, context)?;
             }
+        }
+        for payload in &vote.payloads {
+            let bound = matches!(payload, ironsmith_core::VotePayload::ForEachVote { .. })
+                || iterated_player_bound;
+            validate_effects_for_iterated_player(payload.effects(), bound, context)?;
         }
         return Ok(());
     }

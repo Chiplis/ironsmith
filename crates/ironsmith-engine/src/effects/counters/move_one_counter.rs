@@ -1,7 +1,7 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{CounterRemovalSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -13,86 +13,108 @@ impl EffectExecutor for MoveOneCounterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let target_pair = if crate::game_loop::requires_target_selection(&self.from)
-                && crate::game_loop::requires_target_selection(&self.to) {
-                super::assigned_counter_transfer_pair(ctx)
-            } else {
-                let from = resolve_objects_for_effect(game, ctx, &self.from)?;
-                let to = resolve_objects_for_effect(game, ctx, &self.to)?;
-                from.first().copied().zip(to.first().copied())
-            };
-            let Some((from_id, to_id)) = target_pair else {
-                return Ok(EffectOutcome::target_invalid());
-            };
-            // CR 122.5: a same-object move has no removal or placement event.
-            if game.is_phased_out(from_id) || from_id == to_id {
-                return Ok(EffectOutcome::count(0));
-            }
-            if game.object(to_id).is_none() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            let available_counters = game
-                .object(from_id)
-                .map(|obj| {
-                    obj.counters
-                        .iter()
-                        .filter(|(_, count)| **count > 0)
-                        // CR 122.5: only a counter that can be put onto the second
-                        // object can be moved.
-                        .filter(|(ct, _)| {
-                            super::move_destination_can_receive_counters(game, to_id, **ct)
-                        })
-                        .map(|(ct, count)| (*ct, *count))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            if available_counters.is_empty() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters)
-                .with_min_total(1);
-            let selections = make_decision_with_fallback(
-                game,
-                &mut ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-                FallbackStrategy::Maximum,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-
-            for (counter_type, to_remove) in selections {
-                if to_remove == 0 {
-                    continue;
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let target_pair = if crate::game_loop::requires_target_selection(&self.from)
+                    && crate::game_loop::requires_target_selection(&self.to)
+                {
+                    super::assigned_counter_transfer_pair(ctx)
+                } else {
+                    let from = resolve_objects_for_effect(game, ctx, &self.from)?;
+                    let to = resolve_objects_for_effect(game, ctx, &self.to)?;
+                    from.first().copied().zip(to.first().copied())
+                };
+                let Some((from_id, to_id)) = target_pair else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::target_invalid(),
+                    ));
+                };
+                // CR 122.5: a same-object move has no removal or placement event.
+                if game.is_phased_out(from_id) || from_id == to_id {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
-                let mut outcome = super::remove_moved_counters(game, ctx, from_id, counter_type, 1)?;
+                if game.object(to_id).is_none() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let available_counters = game
+                    .object(from_id)
+                    .map(|obj| {
+                        obj.counters
+                            .iter()
+                            .filter(|(_, count)| **count > 0)
+                            // CR 122.5: only a counter that can be put onto the second
+                            // object can be moved.
+                            .filter(|(ct, _)| {
+                                super::move_destination_can_receive_counters(game, to_id, **ct)
+                            })
+                            .map(|(ct, count)| (*ct, *count))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                if available_counters.is_empty() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let spec = CounterRemovalSpec::new(ctx.source, from_id, 1, available_counters)
+                    .with_min_total(1);
+                let selections = make_decision_with_fallback(
+                    game,
+                    &mut ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                    FallbackStrategy::Maximum,
+                );
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
                 }
-                let placed = super::put_moved_counters(game, ctx, to_id, counter_type, 1)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(EffectOutcome::count(0));
-                }
-                outcome = EffectOutcome::aggregate([outcome, placed]);
-                outcome.set_value(crate::effect::OutcomeValue::Count(1));
-                return Ok(outcome);
-            }
 
-            Ok(EffectOutcome::count(0))
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+                for (counter_type, to_remove) in selections {
+                    if to_remove == 0 {
+                        continue;
+                    }
+                    let source = game.object(from_id).map(|object| (from_id, object.zone));
+                    return super::transfer_counters_with_outputs(
+                        game,
+                        ctx,
+                        source,
+                        to_id,
+                        counter_type,
+                        1,
+                    );
+                }
+
+                Ok(CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ))
+            },
+        );
+        // A genuine failure takes precedence over a simultaneously pending
+        // choice. The transaction already restored the complete action.
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

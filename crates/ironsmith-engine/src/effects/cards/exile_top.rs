@@ -1,10 +1,11 @@
 //! Exile top cards of library effect implementation.
 
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{
     resolve_player_filter, resolve_value, view_hidden_candidate_objects,
 };
+use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -90,100 +91,111 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-        for tag in &self.moved_tags {
-            // The producer executed even when its library is empty or every
-            // move is replaced. Preserve that known-empty collection receipt.
-            ctx.set_tagged_objects(tag.clone(), Vec::new());
-        }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-        let top_cards = game
-            .player(player_id)
-            .map(|p| {
-                let mut cards = p.library.iter().rev()
-                    .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
-                    .take(count).copied().collect::<Vec<_>>();
-                // Preserve the existing bottom-to-top processing order within
-                // the selected top group while skipping simultaneous entrants.
-                cards.reverse();
-                cards
-            })
-            .unwrap_or_default();
-
-        let mut moved_ids = Vec::new();
-        let mut receipts = Vec::new();
-        for card_id in top_cards {
-            // CR 614.1: exiling from the library is an ordinary zone change,
-            // so replacement effects apply to it (as for mill and surveil).
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let receipt = crate::effects::zones::apply_zone_change_with_context_and_additional_effects(
-    game,
-    card_id,
-    Zone::Library,
-    Zone::Exile,
-    ctx.cause.clone(),
-    ctx,
-    &additional_effects
-)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let exiled_id = match &receipt.original {
-                crate::events::processing::EventOutcome::Proceed(change) if change.final_zone == Zone::Exile => {
-                    change.new_object_id
-                }
-                _ => None,
-            };
-            if let Some(exiled_id) = exiled_id {
-                if let Some(owner) = &ctx.linked_exile_owner {
-                    game.add_linked_exile_pair_member(owner.clone(), exiled_id);
-                }
-                game.add_exiled_with_source_link(ctx.source, exiled_id);
-                if self.face_down {
-                    game.set_face_down(exiled_id);
-                }
-                if (!self.moved_tags.is_empty() || !self.accumulated_tags.is_empty())
-                    && let Some(obj) = game.object(exiled_id)
-                {
-                    let snapshot = ObjectSnapshot::from_object(obj, game);
-                    for tag in &self.moved_tags {
-                        ctx.tag_object(tag.clone(), snapshot.clone());
-                    }
-                    for tag in &self.accumulated_tags {
-                        ctx.tag_object(tag.clone(), snapshot.clone());
-                    }
-                }
-                moved_ids.push(exiled_id);
-            }
-            receipts.push((card_id, receipt));
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+                for tag in &self.moved_tags {
+                    ctx.set_tagged_objects(tag.clone(), Vec::new());
+                }
 
-        if !self.face_down {
-            view_hidden_candidate_objects(
-                game,
-                ctx,
-                player_id,
-                &moved_ids,
-                "Reveal exiled library cards",
-                true,
-            );
-        }
+                let top_cards = game
+                    .player(player_id)
+                    .map(|p| {
+                        let mut cards = p
+                            .library
+                            .iter()
+                            .rev()
+                            .filter(|id| !ctx.replacement.entry_reserved_objects.contains(id))
+                            .take(count)
+                            .copied()
+                            .collect::<Vec<_>>();
+                        // Preserve the existing bottom-to-top processing order within
+                        // the selected top group while skipping simultaneous entrants.
+                        cards.reverse();
+                        cards
+                    })
+                    .unwrap_or_default();
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let original_outcome = EffectOutcome::with_objects(moved_ids.clone())
-            .with_affected_objects_from_game(game, moved_ids);
-        // Face-down state, links, tags and public reveal belong to the original
-        // instruction. The additions observe those finished results.
-        crate::effects::zones::finish_zone_change_receipts(game, ctx, original_outcome, receipts)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-        }
-        if ctx.decision_maker.awaiting_choice() { return result.map(|_| EffectOutcome::count(0)); }
+                let moves = top_cards
+                    .into_iter()
+                    .map(|id| {
+                        crate::effects::zones::PreparedZoneMove::capture(
+                            game,
+                            id,
+                            Zone::Library,
+                            Zone::Exile,
+                            ctx.cause.clone(),
+                            None,
+                        )
+                    })
+                    .collect();
+                crate::effects::zones::execute_zone_moves_with_outputs(
+                    game,
+                    ctx,
+                    moves,
+                    |game, ctx, receipts| {
+                        let mut moved_ids = Vec::new();
+                        for (_, receipt) in receipts {
+                            if let crate::events::processing::EventOutcome::Proceed(change) =
+                                &receipt.original
+                                && change.final_zone == Zone::Exile
+                                && let Some(id) = change.new_object_id
+                            {
+                                if let Some(owner) = &ctx.linked_exile_owner {
+                                    game.add_linked_exile_pair_member(owner.clone(), id);
+                                }
+                                game.add_exiled_with_source_link(ctx.source, id);
+                                if self.face_down {
+                                    game.set_face_down(id);
+                                }
+                                if let Some(snapshot) = ObjectSnapshot::from_object_id(game, id) {
+                                    for tag in self.moved_tags.iter().chain(&self.accumulated_tags)
+                                    {
+                                        ctx.tag_object(tag.clone(), snapshot.clone());
+                                    }
+                                }
+                                moved_ids.push(id);
+                            }
+                        }
+                        // Exiled cards are public by their destination. This visibility
+                        // synchronization does not add an authored reveal action.
+                        if !self.face_down {
+                            view_hidden_candidate_objects(
+                                game,
+                                ctx,
+                                player_id,
+                                &moved_ids,
+                                "Reveal exiled library cards",
+                                true,
+                            );
+                        }
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        Ok(EffectOutcome::with_objects(moved_ids.clone())
+                            .with_affected_objects_from_game(game, moved_ids))
+                    },
+                )
+            },
+        );
         result
     }
 }

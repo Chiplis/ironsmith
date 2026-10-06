@@ -15,6 +15,8 @@
 
 mod application;
 mod simultaneous_redirect_budget;
+mod prevention_draw_boundary;
+mod damage_original_payloads;
 
 #[cfg(test)]
 pub(crate) use application::hand_replacement_choice_candidates;
@@ -836,8 +838,8 @@ fn quantitative_event_has_been_removed(event: &Event) -> bool {
         // library remains replaceable under CR 614.11.
         || crate::events::downcast_event::<crate::events::DrawEvent>(event.inner())
             .is_some_and(|draw| draw.count == 0)
-        || crate::events::downcast_event::<crate::events::RemoveCountersEvent>(event.inner())
-            .is_some_and(|removal| removal.count == 0)
+        || crate::events::CounterRemovalEvent::from_event(event.inner())
+            .is_some_and(|removal| removal.count() == 0)
 }
 
 /// Process an event directly using trait-based matchers.
@@ -2441,11 +2443,7 @@ fn snapshot_replacement_damage_target(game: &GameState, event: Event) -> Event {
     // Defensively discard incompatible metadata from externally built events,
     // as well as redirects made by the ordinary event adapter.
     damage.target_snapshot = match damage.target {
-        DamageTarget::Object(target) => game.object(target).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        }),
+        DamageTarget::Object(target) => game.object(target).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)),
         DamageTarget::Player(_) => None,
     };
     event.rewrap(damage)
@@ -2497,8 +2495,9 @@ impl ReplacementEventContext {
     }
 }
 
-/// A program added to an event by one replacement application. Captured
-/// history belongs to this event branch, not to independent later events.
+/// A program captured from one replacement application. Its owning field
+/// distinguishes substituted originals from added instructions; captured history
+/// belongs to this exact event branch, never to an independent later event.
 #[derive(Debug, Clone)]
 pub struct PreparedReplacementProgram {
     pub context: Box<ReplacementEventContext>,
@@ -2585,6 +2584,22 @@ pub enum TraitEventResult {
 }
 
 impl TraitEventResult {
+    /// Whether this original still needs a replacement decision. Added
+    /// programs do not make a resolved original pending; they run later.
+    pub(crate) fn requires_replacement_input(&self) -> bool {
+        let mut original = self;
+        while let Self::Expanded {
+            original: nested, ..
+        } = original
+        {
+            original = nested;
+        }
+        matches!(
+            original,
+            Self::NeedsChoice { .. } | Self::NeedsInteraction { .. }
+        )
+    }
+
     /// Extract the original result without discarding added programs. Outer
     /// wrappers represent earlier additions; later continuation wrappers
     /// append to those programs in replacement-application order.
@@ -2811,6 +2826,11 @@ pub(crate) struct DestroyExecutionReceipt {
 }
 
 impl DestroyExecutionReceipt {
+    pub(crate) fn has_deferred_programs(&self) -> bool {
+        !self.programs.is_empty()
+            || self.zone_receipts.iter().any(|(_, receipt)| !receipt.programs.is_empty())
+    }
+
     fn terminal(
         permanent: ObjectId,
         result: DestroyOutcome,
@@ -3513,11 +3533,7 @@ fn commit_resolved_untap_event(
             if !game.is_tapped(untap.permanent) {
                 return Ok(EffectOutcome::count(0));
             }
-            let before = game.object(untap.permanent).map(|object| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    object, game,
-                )
-            });
+            let before = game.object(untap.permanent).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
             game.untap(untap.permanent);
             let mut notification = crate::events::PermanentUntappedEvent::capture(
                 game,
@@ -3767,7 +3783,7 @@ fn process_zone_change_inner(
 /// Retained replacement subtree receipts owned by a compound zone instruction.
 /// This is transaction-local state, never a runtime label or a GameState queue.
 #[derive(Default)]
-pub(crate) struct ZoneDrawContinuations(pub Vec<crate::effects::SimultaneousEffectCommit>);
+pub(crate) struct ZoneDrawContinuations(pub Vec<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>>);
 impl std::fmt::Debug for ZoneDrawContinuations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ZoneDrawContinuations").field(&self.0.len()).finish()
@@ -3917,7 +3933,7 @@ pub(crate) fn commit_prepared_zone_change(
         }
     })();
     if result.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
     }
     if dm.awaiting_choice() {
         return result.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4067,12 +4083,13 @@ pub(crate) fn prepare_zone_change_proposal_scoped_with_draws(
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
     inherited: Option<&ReplacementEventContext>,
     inherited_lookback: Option<&[crate::snapshot::ObjectSnapshot]>,
-    draws: Option<&mut ZoneDrawContinuations>,
+    mut draws: Option<&mut ZoneDrawContinuations>,
 ) -> Result<PreparedEventOutcome<PreparedZoneProposal>, crate::effects::ExecutionError> {
     if dm.awaiting_choice() {
         return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
     let checkpoint = game.clone();
+    let draw_count = draws.as_ref().map_or(0, |draws| draws.0.len());
     let result = prepare_zone_change_with_context_inner(
         game,
         object,
@@ -4084,10 +4101,11 @@ pub(crate) fn prepare_zone_change_proposal_scoped_with_draws(
         snapshot,
         inherited,
         inherited_lookback,
-        draws,
+        draws.as_deref_mut(),
     );
     if result.is_err() || dm.awaiting_choice() {
-        *game = checkpoint;
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && dm.awaiting_choice());
+        if let Some(draws) = draws { draws.0.truncate(draw_count); }
     }
     if dm.awaiting_choice() {
         return result.map(|_| PreparedEventOutcome::pure(EventOutcome::Prevented));
@@ -4390,7 +4408,7 @@ fn prepare_zone_change_with_context_inner(
                 if let Some(draws) = draws.as_deref_mut() {
                     let snapshot = context.zone_change_context.as_ref()
                         .and_then(|zone| zone.snapshot.clone()).into_iter().collect::<Vec<_>>();
-                    if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings(
+                    if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
                         game, &mut ctx, &effects, source, controller, &context, None,
                         crate::effects::replacement::ReplacementProgramBindings {
                             targets: None,
@@ -4472,11 +4490,7 @@ fn execute_typed_replacement_move(
         });
     let source_snapshot = game
         .object(source)
-        .map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        })
+        .map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?
         .or_else(|| {
             game.turn_store
                 .turn_history
@@ -4541,10 +4555,10 @@ fn execute_typed_replacement_move(
     if let Some(draws) = draws {
         if nested_draws.0.iter().any(|draw| draw.completion.is_some()) {
             let prefix = crate::effect::EffectOutcome::aggregate(
-                nested_draws.0.iter().map(|draw| draw.outcome.clone()).collect::<Vec<_>>(),
+                nested_draws.0.iter().map(|draw| draw.outcome.outcome.clone()).collect::<Vec<_>>(),
             );
             draws.0.push(crate::effects::SimultaneousEffectCommit {
-                outcome: prefix,
+                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(prefix),
                 completion: Some(Box::new(TypedMoveDrawCompletion {
                     nested: nested_draws, object, new_id, counters_in_entry,
                     counters: counters.to_vec(), link, programs, followups: follow_ups.to_vec(),
@@ -4556,10 +4570,10 @@ fn execute_typed_replacement_move(
         // Finished replacement prefixes are still original observations.
         draws.0.append(&mut nested_draws.0);
         return finish_typed_replacement_move(game, &mut ctx, object, new_id,
-            counters_in_entry, counters, link, programs, follow_ups, Some(draws));
+            counters_in_entry, counters, link, programs, follow_ups, Some(draws)).map(|_| ());
     }
     finish_typed_replacement_move(game, &mut ctx, object, new_id,
-        counters_in_entry, counters, link, programs, follow_ups, None)
+        counters_in_entry, counters, link, programs, follow_ups, None).map(|_| ())
 }
 
 fn retained_zone_arrival(game: &mut GameState, object: ObjectId) -> Option<ObjectId> {
@@ -4581,31 +4595,76 @@ struct TypedMoveDrawCompletion {
     scope: crate::effects::ExecutionContextCheckpoint,
 }
 impl crate::effects::SimultaneousEffectCompletion for TypedMoveDrawCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, _game: &mut GameState, _ctx: &mut crate::effects::ExecutionContext,
+        original: crate::effect::EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        Ok(crate::effects::SimultaneousEffectCommit {
+            outcome: crate::effects::CompletedEffectOutputs::aggregate_only(original),
+            completion: Some(self),
+        })
+    }
+
     fn freeze(&mut self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
         for draw in &mut self.nested.0 {
             if let Some(completion) = &mut draw.completion { completion.freeze(game)?; }
         }
         Ok(())
     }
+
+    fn observe_original(
+        &mut self, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: &mut crate::effect::EffectOutcome,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.scope.restore_ref(ctx);
+        let result = (|| {
+            for draw in &mut self.nested.0 {
+                crate::effects::composition::inherit_original_observations(
+                    &mut draw.outcome.outcome, &original.events,
+                );
+                if let Some(completion) = &mut draw.completion {
+                    crate::effects::composition::observe_original_completion(
+                        game, ctx, completion.as_mut(), &mut draw.outcome.outcome,
+                    )?;
+                }
+                draw.outcome.synchronize_observations();
+            }
+            *original = crate::effect::EffectOutcome::aggregate(
+                self.nested.0.iter().map(|draw| draw.outcome.outcome.clone()),
+            );
+            Ok(())
+        })();
+        parent.restore(ctx);
+        result
+    }
+
     fn complete(self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
-        _prefix: crate::effect::EffectOutcome) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        prefix: crate::effect::EffectOutcome) -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError> {
+        self.complete_with_outputs(game, ctx, prefix)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn complete_with_outputs(self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        _prefix: crate::effect::EffectOutcome) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
         let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
         self.scope.restore(ctx);
         let result = (|| {
             let mut outcomes = Vec::new();
             for draw in self.nested.0 {
-                outcomes.push(if let Some(completion) = draw.completion {
-                    completion.complete(game, ctx, draw.outcome)?
-                } else { draw.outcome });
-                if ctx.decision_maker.awaiting_choice() { return Ok(crate::effect::EffectOutcome::count(0)); }
+                outcomes.push(crate::effects::composition::complete_committed_original_with_outputs(game, ctx, draw)?);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
+                }
             }
-            // An inner Instead program can move the exact original after its
-            // draw. Consume that recorded receipt, never a stable-ID successor.
+            // Consume only this original's recorded arrival, never a stable-ID successor.
             let arrival = self.new_id.or_else(|| retained_zone_arrival(game, self.object));
-            finish_typed_replacement_move(game, ctx, self.object, arrival,
+            outcomes.push(finish_typed_replacement_move(game, ctx, self.object, arrival,
                 self.counters_in_entry, &self.counters, self.link, self.programs,
-                &self.followups, None)?;
-            Ok(crate::effect::EffectOutcome::aggregate(outcomes))
+                &self.followups, None)?);
+            Ok(crate::effects::CompletedEffectOutputs::from_children(
+                outcomes, crate::effect::EffectOutcome::aggregate,
+            ))
         })();
         parent.restore(ctx);
         result
@@ -4624,24 +4683,27 @@ fn finish_typed_replacement_move(
     programs: Vec<PreparedReplacementProgram>,
     follow_ups: &[crate::effect::Effect],
     draws: Option<&mut ZoneDrawContinuations>,
-) -> Result<(), crate::effects::ExecutionError> {
+) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
     use crate::effects::ExecutionError;
     let source = ctx.source;
+    let mut original_children = Vec::new();
     if let Some(new_id) = new_id {
         if !counters_in_entry {
             for (counter_type, count) in counters {
                 let event = Event::put_counters(new_id, *counter_type, *count, ctx.cause.clone())
                     .with_provenance(ctx.provenance);
-                let mut outcome = crate::effects::counters::execute_object_counter_placement(
+                let outcome = crate::effects::counters::execute_object_counter_placement_with_outputs(
                     game, ctx, event,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
                 }
-                crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-                for event in outcome.events {
+                let mut unpublished = outcome.outcome.events.clone();
+                crate::effects::retain_unmatched_outcome_events(game, &mut unpublished);
+                for event in unpublished {
                     game.queue_trigger_event(event.provenance(), event);
                 }
+                original_children.push(outcome);
             }
         }
         if link
@@ -4654,9 +4716,9 @@ fn finish_typed_replacement_move(
         game.record_zone_change_results(object, vec![new_id]);
         if let Some(object) = game.object(new_id) {
             let snapshot =
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
                     object, game,
-                );
+                )?;
             ctx.tag_object(crate::tag::ZONE_REPLACEMENT_OBJECT_TAG, snapshot);
         }
         ctx.effect_outcomes.insert(
@@ -4673,14 +4735,15 @@ fn finish_typed_replacement_move(
     // counters/link and original receipts, before the outer replacement's
     // subsequent follow-up instructions. Preserve its primary object summary.
     let target = new_id.unwrap_or(object);
-    let target_snapshot = game.object(target).map(|object| {
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-    });
+    let target_snapshot = game.object(target).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
     let original_outcome = if let Some(id) = new_id {
         crate::effect::EffectOutcome::with_objects(vec![id])
     } else {
         crate::effect::EffectOutcome::count(0)
     };
+    let original_outputs = crate::effects::CompletedEffectOutputs::with_primary_result(
+        original_outcome, original_children,
+    );
     if let Some(draws) = draws {
         let mut bound = Vec::new();
         for program in programs {
@@ -4698,16 +4761,18 @@ fn finish_typed_replacement_move(
                 object_tags: vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots)],
             }));
         }
-        draws.0.push(crate::effects::replacement::prepare_zone_draw_tail(
-            game, ctx, original_outcome, bound, follow_ups,
-        )?);
-        return Ok(());
+        let mut prepared = crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
+            game, ctx, original_outputs.outcome.clone(), bound, follow_ups,
+        )?;
+        prepared.outcome.retain_owned_child(original_outputs);
+        draws.0.push(prepared);
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
     }
-    let mut added_outcome =
-        crate::effects::replacement::execute_deferred_replacement_programs_with_bindings(
+    let completed =
+        crate::effects::replacement::complete_deferred_replacement_programs_with_bindings(
             game,
             ctx,
-            original_outcome,
+            original_outputs.outcome.clone(),
             programs,
             |_, captured, _| {
                 let captured_objects = if let Some(change) =
@@ -4741,25 +4806,29 @@ fn finish_typed_replacement_move(
             },
         )?;
     if ctx.decision_maker.awaiting_choice() {
-        return Ok(());
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
     }
-    crate::effects::retain_unmatched_outcome_events(game, &mut added_outcome.events);
-    for event in added_outcome.events {
+    let mut outputs = original_outputs.append_batch_program_outputs(completed);
+    let mut unpublished = outputs.outcome.events.clone();
+    crate::effects::retain_unmatched_outcome_events(game, &mut unpublished);
+    for event in unpublished {
         game.queue_trigger_event(event.provenance(), event);
     }
     // Keep the moved-object tag/outcome in this replacement's own scope.
     // The generic child-payload helper deliberately starts a fresh local scope.
     for effect in follow_ups {
-        let mut outcome = crate::effects::execute_effect(game, effect, ctx)?;
+        let outcome = crate::effects::execute_effect_with_outputs(game, effect, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(crate::effect::EffectOutcome::count(0)));
         }
-        crate::effects::retain_unmatched_outcome_events(game, &mut outcome.events);
-        for event in outcome.events {
+        let mut unpublished = outcome.outcome.events.clone();
+        crate::effects::retain_unmatched_outcome_events(game, &mut unpublished);
+        for event in unpublished {
             game.queue_trigger_event(event.provenance(), event);
         }
+        outputs = outputs.append_batch_completion_outputs(outcome);
     }
-    Ok(())
+    Ok(outputs)
 }
 
 /// Whether a `Replaced` replacement action is a "put it into [zone] instead"
@@ -4830,11 +4899,7 @@ fn apply_replacement_move(
             game.add_exiled_with_source_link(replacement_source, new_id);
         }
         game.record_zone_change_results(object, vec![new_id]);
-        game.object(new_id).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        })
+        game.object(new_id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
     } else {
         None
     };
@@ -5101,6 +5166,12 @@ pub(crate) struct PlayerLossReceipt {
     payload_outcome: Option<crate::effect::EffectOutcome>,
 }
 
+impl PlayerLossReceipt {
+    pub(crate) fn has_deferred_programs(&self) -> bool {
+        !self.programs.is_empty()
+    }
+}
+
 /// Public loss operation: pending returns no committed verdict, and errors
 /// restore the state from before replacement selection.
 pub fn process_player_loss(
@@ -5247,11 +5318,7 @@ fn prepare_player_loss_scoped(
                 context,
                 ..
             } => {
-                let source_snapshot = game.object(source).map(|object| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    )
-                });
+                let source_snapshot = game.object(source).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
                 let inherited = ctx.replacement.clone();
                 if let Some(sba_destination) = simultaneous_zone_changes.get(&source).copied()
                     && let Some(replacement_destination) =
@@ -5853,11 +5920,7 @@ fn apply_trait_replacement_retaining_damage_branches(
             source_snapshot: game
                 .object(effect.source)
                 .filter(|_| !game.is_phased_out(effect.source))
-                .map(|source| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        source, game,
-                    )
-                })
+                .map(|source| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(source, game)).transpose()?
                 .or_else(|| {
                     game.turn_store
                         .turn_history
@@ -6209,6 +6272,10 @@ pub struct ProcessedDamageAssignment {
 pub struct ProcessedDamageResult {
     pub assignments: Vec<ProcessedDamageAssignment>,
     pub replacement_prevented: bool,
+    /// Frozen Instead intents. Selection/sealing executes no payload action;
+    /// the damage original owner must commit and retain these in this order.
+    pub original_payloads: Vec<PreparedReplacementProgram>,
+    /// Completed compatibility payloads only, never an uncommitted prefix.
     pub payload_outcome: Option<crate::effect::EffectOutcome>,
     /// Added replacement instructions belong to the eventual damage owner,
     /// after the complete original damage batch and its consequences.
@@ -6688,8 +6755,117 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
     dm: &mut dyn DecisionMaker,
     replacement_scope: &crate::effects::ReplacementExecutionContext,
 ) -> Result<Vec<ProcessedDamageResult>, DamageProcessingError> {
+    let scopes = vec![replacement_scope; events.len()];
+    process_simultaneous_damage_assignments_with_scopes(game, events, dm, &scopes)
+}
+
+/// Allocate prevention once across the complete batch, while each assignment
+/// retains its captured replacement scope. Results keep the same input order.
+#[must_use = "retain assignment results and their captured prevention follow-ups"]
+pub(crate) struct PreparedDamageProcessingBatch {
+    results: Vec<ProcessedDamageResult>,
+    follow_ups: Vec<CapturedPreventionFollowUps>,
+}
+impl PreparedDamageProcessingBatch {
+    fn empty() -> Self {
+        Self {
+            results: Vec::new(),
+            follow_ups: Vec::new(),
+        }
+    }
+    /// Every result has a matching slot, including an explicitly empty batch.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (Vec<ProcessedDamageResult>, Vec<CapturedPreventionFollowUps>) {
+        (self.results, self.follow_ups)
+    }
+}
+
+pub(crate) fn process_simultaneous_damage_assignments_with_scopes(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+) -> Result<Vec<ProcessedDamageResult>, DamageProcessingError> {
+    process_simultaneous_damage_assignments_with_completion(
+        game,
+        events,
+        dm,
+        replacement_scopes,
+        |game, dm, prepared| {
+            let (mut results, follow_ups) = prepared.into_parts();
+            let (_, payload_follow_ups) = capture_deferred_prevention_follow_ups(game, dm, |game, dm| {
+                for (index, processed) in results.iter_mut().enumerate() {
+                    damage_original_payloads::complete_legacy(game, dm, replacement_scopes[index], processed)
+                        .map_err(|error| DamageProcessingError { source: events[index].source, error })?;
+                    if dm.awaiting_choice() { break; }
+                }
+                Ok::<_, DamageProcessingError>(())
+            })?;
+            let pending = follow_ups
+                .into_iter()
+                .flat_map(|batch| batch.pending)
+                .chain(payload_follow_ups.pending)
+                .collect();
+            let follow_ups = CapturedPreventionFollowUps { pending };
+            if game
+                .effect_store
+                .prevention_effects
+                .follow_ups_are_deferred()
+            {
+                follow_ups.requeue(game);
+            } else {
+                follow_ups.complete(game, dm)?;
+            }
+            Ok(results)
+        },
+        Vec::new,
+    )
+}
+
+/// The same assignment/prevention owner can retain follow-ups for a prepared
+/// cohort without completing or requeuing them at this preparation boundary.
+pub(crate) fn prepare_simultaneous_damage_assignments_with_scopes(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+) -> Result<PreparedDamageProcessingBatch, DamageProcessingError> {
+    process_simultaneous_damage_assignments_with_completion(
+        game,
+        events,
+        dm,
+        replacement_scopes,
+        |_, _, prepared| Ok(prepared),
+        PreparedDamageProcessingBatch::empty,
+    )
+}
+
+fn process_simultaneous_damage_assignments_with_completion<R>(
+    game: &mut GameState,
+    events: &[SimultaneousDamageEvent],
+    dm: &mut dyn DecisionMaker,
+    replacement_scopes: &[&crate::effects::ReplacementExecutionContext],
+    complete: impl FnOnce(
+        &mut GameState,
+        &mut dyn DecisionMaker,
+        PreparedDamageProcessingBatch,
+    ) -> Result<R, DamageProcessingError>,
+    empty: impl FnOnce() -> R,
+) -> Result<R, DamageProcessingError> {
+    if replacement_scopes.len() != events.len() {
+        return Err(DamageProcessingError {
+            source: events
+                .first()
+                .map(|event| event.source)
+                .unwrap_or(ObjectId::from_raw(0)),
+            error: crate::effects::ExecutionError::InternalError(
+                "simultaneous damage lost an assignment replacement scope".into(),
+            ),
+        });
+    }
     if events.is_empty() || dm.awaiting_choice() {
-        return Ok(Vec::new());
+        return Ok(empty());
     }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
@@ -6711,7 +6887,7 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
         };
         if dm.awaiting_choice() {
             game.effect_store.trigger_matching_holds -= 1;
-            return Ok(Vec::new());
+            return Ok(PreparedDamageProcessingBatch::empty());
         }
         // CR 615.5: the batch's additional prevention effects happen after the
         // whole simultaneous damage event, so they are collected here.
@@ -6719,14 +6895,17 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
             .effect_store
             .prevention_effects
             .begin_follow_up_deferral();
-        game.effect_store
-            .replacement_effects
-            .begin_damage_occurrence();
-        let results = if schedule_redirect_budget {
-            simultaneous_redirect_budget::process(game, events, dm, replacement_scope)?
+        game.effect_store.replacement_effects.begin_damage_occurrence();
+        let (results, follow_up_owners) = if schedule_redirect_budget {
+            simultaneous_redirect_budget::process(game, events, dm, replacement_scopes)?
         } else {
             let mut results = Vec::with_capacity(events.len());
+            let mut follow_up_owners = Vec::new();
             for (index, item) in events.iter().enumerate() {
+                let before = game
+                    .effect_store
+                    .prevention_effects
+                    .pending_follow_up_count();
                 results.push(
                 process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
                     game,
@@ -6739,14 +6918,28 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
                     item.source_snapshot.as_ref(),
                     dm,
                     Some(&allocations[index]),
-                    replacement_scope,
+                    replacement_scopes[index],
                 ).map_err(|error| DamageProcessingError { source: item.source, error })?,
             );
+                let after = game
+                    .effect_store
+                    .prevention_effects
+                    .pending_follow_up_count();
+                let count = after
+                    .checked_sub(before)
+                    .ok_or_else(|| DamageProcessingError {
+                        source: item.source,
+                        error: crate::effects::ExecutionError::InternalError(
+                            "damage assignment consumed another assignment's prevention follow-ups"
+                                .into(),
+                        ),
+                    })?;
+                follow_up_owners.extend(std::iter::repeat_n(index, count));
                 if dm.awaiting_choice() {
                     break;
                 }
             }
-            results
+            (results, follow_up_owners)
         };
         // All matching siblings have now seen the same registrations. Later
         // damage from a prevention follow-up starts a separate occurrence.
@@ -6760,29 +6953,40 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
                 error,
             },
         )?;
-        let mut follow_ups = game
+        let pending = game
             .effect_store
             .prevention_effects
             .end_follow_up_deferral(follow_up_start);
-        dedupe_shield_counter_follow_ups(&mut follow_ups);
-        if game
-            .effect_store
-            .prevention_effects
-            .follow_ups_are_deferred()
-        {
-            for pending in follow_ups {
-                game.effect_store
-                    .prevention_effects
-                    .requeue_follow_up(pending);
-            }
-        } else {
-            execute_prevention_follow_ups(game, dm, follow_ups)?;
+        if pending.len() != follow_up_owners.len() {
+            return Err(DamageProcessingError {
+                source: events[0].source,
+                error: crate::effects::ExecutionError::InternalError(
+                    "simultaneous prevention follow-ups lost assignment ownership".into(),
+                ),
+            });
         }
-        Ok(results)
-    })();
+        let mut indexed = follow_up_owners
+            .into_iter()
+            .zip(pending)
+            .collect::<Vec<_>>();
+        dedupe_shield_counter_follow_ups(&mut indexed);
+        let mut follow_ups = (0..results.len())
+            .map(|_| CapturedPreventionFollowUps {
+                pending: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        for (index, pending) in indexed {
+            follow_ups[index].pending.push(pending);
+        }
+        Ok(PreparedDamageProcessingBatch {
+            results,
+            follow_ups,
+        })
+    })()
+    .and_then(|prepared| complete(game, dm, prepared));
     if dm.awaiting_choice() && result.is_ok() {
         game.restore_execution_checkpoint(checkpoint, true);
-        return Ok(Vec::new());
+        return Ok(empty());
     }
     if result.is_err() {
         game.restore_execution_checkpoint(checkpoint, false);
@@ -6793,7 +6997,7 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
 /// so its shield counter prevents all of it and only one shield counter is
 /// removed, however many sources dealt damage.
 fn dedupe_shield_counter_follow_ups(
-    follow_ups: &mut Vec<crate::prevention::PendingPreventionFollowUp>,
+    follow_ups: &mut Vec<(usize, crate::prevention::PendingPreventionFollowUp)>,
 ) {
     let shield_target = |pending: &crate::prevention::PendingPreventionFollowUp| {
         let [effect] = pending.follow_up.effects.as_slice() else {
@@ -6810,7 +7014,7 @@ fn dedupe_shield_counter_follow_ups(
         }
     };
     let mut seen: Vec<ObjectId> = Vec::new();
-    follow_ups.retain(|pending| match shield_target(pending) {
+    follow_ups.retain(|(_, pending)| match shield_target(pending) {
         Some(id) if seen.contains(&id) => false,
         Some(id) => {
             seen.push(id);
@@ -6917,6 +7121,7 @@ pub(crate) fn process_damage_assignments_with_event_with_source_snapshot_opts_wi
         return Ok(ProcessedDamageResult {
             assignments: Vec::new(),
             replacement_prevented: true,
+            original_payloads: Vec::new(),
             payload_outcome: None,
             programs: Vec::new(),
         });
@@ -6939,12 +7144,16 @@ pub(crate) fn process_damage_assignments_with_event_with_source_snapshot_opts_wi
             dm,
             None,
             replacement_scope,
-        );
+        ).and_then(|mut processed| {
+            damage_original_payloads::complete_legacy(game, dm, replacement_scope, &mut processed)?;
+            Ok(processed)
+        });
     if dm.awaiting_choice() && result.is_ok() {
         game.restore_execution_checkpoint(checkpoint, true);
         return Ok(ProcessedDamageResult {
             assignments: Vec::new(),
             replacement_prevented: true,
+            original_payloads: Vec::new(),
             payload_outcome: None,
             programs: Vec::new(),
         });
@@ -7061,6 +7270,7 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
         return Ok(ProcessedDamageResult {
             assignments: Vec::new(),
             replacement_prevented: true,
+            original_payloads: Vec::new(),
             payload_outcome: None,
             programs: Vec::new(),
         });
@@ -7070,6 +7280,7 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
         return Ok(ProcessedDamageResult {
             assignments: Vec::new(),
             replacement_prevented: true,
+            original_payloads: Vec::new(),
             payload_outcome: None,
             programs: Vec::new(),
         });
@@ -7085,9 +7296,9 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
 fn finish_processed_damage_result(
     game: &mut GameState,
     source: ObjectId,
-    cause: crate::events::cause::EventCause,
+    _cause: crate::events::cause::EventCause,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
-    event_provenance: crate::provenance::ProvNodeId,
+    _event_provenance: crate::provenance::ProvNodeId,
     dm: &mut dyn DecisionMaker,
     replacement_scope: &crate::effects::ReplacementExecutionContext,
     result: TraitEventResult,
@@ -7098,6 +7309,7 @@ fn finish_processed_damage_result(
     let (result, mut programs) = result.into_expansion();
     let mut assignments = Vec::new();
     let mut payload_outcomes = Vec::new();
+    let mut original_payloads = Vec::new();
     let mut replacement_prevented = false;
     let replaced = match result {
         TraitEventResult::Expanded { .. } => {
@@ -7116,49 +7328,23 @@ fn finish_processed_damage_result(
             controller: replacement_controller,
             ..
         } => {
-            let resolved_target = downcast_event::<DamageEvent>(context.event.inner())
-                .ok_or_else(|| {
-                    crate::effects::ExecutionError::InternalError(
-                        "damage replacement lost its damage event".into(),
-                    )
-                })?
-                .target;
-            let targets = vec![match resolved_target {
-                DamageTarget::Player(player) => crate::effects::ResolvedTarget::Player(player),
-                DamageTarget::Object(object) => crate::effects::ResolvedTarget::Object(object),
-            }];
-            let controller = cause
-                .source_controller
-                .or_else(|| source_snapshot.map(|snapshot| snapshot.controller))
-                .unwrap_or_else(|| context.event.inner().affected_player(game));
-            let mut ctx = crate::effects::ExecutionContext::new(source, controller, dm)
-                .with_cause(cause.clone())
-                .with_provenance(event_provenance);
-            ctx.source_snapshot = source_snapshot.cloned();
-            ctx.replacement = replacement_scope.clone();
-            let mut outcome = crate::effects::replacement::execute_replacement_payload(
-                game,
-                &mut ctx,
-                &effects,
-                replacement_source,
-                replacement_controller,
-                &context,
-                Some(targets),
-            )?;
-            if dm.awaiting_choice() {
-                return Ok(ProcessedDamageResult {
-                    assignments: Vec::new(),
-                    replacement_prevented: true,
-                    payload_outcome: None,
-                    programs: Vec::new(),
-                });
-            }
-            let mut original = crate::effect::EffectOutcome::replaced();
-            original.set_value(crate::effect::OutcomeValue::Count(0));
-            let outcome =
-                crate::effect::EffectOutcome::aggregate_replacement_outcomes(original, [outcome]);
+            downcast_event::<DamageEvent>(context.event.inner()).ok_or_else(|| {
+                crate::effects::ExecutionError::InternalError("damage replacement lost its damage event".into())
+            })?;
+            let replacement_snapshot = game.object(replacement_source)
+                .filter(|_| !game.is_phased_out(replacement_source))
+                .map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
+                .transpose()?
+                .or_else(|| game.turn_store.turn_history.source_last_known_snapshot(replacement_source).cloned())
+                .or_else(|| (replacement_source == source).then(|| source_snapshot.cloned()).flatten());
+            original_payloads.push(PreparedReplacementProgram {
+                context,
+                source: replacement_source,
+                controller: replacement_controller,
+                source_snapshot: replacement_snapshot,
+                effects,
+            });
             replacement_prevented = true;
-            payload_outcomes.push(outcome);
             None
         }
         TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
@@ -7179,6 +7365,7 @@ fn finish_processed_damage_result(
             return Ok(ProcessedDamageResult {
                 assignments: Vec::new(),
                 replacement_prevented: true,
+                original_payloads: Vec::new(),
                 payload_outcome: None,
                 programs: Vec::new(),
             });
@@ -7238,6 +7425,7 @@ fn finish_processed_damage_result(
             return Ok(ProcessedDamageResult {
                 assignments: Vec::new(),
                 replacement_prevented: true,
+                original_payloads: Vec::new(),
                 payload_outcome: None,
                 programs: Vec::new(),
             });
@@ -7245,12 +7433,14 @@ fn finish_processed_damage_result(
         replacement_prevented |= remainder.replacement_prevented;
         assignments.extend(remainder.assignments);
         payload_outcomes.extend(remainder.payload_outcome);
+        original_payloads.extend(remainder.original_payloads);
         programs.extend(remainder.programs);
     }
 
     Ok(ProcessedDamageResult {
         assignments,
         replacement_prevented,
+        original_payloads,
         programs,
         payload_outcome: (!payload_outcomes.is_empty())
             .then(|| crate::effect::EffectOutcome::aggregate(payload_outcomes)),
@@ -7272,40 +7462,109 @@ fn execute_pending_prevention_follow_ups(
         .effect_store
         .prevention_effects
         .take_pending_follow_ups();
-    execute_prevention_follow_ups(game, dm, pending)
+    CapturedPreventionFollowUps { pending }.complete(game, dm)
         .map(|_| ())
         .map_err(|failure| failure.error)
 }
 
-/// Commit one damage application before executing its additional prevention
-/// effects (CR 615.5). Nested damage owns only the follow-ups it produces.
-pub(crate) fn with_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
+/// Follow-ups owned by one completed prevention-deferral scope. Capture does
+/// not execute them; a staged action retains this batch until originals and
+/// observations finish. Consuming completion preserves their captured order.
+#[derive(Debug)]
+#[must_use = "retain prevention follow-ups until the owning damage action completes"]
+pub(crate) struct CapturedPreventionFollowUps {
+    pending: Vec<crate::prevention::PendingPreventionFollowUp>,
+}
+
+impl CapturedPreventionFollowUps {
+    /// Declare the authored owners before transferring this queue suffix.
+    /// This changes routing metadata only, never follow-up order or execution.
+    pub(crate) fn with_participants(mut self, scopes: Vec<crate::effects::EffectOutcomeScope>) -> Self {
+        for pending in &mut self.pending {
+            pending.participant_scopes = scopes.clone();
+        }
+        self
+    }
+    /// Transfer ownership back to the caller's still-open full-action scope.
+    /// Ordinary damage does this immediately after preparation, restoring the
+    /// original queue order before originals and added programs execute.
+    pub(crate) fn requeue(self, game: &mut GameState) {
+        debug_assert!(
+            game.effect_store
+                .prevention_effects
+                .follow_ups_are_deferred()
+        );
+        for pending in self.pending {
+            game.effect_store
+                .prevention_effects
+                .requeue_follow_up(pending);
+        }
+    }
+
+    pub(crate) fn complete(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+    ) -> Result<Vec<crate::effect::EffectOutcome>, DamageProcessingError> {
+        self.complete_with_outputs(game, dm).map(|outcomes| {
+            outcomes
+                .into_iter()
+                .map(crate::effects::CompletedEffectOutputs::into_outcome)
+                .collect()
+        })
+    }
+
+    pub(crate) fn complete_with_outputs(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+    ) -> Result<Vec<crate::effects::CompletedEffectOutputs>, DamageProcessingError> {
+        if dm.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+        execute_prevention_follow_ups_with_outputs(game, dm, self.pending)
+    }
+
+    fn complete_outputs(
+        self,
+        game: &mut GameState,
+        dm: &mut dyn DecisionMaker,
+        mut original: crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::CompletedEffectOutputs, DamageProcessingError> {
+        let outcomes = if dm.awaiting_choice() {
+            Vec::new()
+        } else {
+            execute_prevention_follow_ups_with_owned_outputs(game, dm, self.pending)?
+        };
+        let aggregate = crate::effect::EffectOutcome::aggregate_replacement_outcomes(
+            original.outcome.clone(),
+            outcomes.iter().map(|(_, outputs)| outputs.outcome.clone()),
+        );
+        original
+            .shared
+            .extend(outcomes.into_iter().map(|(scopes, outputs)| {
+                crate::effects::SharedEffectOutcome {
+                    ownership: if scopes.is_empty() {
+                        crate::effects::SharedOutcomeOwnership::Batch
+                    } else {
+                        crate::effects::SharedOutcomeOwnership::Participants(scopes)
+                    },
+                    outputs,
+                }
+            }));
+        Ok(original.project_aggregate(aggregate))
+    }
+}
+
+/// Close this action's deferral scope and return its follow-ups without running
+/// any of them. Nested scopes retain only their own suffix of the pending queue.
+/// Failed or suspended actions discard their suffix; their caller owns replay
+/// and rollback, just as for the ordinary full-action deferral gateway.
+pub(crate) fn capture_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
     game: &mut GameState,
     dm: &mut dyn DecisionMaker,
     apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
-) -> Result<R, E> {
-    deferred_prevention_follow_ups(game, dm, apply_damage).map(|(result, _)| result)
-}
-
-pub(crate) fn with_deferred_prevention_follow_up_outcome<E: From<DamageProcessingError>>(
-    game: &mut GameState,
-    dm: &mut dyn DecisionMaker,
-    apply_damage: impl FnOnce(
-        &mut GameState,
-        &mut dyn DecisionMaker,
-    ) -> Result<crate::effect::EffectOutcome, E>,
-) -> Result<crate::effect::EffectOutcome, E> {
-    deferred_prevention_follow_ups(game, dm, apply_damage).map(|(mut outcome, events)| {
-        outcome.events.extend(events);
-        outcome
-    })
-}
-
-fn deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
-    game: &mut GameState,
-    dm: &mut dyn DecisionMaker,
-    apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
-) -> Result<(R, Vec<crate::triggers::TriggerEvent>), E> {
+) -> Result<(R, CapturedPreventionFollowUps), E> {
     let start = game
         .effect_store
         .prevention_effects
@@ -7315,87 +7574,83 @@ fn deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
         .effect_store
         .prevention_effects
         .end_follow_up_deferral(start);
-    let events = if result.is_ok() && !dm.awaiting_choice() {
-        execute_prevention_follow_ups(game, dm, pending).map_err(E::from)?
+    let pending = if result.is_ok() && !dm.awaiting_choice() {
+        pending
     } else {
         Vec::new()
     };
-    result.map(|result| (result, events))
+    result.map(|result| (result, CapturedPreventionFollowUps { pending }))
 }
 
-fn execute_prevention_follow_ups(
+/// Commit one damage application before executing its additional prevention
+/// effects (CR 615.5). Nested damage owns only the follow-ups it produces.
+pub(crate) fn with_deferred_prevention_follow_ups<R, E: From<DamageProcessingError>>(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    apply_damage: impl FnOnce(&mut GameState, &mut dyn DecisionMaker) -> Result<R, E>,
+) -> Result<R, E> {
+    let (result, follow_ups) = capture_deferred_prevention_follow_ups(game, dm, apply_damage)?;
+    follow_ups.complete(game, dm).map_err(E::from)?;
+    Ok(result)
+}
+
+pub(crate) fn with_deferred_prevention_follow_up_outputs<E: From<DamageProcessingError>>(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    apply_damage: impl FnOnce(
+        &mut GameState,
+        &mut dyn DecisionMaker,
+    ) -> Result<crate::effects::CompletedEffectOutputs, E>,
+) -> Result<crate::effects::CompletedEffectOutputs, E> {
+    let (outcome, follow_ups) = capture_deferred_prevention_follow_ups(game, dm, apply_damage)?;
+    follow_ups
+        .complete_outputs(game, dm, outcome)
+        .map_err(E::from)
+}
+
+fn execute_prevention_follow_ups_with_outputs(
     game: &mut GameState,
     dm: &mut dyn DecisionMaker,
     pending: Vec<crate::prevention::PendingPreventionFollowUp>,
-) -> Result<Vec<crate::triggers::TriggerEvent>, DamageProcessingError> {
-    let mut events = Vec::new();
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, DamageProcessingError> {
+    execute_prevention_follow_ups_with_owned_outputs(game, dm, pending)
+        .map(|outputs| outputs.into_iter().map(|(_, outputs)| outputs).collect())
+}
+
+fn execute_prevention_follow_ups_with_owned_outputs(
+    game: &mut GameState,
+    dm: &mut dyn DecisionMaker,
+    pending: Vec<crate::prevention::PendingPreventionFollowUp>,
+) -> Result<
+    Vec<(
+        Vec<crate::effects::EffectOutcomeScope>,
+        crate::effects::CompletedEffectOutputs,
+    )>,
+    DamageProcessingError,
+> {
+    let mut outcomes = Vec::new();
     for pending in pending {
         if dm.awaiting_choice() {
             break;
         }
-        let follow_up = pending.follow_up;
-        let prevented_event =
-            crate::events::RawEvent::new(pending.damage.clone(), pending.provenance);
-        let prevented_event = if let Some(snapshot) = pending.damage_source_snapshot {
-            prevented_event.with_source_snapshot(snapshot)
-        } else {
-            prevented_event
-        };
-        let mut exec_ctx =
-            crate::effects::ExecutionContext::new(follow_up.source, follow_up.controller, &mut *dm)
-                .with_triggering_event(prevented_event)
-                .with_cause(crate::events::cause::EventCause::from_effect(
-                    follow_up.source,
-                    follow_up.controller,
-                ))
-                .with_provenance(pending.provenance);
-        exec_ctx.replacement = pending.replacement_scope;
-        exec_ctx.source_snapshot = game
-            .object(follow_up.source)
-            .filter(|_| !game.is_phased_out(follow_up.source))
-            .map(|object| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    object, game,
-                )
-            })
-            .or_else(|| {
-                game.turn_store
-                    .turn_history
-                    .departed_object_snapshot(follow_up.source)
-                    .cloned()
-            })
-            .or(pending.source_snapshot);
-        if follow_up.targets.is_empty() {
-            match pending.damage.target {
-                DamageTarget::Player(player_id) => exec_ctx
-                    .targets
-                    .push(crate::effects::ResolvedTarget::Player(player_id)),
-                DamageTarget::Object(object_id) => exec_ctx
-                    .targets
-                    .push(crate::effects::ResolvedTarget::Object(object_id)),
-            }
-        } else {
-            exec_ctx.targets = follow_up.targets;
-            exec_ctx.target_assignments = follow_up.target_assignments;
-        }
-        for effect in follow_up.effects {
-            let outcome =
-                crate::effects::execute_effect(game, &effect, &mut exec_ctx).map_err(|error| {
-                    DamageProcessingError {
-                        source: follow_up.source,
-                        error,
-                    }
+        let follow_up = &pending.follow_up;
+        let mut exec_ctx = prevention_draw_boundary::context(game, &mut *dm, &pending)?;
+        for effect in &follow_up.effects {
+            let outcome = crate::effects::execute_effect_with_outputs(game, effect, &mut exec_ctx)
+                .map_err(|error| DamageProcessingError {
+                    source: follow_up.source,
+                    error,
                 })?;
             if exec_ctx.decision_maker.awaiting_choice() {
-                return Ok(events);
+                return Ok(outcomes);
             }
-            for trigger_event in outcome.events {
+            for trigger_event in &outcome.outcome.events {
                 game.queue_trigger_event(trigger_event.provenance(), trigger_event.clone());
-                events.push(trigger_event);
             }
+            outcomes.push((pending.participant_scopes.clone(), outcome));
         }
     }
-    Ok(events)
+    Ok(outcomes)
 }
 
 /// Process a dies event using the new Event type.
@@ -8088,7 +8343,7 @@ fn execute_entry_replacement_payload(
         object_tags: vec![("it".into(), snapshots.clone()), ("__it__".into(), snapshots)],
     };
     if let Some(draws) = draws {
-        if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings(
+        if let Some(prepared) = crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
             game, &mut ctx, effects, source, controller, context, None, bindings.clone(),
         )? {
             draws.0.push(prepared);
@@ -8878,8 +9133,7 @@ fn prepare_etb_replacements_inner(
                                 state.applied_effects.clone();
                             interaction_scope.suppressed_replacement_effect_keys =
                                 state.applied_effect_keys.clone();
-                            let interaction_snapshot = game.object(object_id).map(|object|
-                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+                            let interaction_snapshot = game.object(object_id).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
                             let interactive_result = continue_interactive_replacement(
                                 game,
                                 &response,
@@ -9052,8 +9306,7 @@ fn prepare_etb_replacements_inner(
                         state.applied_effects.clone();
                     interaction_scope.suppressed_replacement_effect_keys =
                         state.applied_effect_keys.clone();
-                    let interaction_snapshot = game.object(object_id).map(|object|
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+                    let interaction_snapshot = game.object(object_id).map(|object| crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?;
                     let interactive_result = continue_interactive_replacement(
                         game,
                         &response,

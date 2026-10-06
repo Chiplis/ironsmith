@@ -1,4 +1,4 @@
-import { createLocalAnalysisJournal } from "../lib/local-analysis-replay.js";
+import { createLocalAnalysisJournal, releaseRestoredRuntimeSavepoints } from "../lib/local-analysis-replay.js";
 import { createPaymentOptionsAnalysis } from "../lib/payment-options-analysis.js";
 import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
@@ -7,6 +7,9 @@ import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-material.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
 import { compileWasmWithProgress } from "../lib/wasm-loading.js";
+import { createExactBuildSnapshotRuntime } from '../lib/exact-build-snapshot.js';
+import { publicCheckpointHash } from '../lib/multiplayer-audit.js';
+import { exactSnapshotBuildId, exactSnapshotLayout, replaceEngineInstance, attachExactBuildGame } from '../../../wasm_demo/pkg/engine.js';
 import { createAdaptiveWorkBudget } from "../lib/adaptive-work-budget.js";
 import { createIsolatedPriorityAnalysis } from "../lib/isolated-priority-analysis.js";
 import { createWorkerTaskDiagnostics } from "../lib/worker-task-diagnostics.js";
@@ -55,6 +58,8 @@ let previewWorker = null;
 const targetPreviews = new Map();
 let engineModule = null;
 let engineExports = null;
+let exactSnapshotRuntime = null;
+let runtimeGeneration = 0;
 // Routes the server answered with a definitive 404. Any other failure (SPA
 // HTML fallback, captive portal, truncated cached body) is transient: it is
 // only remembered briefly, so a later reveal of that card retries instead of
@@ -122,7 +127,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 const workerTasks = createWorkerTaskDiagnostics({ publish: message => self.postMessage(message) });
@@ -156,6 +161,16 @@ const paymentOptionsAnalysis = createPaymentOptionsAnalysis({
       module: engineModule,
     };
   }, { kind: 'payment_options_capture' }),
+  createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
+});
+
+// Even a single resumable planner node can run synchronous replacement
+// simulation. Keep ranking off the authoritative queue, just like options.
+const paymentRankingAnalysis = createPaymentOptionsAnalysis({
+  capture: () => enqueueCall(() => ({
+    kind: 'ranking', request: 'ranking',
+    localReplay: localAnalysisJournal.capture(), module: engineModule,
+  }), { kind: 'payment_ranking_capture' }),
   createWorker: () => new Worker(new URL('./paymentOptionsWorker.js', import.meta.url), { type: 'module' }),
 });
 
@@ -759,7 +774,7 @@ async function handleInit(msg = {}) {
   try {
     clearBackgroundTimer();
     snapshotEncoder.reset();
-    paymentOptionsAnalysis.cancel();
+    paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
     previewWorker?.terminate(); previewWorker = null; targetPreviews.clear();
     game = null;
     pendingCallCount = 0;
@@ -788,6 +803,9 @@ async function handleInit(msg = {}) {
     // the one signal that separates "this call is expensive" from "this session
     // has grown expensive", which a single slow call cannot tell apart.
     engineExports = await initWasm({ engine: engineModule, compiler: false, verifier: false });
+    exactSnapshotRuntime = createExactBuildSnapshotRuntime({ exports: engineExports,
+      layout: exactSnapshotLayout, buildId: exactSnapshotBuildId,
+      replace: replaceEngineInstance, attach: attachExactBuildGame });
     localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch);
     game = localAnalysisJournal.game;
     workerTasks.phase(task, 'catalog_load');
@@ -814,6 +832,8 @@ async function handleInit(msg = {}) {
 
     workerTasks.phase(task, 'ready_post');
     self.postMessage({ type: "ready", runtimeSavepoints: typeof game.createRuntimeSavepoint === "function",
+      exactBuildSnapshots: true,
+      exactSnapshotBuildId,
       runtimeBranches: typeof game.exchangeRuntimeSavepoint === "function",
       embeddedCardCatalog: embeddedCardIndex !== null });
     outcome = 'ok';
@@ -881,6 +901,13 @@ function handleTargetPreview(id, args) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  if (msg.runtimeBranch == null && method === 'analyzePayment') {
+    paymentRankingAnalysis.run().then(result =>
+      postWorkerResult({ type: 'result', id, ok: true, result }), error =>
+      postWorkerResult({ type: 'result', id, ok: false, error: serializeError(error) }));
+    return;
+  }
+  if (msg.runtimeBranch == null && method === 'cancelPaymentAnalysis') paymentRankingAnalysis.cancel();
   if (msg.runtimeBranch == null && method === "getPaymentActivationOptions") {
     paymentOptionsAnalysis.run(...args).then(result =>
       postWorkerResult({ type: "result", id, ok: true, result }), error =>
@@ -928,13 +955,55 @@ function handleCall(msg) {
     workerTasks.phase(diagnosticTask, 'preparation_wait');
     const prepared = await preparation;
     if (prepared.error) throw prepared.error;
+    if (method === 'restoreExactBuildSnapshot') {
+      if (msg.runtimeBranch != null) throw new Error('Cannot restore an instance inside a runtime branch');
+      runtimeGeneration++;
+    }
+    if (msg.runtimeGeneration != null && msg.runtimeGeneration !== runtimeGeneration) throw new Error('Engine instance has expired');
     return inRuntimeBranch(game, msg.runtimeBranch, async () => {
     if (!game) throw new Error("Game is not initialized yet");
+    if (method === 'captureExactBuildSnapshot') {
+      if (msg.runtimeBranch != null) throw new Error('Cannot capture an instance inside a runtime branch');
+      if (args[0]?.publicStateHash && await publicCheckpointHash(game.exportPublicAuditCheckpoint(), globalThis.crypto) !== args[0].publicStateHash) {
+        throw new Error('Exact snapshot does not match the accepted public state');
+      }
+      const result = await exactSnapshotRuntime.capture(game, {
+        journal: localAnalysisJournal.capture(), routes: [...registeredCardRoutes],
+        cardNames: [...knownRuntimeCardNames], metadata: args[0],
+      });
+      return { result, registryStatus: null };
+    }
+    if (method === 'restoreExactBuildSnapshot') {
+      priorityAnalysis.invalidate(); paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
+      latestTargetPreview = null; previewWorker?.postMessage({ type: 'cancel' });
+      let result;
+      try {
+        const runtime = await exactSnapshotRuntime.restore(args[0], game);
+        game = runtime;
+        localAnalysisJournal = createLocalAnalysisJournal(runtime, ++localAnalysisEpoch, args[0].recovery.journal);
+        game = localAnalysisJournal.game;
+        releaseRestoredRuntimeSavepoints(localAnalysisJournal);
+        registeredCardRoutes.clear(); knownRuntimeCardNames.clear();
+        for (const route of args[0].recovery.routes) registeredCardRoutes.add(route);
+        for (const name of args[0].recovery.cardNames) knownRuntimeCardNames.add(name);
+        result = game.uiState();
+      } catch (error) {
+        // Invalid bytes must never be used as the starting point for genesis.
+        // Discard the entire instance, including any partially restored heap.
+        if (game.__wbg_ptr) game.__destroy_into_raw();
+        exactSnapshotRuntime.reset();
+        localAnalysisJournal = createLocalAnalysisJournal(new WasmGame(), ++localAnalysisEpoch);
+        game = localAnalysisJournal.game;
+        registeredCardRoutes.clear(); knownRuntimeCardNames.clear();
+        throw error;
+      } finally { engineExports = exactSnapshotRuntime.exports; }
+      return { result, registryStatus: readRegistryStatus() };
+    }
     if (msg.runtimeBranch == null && !ANALYSIS_READ_METHOD.test(method) && method !== "setPerspective") {
       // Publishing a verified branch may copy the identical visible state.
       // Compare its analysis identity after the copy instead of discarding work.
       if (method !== "copyRuntimeSavepoint") priorityAnalysis.invalidate();
-      paymentOptionsAnalysis.cancel();
+      paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
       game?.cancelPaymentAnalysis?.();
       latestTargetPreview = null;
       previewWorker?.postMessage({ type: "cancel" });
@@ -1009,7 +1078,7 @@ function handleCall(msg) {
     const result = await fn.apply(game, args);
     if (previousViewIdentity !== null && previousViewIdentity !== game.priorityAnalysisIdentity()) {
       priorityAnalysis.invalidate();
-      paymentOptionsAnalysis.cancel();
+      paymentOptionsAnalysis.cancel(); paymentRankingAnalysis.cancel();
     }
     rememberCardNamesFromEngineResult(result);
     const wasmCallMs = nowMs() - wasmStartedAt;

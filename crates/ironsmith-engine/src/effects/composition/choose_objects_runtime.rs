@@ -4,9 +4,7 @@ use crate::target::ChooseSpec;
 use crate::decisions::context::DecisionHiddenCardVisibility;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{
-    ChoiceCount, EffectOutcome, ExecutionFact, OutcomeObjectMemory, SearchSelectionMode,
-};
+use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
 use crate::effects::cards::search_overrides::{
     begin_opposition_agent_search_control, exile_found_cards_for_opposition_agent,
     finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
@@ -2104,7 +2102,7 @@ pub(crate) fn run_choose_objects(
             }
             let chosen_memory: Vec<_> = chosen
                 .iter()
-                .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+                .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))
                 .collect();
             if search_zones.iter().any(Zone::is_hidden) {
                 ctx.remember_face_down_exile_viewers(&chosen, chooser_id);

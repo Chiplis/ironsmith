@@ -9,7 +9,7 @@ function isActivation(action) {
 export default function useInspectorPaymentActions(game, state, actions) {
   const [, refresh] = useReducer(value => value + 1, 0);
   const requestKey = [...new Set(actions.filter(isActivation).map(inspectorPaymentKey))].sort().join(",");
-  const canQuery = typeof game?.inspectorActions === "function" && state != null && requestKey !== "";
+  const canQuery = typeof game?.inspectorActions === "function" && state != null && state?.decision?.kind !== "mana_payment" && requestKey !== "";
 
   useEffect(() => {
     if (!canQuery) return undefined;

@@ -4,9 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact8 and signed audit21. Numeric public proof is audit
-// evidence only; historical digests are never upgraded by injecting defaults.
-const PUBLIC_AUDIT_VERSION: u32 = 4;
+// Coordinated with artifact9 and signed audit22. Full-snapshot claim encoding
+// changes this public evidence, never the native gameplay recovery owner.
+// Historical digests are not upgraded by injecting current snapshot defaults.
+const PUBLIC_AUDIT_VERSION: u32 = 5;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -1814,14 +1815,14 @@ mod public_audit_tests {
     use ironsmith::game_state::HiddenCardInfo;
 
     #[test]
-    fn public_audit_v4_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
+    fn public_audit_v5_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
         let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
         let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         let unset = checkpoint(&wasm);
-        assert_eq!(unset["version"], 4);
+        assert_eq!(unset["version"], 5);
         let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
             pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
             acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
@@ -1837,7 +1838,7 @@ mod public_audit_tests {
     }
 
     #[test]
-    fn public_audit_v4_retains_exact_manifest_and_cloak_provenance() {
+    fn public_audit_v5_retains_exact_manifest_and_cloak_provenance() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
@@ -1848,7 +1849,7 @@ mod public_audit_tests {
         let baseline = wasm.game.clone();
         let object_evidence = |wasm: &WasmGame| {
             let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-            assert_eq!(checkpoint["version"], 4);
+            assert_eq!(checkpoint["version"], 5);
             checkpoint["objects"].as_array().unwrap().iter()
                 .find(|object| object["id"] == id.0).unwrap().clone()
         };

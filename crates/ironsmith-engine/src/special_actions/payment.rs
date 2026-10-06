@@ -62,22 +62,16 @@ pub(super) fn check_special_action_payment(
     payment: &SpecialActionPayment,
 ) -> Result<(), ActionError> {
     if let ironsmith_core::TotalCostKind::OneOf(branches) = payment.cost.kind() {
-        return branches
-            .iter()
-            .any(|cost| {
-                check_special_action_payment(
-                    game,
-                    player,
-                    &SpecialActionPayment {
-                        source: payment.source,
-                        cost: cost.clone(),
-                        reason: payment.reason,
-                    },
-                )
-                .is_ok()
-            })
-            .then_some(())
-            .ok_or(ActionError::CantPayCost);
+        for cost in branches {
+            match check_special_action_payment(game, player, &SpecialActionPayment {
+                source: payment.source, cost: cost.clone(), reason: payment.reason,
+            }) {
+                Ok(()) => return Ok(()),
+                Err(error @ ActionError::ExecutionFailure { .. }) => return Err(error),
+                Err(_) => {}
+            }
+        }
+        return Err(ActionError::CantPayCost);
     }
     // Pure mana totals have a fast existential query. Combine components so a
     // single source cannot be counted independently for two mana costs.
@@ -87,27 +81,20 @@ pub(super) fn check_special_action_payment(
             .map(|c| c.mana_cost_ref())
             .collect::<Option<Vec<_>>>();
         if let Some(costs) = mana {
-            let mut pips = Vec::new();
+            let mut combined = ManaCost::new();
             for cost in costs {
-                pips.extend(
-                    game.adjust_mana_cost_for_payment_reason(
-                        player,
-                        Some(payment.source),
-                        cost,
-                        payment.reason,
-                    )
-                    .pips()
-                    .iter()
-                    .cloned(),
+                let adjusted = game.adjust_mana_cost_for_payment_reason(
+                    player, Some(payment.source), cost, payment.reason,
                 );
+                combined = crate::decision::add_mana_cost(&combined, &adjusted);
             }
             let mut request = crate::mana_payment::ManaPaymentRequest::new(
                 player,
                 payment.source,
                 payment.reason,
-                ManaCost::from_pips(pips),
+                combined,
             )
-            .with_spend_policy(game.mana_spend_policy(player, Some(payment.source)));
+            .with_spend_policy(game.mana_spend_policy_for_reason(player, Some(payment.source), payment.reason));
             request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
                 && game.player_can_pay_black_with_life_for_reason(
                     player,
@@ -115,7 +102,13 @@ pub(super) fn check_special_action_payment(
                     payment.reason,
                 );
             return crate::mana_payment::check_mana_payment(game, &request)
-                .map_err(|_| ActionError::CantPayCost);
+                .map_err(|error| match error {
+                    crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => {
+                        game.record_token_resource_failure(&error);
+                        ActionError::ExecutionFailure { source: payment.source, error }
+                    }
+                    _ => ActionError::CantPayCost,
+                });
         }
     }
     // Reuse the choice-aware total-cost interpreter on a clone for non-mana
@@ -170,14 +163,14 @@ pub(crate) fn pay_resolution_cost_with_snapshot(
         cost: cost.clone(),
         reason,
     };
-    check_special_action_payment_with_snapshot(
-        game,
-        player,
-        &payment,
-        snapshot.clone(),
-    )
-    .is_ok()
-        && pay_special_action_payment_with_snapshot(game, player, &payment, snapshot, dm).is_ok()
+    let result = check_special_action_payment_with_snapshot(game, player, &payment, snapshot.clone())
+        .and_then(|()| pay_special_action_payment_with_snapshot(game, player, &payment, snapshot, dm));
+    if let Err(ActionError::ExecutionFailure { error, .. }) = &result {
+        // This legacy boolean adapter participates in its caller's checked
+        // execution scope. Unknown payment must not become an unpaid ward.
+        game.record_token_resource_failure(error);
+    }
+    result.is_ok()
 }
 
 /// Adjacent mana components are one payment, so paying a generic component
@@ -191,22 +184,18 @@ fn normalized_payment_cost(cost: &crate::cost::TotalCost) -> crate::cost::TotalC
         }
         ironsmith_core::TotalCostKind::All(components) => {
             let mut normalized = Vec::new();
-            let mut pips = Vec::new();
+            let mut mana = ManaCost::new();
             for component in components {
-                if let Some(mana) = component.mana_cost_ref() {
-                    pips.extend(mana.pips().iter().cloned());
+                if let Some(part) = component.mana_cost_ref() {
+                    mana = crate::decision::add_mana_cost(&mana, part);
                 } else {
-                    if !pips.is_empty() {
-                        normalized.push(crate::costs::Cost::mana(ManaCost::from_pips(
-                            std::mem::take(&mut pips),
-                        )));
+                    if !mana.is_empty() {
+                        normalized.push(crate::costs::Cost::mana(std::mem::take(&mut mana)));
                     }
                     normalized.push(component.clone());
                 }
             }
-            if !pips.is_empty() {
-                normalized.push(crate::costs::Cost::mana(ManaCost::from_pips(pips)));
-            }
+            if !mana.is_empty() { normalized.push(crate::costs::Cost::mana(mana)); }
             TotalCost::from_costs(normalized)
         }
     }

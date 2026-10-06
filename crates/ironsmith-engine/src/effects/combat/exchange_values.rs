@@ -185,11 +185,11 @@ impl ExchangeValuesEffect {
             )
         } else {
             crate::events::Event::new_with_provenance(
-                crate::events::LifeLossEvent::from_effect(player, amount), ctx.provenance,
+                crate::events::LifeLossEvent::from_effect(player, amount),
+                ctx.provenance,
             )
         })
     }
-
 }
 
 impl EffectExecutor for ExchangeValuesEffect {
@@ -198,59 +198,73 @@ impl EffectExecutor for ExchangeValuesEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let Some(left) = self.resolve_operand(game, ctx, &self.left)? else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        let Some(right) = self.resolve_operand(game, ctx, &self.right)? else {
-            return Ok(EffectOutcome::target_invalid());
-        };
+        crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            let Some(left) = self.resolve_operand(game, ctx, &self.left)? else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            let Some(right) = self.resolve_operand(game, ctx, &self.right)? else {
+                return Ok(EffectOutcome::target_invalid());
+            };
 
-        let left_value = match left {
-            ResolvedExchangeValue::LifeTotal { value, .. }
-            | ResolvedExchangeValue::Stat { value, .. } => value,
-        };
-        let right_value = match right {
-            ResolvedExchangeValue::LifeTotal { value, .. }
-            | ResolvedExchangeValue::Stat { value, .. } => value,
-        };
+            let left_value = match left {
+                ResolvedExchangeValue::LifeTotal { value, .. }
+                | ResolvedExchangeValue::Stat { value, .. } => value,
+            };
+            let right_value = match right {
+                ResolvedExchangeValue::LifeTotal { value, .. }
+                | ResolvedExchangeValue::Stat { value, .. } => value,
+            };
 
-        if !Self::can_apply_life_exchange(game, left, right_value)
-            || !Self::can_apply_life_exchange(game, right, left_value)
-        {
-            return Ok(EffectOutcome::prevented());
-        }
+            if !Self::can_apply_life_exchange(game, left, right_value)
+                || !Self::can_apply_life_exchange(game, right, left_value)
+            {
+                return Ok(EffectOutcome::prevented());
+            }
 
-        let checkpoint = game.clone();
-        let result = (|| {
             let sides = [(left, right_value), (right, left_value)];
-            let proposals = sides.iter().filter_map(|(value, next)| {
-                Self::life_proposal(*value, *next, ctx)
-            }).collect();
+            let proposals = sides
+                .iter()
+                .filter_map(|(value, next)| Self::life_proposal(*value, *next, ctx))
+                .collect();
             // Replacement matching and decisions must see the old stat values,
             // regardless of which operand was authored first.
-            let mut outcomes = vec![crate::effects::life::life_change::execute_life_changes(
-                game, ctx, proposals,
-            )?];
+            let prepared =
+                crate::effects::life::life_change::prepare_life_changes(game, ctx, proposals)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            for (value, next) in sides {
-                if matches!(value, ResolvedExchangeValue::Stat { .. }) {
-                    outcomes.push(self.apply_resolved_value(game, ctx, value, next)?);
+            let outcomes = crate::effects::composition::execute_simultaneous_originals(
+                game,
+                ctx,
+                true,
+                |game, ctx| {
+                    let mut originals =
+                        crate::effects::life::life_change::commit_prepared_life_changes(
+                            game, ctx, prepared,
+                        )?;
                     if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
+                        return Ok(Vec::new());
                     }
-                }
+                    for (value, next) in sides {
+                        if matches!(value, ResolvedExchangeValue::Stat { .. }) {
+                            let outcome = self.apply_resolved_value(game, ctx, value, next)?;
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(Vec::new());
+                            }
+                            originals
+                                .push(crate::effects::SimultaneousEffectCommit::finished(outcome));
+                        }
+                    }
+                    Ok(originals)
+                },
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
             }
             let mut outcome = EffectOutcome::aggregate(outcomes);
-            outcome.value = crate::effect::OutcomeValue::None;
+            outcome.set_value(crate::effect::OutcomeValue::None);
             Ok(outcome)
-        })();
-        if ctx.decision_maker.awaiting_choice() || result.is_err() {
-            *game = checkpoint;
-        }
-        result
-
+        })
     }
 }
 

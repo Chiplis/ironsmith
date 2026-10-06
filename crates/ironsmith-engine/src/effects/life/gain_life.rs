@@ -4,6 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::events::LifeGainEvent;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -31,23 +32,45 @@ pub use ironsmith_core::GainLifeEffect;
 ///     player: ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)),
 /// };
 /// ```
+fn prepare_proposal(
+    effect: &GainLifeEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<super::life_change::LifeChangeProposal, ExecutionError> {
+    let player = resolve_player_from_spec(game, &effect.player, ctx)?;
+    let amount = resolve_value(game, &effect.amount, ctx)?.max(0) as u32;
+    Ok(super::life_change::LifeChangeProposal::gain(player, amount))
+}
+
 impl EffectExecutor for GainLifeEffect {
+    fn replacement_original_event(
+        &self,
+        game: &GameState,
+        ctx: &ExecutionContext,
+    ) -> Result<Option<crate::events::Event>, ExecutionError> {
+        Ok(Some(prepare_proposal(self, game, ctx)?.event(ctx)))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         game.try_update_static_ability_effects(Default::default())
             .map_err(ExecutionError::ContinuousDiscovery)?;
-        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-
-        super::life_change::execute_life_change(
-            game, ctx,
-            crate::events::Event::new_with_provenance(
-                LifeGainEvent::new(player_id, amount).with_source(ctx.source), ctx.provenance,
-            ),
-        )
+        let event = self.replacement_original_event(game, ctx)?.ok_or_else(|| {
+            ExecutionError::InternalError("life gain has no nominal event".into())
+        })?;
+        super::life_change::execute_life_change_with_outputs(game, ctx, event)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -70,9 +93,7 @@ impl EffectExecutor for GainLifeEffect {
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         // Life gain involves no choices; the amount is fixed against the
         // pre-action state and the whole batch commits together.
-        let player = resolve_player_from_spec(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
-        Ok(Box::new(GainLifeProposal { player, amount, prepared: None }))
+        Ok(Box::new(prepare_proposal(self, game, ctx)?))
     }
 
     fn target_description(&self) -> &'static str {
@@ -84,44 +105,58 @@ impl EffectExecutor for GainLifeEffect {
     }
 }
 
-/// One player's part of a simultaneous each-player life gain.
-#[derive(Debug)]
-struct GainLifeProposal {
-    player: crate::ids::PlayerId,
-    amount: u32,
-    prepared: Option<crate::events::processing::TraitEventResult>,
-}
-
-impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
-    fn prepare_original(&mut self, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<(), ExecutionError>
-    {
-        self.prepared = Some(super::life_change::prepare_life_change(game, ctx,
-            crate::events::Event::new_with_provenance(LifeGainEvent::new(self.player, self.amount).with_source(ctx.source), ctx.provenance))?);
-        Ok(())
+fn validate_gain_cost(
+    effect: &GainLifeEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<(), CostValidationError> {
+    let recipient = resolve_player_from_spec(game, &effect.player, ctx).map_err(|error| {
+        CostValidationError::Other(format!("life-gain cost has no eligible recipient: {error}"))
+    })?;
+    if !game.can_gain_life(recipient) {
+        return Err(CostValidationError::Other(
+            "required player can't gain life".to_string(),
+        ));
     }
-    fn commit_original(mut self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
-        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError>
-    {
-        if self.prepared.is_none() { self.prepare_original(game, ctx)?; }
-        super::life_change::commit_prepared_life_original(game, ctx, self.prepared.take().expect("life proposal prepared"))
-    }
-
-    fn commit(
-        self: Box<Self>,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        super::life_change::execute_life_change(
-            game, ctx,
-            crate::events::Event::new_with_provenance(
-                LifeGainEvent::new(self.player, self.amount).with_source(ctx.source), ctx.provenance,
-            ),
-        )
-    }
+    Ok(())
 }
 
 impl CostExecutableEffect for GainLifeEffect {
+    fn supports_prepared_payment(&self) -> bool {
+        true
+    }
+
+    fn accepts_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+    ) -> bool {
+        proposal.nominal_payment_quantity().is_some()
+            && proposal.declared_payment_resources().is_empty()
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let checked = game
+            .continuous_query_snapshot()
+            .map_err(ExecutionError::ContinuousDiscovery)?;
+        validate_gain_cost(self, &checked, ctx).map_err(|error| {
+            ExecutionError::Impossible(format!("life-gain payment unavailable: {error:?}"))
+        })?;
+        Ok(Box::new(prepare_proposal(self, &checked, ctx)?))
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        _reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        validate_gain_cost(self, game, ctx)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -129,15 +164,7 @@ impl CostExecutableEffect for GainLifeEffect {
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
-        let recipient = resolve_player_from_spec(game, &self.player, &ctx).map_err(|error| {
-            CostValidationError::Other(format!("life-gain cost has no eligible recipient: {error}"))
-        })?;
-        if !game.can_gain_life(recipient) {
-            return Err(CostValidationError::Other(
-                "required player can't gain life".to_string(),
-            ));
-        }
-        Ok(())
+        validate_gain_cost(self, game, &ctx)
     }
 }
 

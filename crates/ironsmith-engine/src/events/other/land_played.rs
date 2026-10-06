@@ -10,7 +10,7 @@ use crate::zone::Zone;
 
 /// A land-play event.
 ///
-/// Triggered when a player plays a land as a special action.
+/// Triggered when a player plays a land as a special action or during resolution.
 #[derive(Debug, Clone)]
 pub struct LandPlayedEvent {
     /// The land permanent/object resulting from the play.
@@ -81,8 +81,14 @@ impl LandPlayedEvent {
         }
         let chars = game.try_current_characteristics(land)
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?.ok_or_else(unavailable)?;
-        let snapshot = ObjectSnapshot::from_object_with_known_characteristics(object, game, Some(&chars));
+        let snapshot = ObjectSnapshot::try_from_object_with_known_characteristics(object, game, Some(&chars))?;
         Ok(Self { land, player, from_zone, snapshot: Some(snapshot), completed_destination: Some(completed_destination) })
+    }
+
+    pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
+        self.completed_destination = snapshot.as_ref().map(|snapshot| snapshot.zone);
+        self.snapshot = snapshot;
+        self
     }
 }
 
@@ -119,9 +125,10 @@ impl GameEventType for LandPlayedEvent {
         Some(self.player)
     }
 
-    fn snapshot(&self) -> Option<&ObjectSnapshot> { self.snapshot.as_ref() }
+    fn snapshot(&self) -> Option<&ObjectSnapshot> {
+        self.snapshot.as_ref()
+    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

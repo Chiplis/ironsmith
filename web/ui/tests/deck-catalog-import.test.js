@@ -59,5 +59,8 @@ test("enforces Commander structure separately", () => {
   };
   assert.equal(validateDeckCatalogEntry(commander).valid, true);
   assert.equal(validateDeckCatalogEntry({ ...commander, commander: [] }).valid, false);
+  const partners = { ...commander, mainboard: [{ name: "Island", count: 98 }], commander: [{ name: "Kraum, Ludevic's Opus", count: 1 }, { name: "Tymna the Weaver", count: 1 }] };
+  assert.equal(validateDeckCatalogEntry(partners).valid, true);
+  assert.equal(validateDeckCatalogEntry({ ...partners, mainboard: commander.mainboard }).valid, false);
   assert.match(deckCatalogEntryToMtgoText(commander), /^Commander\n1 Kraum, Ludevic's Opus\n\n99 Island/);
 });

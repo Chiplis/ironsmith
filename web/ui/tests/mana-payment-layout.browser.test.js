@@ -6,7 +6,7 @@ import { createServer } from 'vite';
 test('payment panel fits beside the hand and zones, below opponent cards, and scrolls long payments', async()=>{
   const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();const browser=await chromium.launch();
   try {
-    const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const page=await browser.newPage({viewport:{width:1600,height:1000},reducedMotion:'reduce'}),errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/diagnostics-layout.html?kind=mana_payment&scenario=long-payment`);
     const panel=page.locator('[data-mana-payment="true"]');await panel.waitFor({state:'visible'});
     await page.waitForTimeout(600);
@@ -33,7 +33,7 @@ test('payment panel fits beside the hand and zones, below opponent cards, and sc
     const pay=await page.locator('.mana-payment-pay-button').boundingBox();
     for(const kind of ['priority','targets']) {
       await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/diagnostics-layout.html?kind=${kind}`);
-      await page.locator('[data-human-action-dock]').waitFor({state:'visible'});await page.waitForTimeout(400);
+      await page.locator('[data-human-action-dock]').waitFor({state:'visible'});await page.waitForTimeout(650);
       const main=await page.locator('[data-human-action-dock] .decision-main-button').boundingBox();
       assert.ok(Math.abs(main.y-pay.y)<0.1, `${kind}: ${JSON.stringify({main,pay})}`);
       assert.equal(main.height,pay.height);

@@ -91,7 +91,7 @@ impl EffectExecutor for MayMoveToZoneEffect {
 
         let move_effect =
             crate::effects::MoveToZoneEffect::new(self.target.clone(), self.zone, false);
-        move_effect.execute(game, ctx)
+        move_effect.execute_child(game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

@@ -23,10 +23,8 @@ impl EffectExecutor for RepeatProcessEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
         let sequence = SequenceEffect::new(self.effects.clone());
-        let mut all_events = Vec::new();
-        let mut all_execution_facts = Vec::new();
+        let mut children = Vec::new();
         let mut continuation_count = 0i64;
-        let mut reported_cursor = 0usize;
         let (status, value) = loop {
             // A failed result may itself be the authored continuation gate
             // (for example, paying an "unless" cost records Declined and then
@@ -34,16 +32,11 @@ impl EffectExecutor for RepeatProcessEffect {
             // earlier gate cannot accidentally drive a later iteration that
             // failed before reaching the condition.
             ctx.effect_outcomes.remove(&self.condition);
-            let mut outcome = sequence.execute(game, ctx)?;
-            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-            all_events.try_reserve(outcome.events.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
-                resource: "repeated process events", requested: outcome.events.len(),
-            })?;
-            all_execution_facts.try_reserve(outcome.execution_facts.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
-                resource: "repeated process receipts", requested: outcome.execution_facts.len(),
-            })?;
-            all_events.append(&mut outcome.events);
-            all_execution_facts.append(&mut outcome.execution_facts);
+            let outcome = sequence.execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            children.push(outcome.clone());
             if ctx.resolution_stopped() { break (outcome.status, outcome.value); }
 
             let condition = ctx.get_outcome(self.condition).ok_or_else(|| ExecutionError::IncompleteEvidence(
@@ -64,32 +57,34 @@ impl EffectExecutor for RepeatProcessEffect {
                     ctx,
                 ) }
             };
-            if should_continue {
+            if should_continue && !ctx.resolution_stopped() {
                 continuation_count = continuation_count.checked_add(1).ok_or(ExecutionError::ResourceLimitExceeded {
                     resource: "repeated process continuation count",
                     requested: continuation_count as u128 + 1, maximum: i64::MAX as u128,
                 })?;
-                if crate::effects::match_triggers_at_instruction_boundary(game, ctx, None, all_events[reported_cursor..].iter()) {
-                    reported_cursor = all_events.len();
-                }
+                crate::effects::capture_triggers_before_added_program(game, ctx, None,
+                    children.iter_mut().flat_map(|outcome| outcome.events.iter_mut()))?;
                 continue;
             }
             break (outcome.status, outcome.value);
         };
 
-        Ok(EffectOutcome::with_details(
-            if continuation_count > 0 {
-                crate::effect::OutcomeStatus::Succeeded
-            } else {
-                status
-            },
-            if continuation_count > 0 || value.as_count().is_none() {
-                crate::effect::OutcomeValue::Count(continuation_count)
-            } else {
-                value
-            },
-            all_events,
-            EffectOutcome::merge_execution_facts(all_execution_facts),
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::with_details(
+                if continuation_count > 0 {
+                    crate::effect::OutcomeStatus::Succeeded
+                } else {
+                    status
+                },
+                if continuation_count > 0 || value.as_count().is_none() {
+                    crate::effect::OutcomeValue::Count(continuation_count)
+                } else {
+                    value
+                },
+                Vec::new(),
+                Vec::new(),
+            ),
+            children,
         ))
         })
     }

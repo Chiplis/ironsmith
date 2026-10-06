@@ -33,3 +33,16 @@ test('editing before the next slice prevents that worker call', async () => {
   });
   assert.equal(result, null);
 });
+
+
+test('browser ranking uses isolation and discards a suggestion after a manual edit', async () => {
+  let current = true;
+  const result = await improvePayment({
+    game: {
+      analyzePayment: async token => { assert.equal(token, 'isolated'); current = false; return { type: 'mana_payment' }; },
+      beginPaymentAnalysis: () => assert.fail('ranking occupied the authoritative worker'),
+    },
+    token: 'isolated', isCurrent: () => current,
+  });
+  assert.equal(result, null);
+});

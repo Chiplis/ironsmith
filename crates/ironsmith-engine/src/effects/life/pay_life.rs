@@ -11,6 +11,39 @@ use crate::target::{ChooseSpec, PlayerFilter};
 
 pub type PayLifeEffect = ironsmith_core::PayLifeEffect;
 
+pub(crate) fn life_payment_cost_description(amount: &Value) -> Option<String> {
+    fn per_card(amount: &Value) -> Option<u32> {
+        match amount.unhinted() {
+            Value::CardsInHand(PlayerFilter::You) => Some(1),
+            Value::Add(lhs, rhs) => per_card(lhs)?.checked_add(per_card(rhs)?),
+            _ => None,
+        }
+    }
+    match amount.unhinted() {
+        Value::Fixed(amount) => Some(format!("Pay {} life", (*amount).max(0))),
+        Value::X => Some("Pay X life".into()),
+        _ => per_card(amount).map(|amount| format!("Pay {amount} life for each card in your hand")),
+    }
+}
+
+pub(crate) fn check_life_payment_cost_with_context(
+    effect: &PayLifeEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    reason: crate::costs::PaymentReason,
+) -> Result<(), CostValidationError> {
+    let player = resolve_player_from_spec(game, &effect.player, ctx)
+        .map_err(CostValidationError::ExecutionFailed)?;
+    let amount = resolve_value(game, &effect.amount, ctx)
+        .map_err(CostValidationError::ExecutionFailed)?
+        .max(0) as u32;
+    if game.can_pay_life_with_reason(player, amount, reason) {
+        Ok(())
+    } else {
+        Err(CostValidationError::NotEnoughLife)
+    }
+}
+
 impl EffectExecutor for PayLifeEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -21,14 +54,25 @@ impl EffectExecutor for PayLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         game.refresh_continuous_state()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let player = resolve_player_from_spec(game, &self.player, ctx)?;
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         Ok(game
-            .pay_life_with_context(player, amount, ctx)?
-            .unwrap_or_else(EffectOutcome::impossible))
+            .pay_life_with_context_and_outputs(player, amount, ctx)?
+            .unwrap_or_else(|| {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())
+            }))
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -95,12 +139,9 @@ impl EffectExecutor for PayLifeEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
-        if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
-            && let Value::Fixed(amount) = self.amount
-        {
-            return Some(format!("Pay {} life", amount.max(0)));
-        }
-        None
+        matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
+            .then(|| life_payment_cost_description(&self.amount))
+            .flatten()
     }
 }
 
@@ -119,26 +160,47 @@ impl std::fmt::Debug for FixedLifePaymentProposal {
     }
 }
 impl crate::effects::SimultaneousEffectProposal for FixedLifePaymentProposal {
-    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId,u32)> { self.payable.then_some((self.player,self.amount)) }
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> {
+        self.payable.then_some((self.player, self.amount))
+    }
 
     fn prepare_original(
         &mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<(), ExecutionError> {
+        if self
+            .prepared
+            .as_ref()
+            .is_some_and(|original| !original.requires_replacement_input())
+        {
+            return Ok(());
+        }
         if self.payable {
             self.prepared = game.prepare_life_payment(self.player, self.amount, ctx, true)?;
         }
         Ok(())
     }
     fn commit_original(
-        mut self: Box<Self>,
+        self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
         if !self.payable {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                EffectOutcome::impossible(),
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible()),
             ));
         }
         if self.prepared.is_none() {
@@ -147,23 +209,98 @@ impl crate::effects::SimultaneousEffectProposal for FixedLifePaymentProposal {
         let prepared = self.prepared.take().ok_or_else(|| {
             ExecutionError::UnresolvableValue("prepared life payment is unavailable".into())
         })?;
-        game.commit_life_payment_original(prepared, ctx)
+        game.commit_life_payment_original_with_outputs(prepared, ctx)
     }
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.commit_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+}
+
+impl FixedLifePaymentProposal {
+    fn commit_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         if !self.payable {
-            return Ok(EffectOutcome::impossible());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::impossible(),
+            ));
+        }
+        if !ctx.decision_maker.awaiting_choice()
+            && self
+                .prepared
+                .as_ref()
+                .is_some_and(|original| original.requires_replacement_input())
+        {
+            crate::effects::SimultaneousEffectProposal::prepare_original(&mut *self, game, ctx)?;
+        }
+        if let Some(prepared) = self.prepared {
+            return crate::effects::composition::execute_transaction(
+                game,
+                ctx,
+                || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+                |game, ctx| {
+                    let mut outcomes = game.complete_life_payment_originals_with_outputs(
+                        vec![prepared],
+                        ctx,
+                        false,
+                    )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+                    outcomes.pop().ok_or_else(|| {
+                        ExecutionError::InternalError(
+                            "life payment lost its original receipt".into(),
+                        )
+                    })
+                },
+            );
         }
         Ok(game
-            .pay_life_with_context(self.player, self.amount, ctx)?
-            .unwrap_or_else(EffectOutcome::impossible))
+            .pay_life_with_context_and_outputs(self.player, self.amount, ctx)?
+            .unwrap_or_else(|| {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())
+            }))
     }
 }
 
 impl CostExecutableEffect for PayLifeEffect {
+    fn validate_payment_outcome(&self, outcome: &EffectOutcome) -> Result<(), CostValidationError> {
+        if outcome.status == crate::effect::OutcomeStatus::Impossible {
+            Err(CostValidationError::NotEnoughLife)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn supports_prepared_payment(&self) -> bool {
+        true
+    }
+
+    fn accepts_prepared_payment(
+        &self,
+        proposal: &dyn crate::effects::SimultaneousEffectProposal,
+    ) -> bool {
+        !proposal.declared_life_payments().is_empty()
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        check_life_payment_cost_with_context(self, game, ctx, reason)
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
@@ -186,21 +323,9 @@ impl CostExecutableEffect for PayLifeEffect {
         controller: PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        let ctx = ExecutionContext::new_default(source, controller).with_x(0);
-        let player = resolve_player_from_spec(game, &self.player, &ctx).map_err(|_| {
-            CostValidationError::Other("unable to resolve player for life payment".to_string())
-        })?;
-        let amount = resolve_value(game, &self.amount, &ctx)
-            .map_err(|_| {
-                CostValidationError::Other("unable to resolve life-payment amount".to_string())
-            })?
-            .max(0) as u32;
-
-        if game.can_pay_life_with_reason(player, amount, reason) {
-            Ok(())
-        } else {
-            Err(CostValidationError::NotEnoughLife)
-        }
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let ctx = ExecutionContext::new(source, controller, &mut decision_maker).with_x(0);
+        check_life_payment_cost_with_context(self, game, &ctx, reason)
     }
 }
 

@@ -1,8 +1,10 @@
 //! Conditional effect implementation.
 
 use crate::effect::{Condition, EffectOutcome};
+#[cfg(test)]
+use crate::effects::execute_effect;
 use crate::effects::{EffectExecutor, ModalSpec};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::ChooseSpec;
@@ -163,51 +165,336 @@ fn optional_hidden_reveal_guard(
 ///     vec![Effect::gain_life(2)],
 /// );
 /// ```
+struct SelectedConditionalBranch {
+    effects: Vec<crate::effect::Effect>,
+    identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
+    branch: usize,
+}
+
+/// Existing replacement adapters keep the same selected-branch interface.
 pub(crate) fn prepare_conditional_branch(
-    effect: &ConditionalEffect, game: &GameState, ctx: &ExecutionContext,
-) -> Result<(Vec<crate::effect::Effect>, Option<crate::effects::context::OptionalIdentityGuard>), ExecutionError> {
-        let mut result = evaluate_condition(game, &effect.condition, ctx)?;
-        let identity_guard = optional_hidden_reveal_guard(effect, game, ctx, result);
+    effect: &ConditionalEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<
+    (
+        Vec<crate::effect::Effect>,
+        Option<crate::effects::context::OptionalIdentityGuard>,
+    ),
+    ExecutionError,
+> {
+    let selected = select_conditional_branch(effect, game, ctx)?;
+    Ok((selected.effects, selected.identity_guard))
+}
 
-        // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
-        // choose both instead" fixes how many modes may be chosen during
-        // casting (603.3c for triggers). When the announced modes only fit
-        // the other branch's mode choice, that branch was the one in force at
-        // announcement; don't let a changed condition reject the choice.
-        if let Some(chosen) = ctx.chosen_modes.as_deref() {
-            let (current, other) = if result {
-                (&effect.if_true, &effect.if_false)
-            } else {
-                (&effect.if_false, &effect.if_true)
-            };
-            if let (Some(current_max), Some(other_max)) = (
-                announced_mode_choice_max(game, current, ctx)?,
-                announced_mode_choice_max(game, other, ctx)?,
-            ) && chosen.len() > current_max
-                && chosen.len() <= other_max
-            {
-                result = !result;
-            }
+fn select_conditional_branch(
+    effect: &ConditionalEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<SelectedConditionalBranch, ExecutionError> {
+    let mut result = evaluate_condition(game, &effect.condition, ctx)?;
+    let identity_guard = optional_hidden_reveal_guard(effect, game, ctx, result);
+
+    // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
+    // choose both instead" fixes how many modes may be chosen during
+    // casting (603.3c for triggers). When the announced modes only fit
+    // the other branch's mode choice, that branch was the one in force at
+    // announcement; don't let a changed condition reject the choice.
+    if let Some(chosen) = ctx.chosen_modes.as_deref() {
+        let (current, other) = if result {
+            (&effect.if_true, &effect.if_false)
+        } else {
+            (&effect.if_false, &effect.if_true)
+        };
+        if let (Some(current_max), Some(other_max)) = (
+            announced_mode_choice_max(game, current, ctx)?,
+            announced_mode_choice_max(game, other, ctx)?,
+        ) && chosen.len() > current_max
+            && chosen.len() <= other_max
+        {
+            result = !result;
         }
+    }
 
-        let effects_to_execute = if result || identity_guard.is_some() { effect.if_true.clone() } else { effect.if_false.clone() };
+    let effects_to_execute = if result || identity_guard.is_some() {
+        effect.if_true.clone()
+    } else {
+        effect.if_false.clone()
+    };
 
-    Ok((effects_to_execute, identity_guard))
+    Ok(SelectedConditionalBranch {
+        effects: effects_to_execute,
+        branch: if result || identity_guard.is_some() {
+            0
+        } else {
+            1
+        },
+        identity_guard,
+    })
+}
+
+/// Execute an already selected branch. Evaluation belongs to the condition
+/// owner, and is never repeated after a sibling original changes the world.
+fn conditional_branch_cursor(
+    effects: &[crate::effect::Effect],
+    identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
+    branch: usize,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    super::branch_program::selected_branch_cursor(vec![
+        super::branch_program::SelectedProgramBranch {
+            effects: effects.to_vec(),
+            identity: vec![branch],
+            repetitions: 1,
+            scope: crate::effects::ProgramActionScope::default(),
+            child_scope: None,
+            first_scope: identity_guard.map(|guard| crate::effects::ProgramActionScope {
+                optional_identity_guard: Some(Some(guard)),
+                ..Default::default()
+            }),
+            match_before_first: false,
+        },
+    ])
+}
+
+fn execute_conditional_program_with_outputs(
+    effects: &[crate::effect::Effect],
+    identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    super::execute_transaction(
+        game,
+        ctx,
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        |game, ctx| {
+            super::action_program::execute_action_program_with_outputs(
+                conditional_branch_cursor(effects, identity_guard, 0),
+                game,
+                ctx,
+                crate::effects::EffectExecutionPurpose::Action,
+            )
+        },
+    )
+}
+
+#[derive(Debug)]
+struct ConditionalProposal {
+    effects: Vec<crate::effect::Effect>,
+    identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
+    player: Option<PlayerId>,
+    prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
+    fn has_simultaneous_originals(&self) -> bool {
+        self.prepared
+            .as_ref()
+            .is_some_and(|inner| inner.has_simultaneous_originals())
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.prepared
+            .as_ref()
+            .and_then(|inner| inner.nominal_payment_quantity())
+    }
+
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        if self.effects.is_empty() {
+            Some(crate::effects::damage::DamageActionInputs::default())
+        } else {
+            self.prepared.as_ref()?.damage_action_inputs()
+        }
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        if self.effects.is_empty() {
+            return Ok(crate::effects::DamageActionBinding::from_outcome(
+                EffectOutcome::count(0),
+            ));
+        }
+        let Self {
+            player, prepared, ..
+        } = *self;
+        let inner = prepared.ok_or_else(|| {
+            ExecutionError::InternalError(
+                "damage condition lost its selected prepared branch".into(),
+            )
+        })?;
+        ctx.with_temp_iterated_player(player, |ctx| inner.bind_damage_action(game, ctx, owner))
+    }
+
+    fn declared_life_payment(&self) -> Option<(PlayerId, u32)> {
+        self.prepared
+            .as_ref()
+            .and_then(|inner| inner.declared_life_payment())
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_payment_resources())
+            .unwrap_or_default()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(PlayerId, u32)> {
+        self.prepared
+            .as_ref()
+            .map(|inner| inner.declared_life_payments())
+            .unwrap_or_default()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            ctx.with_temp_iterated_player(self.player, |ctx| inner.prepare_selection(game, ctx))?;
+        }
+        Ok(())
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            ctx.with_temp_iterated_player(self.player, |ctx| inner.prepare_original(game, ctx))?;
+        }
+        Ok(())
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            ctx.with_temp_iterated_player(self.player, |ctx| inner.seal_original(game, ctx))?;
+        }
+        Ok(())
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if let Some(inner) = self.prepared.take() {
+            return ctx.with_temp_iterated_player(self.player, |ctx| {
+                inner.commit_original_with_outputs(game, ctx)
+            });
+        }
+        ctx.with_temp_iterated_player(self.player, |ctx| {
+            execute_conditional_program_with_outputs(&self.effects, self.identity_guard, game, ctx)
+                .map(crate::effects::SimultaneousEffectCommit::finished)
+        })
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        super::complete_prepared_original(self, game, ctx)
+    }
 }
 
 impl EffectExecutor for ConditionalEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.if_true.iter().chain(&self.if_false).all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
+    fn supports_prepared_action_program(&self) -> bool {
+        self.if_true
+            .iter()
+            .chain(&self.if_false)
+            .all(super::action_program::action_program_child_is_prepared)
+    }
+    fn select_prepared_action_program(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let selected = select_conditional_branch(self, game, ctx)?;
+        Ok(Some(conditional_branch_cursor(
+            &selected.effects,
+            selected.identity_guard,
+            selected.branch,
+        )))
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        // One selected instruction may contribute to the shared action.
+        // Distinct mutating instructions keep their scheduling boundaries.
+        [&self.if_true, &self.if_false].into_iter().all(|branch| {
+            branch.is_empty() || (branch.len() == 1 && branch[0].0.supports_damage_action_cohort())
+        })
+    }
+
+    fn shares_iterated_damage_action(&self) -> bool {
+        self.supports_damage_action_cohort()
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
 
     fn prepare_simultaneous_player_action(
         &self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
+        let (effects, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
+        let player = ctx.iteration.iterated_player;
+        // The first optional child owns the positive hidden-identity claim.
+        // Construction captures its decision; mutable preparation records the
+        // accepted claim before any original mutation.
+        let prepared = if let Some(guard) = &identity_guard {
+            let previous = ctx.optional_identity_guard.take();
+            ctx.optional_identity_guard = Some(guard.clone());
+            let result = super::prepared_branch::prepare_action_branch(
+                &effects, game, ctx, player, false, false,
+            );
+            ctx.optional_identity_guard = previous;
+            result?
+        } else {
+            super::prepared_branch::prepare_action_branch(
+                &effects, game, ctx, player, false, false,
+            )?
+        };
+        Ok(Box::new(ConditionalProposal {
+            effects,
+            identity_guard,
+            player,
+            prepared,
         }))
     }
 
@@ -229,39 +516,17 @@ impl EffectExecutor for ConditionalEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let (effects_to_execute, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
 
-        let mut outcomes = Vec::new();
-        for (index, effect) in effects_to_execute.iter().enumerate() {
-            if index == 0 && identity_guard.is_some() {
-                let previous_guard = ctx.optional_identity_guard.take();
-                ctx.optional_identity_guard = identity_guard.clone();
-                let outcome = execute_effect(game, effect, ctx);
-                ctx.optional_identity_guard = previous_guard;
-                outcomes.push(outcome?);
-            } else {
-                outcomes.push(execute_effect(game, effect, ctx)?);
-            }
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            if let Some(next) = effects_to_execute.get(index + 1) {
-                crate::effects::match_triggers_at_instruction_boundary(
-                    game,
-                    ctx,
-                    Some(next),
-                    outcomes.iter().flat_map(|outcome| outcome.events.iter()),
-                );
-            }
-        }
-
-        if outcomes.is_empty() {
-            // A false conditional with no else branch did not perform the
-            // guarded action. Preserve that distinction for trailing
-            // "otherwise" effects and other result predicates.
-            return Ok(EffectOutcome::count(0));
-        }
-        Ok(EffectOutcome::aggregate(outcomes))
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let (effects, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
+        execute_conditional_program_with_outputs(&effects, identity_guard, game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

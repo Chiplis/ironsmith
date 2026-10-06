@@ -1,14 +1,36 @@
 //! One-source damage with every recipient-local amount captured before results.
 use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::processing::{
-    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
-};
+use crate::events::processing::SimultaneousDamageEvent;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
 pub use ironsmith_core::DealDamageEachEffect;
 impl EffectExecutor for DealDamageEachEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        true
+    }
+    fn shares_iterated_damage_action(&self) -> bool {
+        true
+    }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(super::deal_damage::prepare_damage_instruction(self.clone()))
+    }
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
@@ -17,33 +39,59 @@ impl EffectExecutor for DealDamageEachEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.execute_captured(game, ctx);
-        let pending = ctx.decision_maker.awaiting_choice();
-        if result.is_err() || pending {
-            game.restore_execution_checkpoint(checkpoint, result.is_ok() && pending);
-            context_checkpoint.restore(ctx);
-        }
-        if pending && result.is_ok() {
-            return Ok(EffectOutcome::count(0));
-        }
-        result
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| self.execute_captured_with_outputs(game, ctx),
+        )
+    }
+}
+
+impl super::deal_damage::DamageInstructionInputProvider for DealDamageEachEffect {
+    fn capture_damage_instruction(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::deal_damage::CapturedDamageInstructionPlan, ExecutionError> {
+        self.resolve_damage_instruction_inputs(game, ctx)
+            .map(|plan| plan.capture(ctx))
     }
 }
 trait ExecuteCapturedDamage {
-    fn execute_captured(
+    fn resolve_damage_instruction_inputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError>;
+    ) -> Result<super::deal_damage::DamageInstructionPlan, ExecutionError>;
+    fn execute_captured_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError>;
 }
 impl ExecuteCapturedDamage for DealDamageEachEffect {
-    fn execute_captured(
+    fn execute_captured_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        self.resolve_damage_instruction_inputs(game, ctx)?
+            .execute_with_outputs(game, ctx)
+    }
+    fn resolve_damage_instruction_inputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::deal_damage::DamageInstructionPlan, ExecutionError> {
         let matching = crate::effects::helpers::resolve_objects_from_spec(
             game,
             &ChooseSpec::All(self.filter.clone()),
@@ -108,26 +156,9 @@ impl ExecuteCapturedDamage for DealDamageEachEffect {
         } else {
             ctx.tagged_objects.remove(&tag);
         }
-        let events = prepared?;
-        if events.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let source = ctx.source;
-        let controller = ctx.controller;
-        let cause = ctx.cause.clone();
-        let provenance = ctx.provenance;
-        let replacement = ctx.replacement.clone();
-        let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
-            game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage)
-        });
-        with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
-            let mut parent = ExecutionContext::new(source, controller, dm)
-                .with_cause(cause)
-                .with_provenance(provenance);
-            parent.source_snapshot = source_snapshot;
-            parent.replacement = replacement;
-            super::multi_source_damage::commit_damage_batch(game, &mut parent, events, Some(batch))
-        })
+        Ok(super::deal_damage::DamageInstructionPlan::from_events(
+            prepared?,
+        ))
     }
 }
 

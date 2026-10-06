@@ -190,7 +190,7 @@ pub use effect::{
     TokenCopyReferenceSurface, TransformEffect, TurnFaceDownEffect, TurnFaceUpEffect, TypeRetentionSurface,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
     UnlockRoomDoorEffect, UntapEffect, Until, VariableCasualtyPlaneswalkerCopyEffect,
-    VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption,
+    VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VotePayload,
     WinTheGameEffect, WithIdEffect, ZoneReplacementLibraryPlacement,
 };
 pub use effect_model::{CastEventQuantity, Comparison, EventValueSpec, ValueComparisonOperator};

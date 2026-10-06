@@ -1,12 +1,12 @@
 //! Renown keyword effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::events::other::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;
-use crate::triggers::TriggerEvent;
 pub use ironsmith_core::RenownEffect;
 
 /// "If this creature isn't renowned, put N +1/+1 counters on it and it becomes renowned."
@@ -16,79 +16,74 @@ impl EffectExecutor for RenownEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            if !game
-                .object(ctx.source)
-                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                || game.is_phased_out(ctx.source)
-                || game.is_renowned(ctx.source)
-            {
-                return Ok(EffectOutcome::count(0));
-            }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-            let event = crate::events::Event::put_counters(
-                ctx.source,
-                CounterType::PlusOnePlusOne,
-                self.amount,
-                ctx.cause.clone(),
-            )
-            .with_provenance(ctx.provenance);
-            let placement =
-                crate::effects::counters::execute_object_counter_placement(game, ctx, event)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            // A replacement payload can make the original permanent leave.
-            // The later instruction cannot designate that departed object.
-            if !game
-                .object(ctx.source)
-                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                || game.is_phased_out(ctx.source)
-            {
-                let mut outcome = placement;
-                outcome.set_value(crate::effect::OutcomeValue::Count(0));
-                return Ok(outcome);
-            }
-            // Becoming renowned follows counter placement, even when that
-            // placement was prevented or replaced (CR 702.112).
-            game.set_renowned(ctx.source);
-            if let Some(stable_id) = game.object(ctx.source).map(|o| o.stable_id) {
-                game.record_ui_effect_event(
-                    "level_up",
-                    Some(ctx.controller),
-                    None,
-                    vec![stable_id],
-                    Some(i64::from(self.amount)),
-                    Some("renown".to_string()),
-                );
-            }
-            let mut outcome = EffectOutcome::aggregate([EffectOutcome::count(1), placement]);
-            outcome.set_value(crate::effect::OutcomeValue::Count(1));
-            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(
-                    KeywordActionKind::Renown,
-                    ctx.controller,
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                if !game
+                    .object(ctx.source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                    || game.is_phased_out(ctx.source)
+                    || game.is_renowned(ctx.source)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let event = crate::events::Event::put_counters(
                     ctx.source,
+                    CounterType::PlusOnePlusOne,
                     self.amount,
-                ),
-                ctx.provenance,
+                    ctx.cause.clone(),
+                )
+                .with_provenance(ctx.provenance);
+                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
+                    game, ctx, event,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let designation = super::designation::apply_designation(
+                    game,
+                    ctx,
+                    ctx.source,
+                    super::designation::PermanentDesignation::Renowned,
+                    self.amount,
+                )?;
+                let outcome = EffectOutcome::aggregate_with_primary_result(
+                    designation.summary_projection(),
+                    [placement.outcome.clone(), designation.clone()],
+                );
+                let mut outputs = placement;
+                outputs
+                    .retain_batch_children([CompletedEffectOutputs::aggregate_only(designation)]);
+                Ok(outputs.project_aggregate(outcome))
+            },
+        );
+        // Preserve this adapter's existing neutral result for a suspended child,
+        // including a child that failed after opening its decision. The shared
+        // transaction owns rollback; an ordinary failure still propagates.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
             ));
-            crate::events::other::freeze_completed_lifecycle_events(game, &mut outcome.events)?;
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
         }
         result
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -80,20 +80,31 @@ impl EffectExecutor for GrantBySpecEffect {
                 duration,
             )
             .with_source_type(EffectSourceType::Resolution { locked_targets });
-            return effect.execute(game, ctx);
+            return effect.execute_child(game, ctx);
         }
 
         let grant_source = grant_duration_source(self.duration, game, ctx.source, player_id);
 
-        let shared_budget = self.spec.max_plays.map(|uses| game.effect_store.grant_registry.create_shared_usage_budget(uses));
+        let shared_budget = self.spec.max_plays.map(|uses| {
+            game.effect_store
+                .grant_registry
+                .create_shared_usage_budget(uses)
+        });
         let mut identity = None;
         for spec in self.spec.zone_specs() {
             game.effect_store.grant_registry.grant_to_filter(
-                spec.filter.clone(), spec.zone, player_id, spec.grantable.clone(), grant_source.clone());
+                spec.filter.clone(),
+                spec.zone,
+                player_id,
+                spec.grantable.clone(),
+                grant_source.clone(),
+            );
             if let Some(grant) = game.effect_store.grant_registry.grants.last_mut() {
                 // One resolving instruction has one use identity and one total
                 // budget across its alternative origins.
-                if identity.is_none() { identity = grant.permission_identity.clone(); }
+                if identity.is_none() {
+                    identity = grant.permission_identity.clone();
+                }
                 grant.permission_identity = identity.clone();
                 grant.shared_usage_id = shared_budget;
                 grant.cast_this_way_grants = spec.cast_this_way_grants;

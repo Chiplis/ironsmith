@@ -44,8 +44,11 @@ impl WouldPutCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersMatcher {
-
-    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+    fn matches_prepared_event(
+        &self,
+        event: &dyn GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
         if event.event_kind() != EventKind::PutCounters {
             return false;
         }
@@ -112,8 +115,11 @@ impl WouldRemoveCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldRemoveCountersMatcher {
-
-    fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
+    fn matches_prepared_event(
+        &self,
+        event: &dyn GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
         if event.event_kind() != EventKind::RemoveCounters {
             return false;
         }
@@ -148,6 +154,45 @@ impl ReplacementMatcher for WouldRemoveCountersMatcher {
     }
 }
 
+/// Player-targeted counterpart. Permanent-only removal matchers deliberately
+/// retain their object filter and never match this carrier.
+#[derive(Debug, Clone)]
+pub struct WouldRemovePlayerCountersMatcher {
+    pub player: crate::target::PlayerFilter,
+    pub counter_type: Option<CounterType>,
+}
+impl WouldRemovePlayerCountersMatcher {
+    pub fn new(player: crate::target::PlayerFilter, counter_type: Option<CounterType>) -> Self {
+        Self {
+            player,
+            counter_type,
+        }
+    }
+}
+impl ReplacementMatcher for WouldRemovePlayerCountersMatcher {
+    fn matches_prepared_event(
+        &self,
+        event: &dyn GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
+        use crate::filter::PlayerFilterExt as _;
+        let Some(removal) = downcast_event::<super::RemovePlayerCountersEvent>(event) else {
+            return false;
+        };
+        self.counter_type
+            .is_none_or(|kind| kind == removal.counter_type)
+            && self.player.matches_player(removal.player, &ctx.filter_ctx)
+    }
+    fn display(&self) -> String {
+        match self.counter_type {
+            Some(kind) => format!(
+                "When {} counters would be removed from a player",
+                kind.description()
+            ),
+            None => "When counters would be removed from a player".into(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

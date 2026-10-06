@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
 
@@ -47,6 +47,7 @@ export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
   const [expanded, setExpanded] = useState(false);
   const [seenMessageId, setSeenMessageId] = useState("");
   const chatRef = useRef(null);
+  const inputRef = useRef(null);
   const closeTimerRef = useRef(null);
   const blockedOpenRef = useRef(false);
   const listRef = useRef(null);
@@ -55,6 +56,11 @@ export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
   const latestMessageId = messages.at(-1)?.id || "";
   const hasUnread = !expanded && Boolean(latestMessageId && latestMessageId !== seenMessageId);
   const collapsed = !expanded;
+  const online = Boolean(multiplayer?.role);
+
+  useLayoutEffect(() => {
+    if (expanded && online) inputRef.current?.focus({ preventScroll: true });
+  }, [expanded, online]);
 
   const cancelCollapse = useCallback(() => {
     if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -97,7 +103,6 @@ export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages, collapsed]);
-  const online = Boolean(multiplayer?.role);
   const label = online ? "Lobby chat" : "Lobby";
   if (!online && !showOffline) return null;
   return <section className="lobby-chat" data-collapsed={collapsed} data-offline={online ? undefined : "true"} aria-label={ui(label)}
@@ -105,7 +110,9 @@ export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
     onKeyDown={(event) => event.stopPropagation()}
     onPointerDown={(event) => { event.stopPropagation(); cancelCollapse(); }}
     onPointerEnter={cancelCollapse}
-    onPointerLeave={() => { if (expanded) scheduleCollapse(); }}
+    onPointerLeave={() => {
+      if (expanded && !chatRef.current?.contains(document.activeElement)) scheduleCollapse();
+    }}
     onFocus={cancelCollapse}
     onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) scheduleCollapse();
@@ -156,7 +163,7 @@ export default function LobbyChat({ showOffline = false, onOpenLobby = null }) {
         followRef.current = true;
       } else setError(true);
     }}>
-      <input aria-label={ui("Chat message")} placeholder={ui("Message…")} maxLength={MAX_CHAT_LENGTH}
+      <input ref={inputRef} aria-label={ui("Chat message")} placeholder={ui("Message…")} maxLength={MAX_CHAT_LENGTH}
         disabled={!online}
         value={draft} onChange={(event) => setDraft(cleanChatDraft(event.target.value))} />
       <button type="submit" disabled={!online || !draft.trim()} aria-label={ui("Send message")}>{ui("Send")}</button>

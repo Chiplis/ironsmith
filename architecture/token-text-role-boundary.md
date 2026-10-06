@@ -140,3 +140,14 @@ Vibranium predefined rule specifies an explicit name, so rule 111.4 applies.
 The creation instruction derives names from subtype
 words when no explicit name is given; changing an existing token's subtype does
 not derive its name again.
+
+
+## Prepared-main admission
+
+The predefined profile and native Clue/Amass corrections retained in the c4c7818e
+source tree are admitted as unvalidated source proposals under
+[`card-failure-prepared-main-compatibility.md`](card-failure-prepared-main-compatibility.md).
+The assembled 9/5/22 boundary supersedes the published 8/4/21 contract for this
+source union. The exact admission record is
+`card-failure-stage97-source-admission.md`; no execution is authorized yet.
+Native profile 19 is included through `03a183a8`; other text-card gaps remain held.

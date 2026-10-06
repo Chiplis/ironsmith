@@ -42,10 +42,13 @@ pub(crate) fn record_waterbend_payment(game: &mut GameState, request: &ManaPayme
         let amount = obligation.amount(request.x_value).ok_or_else(||
             crate::effects::ExecutionError::IncompleteEvidence("Waterbend receipt quantity overflows".into()))?;
         let provenance = game.provenance_graph_mut().alloc_root_event(crate::events::EventKind::KeywordAction);
-        game.queue_trigger_event(provenance, crate::triggers::TriggerEvent::new_with_provenance(
-            crate::events::KeywordActionEvent::new(crate::events::KeywordActionKind::Waterbend,
-                request.payer, request.source, amount), provenance,
-        ));
+        let completion = crate::effects::composition::observe_keyword_action_completion(
+            game, crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::KeywordActionEvent::new(crate::events::KeywordActionKind::Waterbend,
+                    request.payer, request.source, amount), provenance,
+            ),
+        )?;
+        for event in completion.events { game.queue_trigger_event(event.provenance(), event); }
     }
     Ok(())
 }

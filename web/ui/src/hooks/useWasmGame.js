@@ -23,6 +23,8 @@ const WORKER_METHODS = [
   "cardsMeetingThreshold",
   "createCustomCard",
   "createRuntimeSavepoint",
+  "captureExactBuildSnapshot",
+  "restoreExactBuildSnapshot",
   "copyRuntimeSavepoint",
   "restoreRuntimeSavepoint",
   "releaseRuntimeSavepoint",
@@ -66,6 +68,7 @@ const WORKER_METHODS = [
   "getPaymentDisclosureForCommand",
   "retainPaymentDisclosure",
   "beginPaymentAnalysis",
+  "analyzePayment",
   "stepPaymentAnalysis",
   "cancelPaymentAnalysis",
   "previewCustomCard",
@@ -226,6 +229,7 @@ export function useWasmGame() {
           return;
         }
         const id = nextRequestId++;
+        if (method === 'restoreExactBuildSnapshot') gameProxy.runtimeGeneration++;
         const mutation = runtimeBranch == null && !isGameRead(method);
         if (mutation) { viewVersion++; pendingMutations++; }
         const version = viewVersion;
@@ -237,7 +241,7 @@ export function useWasmGame() {
           runtimeBranch,
         });
         beginEngineRequest(id, method, runtimeBranch);
-        try { worker.postMessage({ type: "call", id, method, args, runtimeBranch }); }
+        try { worker.postMessage({ type: "call", id, method, args, runtimeBranch, runtimeGeneration: gameProxy.runtimeGeneration }); }
         catch (error) {
           pending.delete(id); if (mutation) pendingMutations--; endEngineRequest(id);
           failJournalEntry(journalEntry, error); reject(error);
@@ -355,6 +359,8 @@ export function useWasmGame() {
       releaseCatalog(error);
     };
     gameProxy.supportsRuntimeSavepoints = false;
+    gameProxy.supportsExactBuildSnapshots = false;
+    gameProxy.runtimeGeneration = 0;
     gameProxy.supportsRuntimeBranches = false;
     attachRuntimeBranches(gameProxy, {
       call: callWorker,
@@ -456,6 +462,8 @@ export function useWasmGame() {
         embeddedCatalogAvailable = msg.embeddedCardCatalog === true;
         resolveEngineReady();
         gameProxy.supportsRuntimeSavepoints = msg.runtimeSavepoints === true;
+        gameProxy.supportsExactBuildSnapshots = msg.exactBuildSnapshots === true;
+        gameProxy.exactSnapshotBuildId = msg.exactSnapshotBuildId;
         gameProxy.supportsRuntimeBranches = msg.runtimeBranches === true;
         finishReady().catch((err) => {
           if (!disposed) {

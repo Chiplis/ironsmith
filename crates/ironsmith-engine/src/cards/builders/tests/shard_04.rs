@@ -2290,7 +2290,7 @@ pub(super) fn test_mobilize_trigger_creates_attacking_warriors() {
         .copied()
         .filter(|&id| {
             game.object(id)
-                .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Warrior")
+                .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Warrior Token")
         })
         .collect();
     assert_eq!(warrior_ids.len(), 2, "expected two mobilize tokens");

@@ -27,88 +27,133 @@ impl EffectExecutor for UnearthEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let source_id = ctx.source;
-        let Some(source_obj) = game.object(source_id) else {
-            return Ok(EffectOutcome::target_invalid());
-        };
-        if source_obj.zone != Zone::Graveyard {
-            return Ok(EffectOutcome::target_invalid());
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
         }
-
-        let move_to_battlefield = Effect::new(
-            MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false)
-                .under_owner_control(),
-        );
-        let move_outcome = execute_effect(game, &move_to_battlefield, ctx)?;
-        let new_id = if let Some(id) = move_outcome.first_output_object() {
-            id
-        } else {
-            let EffectOutcome {
-                status,
-                value,
-                events,
-                execution_facts,
-                instruction_result,
-            } = move_outcome;
-            let status = if matches!(value, crate::effect::OutcomeValue::Objects(_)) {
-                crate::effect::OutcomeStatus::TargetInvalid
-            } else {
-                status
-            };
-            let mut outcome = EffectOutcome::with_details(
-                status,
-                if status == crate::effect::OutcomeStatus::TargetInvalid {
-                    crate::effect::OutcomeValue::None
-                } else {
-                    value
-                },
-                events,
-                execution_facts,
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = execute_unearth(game, ctx);
+        if result.is_err() || ctx.decision_maker.awaiting_choice() {
+            game.restore_execution_checkpoint(
+                checkpoint,
+                result.is_ok() && ctx.decision_maker.awaiting_choice(),
             );
-            outcome.instruction_result = instruction_result;
-            return Ok(outcome);
-        };
-        let events = move_outcome.events;
-
-        // CR 702.84a gives the returned permanent haste without a duration.
-        // It remains if the delayed exile trigger is countered.
-        let haste_effect = ApplyContinuousEffect::new(
-            EffectTarget::Specific(new_id),
-            Modification::AddAbility(StaticAbility::haste()),
-            Until::Forever,
-        )
-        .with_source_type(EffectSourceType::Resolution {
-            locked_targets: vec![new_id],
-        });
-        let _ = execute_effect(game, &Effect::new(haste_effect), ctx)?;
-
-        // "If it would leave the battlefield, exile it instead."
-        let replacement = ReplacementEffect::with_matcher(
-            new_id,
-            ctx.controller,
-            WouldLeaveBattlefieldMatcher::new(ObjectFilter::specific(new_id)),
-            ReplacementAction::ChangeDestination(Zone::Exile),
-        );
-        let _ = execute_effect(
-            game,
-            &Effect::new(ApplyReplacementEffect::one_shot(replacement)),
-            ctx,
-        )?;
-
-        // "Exile it at the beginning of the next end step."
-        let schedule = ScheduleDelayedTriggerEffect::new(
-            Trigger::beginning_of_end_step(PlayerFilter::Any),
-            vec![Effect::exile(ChooseSpec::SpecificObject(new_id))],
-            true,
-            vec![new_id],
-            PlayerFilter::Specific(ctx.controller),
-        );
-        let _ = execute_effect(game, &Effect::new(schedule), ctx)?;
-
-        Ok(EffectOutcome::with_objects(vec![new_id]).with_events(events))
+            context_checkpoint.restore(ctx);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
+        result
     }
 }
 
+fn execute_unearth(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    let source_id = ctx.source;
+    let Some(source_obj) = game.object(source_id) else {
+        return Ok(EffectOutcome::target_invalid());
+    };
+    if source_obj.zone != Zone::Graveyard {
+        return Ok(EffectOutcome::target_invalid());
+    }
+
+    let move_to_battlefield = Effect::new(
+        MoveToZoneEffect::new(ChooseSpec::Source, Zone::Battlefield, false).under_owner_control(),
+    );
+    let move_outcome = execute_effect(game, &move_to_battlefield, ctx)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+    let new_id = if let Some(id) = move_outcome
+        .instruction_result()
+        .objects()
+        .and_then(|objects| objects.first())
+        .copied()
+    {
+        id
+    } else {
+        let EffectOutcome {
+            status,
+            value,
+            events,
+            execution_facts,
+            instruction_result,
+        } = move_outcome;
+        let status = if matches!(value, crate::effect::OutcomeValue::Objects(_)) {
+            crate::effect::OutcomeStatus::TargetInvalid
+        } else {
+            status
+        };
+        let mut outcome = EffectOutcome::with_details(
+            status,
+            if status == crate::effect::OutcomeStatus::TargetInvalid {
+                crate::effect::OutcomeValue::None
+            } else {
+                value
+            },
+            events,
+            execution_facts,
+        );
+        outcome.instruction_result = instruction_result;
+        return Ok(outcome);
+    };
+    // Later clauses refer to the original arrival, never a successor
+    // found by stable identity or an object created by a replacement.
+    if !game
+        .object(new_id)
+        .is_some_and(|object| object.zone == Zone::Battlefield)
+        || game.is_phased_out(new_id)
+    {
+        return Ok(move_outcome);
+    }
+    let primary = move_outcome.summary_projection();
+    let mut children = vec![move_outcome];
+
+    // CR 702.84a gives the returned permanent haste without a duration.
+    // It remains if the delayed exile trigger is countered.
+    let haste_effect = ApplyContinuousEffect::new(
+        EffectTarget::Specific(new_id),
+        Modification::AddAbility(StaticAbility::haste()),
+        Until::Forever,
+    )
+    .with_source_type(EffectSourceType::Resolution {
+        locked_targets: vec![new_id],
+    });
+    children.push(haste_effect.execute_child(game, ctx)?);
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+
+    // "If it would leave the battlefield, exile it instead."
+    let replacement = ReplacementEffect::with_matcher(
+        new_id,
+        ctx.controller,
+        WouldLeaveBattlefieldMatcher::new(ObjectFilter::specific(new_id)),
+        ReplacementAction::ChangeDestination(Zone::Exile),
+    );
+    children.push(ApplyReplacementEffect::one_shot(replacement).execute_child(game, ctx)?);
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+
+    // "Exile it at the beginning of the next end step."
+    let schedule = ScheduleDelayedTriggerEffect::new(
+        Trigger::beginning_of_end_step(PlayerFilter::Any),
+        vec![Effect::exile(ChooseSpec::SpecificObject(new_id))],
+        true,
+        vec![new_id],
+        PlayerFilter::Specific(ctx.controller),
+    );
+    children.push(schedule.execute_child(game, ctx)?);
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::count(0));
+    }
+    Ok(EffectOutcome::aggregate_with_primary_result(
+        primary, children,
+    ))
+}
 #[cfg(test)]
 mod tests {
     use super::*;

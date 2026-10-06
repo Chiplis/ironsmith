@@ -1,10 +1,12 @@
 //! Prepare all damage results, commit their originals, then complete additions.
 use super::{AppliedDamageAssignment, SourceDamageKeywords};
-use crate::effects::{ExecutionContext, ExecutionError, SimultaneousEffectCompletion};
+use crate::effects::{ExecutionContext, ExecutionError, OriginalEffectOutput, SimultaneousEffectCompletion};
 use crate::events::DamageTarget;
 use crate::events::processing::TraitEventResult;
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, StableId};
+#[cfg(test)]
+use crate::ids::ObjectId;
+use crate::ids::StableId;
 use crate::snapshot::ObjectSnapshot;
 use crate::types::CardType;
 
@@ -19,21 +21,29 @@ enum PreparedConsequence {
 pub(crate) struct PreparedDamageAssignment {
     pub applied: bool,
     pub target_snapshot: Option<ObjectSnapshot>,
-    source: ObjectId,
     target: DamageTarget,
     amount: u32,
     keywords: SourceDamageKeywords,
     creature: bool,
-    planeswalker: bool,
-    battle: bool,
+    removals: Vec<crate::effects::counters::PreparedCounterRemoval>,
     consequence: PreparedConsequence,
     ui_ids: Vec<StableId>,
 }
 
-pub(crate) struct DamageAssignmentReceipt {
-    pub original: AppliedDamageAssignment,
+pub(crate) struct DamageAssignmentReceipt<Output = crate::effect::EffectOutcome> {
+    pub original: AppliedDamageAssignment<Output>,
     pub completion: Option<Box<dyn SimultaneousEffectCompletion>>,
     completion_frozen: bool,
+}
+
+impl DamageAssignmentReceipt<crate::effects::CompletedEffectOutputs> {
+    fn into_aggregate(self) -> DamageAssignmentReceipt {
+        DamageAssignmentReceipt {
+            original: self.original.into_aggregate(),
+            completion: self.completion,
+            completion_frozen: self.completion_frozen,
+        }
+    }
 }
 
 /// Select replacements against the pre-commit state. This does not apply any
@@ -48,13 +58,11 @@ pub(crate) fn prepare_processed_damage_assignment(
     let mut plan = PreparedDamageAssignment {
         applied: false,
         target_snapshot: None,
-        source: ctx.source,
         target,
         amount,
         keywords,
         creature: false,
-        planeswalker: false,
-        battle: false,
+        removals: Vec::new(),
         consequence: PreparedConsequence::None,
         ui_ids: Vec::new(),
     };
@@ -110,13 +118,29 @@ pub(crate) fn prepare_processed_damage_assignment(
             let snapshot =
                 ObjectSnapshot::from_object_with_calculated_characteristics(object, &observed);
             plan.creature = snapshot.card_types.contains(&CardType::Creature);
-            plan.planeswalker = snapshot.card_types.contains(&CardType::Planeswalker);
-            plan.battle = snapshot.card_types.contains(&CardType::Battle);
-            if !plan.creature && !plan.planeswalker && !plan.battle {
+            let planeswalker = snapshot.card_types.contains(&CardType::Planeswalker);
+            let battle = snapshot.card_types.contains(&CardType::Battle);
+            if !plan.creature && !planeswalker && !battle {
                 return Ok(plan);
             }
             plan.ui_ids.push(snapshot.stable_id);
             plan.target_snapshot = Some(snapshot);
+            for (applies, kind) in [
+                (planeswalker, crate::CounterType::Loyalty),
+                (battle, crate::CounterType::Defense),
+            ] {
+                if applies {
+                    let event = crate::events::Event::remove_counters(object.id, kind, amount)
+                        .with_provenance(ctx.provenance);
+                    plan.removals
+                        .push(crate::effects::counters::prepare_counter_removal(
+                            game, ctx, event,
+                        )?);
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(plan);
+                    }
+                }
+            }
             if plan.creature && (keywords.has_infect || keywords.has_wither) {
                 Some(
                     crate::events::Event::put_counters(
@@ -150,6 +174,15 @@ pub(crate) fn commit_prepared_damage_original(
     ctx: &mut ExecutionContext,
     prepared: PreparedDamageAssignment,
 ) -> Result<DamageAssignmentReceipt, ExecutionError> {
+    commit_prepared_damage_original_with_outputs(game, ctx, prepared)
+        .map(DamageAssignmentReceipt::into_aggregate)
+}
+
+pub(crate) fn commit_prepared_damage_original_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    prepared: PreparedDamageAssignment,
+) -> Result<DamageAssignmentReceipt<crate::effects::CompletedEffectOutputs>, ExecutionError> {
     if !prepared.applied {
         return Ok(DamageAssignmentReceipt {
             original: AppliedDamageAssignment::default(),
@@ -157,39 +190,37 @@ pub(crate) fn commit_prepared_damage_original(
             completion_frozen: false,
         });
     }
-    if let DamageTarget::Object(object) = prepared.target {
-        if prepared.planeswalker {
-            if let Some((_, event)) = game.remove_counters(
-                object,
-                crate::CounterType::Loyalty,
-                prepared.amount,
-                Some(prepared.source),
-                Some(ctx.controller),
-            ) {
-                let event = if let Some(batch) = game.simultaneous_action_batch() {
-                    event.with_simultaneous_batch(batch)
-                } else {
-                    event
-                };
-                game.queue_trigger_event(event.provenance(), event);
-            }
+    let mut consequences = Vec::new();
+    for removal in prepared.removals {
+        let receipt =
+            crate::effects::counters::commit_prepared_counter_removal_original_with_outputs(
+                game, ctx, removal,
+            )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(DamageAssignmentReceipt {
+                original: AppliedDamageAssignment::default(),
+                completion: None,
+                completion_frozen: false,
+            });
         }
-        if prepared.battle {
-            if let Some((_, event)) = game.remove_counters(
-                object,
-                crate::CounterType::Defense,
-                prepared.amount,
-                Some(prepared.source),
-                Some(ctx.controller),
-            ) {
-                let event = if let Some(batch) = game.simultaneous_action_batch() {
-                    event.with_simultaneous_batch(batch)
-                } else {
-                    event
-                };
-                game.queue_trigger_event(event.provenance(), event);
-            }
+        // Damage's low-level callers also publish these original notifications.
+        // The batch observer deduplicates them by their occurrence provenance.
+        for event in &receipt.outcome.outcome.events {
+            let event = if let Some(batch) = game.simultaneous_action_batch() {
+                event.clone().with_simultaneous_batch(batch)
+            } else {
+                event.clone()
+            };
+            game.queue_trigger_event(event.provenance(), event);
         }
+        consequences.push(receipt);
+    }
+    if let DamageTarget::Object(object) = prepared.target
+        && game
+            .object(object)
+            .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+        && !game.is_phased_out(object)
+    {
         if prepared.creature && !prepared.keywords.has_infect && !prepared.keywords.has_wither {
             let total = crate::events::damage::checked_damage_amount(
                 u128::from(game.damage_on(object)) + u128::from(prepared.amount),
@@ -204,18 +235,28 @@ pub(crate) fn commit_prepared_damage_original(
     let consequence = match prepared.consequence {
         PreparedConsequence::None => None,
         PreparedConsequence::Life(proposal) => Some(
-            crate::effects::life::life_change::commit_prepared_life_original(game, ctx, proposal)?,
+            crate::effects::life::life_change::commit_prepared_life_original_with_outputs(
+                game, ctx, proposal,
+            )?,
         ),
         PreparedConsequence::Counters(proposal) => Some(
-            crate::effects::counters::commit_prepared_counter_original(game, ctx, proposal)?,
+            crate::effects::counters::commit_prepared_counter_original_with_outputs(
+                game, ctx, proposal,
+            )?,
         ),
     };
-    let (consequence_outcome, completion) = consequence
-        .map(|receipt| (Some(receipt.outcome), receipt.completion))
-        .unwrap_or((None, None));
+    consequences.extend(consequence);
+    let (consequence_outcome, completion) = if consequences.is_empty() {
+        (None, None)
+    } else {
+        let receipt =
+            crate::effects::composition::compose_original_commits_with_outputs(consequences);
+        (Some(receipt.outcome), receipt.completion)
+    };
     let life_lost = crate::events::damage::checked_damage_amount(
         consequence_outcome.as_ref().map_or(0, |outcome| {
             outcome
+                .outcome
                 .events
                 .iter()
                 .filter_map(|event| event.downcast::<crate::events::LifeLossEvent>())
@@ -249,9 +290,9 @@ pub(crate) fn commit_prepared_damage_original(
 
 /// Freeze each simultaneous receipt against the shared post-original state,
 /// before any sibling's added program can mutate that state.
-pub(crate) fn freeze_damage_original(
+pub(crate) fn freeze_damage_original<Output>(
     game: &mut GameState,
-    receipt: &mut DamageAssignmentReceipt,
+    receipt: &mut DamageAssignmentReceipt<Output>,
 ) -> Result<(), ExecutionError> {
     if !receipt.completion_frozen {
         if let Some(completion) = &mut receipt.completion {
@@ -262,24 +303,84 @@ pub(crate) fn freeze_damage_original(
     Ok(())
 }
 
-/// Complete this receipt only after all originals in its simultaneous owner
-/// commit, and after damage/result trigger observers have been captured.
+/// Observe a frozen consequence in its own source context. Batch callers
+/// observe every receipt before starting the first consequence continuation.
+pub(crate) fn observe_damage_original<Output: OriginalEffectOutput>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipt: &mut DamageAssignmentReceipt<Output>,
+) -> Result<(), ExecutionError> {
+    freeze_damage_original(game, receipt)?;
+    if let Some(completion) = &mut receipt.completion {
+        let original = receipt.original.consequence_outcome.get_or_insert_with(|| {
+            Output::from_aggregate(crate::effect::EffectOutcome::resolved())
+        });
+        crate::effects::composition::observe_original_completion(
+            game,
+            ctx,
+            completion.as_mut(),
+            original.aggregate_mut(),
+        )?;
+    }
+    Ok(())
+}
+
+/// Standalone damage consequences share the frozen-original observation phase.
 pub(crate) fn complete_damage_original(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     mut receipt: DamageAssignmentReceipt,
 ) -> Result<AppliedDamageAssignment, ExecutionError> {
+    observe_damage_original(game, ctx, &mut receipt)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(receipt.original);
+    }
+    complete_observed_damage_original(game, ctx, receipt)
+}
+
+/// Complete only after the batch has frozen and observed every consequence.
+pub(crate) fn complete_observed_damage_original(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    receipt: DamageAssignmentReceipt,
+) -> Result<AppliedDamageAssignment, ExecutionError> {
+    complete_observed_damage_original_with_outputs(game, ctx, receipt)
+        .map(AppliedDamageAssignment::into_aggregate)
+}
+
+/// Retain supplied consequence packets at the existing post-observation boundary.
+pub(crate) fn complete_observed_damage_original_with_outputs<Output: OriginalEffectOutput>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    mut receipt: DamageAssignmentReceipt<Output>,
+) -> Result<AppliedDamageAssignment<crate::effects::CompletedEffectOutputs>, ExecutionError> {
     freeze_damage_original(game, &mut receipt)?;
-    if let Some(completion) = receipt.completion {
+    let consequence_outcome = if receipt.completion.is_some()
+        || receipt.original.consequence_outcome.is_some()
+    {
         let original = receipt
             .original
             .consequence_outcome
             .take()
-            .unwrap_or_else(crate::effect::EffectOutcome::resolved);
-        let outcome = completion.complete(game, ctx, original)?;
-        receipt.original.consequence_outcome = Some(outcome);
-    }
-    Ok(receipt.original)
+            .unwrap_or_else(|| Output::from_aggregate(crate::effect::EffectOutcome::resolved()));
+        Some(
+            crate::effects::composition::complete_committed_original_with_outputs(
+                game,
+                ctx,
+                crate::effects::SimultaneousEffectCommit {
+                    outcome: original,
+                    completion: receipt.completion,
+                },
+            )?,
+        )
+    } else {
+        None
+    };
+    Ok(AppliedDamageAssignment {
+        applied: receipt.original.applied,
+        life_lost: receipt.original.life_lost,
+        consequence_outcome,
+    })
 }
 
 #[cfg(test)]

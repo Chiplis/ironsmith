@@ -30,7 +30,7 @@ const state = {
   },
 };
 
-async function harness() {
+async function harness(fixtureState = state) {
   const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
   await vite.listen();
   const browser = await chromium.launch();
@@ -39,7 +39,7 @@ async function harness() {
   page.on("pageerror", (error) => errors.push(String(error?.message || error)));
   await page.route("**/api.scryfall.com/**", (route) => route.abort());
   await page.route("**/cards.scryfall.io/**", (route) => route.abort());
-  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; }, { state });
+  await page.addInitScript((fixture) => { window.__handKeyboardFixture = fixture; }, { state: fixtureState });
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/hand-keyboard-cast.html`);
   await page.locator('[data-hand-case] .game-card.hand-card').first().waitFor();
   return {
@@ -55,6 +55,20 @@ async function harness() {
     close: async () => { await browser.close(); await vite.close(); },
   };
 }
+
+test("timing-legal hand cards are white and clickable until payment is proven", async () => {
+  const pending = structuredClone(state);
+  pending.decision.actions[0].payment_proven = false;
+  const { page, press, casts, close } = await harness(pending);
+  try {
+    const borderColor = id => page.locator(`.hand-card[data-object-id="${id}"] .card-action-border`)
+      .evaluate(border => getComputedStyle(border).borderTopColor);
+    assert.equal(await borderColor(7), "rgb(255, 255, 255)");
+    assert.equal(await borderColor(8), "rgb(255, 224, 131)");
+    await press(7);
+    assert.deepEqual((await casts())[0].actions, ["Cast Lightning Bolt"]);
+  } finally { await close(); }
+});
 
 test("the activation key casts a hand card without waiting for a pointer release", { timeout: 120000 }, async () => {
   const { press, casts, drag, errors, close } = await harness();

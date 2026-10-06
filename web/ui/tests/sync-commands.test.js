@@ -139,7 +139,7 @@ test("cancel commands can be applied during resync without a visible decision", 
   );
 });
 
-test("surrender forfeits must target the pending decision player", () => {
+test("surrender forfeits are independent of the pending decision", () => {
   assert.equal(
     isDecisionCommandCompatible(
       { kind: "priority", player: 1, actions: [] },
@@ -152,8 +152,9 @@ test("surrender forfeits must target the pending decision player", () => {
       { kind: "priority", player: 0, actions: [] },
       { type: "forfeit_player", player: 1, reason: "surrender" },
     ),
-    false,
+    true,
   );
+  assert.equal(isDecisionCommandCompatible(null, { type: "forfeit_player", player: 1, reason: "surrender" }), true);
 });
 
 test("disconnect timeout policy forfeits can be submitted without a pending decision", () => {

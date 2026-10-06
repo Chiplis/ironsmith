@@ -1,0 +1,46 @@
+.phase-track-group { display: flex; flex-direction: column; min-width: 0; width: 100%; gap: 3px; }
+.phase-track--combat .phase-track-steps { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.phase-track-stop-button {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; width: 100%; min-height: 28px; border: 0; padding: 0 2px;
+  background: transparent; color: inherit; font: inherit; cursor: pointer; pointer-events: auto;
+}
+.phase-track-stop-button:disabled { cursor: default; }
+.phase-track-stop-button:focus-visible { outline: 1px solid #f6d64a; outline-offset: 2px; }
+.phase-track-stop-button:not(:disabled) .phase-track-step-marker { display: none; }
+.phase-track-stop-icon {
+  display: block; width: 16px; height: 16px; flex: 0 0 16px;
+  stroke: #c9b4e6; stroke-width: 1.5; fill: none; pointer-events: none;
+}
+.phase-track-cell:is([data-stop="once"], [data-stop="always"]) .phase-track-stop-icon {
+  stroke: #f6d64a; fill: #f6d64a; filter: drop-shadow(0 0 3px #f6d64a);
+}
+.phase-track-cell[data-stop="once"] .phase-track-stop-icon { fill: #bd8aff; }
+.phase-track--combat { min-height: 31px; }
+
+/* The shrinking yellow face exposes the black face and its yellow text.
+   Both labels share the same layout; there is no numeric countdown. */
+/* Match the main-button theme scope, including hover, so it cannot replace
+   the black face or recolor the clipped duplicate label. */
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock) button.priority-hold-window.decision-main-button,
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock) button.priority-hold-window.decision-main-button:not(:disabled),
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock) button.priority-hold-window.decision-main-button:not(:disabled):is(:hover, :active) {
+  position: relative !important; isolation: isolate; overflow: hidden !important;
+  border: 1px solid #f6d64a !important; border-radius: 0 !important;
+  background: #080808 !important; color: #f6d64a !important;
+  box-shadow: 0 0 8px #f6d64a55 !important; transition: none !important;
+  text-transform: uppercase; font-weight: 700;
+}
+.priority-hold-window-label, .priority-hold-window-fill {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; min-width: 0; white-space: nowrap; font-size: var(--hold-label-size, inherit);
+}
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock) .priority-hold-window.decision-main-button .priority-hold-window-label { position: relative; z-index: 1; color: #f6d64a !important; -webkit-text-fill-color: #f6d64a !important; }
+:is(:root, .table-shell[data-focused-hud="true"] .battlefield-human-action-dock) .priority-hold-window.decision-main-button .priority-hold-window-fill {
+  -webkit-text-fill-color: #080808 !important;
+  position: absolute; inset: 0; z-index: 2; background: #f6d64a; color: #080808 !important;
+  animation: priority-hold-drain var(--hold-duration, 2000ms) linear var(--hold-delay, 0ms) both;
+  animation-play-state: inherit; pointer-events: none;
+}
+@keyframes priority-hold-drain { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(100% 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { .priority-hold-window-fill { animation-timing-function: steps(1, end); } }

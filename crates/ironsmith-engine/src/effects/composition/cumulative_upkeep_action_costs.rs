@@ -4,7 +4,7 @@
 
 use crate::decisions::context::{SelectObjectsContext, SelectableObject};
 use crate::effect::{Effect, EffectOutcome, OutcomeStatus};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError, execute_effect_with_outputs};
 use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
@@ -97,20 +97,20 @@ impl<'a> ActionCost<'a> {
 
     pub(super) fn pay(
         &self, game: &mut GameState, ctx: &mut ExecutionContext, repetitions: usize,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         match self {
             Self::Mana(effect) | Self::Draw(effect, _) => {
                 let mut outcomes = Vec::new();
                 for _ in 0..repetitions {
-                    let mut outcome = execute_effect(game, effect, ctx)?;
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                    crate::effects::capture_triggers_before_added_program(game, ctx, None, outcome.events.iter_mut())?;
+                    let mut outcome = execute_effect_with_outputs(game, effect, ctx)?;
+                    if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
+                    crate::effects::capture_triggers_before_added_program(game, ctx, None, outcome.outcome.events.iter_mut())?;
                     // A payment action has been attempted. Replacement/prevention
                     // receipts remain intact, while the enclosing payment succeeds.
-                    outcome.status = OutcomeStatus::Succeeded;
+                    outcome.outcome.status = OutcomeStatus::Succeeded;
                     outcomes.push(outcome);
                 }
-                Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+                Ok(CompletedEffectOutputs::from_children(outcomes, EffectOutcome::aggregate_summing_counts))
             }
             Self::MoveGroup(choice, movement) => {
                 let mut installments = Vec::new();
@@ -127,7 +127,7 @@ impl<'a> ActionCost<'a> {
                         candidates, choice.count.min, Some(choice.count.min),
                     ).require_explicit_choice().with_relation_filter(choice.filter.clone());
                     let selected = ctx.decision_maker.decide_objects(game, &decision);
-                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
                     let unique = selected.iter().copied().collect::<std::collections::HashSet<_>>();
                     if selected.len() != choice.count.min || unique.len() != selected.len()
                         || !groups.iter().any(|group| selected.iter().all(|id| group.contains(id)))
@@ -139,7 +139,7 @@ impl<'a> ActionCost<'a> {
                     reserved.extend(selected.iter().copied());
                     installments.push(selected);
                 }
-                if repetitions == 0 { return Ok(EffectOutcome::count(0)); }
+                if repetitions == 0 { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
                 // Every separately constrained installment is selected before
                 // the original movement. The native multi-object action owns
                 // simultaneous proposals, owner ordering, replacements and
@@ -151,10 +151,10 @@ impl<'a> ActionCost<'a> {
                 ctx.set_tagged_objects(choice.tag.clone(), snapshots);
                 let mut movement = (**movement).clone();
                 movement.library_order = Some(crate::effects::LibraryPlacementOrder::Owners);
-                let mut outcome = execute_effect(game, &Effect::new(movement), ctx)?;
-                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-                crate::effects::capture_triggers_before_added_program(game, ctx, None, outcome.events.iter_mut())?;
-                outcome.status = OutcomeStatus::Succeeded;
+                let mut outcome = execute_effect_with_outputs(game, &Effect::new(movement), ctx)?;
+                if ctx.decision_maker.awaiting_choice() { return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))); }
+                crate::effects::capture_triggers_before_added_program(game, ctx, None, outcome.outcome.events.iter_mut())?;
+                outcome.outcome.status = OutcomeStatus::Succeeded;
                 Ok(outcome)
             }
         }

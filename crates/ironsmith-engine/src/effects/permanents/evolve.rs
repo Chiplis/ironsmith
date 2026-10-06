@@ -1,7 +1,7 @@
 //! Evolve keyword effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::EnterBattlefieldEvent;
 use crate::events::ZoneChangeEvent;
@@ -103,65 +103,89 @@ impl EffectExecutor for EvolveEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let Some(triggering_event) = &ctx.triggering_event else {
-                return Ok(EffectOutcome::count(0));
-            };
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
 
-            let source_id = ctx.source;
-            if !game
-                .object(source_id)
-                .is_some_and(|object| object.zone == Zone::Battlefield)
-            {
-                return Ok(EffectOutcome::count(0));
-            }
-            // CR 702.100a: the comparison is rechecked on resolution; the entered
-            // creature's controller no longer matters, and its LKI is used if it
-            // left the battlefield.
-            if !evolve_entering_creature_is_larger(game, source_id, triggering_event) {
-                return Ok(EffectOutcome::count(0));
-            }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let Some(triggering_event) = &ctx.triggering_event else {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                };
 
-            let event = crate::events::Event::put_counters(
-                source_id,
-                CounterType::PlusOnePlusOne,
-                1,
-                ctx.cause.clone(),
-            )
-            .with_provenance(ctx.provenance);
-            let placement =
-                crate::effects::counters::execute_object_counter_placement(game, ctx, event)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let mut outcome = EffectOutcome::aggregate([EffectOutcome::count(1), placement]);
-            outcome.set_value(crate::effect::OutcomeValue::Count(1));
-            if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
-                game.record_ui_effect_event(
-                    "level_up",
-                    Some(ctx.controller),
-                    None,
-                    vec![stable_id],
-                    Some(1),
-                    Some("evolve".to_string()),
+                let source_id = ctx.source;
+                if !game
+                    .object(source_id)
+                    .is_some_and(|object| object.zone == Zone::Battlefield)
+                    || game.is_phased_out(source_id)
+                {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                // CR 702.100a: the comparison is rechecked on resolution; the entered
+                // creature's controller no longer matters, and its LKI is used if it
+                // left the battlefield.
+                if !evolve_entering_creature_is_larger(game, source_id, triggering_event) {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+
+                let event = crate::events::Event::put_counters(
+                    source_id,
+                    CounterType::PlusOnePlusOne,
+                    1,
+                    ctx.cause.clone(),
+                )
+                .with_provenance(ctx.provenance);
+                let placement = crate::effects::counters::execute_counter_placement_with_outputs(
+                    game, ctx, event,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
+                    game.record_ui_effect_event(
+                        "level_up",
+                        Some(ctx.controller),
+                        None,
+                        vec![stable_id],
+                        Some(1),
+                        Some("evolve".to_string()),
+                    );
+                }
+                let completion = crate::effects::composition::complete_keyword_action(
+                    game,
+                    ctx,
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Evolve,
+                        ctx.controller,
+                        source_id,
+                        1,
+                    ),
+                )?;
+                let outcome = EffectOutcome::aggregate_with_primary_result(
+                    EffectOutcome::count(1),
+                    [placement.outcome.clone(), completion.clone()],
                 );
-            }
-            outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                KeywordActionEvent::new(KeywordActionKind::Evolve, ctx.controller, source_id, 1),
-                ctx.provenance,
-            ));
-            Ok(outcome)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-        }
-        result
+                let mut outputs = placement;
+                outputs.retain_batch_children([CompletedEffectOutputs::aggregate_only(completion)]);
+                Ok(outputs.project_aggregate(outcome))
+            },
+        )
     }
 }
 

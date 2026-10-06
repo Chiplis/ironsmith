@@ -24,6 +24,6 @@ impl EffectExecutor for RegisterManaReplacementEffect {
             effect: replacement,
             mode: self.mode,
         }
-        .execute(game, ctx)
+        .execute_child(game, ctx)
     }
 }

@@ -1,9 +1,10 @@
 //! Exile cards from the top of a library until one matches a filter.
 
+use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::consult_helpers::{
-    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult,
+    LibraryConsultMode, LibraryConsultStopRule, execute_library_consult_with_outputs,
 };
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -47,9 +48,18 @@ impl EffectExecutor for ExileUntilMatchEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let filter_ctx = ctx.filter_context(game);
-        let result = execute_library_consult(
+        let result = execute_library_consult_with_outputs(
             game,
             ctx,
             player_id,
@@ -60,10 +70,17 @@ impl EffectExecutor for ExileUntilMatchEffect {
             |object, game| self.filter.matches(object, &filter_ctx, game),
         )?;
 
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-        let original = if result.exposed_object_ids.is_empty() { EffectOutcome::count(0) }
-            else { EffectOutcome::with_objects(result.exposed_object_ids.clone()) };
-        Ok(result.attach_to_outcome(original))
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        let original = if result.exposed_object_ids.is_empty() {
+            EffectOutcome::count(0)
+        } else {
+            EffectOutcome::with_objects(result.exposed_object_ids.clone())
+        };
+        Ok(result.attach_to_outputs(original))
     }
 }
 

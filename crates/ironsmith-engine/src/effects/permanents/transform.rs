@@ -120,7 +120,8 @@ fn execute_transform_like_action_inner(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
-    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
     let target_id = if matches!(target.base(), ChooseSpec::Source) {
         // A source that left the battlefield is a different object if it
         // returns. An old transform ability cannot follow that incarnation.
@@ -143,7 +144,9 @@ fn execute_transform_like_action_inner(
         resolve_single_object_for_effect(game, ctx, target)?
     };
 
-    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(EffectOutcome::resolved());
+    }
 
     if source_transform_like_action_is_stale(game, ctx, target_id) {
         return Ok(EffectOutcome::resolved());
@@ -166,22 +169,37 @@ fn execute_transform_like_action_inner(
         return Ok(EffectOutcome::resolved());
     }
 
-    if !game.transform_permanent(target_id).map_err(ExecutionError::ContinuousDiscovery)? {
+    if !game
+        .transform_permanent(target_id)
+        .map_err(ExecutionError::ContinuousDiscovery)?
+    {
         return Ok(EffectOutcome::resolved());
     }
 
-    game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
+    game.refresh_continuous_state()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
 
-    if matches!(action, TransformLikeAction::Transform) {
+    let observations = if matches!(action, TransformLikeAction::Transform) {
         let controller = game
             .current_controller(target_id)
             .ok_or(ExecutionError::ObjectNotFound(target_id))?;
-        game.execute_as_transforms_effect_programs(target_id, controller, ctx.decision_maker)?;
-        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::resolved()); }
-    }
+        let (_, observations) = crate::effects::with_action_observations(game, |game| {
+            game.execute_as_transforms_effect_programs(target_id, controller, ctx.decision_maker)
+        })?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::resolved());
+        }
+        observations
+    } else {
+        Vec::new()
+    };
 
     let mut events = vec![action.event(target_id, ctx.provenance)];
-    crate::events::other::freeze_completed_lifecycle_events(game, &mut events)?;
+    crate::effects::observe_lifecycle_completions_with_observations(
+        game,
+        &mut events,
+        &observations,
+    )?;
     let mut outcome = EffectOutcome::resolved();
     outcome.events = events;
     Ok(outcome)

@@ -16,6 +16,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
     name: String,
 ) -> ObjectSnapshot {
     ObjectSnapshot {
+        stack_kind: None,
         ability_origins: None,
         chosen_subtype: None,
                 numeric_choice_memory: None,

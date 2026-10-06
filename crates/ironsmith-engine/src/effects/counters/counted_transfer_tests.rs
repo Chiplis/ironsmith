@@ -145,6 +145,11 @@ fn original_removal_receipt_excludes_prevention_and_placement_multiplication() {
     assert_eq!(game.counter_count(first, KIND), 2); assert_eq!(game.counter_count(second, KIND), 0);
     assert_eq!(game.counter_count(destination, KIND), 10, "replacement of removal does not rewrite the separate put budget");
     assert_eq!(out.count_or_zero(), 3, "only three original counters were actually removed");
+    assert_eq!(out.instruction_result().count_or_zero(), 3,
+        "the prepared aggregate retains the transfer's exact primary receipt");
+    assert_eq!(out.events_of_type::<crate::events::MarkersChangedEvent>()
+        .filter(|event| event.is_added()).count(), 1,
+        "retained child routing does not duplicate physical placement history");
 }
 
 #[test]

@@ -127,6 +127,36 @@ fn payment_disclosure_group_costs_reject_invalid_groups_before_commit_then_pay_e
             2
         };
         disclosure_command(&mut wasm, selected(hand[..count].to_vec())).unwrap();
+        // Discard payment can ask for a separate public reveal after accepting
+        // the group. Complete that acknowledgement before checking the stack.
+        for _ in 0..5 {
+            if matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))) {
+                break;
+            }
+            let Some(DecisionContext::SelectObjects(objects)) = wasm.pending_decision.as_ref()
+            else {
+                panic!(
+                    "unexpected group-cost continuation for {name}: {:?}",
+                    wasm.pending_decision
+                );
+            };
+            assert_eq!(objects.reveal_policy, SelectionRevealPolicy::Public);
+            let ids: Vec<_> = objects
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            assert_eq!(ids.len(), count, "{name} reveals only the accepted group");
+            assert_eq!(objects.min, count);
+            assert_eq!(objects.max, Some(count));
+            assert!(ids.iter().all(|id| hand[..count].contains(id)));
+            disclosure_command(&mut wasm, selected(ids)).unwrap();
+        }
+        assert!(
+            matches!(wasm.pending_decision, Some(DecisionContext::Priority(_))),
+            "{name} finishes payment"
+        );
         assert_eq!(
             wasm.game.stack.len(),
             1,

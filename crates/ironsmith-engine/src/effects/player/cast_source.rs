@@ -30,6 +30,9 @@ fn restore_other_face_after_failed_cast(
 
 /// Effect that casts the source card immediately.
 impl EffectExecutor for CastSourceEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Cast)
+    }
     fn contains_current_source_suspend_cast(&self) -> bool {
         self.cast_as_suspend && self.require_exile
     }

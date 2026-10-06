@@ -1580,6 +1580,12 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   z-index: 1000;
 }
 
+/* The hand stays above the fixed phase HUD, including while a lifted card
+   settles after hover/focus changes and no active-card class remains. */
+[data-bottom-dock] {
+  z-index: 1000;
+}
+
 [data-bottom-dock]:has(.game-card.hand-card.hovered),
 [data-bottom-dock]:has(.game-card.hand-card.keyboard-selected),
 [data-bottom-dock]:has(.game-card.hand-card.inspected),

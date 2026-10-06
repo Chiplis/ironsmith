@@ -46,6 +46,9 @@ impl GoadEffect {
 }
 
 impl EffectExecutor for GoadEffect {
+    fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
+        Some(crate::effect::PriorEffectAction::Goaded)
+    }
     fn execute(
         &self,
         game: &mut GameState,
@@ -54,6 +57,7 @@ impl EffectExecutor for GoadEffect {
         restore_source_chosen_name_tags(game, ctx, &self.target);
         let objects = resolve_objects_for_effect(game, ctx, &self.target)?;
         let mut count = 0_i32;
+        let mut snapshots = Vec::new();
         for object_id in objects {
             let Some(object) = game.object(object_id) else {
                 continue;
@@ -61,10 +65,20 @@ impl EffectExecutor for GoadEffect {
             if object.zone != Zone::Battlefield || !game.current_is_creature(object_id) {
                 continue;
             }
+            if let Some(snapshot) = crate::snapshot::ObjectSnapshot::from_object_id(game, object_id)
+            {
+                snapshots.push(snapshot);
+            }
             game.add_goad_effect(object_id, ctx.controller, self.duration.clone(), ctx.source);
             count += 1;
         }
-        Ok(EffectOutcome::count(count))
+        Ok(EffectOutcome::count(count)
+            .with_action_objects(
+                crate::effect::PriorEffectAction::Goaded,
+                Some(ctx.controller),
+                snapshots.clone(),
+            )
+            .with_affected_object_memory(snapshots))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -183,6 +197,7 @@ mod tests {
             "__chosen_name__",
             vec![ObjectSnapshot {
                 ability_origins: None,
+                stack_kind: None,
                 chosen_subtype: None,
                 numeric_choice_memory: None,
                 secret_chosen_subtype: None,
@@ -231,8 +246,8 @@ mod tests {
                 tapped: false,
                 attacking: false,
                 goaded: None,
-            suspected: None,
-            ring_bearer: None,
+                suspected: None,
+                ring_bearer: None,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,

@@ -1,5 +1,8 @@
 //! Deal distributed damage among multiple targets.
 
+use super::deal_damage::{
+    CapturedDamageInstructionPlan, DamageInstructionInputProvider, DamageInstructionPlan,
+};
 use crate::decision::FallbackStrategy;
 use crate::decisions::{DistributeSpec, make_decision_with_fallback};
 use crate::effect::{ChoiceCount, EffectOutcome, Value};
@@ -10,9 +13,7 @@ use crate::effects::helpers::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::{checked_damage_amount, checked_damage_count};
-use crate::events::processing::{
-    SimultaneousDamageEvent, with_deferred_prevention_follow_up_outcome,
-};
+use crate::events::processing::SimultaneousDamageEvent;
 use crate::game_state::{GameState, Target};
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ChooseSpec;
@@ -65,17 +66,18 @@ impl DealDistributedDamageEffect {
         self
     }
 
-    fn execute_with_resolved_source(
+    fn with_resolved_source<T>(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+        body: impl FnOnce(&mut GameState, &mut ExecutionContext) -> Result<T, ExecutionError>,
+    ) -> Result<Option<T>, ExecutionError> {
         game.establish_control_transition_boundary()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let Some((damage_source, tagged_snapshot)) =
             resolve_effect_source_with_lki(game, ctx, &self.source)
         else {
-            return Ok(EffectOutcome::target_invalid());
+            return Ok(None);
         };
         let source_snapshot = tagged_snapshot.or_else(|| {
             game.object(damage_source).map(|object| {
@@ -87,17 +89,17 @@ impl DealDistributedDamageEffect {
         let original_source_snapshot = ctx.source_snapshot.clone();
         ctx.source = damage_source;
         ctx.source_snapshot = source_snapshot;
-        let outcome = self.execute_distribution(game, ctx);
+        let outcome = body(game, ctx);
         ctx.source = original_source;
         ctx.source_snapshot = original_source_snapshot;
-        outcome
+        outcome.map(Some)
     }
 
-    fn execute_distribution(
+    fn resolve_distribution_inputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+    ) -> Result<DamageInstructionPlan, ExecutionError> {
         let announced_distribution = if self.distribution == DamageDistributionMode::Chosen {
             ctx.take_target_distribution(&self.target)
         } else {
@@ -121,7 +123,7 @@ impl DealDistributedDamageEffect {
         };
         checked_damage_count(u128::from(total), "distributed damage outcome")?;
         if total == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
         }
 
         let mut available_targets = Vec::new();
@@ -150,9 +152,11 @@ impl DealDistributedDamageEffect {
 
         if available_targets.is_empty() {
             return if self.target.count().min == 0 {
-                Ok(EffectOutcome::count(0))
+                Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)))
             } else {
-                Ok(EffectOutcome::target_invalid())
+                Ok(DamageInstructionPlan::Finished(
+                    EffectOutcome::target_invalid(),
+                ))
             };
         }
 
@@ -179,12 +183,12 @@ impl DealDistributedDamageEffect {
                 FallbackStrategy::Maximum,
             );
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+                return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
             }
             distribution
         };
         if distribution.is_empty() && self.target.count().min == 0 {
-            return Ok(EffectOutcome::count(0));
+            return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
         }
 
         // Keep allocations in the order targets were chosen (first mention wins)
@@ -221,7 +225,7 @@ impl DealDistributedDamageEffect {
             "assigned damage total",
         )?;
         if self.distribution == DamageDistributionMode::Chosen && assigned_total > total {
-            return Ok(EffectOutcome::impossible());
+            return Ok(DamageInstructionPlan::Finished(EffectOutcome::impossible()));
         }
 
         if self.distribution == DamageDistributionMode::EvenRoundedDown && !allocations.is_empty() {
@@ -281,43 +285,109 @@ impl DealDistributedDamageEffect {
             })
             .collect::<Vec<_>>();
         if events.is_empty() {
-            return Ok(
+            return Ok(DamageInstructionPlan::Finished(
                 if self.distribution == DamageDistributionMode::EvenRoundedDown {
                     EffectOutcome::count(0)
                 } else {
                     EffectOutcome::target_invalid()
                 },
-            );
+            ));
         }
-        let source = ctx.source;
-        let controller = ctx.controller;
-        let cause = ctx.cause.clone();
-        let provenance = ctx.provenance;
-        let scope = ctx.replacement.clone();
-        let batch = game.alloc_child_event_provenance(provenance, crate::events::EventKind::Damage);
-        with_deferred_prevention_follow_up_outcome(game, ctx.decision_maker, |game, dm| {
-            let mut parent = ExecutionContext::new(source, controller, dm)
-                .with_cause(cause)
-                .with_provenance(provenance);
-            parent.replacement = scope;
-            super::multi_source_damage::commit_damage_batch(game, &mut parent, events, Some(batch))
+        Ok(DamageInstructionPlan::from_independent_events(events))
+    }
+}
+
+impl DamageInstructionInputProvider for DealDistributedDamageEffect {
+    fn capture_damage_instruction(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CapturedDamageInstructionPlan, ExecutionError> {
+        // Capture inside the source binding so every assignment keeps the
+        // source, LKI and value domains used by its authored selector.
+        self.with_resolved_source(game, ctx, |game, ctx| {
+            self.resolve_distribution_inputs(game, ctx)
+                .map(|plan| plan.capture(ctx))
+        })
+        .map(|plan| {
+            plan.unwrap_or_else(|| {
+                CapturedDamageInstructionPlan::Finished(EffectOutcome::target_invalid())
+            })
         })
     }
 }
 
 impl EffectExecutor for DealDistributedDamageEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        self.distribution == DamageDistributionMode::EvenRoundedDown
+    }
+    fn shares_iterated_damage_action(&self) -> bool {
+        self.supports_damage_action_cohort()
+    }
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.supports_damage_action_cohort()
+    }
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        if !self.supports_damage_action_cohort() {
+            return Err(ExecutionError::InternalError(
+                "chosen damage divisions require independent announcement cursors before shared preparation".into(),
+            ));
+        }
+        Ok(super::deal_damage::prepare_damage_instruction(self.clone()))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let result = crate::effects::tokens::execute_resource_transaction_atomically(
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
-            |game, ctx| self.execute_with_resolved_source(game, ctx),
+            || {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::with_objects(
+                    Vec::new(),
+                ))
+            },
+            |game, ctx| {
+                self.with_resolved_source(game, ctx, |game, ctx| {
+                    self.resolve_distribution_inputs(game, ctx)?
+                        .execute_with_outputs(game, ctx)
+                })
+                .map(|outputs| {
+                    outputs.unwrap_or_else(|| {
+                        crate::effects::CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::target_invalid(),
+                        )
+                    })
+                })
+            },
         );
         if ctx.decision_maker.awaiting_choice() && result.is_ok() {
-            return Ok(EffectOutcome::count(0));
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

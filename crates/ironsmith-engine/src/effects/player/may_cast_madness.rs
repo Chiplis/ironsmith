@@ -38,7 +38,8 @@ fn put_madness_card_into_graveyard(
     // or failure before this linked madness marker is cleared.
     let outcome = crate::effects::MoveToZoneEffect::to_graveyard(
         crate::target::ChooseSpec::SpecificObject(card_id),
-    ).execute(game, ctx)?;
+    )
+    .execute_child(game, ctx)?;
     if !ctx.decision_maker.awaiting_choice() {
         game.clear_madness_exiled(card_id);
     }
@@ -127,7 +128,6 @@ impl EffectExecutor for MayCastForMadnessCostEffect {
         Ok(EffectOutcome::resolved())
     }
 }
-
 
 #[cfg(test)]
 mod replacement_receipt_contract_tests {

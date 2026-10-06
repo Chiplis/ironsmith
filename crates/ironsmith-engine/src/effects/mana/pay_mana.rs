@@ -32,13 +32,25 @@ fn planner_request(
 ) -> crate::mana_payment::ManaPaymentRequest {
     let mut request = crate::mana_payment::ManaPaymentRequest::new(player_id, source, reason, cost)
         .with_x(x_value)
-        .with_spend_policy(game.mana_spend_policy(player_id, Some(source)));
+        .with_spend_policy(game.mana_spend_policy_for_reason(player_id, Some(source), reason));
     request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
         && game.player_can_pay_black_with_life_for_reason(player_id, Some(source), reason);
     request
 }
 
 fn try_pay_interactively(
+    effect: &PayManaEffect, game: &mut GameState, ctx: &mut ExecutionContext,
+    player_id: PlayerId, x_value: u32,
+) -> Result<bool, ExecutionError> {
+    let checkpoint = game.clone();
+    let result = try_pay_interactively_inner(effect, game, ctx, player_id, x_value);
+    if !matches!(&result, Ok(true)) || ctx.decision_maker.awaiting_choice() {
+        game.restore_execution_checkpoint(checkpoint, result.is_ok() && ctx.decision_maker.awaiting_choice());
+    }
+    result
+}
+
+fn try_pay_interactively_inner(
     effect: &PayManaEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -276,59 +288,38 @@ impl EffectExecutor for PayManaEffect {
 }
 
 impl CostExecutableEffect for PayManaEffect {
-    fn can_execute_as_cost(
-        &self,
-        game: &GameState,
-        source: ObjectId,
-        controller: PlayerId,
+    fn can_execute_as_cost_with_context(
+        &self, game: &GameState, ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        let player_id = match self.player.inner() {
-            ChooseSpec::Player(PlayerFilter::You | PlayerFilter::EffectController) => controller,
-            ChooseSpec::Player(PlayerFilter::Specific(player))
-            | ChooseSpec::SpecificPlayer(player) => *player,
-            ChooseSpec::SourceController => game
-                .object(source)
-                .map(|object| game.controller_of(object))
-                .unwrap_or(controller),
-            _ => controller,
+        let player = resolve_player_from_spec(game, &self.player, ctx)
+            .map_err(CostValidationError::ExecutionFailed)?;
+        let adjusted = game.adjust_mana_cost_for_payment_reason(player, Some(ctx.source), &self.cost, reason);
+        let x = if self.x_maximum.is_some() { 0 } else {
+            self.x_value.as_ref().map(|value| resolve_value(game, value, ctx)).transpose()
+                .map_err(CostValidationError::ExecutionFailed)?
+                .map(|value| value.max(0) as u32).unwrap_or(ctx.x_value.unwrap_or(0))
         };
-        let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
-            player_id,
-            Some(source),
-            &self.cost,
-            crate::costs::PaymentReason::Effect,
-        );
-        let x_value = if self.x_maximum.is_some() {
-            // Zero is always inside a bounded-X range. The semantic maximum
-            // may depend on trigger context that cost preflight does not have.
-            0
-        } else {
-            let context = ExecutionContext::new_default(source, controller);
-            self.x_value
-                .as_ref()
-                .map(|value| resolve_value(game, value, &context))
-                .transpose()
-                .map_err(|_| {
-                    CostValidationError::Other("unable to resolve mana payment X value".to_string())
-                })?
-                .unwrap_or(0)
-                .max(0) as u32
-        };
-        let request = planner_request(
-            game,
-            player_id,
-            source,
-            adjusted_cost,
-            x_value,
-            crate::costs::PaymentReason::Effect,
-        );
-        if crate::mana_payment::check_mana_payment(game, &request).is_ok() {
-            Ok(())
-        } else {
-            Err(CostValidationError::Other(
-                "not enough mana available to pay cost".to_string(),
-            ))
-        }
+        let request = planner_request(game, player, ctx.source, adjusted, x, reason);
+        crate::mana_payment::check_mana_payment(game, &request).map_err(|error| match error {
+            crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => CostValidationError::ExecutionFailed(error),
+            _ => CostValidationError::Other("not enough mana available to pay cost".into()),
+        })
+    }
+
+    fn can_execute_as_cost(
+        &self, game: &GameState, source: ObjectId, controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        self.can_execute_as_cost_with_reason(game, source, controller, crate::costs::PaymentReason::Effect)
+    }
+
+    fn can_execute_as_cost_with_reason(
+        &self, game: &GameState, source: ObjectId, controller: PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, controller, &mut decision_maker);
+        self.can_execute_as_cost_with_context(game, &mut ctx, reason)
     }
 }
 
@@ -449,6 +440,44 @@ mod tests {
                 .red,
             0
         );
+    }
+
+    #[test]
+    fn cancelled_effect_payment_restores_earlier_manual_mana_activation() {
+        struct ActivateThenCancel { source: ObjectId, prompts: usize }
+        impl DecisionMaker for ActivateThenCancel {
+            fn decide_mana_payment(&mut self, _: &GameState,
+                _: &crate::decisions::context::ManaPaymentContext,
+            ) -> crate::mana_payment::ManaPaymentResponse {
+                self.prompts += 1;
+                if self.prompts == 1 {
+                    crate::mana_payment::ManaPaymentResponse::Activate { source: self.source, ability_index: 0 }
+                } else { crate::mana_payment::ManaPaymentResponse::Cancel }
+            }
+        }
+        for dispatched in [false, true] {
+            let mut game = setup_game();
+            let player = PlayerId::from_index(0);
+            let land = CardBuilder::new(CardId::new(), "Manual source")
+                .card_types(vec![CardType::Land]).build();
+            let source = game.create_object_from_card(&land, player, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::mana(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![ManaSymbol::Red],
+            ));
+            game.take_pending_trigger_events();
+            let mut dm = ActivateThenCancel { source, prompts: 0 };
+            let mut ctx = ExecutionContext::new(source, player, &mut dm);
+            let effect = PayManaEffect::new(ManaCost::from_symbols(vec![ManaSymbol::Red]),
+                ChooseSpec::Player(PlayerFilter::You));
+            let result = if dispatched {
+                crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(effect), &mut ctx)
+            } else { effect.execute(&mut game, &mut ctx) }.unwrap();
+            assert_eq!(result.status, crate::effect::OutcomeStatus::Impossible);
+            assert_eq!(dm.prompts, 2);
+            assert!(!game.is_tapped(source));
+            assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+            assert!(game.take_pending_trigger_events().is_empty());
+        }
     }
 
     #[test]

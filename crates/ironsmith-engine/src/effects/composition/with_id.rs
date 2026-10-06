@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 pub type WithIdEffect = ironsmith_core::WithIdEffect<crate::effect::Effect>;
 
@@ -33,7 +33,146 @@ struct WithIdProposal {
     inner: Box<dyn crate::effects::SimultaneousEffectProposal>,
 }
 
+struct RecordOriginalOutcome {
+    id: ironsmith_core::EffectId,
+    previous: Option<EffectOutcome>,
+}
+
+impl super::OriginalOutcomeAdapter for RecordOriginalOutcome {
+    fn cancel(self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext) {
+        ctx.effect_outcomes.remove(&self.id);
+        if let Some(previous) = self.previous { ctx.store_outcome(self.id, previous); }
+    }
+    fn finish(
+        self: Box<Self>,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        finish_recording_outcome(ctx, self.id, self.previous, result)
+    }
+}
+
+/// Prepublication phases temporarily hide this instruction's result. The
+/// same-id descendant result becomes live only at original acknowledgement;
+/// failed/pending preparation and cost queries restore the incoming slot.
+fn with_unpublished_result_slot<T>(
+    ctx: &mut ExecutionContext,
+    id: ironsmith_core::EffectId,
+    body: impl FnOnce(&mut ExecutionContext) -> T,
+) -> T {
+    let previous = ctx.effect_outcomes.remove(&id);
+    let result = body(ctx);
+    ctx.effect_outcomes.remove(&id);
+    if let Some(previous) = previous {
+        ctx.effect_outcomes.insert(id, previous);
+    }
+    result
+}
+
 impl crate::effects::SimultaneousEffectProposal for WithIdProposal {
+    fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        self.inner.damage_action_inputs()
+    }
+
+    fn bind_damage_action(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        owner: &crate::effects::CompletedEffectOutputs,
+    ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        let previous = ctx.effect_outcomes.remove(&self.id);
+        let result = self.inner.bind_damage_action(game, ctx, owner);
+        match result {
+            Ok(binding) => binding
+                .project(|outcome| finish_recording_outcome(ctx, self.id, previous, Ok(outcome))),
+            Err(error) => finish_recording_outcome(ctx, self.id, previous, Err(error))
+                .map(crate::effects::DamageActionBinding::from_outcome),
+        }
+    }
+    fn declared_life_payment(&self) -> Option<(crate::ids::PlayerId, u32)> {
+        self.inner.declared_life_payment()
+    }
+
+    fn has_simultaneous_originals(&self) -> bool {
+        self.inner.has_simultaneous_originals()
+    }
+
+    fn nominal_payment_quantity(&self) -> Option<u64> {
+        self.inner.nominal_payment_quantity()
+    }
+
+    fn declared_payment_resources(&self) -> Vec<crate::effects::PaymentResourceClaim> {
+        self.inner.declared_payment_resources()
+    }
+
+    fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
+        self.inner.declared_life_payments()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        with_unpublished_result_slot(ctx, self.id, |ctx| self.inner.prepare_selection(game, ctx))
+    }
+
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        with_unpublished_result_slot(ctx, self.id, |ctx| self.inner.prepare_original(game, ctx))
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        with_unpublished_result_slot(ctx, self.id, |ctx| self.inner.seal_original(game, ctx))
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit_original_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let previous = ctx.effect_outcomes.remove(&self.id);
+        match self.inner.commit_original_with_outputs(game, ctx) {
+            Ok(receipt) => super::adapt_original_outcome_with_outputs(
+                receipt,
+                Box::new(RecordOriginalOutcome {
+                    id: self.id,
+                    previous,
+                }),
+                game,
+                ctx,
+            ),
+            Err(error) => finish_recording_outcome(ctx, self.id, previous, Err(error))
+                .map(crate::effects::CompletedEffectOutputs::aggregate_only)
+                .map(crate::effects::SimultaneousEffectCommit::finished),
+        }
+    }
+
     fn commit(
         self: Box<Self>,
         game: &mut GameState,
@@ -76,6 +215,52 @@ fn finish_recording_outcome(
 }
 
 impl EffectExecutor for WithIdEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        crate::effects::replacement::replacement_effect_supported(&self.effect)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
+    fn supports_prepared_action_program(&self) -> bool {
+        self.effect.0.supports_prepared_action_program()
+    }
+    fn select_prepared_action_program(
+        &self,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        let previous = ctx.effect_outcomes.remove(&self.id);
+        Ok(Some(super::action_program::adapted_child_program_cursor(
+            self.effect.as_ref().clone(),
+            Box::new(RecordOriginalOutcome {
+                id: self.id,
+                previous,
+            }),
+        )))
+    }
+
+    fn transparent_cost_precheck_child_effect(&self) -> Option<&crate::effect::Effect> {
+        None
+    }
+
+    fn supports_damage_action_cohort(&self) -> bool {
+        self.effect.0.supports_damage_action_cohort()
+    }
+    fn visit_prepared_selection_bindings(
+        &self,
+        visitor: &mut dyn FnMut(crate::effects::PreparedSelectionBinding),
+    ) {
+        visitor(crate::effects::PreparedSelectionBinding::Outcome(self.id));
+        self.effect.0.visit_prepared_selection_bindings(visitor);
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         self.effect
             .0
@@ -114,10 +299,9 @@ impl EffectExecutor for WithIdEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        let inner = self
-            .effect
-            .0
-            .prepare_simultaneous_player_action(game, ctx)?;
+        let inner = with_unpublished_result_slot(ctx, self.id, |ctx| {
+            self.effect.prepare_simultaneous_player_action(game, ctx)
+        })?;
         Ok(Box::new(WithIdProposal { id: self.id, inner }))
     }
 
@@ -126,12 +310,21 @@ impl EffectExecutor for WithIdEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let previous = ctx.effect_outcomes.remove(&self.id);
-        let result = execute_effect(game, &self.effect, ctx);
-        finish_recording_outcome(ctx, self.id, previous, result)
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_with_id_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Action,
+        )
     }
 
     fn get_target_spec(&self) -> Option<&crate::target::ChooseSpec> {
@@ -154,7 +347,105 @@ impl EffectExecutor for WithIdEffect {
     }
 }
 
+fn execute_with_id_with_outputs(
+    effect: &WithIdEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    purpose: crate::effects::EffectExecutionPurpose,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let previous = ctx.effect_outcomes.remove(&effect.id);
+    let adapter: Box<dyn super::OriginalOutcomeAdapter> = Box::new(RecordOriginalOutcome {
+        id: effect.id,
+        previous,
+    });
+    let result = purpose.execute(game, &effect.effect, ctx);
+    adapter.finish_with_outputs(game, ctx, result)
+}
+
 impl CostExecutableEffect for WithIdEffect {
+    fn cost_choice_candidate_is_eligible(
+        &self,
+        game: &GameState,
+        execution: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+        tag: &crate::tag::TagKey,
+        object: crate::ids::ObjectId,
+    ) -> Option<bool> {
+        with_unpublished_result_slot(execution, self.id, |execution| {
+            self.effect
+                .0
+                .as_cost_executable()?
+                .cost_choice_candidate_is_eligible(game, execution, reason, tag, object)
+        })
+    }
+
+    fn execute_payment_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        execute_with_id_with_outputs(
+            self,
+            game,
+            ctx,
+            crate::effects::EffectExecutionPurpose::Payment,
+        )
+    }
+
+    fn payment_bindings_are_owned_by_children(&self) -> bool {
+        true
+    }
+
+    fn supports_prepared_payment(&self) -> bool {
+        self.effect
+            .0
+            .as_cost_executable()
+            .is_some_and(|cost| cost.supports_prepared_payment())
+    }
+
+    fn prepare_simultaneous_payment(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let inner = with_unpublished_result_slot(ctx, self.id, |ctx| {
+            self.effect.prepare_simultaneous_payment(game, ctx)
+        })?;
+        Ok(Box::new(WithIdProposal { id: self.id, inner }))
+    }
+
+    fn can_execute_as_cost_with_context(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        reason: crate::costs::PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        with_unpublished_result_slot(ctx, self.id, |ctx| {
+            crate::costs::check_effect_cost_program(
+                std::slice::from_ref(self.effect.as_ref()),
+                game,
+                ctx,
+                reason,
+            )
+        })
+    }
+
+    fn canonical_cost_effect(&self) -> Option<crate::effect::Effect> {
+        let child = self
+            .effect
+            .0
+            .as_cost_executable()?
+            .canonical_cost_effect()?;
+        let mut replacement = self.clone();
+        replacement.effect = Box::new(child);
+        Some(crate::effect::Effect::new(replacement))
+    }
+
     fn can_execute_as_cost_with_reason(
         &self,
         game: &GameState,
@@ -162,9 +453,9 @@ impl CostExecutableEffect for WithIdEffect {
         controller: crate::ids::PlayerId,
         reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        self.effect
-            .0
-            .can_execute_as_cost_with_reason(game, source, controller, reason)
+        let mut ctx = ExecutionContext::new_default(source, controller);
+        ctx.x_value = game.object(source).and_then(|object| object.x_value);
+        CostExecutableEffect::can_execute_as_cost_with_context(self, game, &mut ctx, reason)
     }
 
     fn can_execute_as_cost(
@@ -173,7 +464,13 @@ impl CostExecutableEffect for WithIdEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        self.effect.0.can_execute_as_cost(game, source, controller)
+        CostExecutableEffect::can_execute_as_cost_with_reason(
+            self,
+            game,
+            source,
+            controller,
+            crate::costs::PaymentReason::Other,
+        )
     }
 }
 

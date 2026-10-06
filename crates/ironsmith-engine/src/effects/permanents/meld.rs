@@ -166,12 +166,7 @@ fn exile_meld_components(
         return Ok((None, EffectOutcome::count(0)));
     };
     let original = EffectOutcome::with_objects(arrivals.iter().flatten().copied().collect())
-        .with_affected_object_memory(
-            snapshots
-                .iter()
-                .map(crate::effect::OutcomeObjectMemory::from_snapshot)
-                .collect(),
-        );
+        .with_affected_object_memory(snapshots.iter().map(Clone::clone).collect());
     // Exile is the first instruction. Complete its added programs before
     // the following meld instruction, keeping the exact original arrivals.
     let outcome =

@@ -1,7 +1,7 @@
 //! Energy counters effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::helpers::{resolve_player_filter, resolve_nonnegative_u32};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -27,29 +27,46 @@ impl EffectExecutor for EnergyCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let checkpoint = game.clone();
-        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = (|| {
-            let player = resolve_player_filter(game, &self.player, ctx)?;
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
-            let count = resolve_nonnegative_u32(game, &self.count, ctx)?;
-            let event = crate::events::Event::put_player_counters(
-                player,
-                CounterType::Energy,
-                count,
-                ctx.cause.clone(),
-            )
-            .with_provenance(ctx.provenance);
-            crate::effects::counters::execute_player_counter_placement(game, ctx, event)
-        })();
-        if result.is_err() || ctx.decision_maker.awaiting_choice() {
-            *game = checkpoint;
-            context_checkpoint.restore(ctx);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
-            }
+        self.execute_with_outputs(game, ctx)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let result = crate::effects::composition::execute_transaction(
+            game,
+            ctx,
+            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            |game, ctx| {
+                let player = resolve_player_filter(game, &self.player, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
+                let count = resolve_nonnegative_u32(game, &self.count, ctx)?;
+                let event = crate::events::Event::put_player_counters(
+                    player,
+                    CounterType::Energy,
+                    count,
+                    ctx.cause.clone(),
+                )
+                .with_provenance(ctx.provenance);
+                crate::effects::counters::execute_player_counter_placement_with_outputs(
+                    game, ctx, event,
+                )
+            },
+        );
+        // Preserve this adapter's existing neutral result for a suspended child,
+        // including a child that failed after opening its decision. The shared
+        // transaction owns rollback; an ordinary failure still propagates.
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
         }
         result
     }

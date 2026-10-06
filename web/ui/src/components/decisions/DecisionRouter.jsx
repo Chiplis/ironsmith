@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { presentOptionalReplacementDecision } from "@/lib/effect-ordering";
 import useUiText from "@/i18n/useUiText";
 import PriorityDecision from "./PriorityDecision";
 import TargetsDecision from "./TargetsDecision";
@@ -13,7 +15,7 @@ import { useGame } from "@/context/GameContext";
 import { decisionKey } from "@/lib/decision-key";
 
 export default function DecisionRouter({
-  decision,
+  decision: engineDecision,
   canAct,
   selectedObjectId = null,
   inspectorOracleTextHeight = 0,
@@ -28,6 +30,7 @@ export default function DecisionRouter({
 }) {
   const ui = useUiText();
   const { state } = useGame();
+  const decision = useMemo(() => presentOptionalReplacementDecision(engineDecision), [engineDecision]);
   if (!decision) return null;
 
   const key = decisionKey(decision);

@@ -658,7 +658,7 @@ fn apply_priority_response_with_dm_inner(
             "Pregame actions can't be used during the normal priority loop".to_string(),
         )),
         LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
-            let checkpoint = game.clone();
+            let mut checkpoint = game.clone();
             let trigger_checkpoint = trigger_queue.clone();
             let instruction = (|| -> Result<(), GameLoopError> {
                 // Play the land with ETB replacement handling
@@ -679,132 +679,35 @@ fn apply_priority_response_with_dm_inner(
                 crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                     .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
-                let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
-                game.begin_library_top_announcement(
-                    crate::game_state::LibraryTopAnnouncement::Land(*land_id),
-                );
-                crate::special_actions::apply_land_play_face(game, *land_id, back_face);
-                let permission = crate::special_actions::choose_land_play_permission(
+                crate::special_actions::execute_land_play_with_observer(
                     game,
                     player,
                     *land_id,
+                    back_face,
+                    crate::special_actions::LandPlayObservationTiming::BeforeHistory,
                     decision_maker,
-                )?;
-                if decision_maker.awaiting_choice() {
-                    return Ok(());
-                }
-                permission.reserve(game, player)?;
-                game.reserve_next_land_play_timing(player, *land_id);
-                let permission_forces_tapped = permission.enters_tapped;
-                let result = game
-                    .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
-                        *land_id,
-                        Zone::Battlefield,
-                        crate::events::cause::EventCause::from_special_action(
-                            Some(*land_id),
-                            player,
-                        ),
-                        decision_maker,
-                        Some(player),
-                        permission_forces_tapped,
-                        true,
-                    )?;
-                if decision_maker.awaiting_choice() {
-                    return Ok(());
-                }
-                if result.pending {
-                    return Err(GameLoopError::ResolutionFailed(
-                        "land entry pending without an outstanding choice".into(),
-                    ));
-                }
-                let original_entry = match &result.original {
-                    crate::events::processing::EventOutcome::Proceed(entry) => Some(entry.clone()),
-                    crate::events::processing::EventOutcome::Prevented
-                    | crate::events::processing::EventOutcome::Replaced => None,
-                    crate::events::processing::EventOutcome::NotApplicable => {
-                        return Err(GameLoopError::InvalidState("Failed to move land".into()));
-                    }
-                };
-                // Capture the original completion before Saga handling or any
-                // deferred replacement additions can change its characteristics.
-                let original_play = original_entry.as_ref().map(|entry|
-                    crate::events::LandPlayedEvent::from_completed_entry(entry, player, old_zone, game)
-                ).transpose().map_err(GameLoopError::ExecutionFailed)?;
-                let entered_battlefield = original_play.as_ref()
-                    .is_some_and(|event| event.completed_destination == Some(Zone::Battlefield));
-                if let Some(entry) = original_entry.as_ref().filter(|_| entered_battlefield) {
-                    let new_id = entry.new_id;
-
-                    let etb_event_provenance = game
-                        .provenance_graph_mut()
-                        .alloc_root_event(crate::events::EventKind::EnterBattlefield);
-                    let etb_event = if entry.enters_tapped {
-                        TriggerEvent::new_with_provenance(
-                            EnterBattlefieldEvent::tapped(new_id, old_zone),
-                            etb_event_provenance,
-                        )
-                    } else {
-                        TriggerEvent::new_with_provenance(
-                            EnterBattlefieldEvent::new(new_id, old_zone),
-                            etb_event_provenance,
-                        )
-                    };
-                    let mut etb_event = game.ensure_trigger_event_provenance(etb_event);
-                    game.freeze_completed_entry_events(std::iter::once(&mut etb_event))
-                        .map_err(GameLoopError::ExecutionFailed)?;
-                    drain_pending_trigger_events(game, trigger_queue);
-                    let etb_triggers = check_triggers(game, &etb_event);
-                    for trigger in etb_triggers {
-                        trigger_queue.add(trigger);
-                    }
-
-                }
-
-                // Playing the land completes even when entry is redirected.
-                if let Some(played) = original_play {
-                    let land_play_event_provenance = game
-                        .provenance_graph_mut()
-                        .alloc_root_event(crate::events::EventKind::LandPlayed);
-                    let land_play_event =
-                        game.ensure_trigger_event_provenance(TriggerEvent::new_with_provenance(
-                            played,
-                            land_play_event_provenance,
-                        ));
-                    let land_play_triggers = check_triggers(game, &land_play_event);
-                    for trigger in land_play_triggers {
-                        trigger_queue.add(trigger);
-                    }
-                }
-
-                if let Some(entry) = original_entry.filter(|_| entered_battlefield) {
-                    handle_saga_enters_battlefield(game, entry.new_id, trigger_queue, decision_maker)
-                        .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
-                    if decision_maker.awaiting_choice() {
-                        return Ok(());
-                    }
-                }
-
-                // Mark that the player has played a land this turn
-                if let Some(player_data) = game.player_mut(player) {
-                    player_data.record_land_play();
-                }
-
-                crate::special_actions::finish_land_play_receipt(
-                    game,
-                    *land_id,
-                    player,
-                    result,
-                    decision_maker,
+                    |game, decision_maker, new_id, kind, event| {
+                        if matches!(kind, crate::special_actions::LandPlayObservationKind::Entry) {
+                            drain_pending_trigger_events(game, trigger_queue);
+                        }
+                        for trigger in check_triggers(game, &event) {
+                            trigger_queue.add(trigger);
+                        }
+                        if matches!(kind, crate::special_actions::LandPlayObservationKind::Played) {
+                            handle_saga_enters_battlefield(game, new_id, trigger_queue, decision_maker)?;
+                        }
+                        Ok(())
+                    },
                 )
-                .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+                .map_err(GameLoopError::ExecutionFailed)?;
                 if decision_maker.awaiting_choice() {
                     return Ok(());
                 }
-                permission.complete(game);
                 drain_pending_trigger_events(game, trigger_queue);
                 Ok(())
             })();
             if instruction.is_err() || decision_maker.awaiting_choice() {
+                checkpoint.retain_pending_decision_controllers_from(game);
                 *game = checkpoint;
                 *trigger_queue = trigger_checkpoint;
             }
@@ -933,7 +836,7 @@ fn apply_priority_response_with_dm_inner(
                             *ability_index,
                             activated,
                         ) {
-                            return Err(GameLoopError::InvalidState(
+                            return Err(GameLoopError::ActionCancelled(
                                 "Ability activation restrictions are no longer satisfied"
                                     .to_string(),
                             ));
