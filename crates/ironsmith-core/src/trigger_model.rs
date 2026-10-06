@@ -518,6 +518,8 @@ pub enum TriggerKind {
         player: PlayerFilter,
         filter: ObjectFilter,
         from_source: bool,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        first_draw_pair: Option<crate::LinkedExilePair>,
     },
     PlayerSacrifices {
         player: PlayerFilter,
@@ -1985,6 +1987,7 @@ impl Trigger {
                 player,
                 filter,
                 from_source,
+                first_draw_pair: None,
             },
         )
     }

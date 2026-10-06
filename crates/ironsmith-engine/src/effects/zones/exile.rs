@@ -47,6 +47,7 @@ fn exile_object(
     object_id: crate::ids::ObjectId,
     face_down: bool,
     source_controller_may_look: bool,
+    exclude_prior_zone_viewers: bool,
     receipts: &mut ExileZoneReceipts,
     draws: &mut super::ZoneInstructionDraws,
 ) -> Result<Option<OutcomeStatus>, ExecutionError> {
@@ -87,11 +88,15 @@ fn exile_object(
                     for &new_id in &result.new_object_ids {
                         if face_down {
                             game.set_face_down(new_id);
-                            if let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
+                            if !exclude_prior_zone_viewers
+                                && let Some(viewers) = ctx.face_down_exile_viewers_for(object_id) {
                                 for &viewer in viewers {
                                     game.grant_face_down_exile_view(new_id, viewer);
                                 }
                             }
+                        }
+                        if let Some(owner) = &ctx.linked_exile_owner {
+                            game.add_linked_exile_pair_member(owner.clone(), new_id);
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
                         if source_controller_may_look {
@@ -269,6 +274,7 @@ fn prepare_exile_instruction(
                                     object_id,
                                     effect.face_down,
                                     effect.source_controller_may_look,
+                                    effect.exclude_prior_zone_viewers,
                                     &mut receipts,
                                     &mut draws,
                                 )
@@ -357,6 +363,7 @@ fn prepare_exile_instruction(
                                     object_id,
                                     effect.face_down,
                                     effect.source_controller_may_look,
+                                    effect.exclude_prior_zone_viewers,
                                     &mut receipts,
                                     &mut draws,
                                 )?;
@@ -448,8 +455,8 @@ fn prepare_exile_instruction(
                                     for &new_id in &result.new_object_ids {
                                         if effect.face_down && result.final_zone == Zone::Exile {
                                             game.set_face_down(new_id);
-                                            if let Some(viewers) =
-                                                ctx.face_down_exile_viewers_for(object_id)
+                                            if !effect.exclude_prior_zone_viewers
+                                                && let Some(viewers) = ctx.face_down_exile_viewers_for(object_id)
                                             {
                                                 for &viewer in viewers {
                                                     game.grant_face_down_exile_view(new_id, viewer);
@@ -457,6 +464,9 @@ fn prepare_exile_instruction(
                                             }
                                         }
                                         if result.final_zone == Zone::Exile {
+                                            if let Some(owner) = &ctx.linked_exile_owner {
+                                                game.add_linked_exile_pair_member(owner.clone(), new_id);
+                                            }
                                             game.add_exiled_with_source_link(ctx.source, new_id);
                                             if effect.source_controller_may_look {
                                                 game.grant_face_down_exile_source_controller_view(

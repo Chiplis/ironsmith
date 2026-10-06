@@ -5373,6 +5373,11 @@ impl RetargetStackObjectEffect {
 pub struct ExileEffect {
     pub spec: ChooseSpec,
     pub face_down: bool,
+    /// Looking at an object in its earlier zone does not by itself authorize
+    /// inspecting this face-down exile incarnation. New paired hand-exile
+    /// producers use explicit static entitlements rather than chooser memory.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "exile_keeps_prior_zone_viewers"))]
+    pub exclude_prior_zone_viewers: bool,
     /// The exiled card grants the source permanent's current controller
     /// permission to look at it (for example, CR 702.75a Hideaway).
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5383,11 +5388,15 @@ pub struct ExileEffect {
     pub turn_face_up: bool,
 }
 
+#[cfg(feature = "serde")]
+fn exile_keeps_prior_zone_viewers(exclude: &bool) -> bool { !*exclude }
+
 impl ExileEffect {
     pub fn with_spec(spec: ChooseSpec) -> Self {
         Self {
             spec,
             face_down: false,
+            exclude_prior_zone_viewers: false,
             source_controller_may_look: false,
             turn_face_up: false,
         }

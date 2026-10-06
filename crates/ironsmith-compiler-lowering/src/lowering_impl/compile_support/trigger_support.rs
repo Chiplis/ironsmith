@@ -888,7 +888,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             player,
             filter,
             from_source,
-        } => Trigger::player_reveals_card(player, filter, from_source),
+            first_draw_pair,
+        } => {
+            let mut trigger = Trigger::player_reveals_card(player, filter, from_source);
+            if let ironsmith_core::TriggerKind::PlayerRevealsCard { first_draw_pair: pair, .. } = &mut trigger.kind {
+                *pair = first_draw_pair;
+            }
+            trigger
+        },
         TriggerSpec::PlayerSacrifices {
             player,
             filter,

@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "c2e20559cb357a82ffa0672c171c549e144beb3e",
+  "source_implementation_commit": "6c688c87fb3ec1f336f07530dc7cd09c2b835dee",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1169,
-    "additional_proposed_compile_entries": 1174,
+    "additional_proposed_unique_cards": 1175,
+    "additional_proposed_compile_entries": 1180,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1169,
+    "source_proposals_excluding_identified_runtime_gaps": 1175,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4697,10 +4697,6 @@
           "remaining_blocker": "Persistent per-card private inspection and linked activated reader."
         },
         {
-          "card_name": "Kheru Mind-Eater",
-          "remaining_blocker": "Private inspection lifetime plus its complete permission body."
-        },
-        {
           "card_name": "Intellect Devourer",
           "remaining_blocker": "Each-opponent scoped membership and complete duration return."
         },
@@ -4730,7 +4726,10 @@
         "Missing required pair/acquisition evidence fails explicitly. False requirements and absent pairs omit serialization to preserve old artifact6 and indirect public restricted-mana wire payloads; checkpoint3/audit19 are unchanged."
       ],
       "legacy_scope_limit": "Unmarked legacy readers retain their pre-existing source-wide union behavior. The producer adds no new legacy union entries relative to the prior ExileTop owner. This packet makes no correctness claim for those unmodified readers.",
-      "report": "architecture/card-failure-linked-exile-static-permissions.md"
+      "report": "architecture/card-failure-linked-exile-static-permissions.md",
+      "completed_by_later_family": {
+        "Kheru Mind-Eater": "linked-exile-private-inspection"
+      }
     },
     {
       "id": "suspended-counter-complete-bodies",
@@ -4755,6 +4754,61 @@
         "Fury destroy/pump/trample cleanup, Shivan fixed paid Suspend/upkeep/haste/ETB and Timebender paid Morph/face-up modes remain complete."
       ],
       "report": "architecture/card-failure-suspended-counter-bodies.md"
+    },
+    {
+      "id": "first-draw-reveal-complete-bodies",
+      "stage": 86,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/first_draw_reveals.json.fixture",
+      "baseline_entries": [
+        "God-Eternal Kefnet",
+        "Inquisitor Eisenhorn",
+        "Keranos, God of Storms",
+        "Primitive Etchings",
+        "Rowen"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "d38f4b9690a509bafca1b0442dfe1b8101f65912",
+      "integrated_source_commit": "f96ad0e4f7a9c7196f1fe8c295e99ed91e7c305d",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete grammar/runtime/companion review and final combined source inspection at f96ad0e4f7a9c7196f1fe8c295e99ed91e7c305d. Seven ordered source commits are retained.",
+      "semantic_scope": [
+        "Every physical first draw owns its reveal window before later draws and replacement additions, retaining exact authored definition/acquisition groups, source origins and revealed-card evidence. Redirected/prevented draws, choices, hidden openings and retries retain their transaction owner.",
+        "Typed historical evidence fails explicitly when source/origins/card data is missing. Kefnet uses the retained exact card definition and executes the resulting copied spell without following a later incarnation.",
+        "Typed canonical rendering preserves linked groups and separate groups across reparse. Existing unmarked native reveals/copies retain their prior route; no broader legacy-linkage correctness claim is made.",
+        "All five secondary bodies remain represented. Omitted optional fields and excluded native cast definitions preserve established artifact6/checkpoint3/audit19 carrier boundaries."
+      ],
+      "excluded_scope": [
+        "Reed Richards, Smartest Man is not included in this five-card body review.",
+        "Broader linkage repair for unmarked legacy producers/readers remains outside this typed scope."
+      ],
+      "report": "architecture/card-failure-first-draw-reveals.md"
+    },
+    {
+      "id": "linked-exile-private-inspection",
+      "stage": 86,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Kheru Mind-Eater"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "8cde7335161a02e0c6c599347c6f6c5fe73e5c00",
+      "integrated_source_commit": "6c688c87fb3ec1f336f07530dc7cd09c2b835dee",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete seventeen-file body/privacy/lifetime review and final six-body first-draw/private-exile union inspection at 6c688c87fb3ec1f336f07530dc7cd09c2b835dee.",
+      "semantic_scope": [
+        "The exact proved hand-choice and face-down exile producer grants durable per-card/per-player inspection after successful arrival. Prior hand-choice knowledge is not silently promoted to continuing exile inspection.",
+        "Play authority remains a live static permission bound to the current exact definition/acquisition, while prior inspection entitlement survives loss of that source permission. Legacy unmarked constructors retain their old omitted defaults.",
+        "Actual combat, private choice, colored casting and land plays, control/ability/phasing/incarnation transitions, borrowed producers, pending/error rollback and native/import boundaries are covered by authored scenarios."
+      ],
+      "excluded_scope": [
+        "Face-down exile-pile shuffling has no implemented owner and receives no coverage credit. Its future owner must clear previously accumulated inspection entitlements under CR406.3.",
+        "The other six linked-exile neighbours and broader legacy privacy repair remain held."
+      ],
+      "rules_source": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.pdf",
+      "rules_scope": "CR406.3, page74: continued inspection permission and the shuffled face-down pile exception.",
+      "report": "architecture/card-failure-linked-exile-private-inspection.md"
     }
   ],
   "cards": [
@@ -16940,8 +16994,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "first-draw-reveal-complete-bodies"
+      ]
     },
     {
       "card_name": "Godsend",
@@ -19395,8 +19451,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "first-draw-reveal-complete-bodies"
+      ]
     },
     {
       "card_name": "Inquisitor's Flail",
@@ -20832,8 +20890,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "first-draw-reveal-complete-bodies"
+      ]
     },
     {
       "card_name": "Key to the City",
@@ -20890,10 +20950,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "linked-exile-static-play-permissions"
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-exile-static-play-permissions",
+        "linked-exile-private-inspection"
       ]
     },
     {
@@ -27394,8 +27454,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "first-draw-reveal-complete-bodies"
+      ]
     },
     {
       "card_name": "Primitive Justice",
@@ -29642,8 +29704,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "first-draw-reveal-complete-bodies"
+      ]
     },
     {
       "card_name": "Roxi, Publicist to the Stars",
@@ -40771,6 +40835,17 @@
       "completion_gate": "New absent defaults remain omitted at typed/fresh-native encoding boundaries, including indirect public mana-effect payloads; nondefaults remain explicit. Authored compatibility contracts and consolidated artifact6/checkpoint3/audit19 validation remain unrun.",
       "source_review_commit": "7da349d7dfa22545691c4cb192a19b59bf355e21",
       "integrated_source_review_commit": "c2e20559cb357a82ffa0672c171c549e144beb3e"
+    }
+  ],
+  "future_mechanic_dependencies": [
+    {
+      "id": "face-down-exile-pile-shuffle-inspection-reset",
+      "status": "unsupported_mechanic_not_counted",
+      "affected_current_source_proposals": [
+        "Kheru Mind-Eater"
+      ],
+      "required_owner": "A future face-down exile-pile shuffle must end prior per-card viewer entitlements under CR406.3; no current engine owner was found in the bounded review.",
+      "completion_gate": "Implement and review this transition when closing the still-unsupported shuffled-pile card family; do not infer shuffle support from private inspection support."
     }
   ]
 }

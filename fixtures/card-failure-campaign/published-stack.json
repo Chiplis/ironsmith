@@ -1179,6 +1179,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/850"
+    },
+    {
+      "stage": 85,
+      "branch": "fix/card-failures-85-linked-and-suspended-permissions",
+      "base": "fix/card-failures-84-join-forces-payments",
+      "source_integration_commit": "c709cc7ddb22e18dec15708098eee0a1aec5d1bc",
+      "remote_commit": "82d4aaf5f37fd08146344d41f8ac3ed692132f47",
+      "tree": "41331fab535f2c94cb9861a420455dad1b23d15a",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 851,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/851"
     }
   ]
 }

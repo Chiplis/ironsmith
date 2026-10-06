@@ -2251,6 +2251,21 @@ impl GameState {
         }
     }
 
+    /// CR 406.3 retains a rules player's inspection entitlement without any
+    /// requirement that they actually looked. Exact member incarnations and
+    /// active acquisition-bound readers supply new entitlements; the durable
+    /// map deliberately does not retain the source as a continuing authority.
+    pub(crate) fn remember_linked_exile_inspection_entitlements(&mut self) {
+        let entitlements = self.effect_store.grant_registry.linked_exile_inspection_entitlements(self);
+        for (member, player) in entitlements {
+            if !self.exile_tracking.face_down_exile_viewers.get(&member)
+                .is_some_and(|viewers| viewers.contains(&player))
+            {
+                self.grant_face_down_exile_view(member, player);
+            }
+        }
+    }
+
     // === Chosen color helpers ===
 
     /// Record a chosen color for a permanent.
@@ -2805,6 +2820,7 @@ impl GameState {
     pub fn add_linked_exile_pair_member(&mut self, owner: crate::linked_exile::LinkedExileOwner, member: ObjectId) {
         let members = self.exile_tracking_mut().linked_exile_pairs.entry(owner).or_default();
         if !members.contains(&member) { members.push(member); }
+        self.remember_linked_exile_inspection_entitlements();
     }
 
     pub fn linked_exile_pair_members(&self, owner: &crate::linked_exile::LinkedExileOwner)

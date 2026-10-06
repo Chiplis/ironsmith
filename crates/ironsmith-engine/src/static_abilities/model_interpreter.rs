@@ -402,6 +402,7 @@ impl StaticAbilityModelInterpreter {
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             on_use_effects: spec.on_use_effects.clone(),
             requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            may_look_at_linked_exile: spec.may_look_at_linked_exile,
             linked_exile_pair: spec.linked_exile_pair,
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),
@@ -1750,7 +1751,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
-            } => StaticAbility::reveal_first_card_you_draw_each_turn(*optional, *your_turns_only),
+                linked_reveal_pair,
+            } => {
+                let mut reveal = super::misc::RevealFirstCardYouDrawEachTurn::new(*optional, *your_turns_only);
+                reveal.linked_reveal_pair = *linked_reveal_pair;
+                StaticAbility::new(reveal)
+            },
             ironsmith_core::StaticAbilityPayload::ExileToCounteredExileInsteadOfGraveyard {
                 player,
                 counter_type,
@@ -3331,10 +3337,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair,
             } => Some(super::RevealDrawnCardSpec {
                 card_number: 1,
                 optional: *optional,
                 your_turns_only: *your_turns_only,
+                linked_reveal_pair: *linked_reveal_pair,
             }),
             _ => None,
         }

@@ -13,6 +13,7 @@ use crate::zone::Zone;
 pub(crate) struct CompletedMiracleDraw {
     pub cards: Vec<ObjectId>,
     pub miracle: Option<MiracleDrawDecision>,
+    pub automatic_reveals: Vec<crate::triggers::TriggerEvent>,
 }
 fn grants_miracle(grant: &Grantable) -> bool {
     matches!(grant,
@@ -123,8 +124,9 @@ pub(crate) fn draw_cards_with_miracle_window(
     count: usize,
     first_this_turn: bool,
     decision_maker: &mut dyn DecisionMaker,
+    provenance: crate::provenance::ProvNodeId,
 ) -> Result<CompletedMiracleDraw, ExecutionError> {
-    let mut completed = CompletedMiracleDraw { cards: Vec::new(), miracle: None };
+    let mut completed = CompletedMiracleDraw { cards: Vec::new(), miracle: None, automatic_reveals: Vec::new() };
     for _ in 0..count {
         let drawn = game.draw_cards_with_dm(player, 1, decision_maker);
         if decision_maker.awaiting_choice() { return Ok(completed); }
@@ -133,6 +135,14 @@ pub(crate) fn draw_cards_with_miracle_window(
         {
             let Some(decision) = choose_miracle_as_drawn(game, card, player, decision_maker)? else { return Ok(completed); };
             completed.miracle = Some(decision);
+            // A replacement may append another instruction or multiply this
+            // draw. The first card's distinct reveal choices finish before
+            // either can see or change the next card or the reveal source.
+            completed.automatic_reveals.extend(super::automatic_reveal_events_for_draw(
+                game, player, &[card], 0, decision_maker, provenance,
+                super::HiddenDrawRevealMode::Inline,
+            )?);
+            if decision_maker.awaiting_choice() { return Ok(completed); }
         }
         completed.cards.extend(drawn);
     }

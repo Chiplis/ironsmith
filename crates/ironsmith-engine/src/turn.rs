@@ -1082,16 +1082,15 @@ fn execute_draw_step_for_player_with(
     let mut draw_events = Vec::new();
 
     if can_draw {
+        let draw_event_provenance = game.provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::CardsDrawn);
         let completed = crate::effects::cards::draw_cards_with_miracle_window(
-            game, active_player, 1, is_first_draw, decision_maker)?;
+            game, active_player, 1, is_first_draw, decision_maker, draw_event_provenance)?;
         if decision_maker.awaiting_choice() { return Ok(Vec::new()); }
         let drawn = completed.cards;
 
         // Create a single CardsDrawnEvent if any cards were drawn
         if !drawn.is_empty() {
-            let draw_event_provenance = game
-                .provenance_graph_mut()
-                .alloc_root_event(crate::events::EventKind::CardsDrawn);
             let event = CardsDrawnEvent::new_with_step_context(
                 active_player,
                 drawn,
@@ -1107,25 +1106,11 @@ fn execute_draw_step_for_player_with(
             game.stage_turn_history_event(&event);
             game.note_hidden_draw_for_reveal_window(&event);
             draw_events.push(event);
-            let cards = draw_events
-                .last()
-                .and_then(|evt| evt.downcast::<CardsDrawnEvent>())
-                .map(|evt| evt.cards.clone())
-                .unwrap_or_default();
             for reveal in miracle_reveal {
                 game.stage_turn_history_event(&reveal);
                 draw_events.push(reveal);
             }
-            for reveal_event in crate::effects::cards::automatic_reveal_events_for_draw(
-                game,
-                active_player,
-                &cards,
-                current_draws,
-                decision_maker,
-                draw_event_provenance,
-                // The draw step cannot pause mid-step for the owner's answer.
-                crate::effects::cards::HiddenDrawRevealMode::Defer,
-            ) {
+            for reveal_event in completed.automatic_reveals {
                 game.stage_turn_history_event(&reveal_event);
                 draw_events.push(reveal_event);
             }

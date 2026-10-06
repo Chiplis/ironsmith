@@ -44,8 +44,26 @@ impl EffectExecutor for CastTaggedEffect {
                     return Ok(EffectOutcome::target_invalid());
                 };
 
+                let first_draw_reference = ctx.triggering_event.as_ref()
+                    .and_then(|event| event.downcast::<crate::events::CardRevealedEvent>())
+                    .and_then(|event| event.first_draw.as_ref())
+                    .is_some_and(|draw| draw.owner.is_some() && draw.drawn_card == snapshot.object_id
+                        && draw.drawn_stable_id == snapshot.stable_id);
+                // This exact draw-time link requires retained LKI. Other tagged
+                // copy owners keep their existing reference-following policy.
+                let retained_copy = if self.as_copy && game.object(snapshot.object_id).is_none()
+                    && (first_draw_reference || snapshot.revealed_cast_definition.is_some())
+                {
+                    let definition = snapshot.revealed_cast_definition.as_ref().ok_or_else(||
+                        ExecutionError::IncompleteEvidence("copy of a departed revealed card requires its complete native cast definition".into()))?;
+                    let mut object = crate::object::Object::from_card_definition(
+                        snapshot.object_id, definition, snapshot.owner, snapshot.zone,
+                    );
+                    object.copy_copiable_values_from_values(&snapshot.copiable_values);
+                    Some(object)
+                } else { None };
                 let mut object_id = snapshot.object_id;
-                if game.object(object_id).is_none() {
+                if game.object(object_id).is_none() && retained_copy.is_none() {
                     // A priced instruction refers to this exact result incarnation;
                     // a blink/re-exile cannot revive its authorization.
                     if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
@@ -83,7 +101,7 @@ impl EffectExecutor for CastTaggedEffect {
                 }
 
                 let (is_land, from_zone) = {
-                    let Some(obj) = game.object(object_id) else {
+                    let Some(obj) = retained_copy.as_ref().or_else(|| game.object(object_id)) else {
                         return Ok(EffectOutcome::target_invalid());
                     };
                     (obj.is_land(), obj.zone)
@@ -117,7 +135,7 @@ impl EffectExecutor for CastTaggedEffect {
                 if self.as_copy {
                     let copy_id = game.new_object_id();
 
-                    let source_obj = match game.object(object_id) {
+                    let source_obj = match retained_copy.as_ref().or_else(|| game.object(object_id)) {
                         Some(obj) => obj.clone(),
                         None => return Ok(EffectOutcome::target_invalid()),
                     };

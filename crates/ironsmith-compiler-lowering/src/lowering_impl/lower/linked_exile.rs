@@ -102,7 +102,38 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
     }
 }
 
-/// Prove one exile-top trigger and one static whole-pool play permission.
+#[derive(Clone, Copy)]
+enum StaticExileProducer { FaceUpLibrary, FaceDownLibrary, FaceDownHandChoice }
+
+/// Inventory one complete typed producer, including the private selection's
+/// exact dataflow. No wrapper, extra action, label or tag spelling proves a pair.
+fn static_exile_producer(program: &ResolutionProgram) -> Option<StaticExileProducer> {
+    if program.segments.len() != 1 || !program.segments[0].self_replacements.is_empty() { return None; }
+    let effects = program.all_effects();
+    if effects.len() == 1
+        && let Some(exile) = effects[0].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+    {
+        return Some(if exile.face_down { StaticExileProducer::FaceDownLibrary } else { StaticExileProducer::FaceUpLibrary });
+    }
+    if effects.len() != 2 { return None; }
+    let choice = effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = effects[1].downcast_ref::<crate::effects::ExileEffect>()?;
+    if choice.zone != Some(crate::zone::Zone::Hand) || !choice.additional_zones.is_empty()
+        || !choice.count.is_single() || choice.count.is_random()
+        || choice.count_value.is_some() || choice.aggregate_constraint.is_some()
+        || choice.is_search || choice.reveal || choice.top_only || choice.bottom_only
+        || choice.remember_as_chosen_object
+        || !exile.face_down || exile.source_controller_may_look || exile.turn_face_up
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choice.tag)
+    { return None; }
+    let mut filter = choice.filter.clone();
+    if filter.owner.as_ref() != Some(&choice.chooser) { return None; }
+    filter.owner = None;
+    if filter != crate::target::ObjectFilter::default() { return None; }
+    Some(StaticExileProducer::FaceDownHandChoice)
+}
+
+/// Prove one typed exile trigger and one static whole-pool play permission.
 /// Leaf evasion keywords are unrelated scopes; any other ability, executable
 /// producer, rider, or level/copy scope stays unbound pending typed analysis.
 /// This is deliberately separate from the scalar binder's stricter contract.
@@ -120,12 +151,8 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
         match &ability.kind {
             AbilityKind::Triggered(trigger) => {
                 if producer.is_some() { return; }
-                let effects = trigger.effects.all_effects();
-                if effects.len() != 1
-                    || effects[0].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
-                        .is_none_or(|exile| exile.face_down)
-                { return; }
-                producer = Some(slot);
+                let Some(kind) = static_exile_producer(&trigger.effects) else { return; };
+                producer = Some((slot, kind));
             }
             AbilityKind::Static(ability) => match &ability.payload {
                 StaticAbilityPayload::None
@@ -151,14 +178,27 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
                     { return; }
                     filter.tagged_constraints.clear();
                     if filter != crate::target::ObjectFilter::default() { return; }
-                    consumer = Some(slot);
+                    consumer = Some((slot, spec.may_look_at_linked_exile));
                 }
                 _ => return,
             },
             _ => return,
         }
     }
-    let (Some(producer), Some(consumer)) = (producer, consumer) else { return; };
+    let (Some((producer, producer_kind)), Some((consumer, may_look))) = (producer, consumer) else { return; };
+    if !matches!(producer_kind, StaticExileProducer::FaceUpLibrary) && !may_look { return; }
+    if matches!(producer_kind, StaticExileProducer::FaceDownHandChoice)
+        && let AbilityKind::Triggered(ability) = &mut definition.abilities[producer].kind
+    {
+        let mut segments = ability.effects.segments.clone();
+        let Some(exile) = segments[0].default_effects[1].downcast_ref::<crate::effects::ExileEffect>() else { return; };
+        let mut exile = exile.clone();
+        // Choosing one's hand card is not permission to inspect the new
+        // face-down exile. The separate active static reader owns entitlement.
+        exile.exclude_prior_zone_viewers = true;
+        segments[0].default_effects[1] = Effect::new(exile);
+        ability.effects.replace_segments(segments);
+    }
     let Ok(bytes) = serde_json::to_vec(&definition.abilities) else { return; };
     let pair = ironsmith_core::LinkedExilePair {
         definition: ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()),

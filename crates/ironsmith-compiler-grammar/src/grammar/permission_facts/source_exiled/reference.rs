@@ -111,3 +111,21 @@ pub fn parse_play_lands_and_spells_from_source_exiled_tokens(
         "source-linked land and spell permission").is_none() { return None; }
     Some(reference)
 }
+
+/// The look and play clauses share the same source-linked antecedent. The
+/// grammar owns that relationship; lowering receives explicit inspection.
+pub fn parse_look_and_play_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["you", "may", "look", "at"]))?;
+    let (_, rest) = primitives::parse_prefix(rest,
+        (opt(primitives::kw("the")), primitives::kw("cards")))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you { return None; }
+    primitives::probe_all(tail, (opt(primitives::comma()), primitives::phrase(&[
+        "and", "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "those", "cards",
+    ]), primitives::sentence_end()).void(), "paired exile inspection and play permission")?;
+    Some(reference)
+}

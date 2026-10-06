@@ -2987,7 +2987,7 @@ impl TurnRunner {
         active_player: PlayerId,
         drawn: Vec<ObjectId>,
         current_draws: u32,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         if !drawn.is_empty() {
             let draw_event_provenance = game
                 .provenance_graph_mut()
@@ -2997,7 +2997,7 @@ impl TurnRunner {
                 active_player,
                 &drawn,
                 current_draws,
-            );
+            ).map_err(GameLoopError::ExecutionFailed)?;
             return self.finish_pending_draw_reveal_choices(
                 game,
                 PendingDrawRevealChoice {
@@ -3013,7 +3013,7 @@ impl TurnRunner {
         }
 
         game.reset_priority_for_new_window();
-        RunnerProgress::Complete(Vec::new())
+        Ok(RunnerProgress::Complete(Vec::new()))
     }
 
     /// Apply a restart's deferred battlefield entries (CR 726.4) on a clone
@@ -3162,7 +3162,7 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
         mut pending: PendingDrawRevealChoice,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         use crate::events::other::CardsDrawnEvent;
         use crate::triggers::TriggerEvent;
 
@@ -3189,9 +3189,9 @@ impl TurnRunner {
                     answer
                 } else {
                     self.pending_draw_reveal = Some(pending);
-                    return RunnerProgress::NeedsDecision(DecisionContext::Boolean(
+                    return Ok(RunnerProgress::NeedsDecision(DecisionContext::Boolean(
                         crate::effects::cards::automatic_draw_reveal_boolean_context(&candidate),
-                    ));
+                    )));
                 }
             } else {
                 true
@@ -3236,7 +3236,7 @@ impl TurnRunner {
         }
 
         game.reset_priority_for_new_window();
-        RunnerProgress::Complete(draw_events)
+        Ok(RunnerProgress::Complete(draw_events))
     }
 
     /// CR 509.1: queue every defending player's block events as the one

@@ -12,6 +12,7 @@ pub struct PlayerRevealsCardTrigger {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub from_source: bool,
+    pub first_draw_pair: Option<ironsmith_core::LinkedExilePair>,
 }
 
 impl PlayerRevealsCardTrigger {
@@ -20,6 +21,7 @@ impl PlayerRevealsCardTrigger {
             player,
             filter,
             from_source,
+            first_draw_pair: None,
         }
     }
 }
@@ -88,6 +90,33 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
             return false;
         }
 
+        if let Some(pair) = self.first_draw_pair {
+            let Some(occurrence) = revealed.first_draw.as_ref() else { return false; };
+            if occurrence.drawn_card != revealed.card || occurrence.player != revealed.player
+                || !revealed.snapshot.as_ref().is_some_and(|snapshot|
+                    snapshot.object_id == occurrence.drawn_card && snapshot.stable_id == occurrence.drawn_stable_id)
+            {
+                return false;
+            }
+            let incomplete = || crate::effects::ExecutionError::IncompleteEvidence(
+                "first-draw linked matcher lacks its historical ability acquisition".into(),
+            );
+            let Some(slot) = ctx.ability_index else {
+                ctx.game.record_token_resource_failure(&incomplete()); return false;
+            };
+            let Some(source) = event.lookback_source_snapshots().iter()
+                .find(|snapshot| snapshot.object_id == ctx.source_id) else { return false; };
+            let owner = crate::linked_exile::LinkedExileOwner::capture(ctx.source_id, Some(pair),
+                source.ability_origins.as_ref().and_then(|origins| origins.get(slot)));
+            if owner.is_none() {
+                ctx.game.record_token_resource_failure(&incomplete()); return false;
+            }
+            if owner.as_ref() != occurrence.owner.as_ref() { return false; }
+        } else if self.from_source && revealed.first_draw.as_ref().is_some_and(|draw| draw.owner.is_some()) {
+            // Another reveal ability on the same host is not this linked group.
+            return false;
+        }
+
         let mut filter = self.filter.clone();
         filter.zone = None;
         // "with mana value less than the result this way" (Priority
@@ -109,6 +138,11 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
         ctx.game
             .object(revealed.card)
             .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
+    }
+
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        self.first_draw_pair.is_some() && event.downcast::<CardRevealedEvent>()
+            .is_some_and(|reveal| reveal.first_draw.is_some())
     }
 
     fn display(&self) -> String {

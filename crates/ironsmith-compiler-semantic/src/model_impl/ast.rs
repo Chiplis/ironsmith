@@ -469,6 +469,7 @@ pub enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
         from_source: bool,
+        first_draw_pair: Option<ironsmith_core::LinkedExilePair>,
     },
     PlayerSacrifices {
         player: PlayerFilter,

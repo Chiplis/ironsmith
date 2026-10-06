@@ -613,7 +613,12 @@ pub(crate) fn interpret_trigger_model(
             player,
             filter,
             from_source,
-        } => crate::triggers::Trigger::player_reveals_card(player, filter, from_source),
+            first_draw_pair,
+        } => {
+            let mut trigger = crate::triggers::PlayerRevealsCardTrigger::new(player, filter, from_source);
+            trigger.first_draw_pair = first_draw_pair;
+            crate::triggers::Trigger::new(trigger)
+        },
         TriggerKind::PlayerSacrifices {
             player,
             filter,

@@ -34,9 +34,11 @@ pub fn check_and_apply_sbas_with(
     if decision_maker.awaiting_choice() {
         return Ok(());
     }
+    let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
-    let result = check_and_apply_sbas_with_inner(game, trigger_queue, decision_maker);
+    let mut result = check_and_apply_sbas_with_inner(game, trigger_queue, decision_maker);
+    if let Some(error) = game.token_resource_failure() { result = Err(GameLoopError::ExecutionFailed(error)); }
     let pending = decision_maker.awaiting_choice();
     // Sector answers are an uncommitted choice continuation, not sector state.
     let pending_sectors = (pending && result.is_ok())
@@ -49,6 +51,7 @@ pub fn check_and_apply_sbas_with(
             game.set_pending_sector_designations(choices);
         }
     }
+    game.end_token_resource_scope(resource_root, &resource_meter);
     result
 }
 
@@ -431,6 +434,12 @@ fn resolve_pending_hidden_draw_reveals(
                 return true;
             };
             revealed.contains(&pending.card)
+        } else if pending.optional {
+            let candidate = crate::effects::cards::automatic_draw_reveal_candidate_for_pending(game, &pending);
+            let accepted = decision_maker.decide_boolean(game,
+                &crate::effects::cards::automatic_draw_reveal_boolean_context(&candidate));
+            if decision_maker.awaiting_choice() { return true; }
+            accepted
         } else {
             true
         };
@@ -438,7 +447,10 @@ fn resolve_pending_hidden_draw_reveals(
         if !revealed {
             continue;
         }
-        game.refresh_continuous_state();
+        if let Err(error) = game.refresh_continuous_state() {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+            return true;
+        }
         let candidate =
             crate::effects::cards::automatic_draw_reveal_candidate_for_pending(game, &pending);
         let provenance = game

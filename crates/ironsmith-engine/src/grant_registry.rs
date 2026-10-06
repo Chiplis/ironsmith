@@ -1652,10 +1652,21 @@ impl GrantRegistry {
     }
 
     fn static_grants(&self, game: &crate::game_state::GameState) -> Vec<Grant> {
+        self.collect_static_grants(game).0
+    }
+
+    /// Current entitlement, before CR 406.3 turns it into durable per-card
+    /// viewer knowledge. It is never a play authority after this scope ends.
+    pub(crate) fn linked_exile_inspection_entitlements(&self, game: &crate::GameState) -> Vec<(ObjectId, PlayerId)> {
+        self.collect_static_grants(game).1
+    }
+
+    fn collect_static_grants(&self, game: &crate::game_state::GameState) -> (Vec<Grant>, Vec<(ObjectId, PlayerId)>) {
         use crate::ability::AbilityKind;
         use crate::game_loop::player_matches_filter_with_combat;
 
         let mut grants = Vec::new();
+        let mut inspection = Vec::new();
 
         let mut collect_from_source = |source_id: ObjectId, source_is_battlefield: bool| {
             if source_is_battlefield && game.is_phased_out(source_id) { return; }
@@ -1693,7 +1704,7 @@ impl GrantRegistry {
                 let Some(origin) = characteristics.abilities.origin(slot).cloned() else {
                     if source_is_battlefield && ability.functions_in(&source.zone)
                         && let AbilityKind::Static(ability) = &ability.kind
-                        && ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.linked_exile_pair.is_some())
+                        && ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some())
                     {
                         game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
                             "linked static permission omitted its rules-text acquisition; native recovery or replay required".into()));
@@ -1728,7 +1739,7 @@ impl GrantRegistry {
                     continue;
                 }
 
-                if (spec.requires_linked_exile_pair || spec.linked_exile_pair.is_some())
+                if (spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some())
                     && !ability.functions_in(&source.zone) { continue; }
                 let linked_targets = match static_linked_exile_targets(game, &spec, &permission_identity) {
                     Ok(targets) => targets,
@@ -1757,6 +1768,9 @@ impl GrantRegistry {
                             )
                     }) {
                         for &target_id in &targets {
+                        if spec.may_look_at_linked_exile && let Some(member) = target_id {
+                            inspection.push((member, player.id));
+                        }
                         grants.push(Grant {
                             permission_identity: Some(permission_identity.clone()),
                             target_id,
@@ -1806,7 +1820,7 @@ impl GrantRegistry {
             });
         }
 
-        grants
+        (grants, inspection)
     }
 }
 
@@ -1880,7 +1894,7 @@ fn static_linked_exile_targets(
     spec: &crate::grant::GrantSpec,
     identity: &GrantPermissionIdentity,
 ) -> Result<Option<Vec<ObjectId>>, crate::effects::ExecutionError> {
-    if !spec.requires_linked_exile_pair && spec.linked_exile_pair.is_none() { return Ok(None); }
+    if !spec.requires_linked_exile_pair && !spec.may_look_at_linked_exile && spec.linked_exile_pair.is_none() { return Ok(None); }
     if spec.zone != Zone::Exile || !spec.additional_zones.is_empty()
         || !has_linked_exile_pool(&spec.filter)
         || spec.filter.tagged_constraints.iter().filter(|constraint|
@@ -1888,6 +1902,15 @@ fn static_linked_exile_targets(
     {
         return Err(crate::effects::ExecutionError::IncompleteEvidence(
             "linked static permission omitted its typed pool relation".into()));
+    }
+    if spec.may_look_at_linked_exile {
+        let mut pool = spec.filter.clone();
+        pool.zone = None;
+        pool.tagged_constraints.retain(|constraint| constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG);
+        if pool != ObjectFilter::default() {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "linked private inspection requires a proven complete paired-card pool".into()));
+        }
     }
     let owner = match identity {
         GrantPermissionIdentity::Static { source, origin, .. } =>

@@ -34468,6 +34468,45 @@ fn is_miracle_linked_trigger(def: &CardDefinition, ability: &Ability) -> bool {
             .any(|method| method.is_miracle())
 }
 
+/// Keep the exact authored reveal group on one parseable source line. Only
+/// typed pair equality establishes membership; unrelated neighboring abilities
+/// remain independent, including unmarked native compatibility definitions.
+fn first_draw_reveal_surface_groups(
+    def: &CardDefinition,
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> std::collections::BTreeMap<usize, (String, Vec<usize>)> {
+    let producers = def.abilities.iter().enumerate().filter_map(|(index, ability)| {
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        ability.reveal_drawn_card_spec()?.linked_reveal_pair.map(|pair| (index, pair))
+    }).collect::<Vec<_>>();
+    let mut groups = std::collections::BTreeMap::new();
+    for &(producer, pair) in &producers {
+        if producers.iter().filter(|(_, candidate)| *candidate == pair).count() != 1 { continue; }
+        let consumers = def.abilities.iter().enumerate().filter_map(|(index, ability)| {
+            let AbilityKind::Triggered(ability) = &ability.kind else { return None; };
+            let trigger = ability.trigger.downcast_ref::<crate::triggers::PlayerRevealsCardTrigger>()?;
+            (trigger.from_source && trigger.first_draw_pair == Some(pair)).then_some(index)
+        }).collect::<Vec<_>>();
+        if consumers.is_empty() { continue; }
+        let mut members = vec![producer];
+        members.extend(consumers);
+        let mut sentences = Vec::new();
+        for &index in &members {
+            for line in describe_ability(index + 1, &def.abilities[index], subject, rewrite_it_deals) {
+                let static_prefix = format!("Static ability {}: ", index + 1);
+                let trigger_prefix = format!("Triggered ability {}: ", index + 1);
+                let body = line.strip_prefix(static_prefix.as_str()).or_else(|| line.strip_prefix(trigger_prefix.as_str()))
+                    .unwrap_or(&line).trim().trim_end_matches('.');
+                if !body.is_empty() { sentences.push(body.to_string()); }
+            }
+        }
+        let anchor = *members.iter().min().expect("group has a static producer");
+        groups.insert(anchor, (sentences.join(". "), members));
+    }
+    groups
+}
+
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
     let mut leading_alternative_cast_lines = Vec::new();
@@ -34645,8 +34684,15 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     if static_ability.id() == crate::static_abilities::StaticAbilityId::Delve
             )
         });
+        let first_draw_groups = first_draw_reveal_surface_groups(def, subject, rewrite_it_deals);
+        let mut first_draw_members = std::collections::HashSet::new();
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
+            if let Some((text, members)) = first_draw_groups.get(&ability_idx) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                first_draw_members.extend(members.iter().copied());
+            }
+            if first_draw_members.contains(&ability_idx) { ability_idx += 1; continue; }
             let ability = &def.abilities[ability_idx];
             if kicker_x_minimum_ability == Some(ability_idx) {
                 ability_idx += 1;

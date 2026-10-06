@@ -1160,6 +1160,7 @@ impl StaticAbilityKind for VoteAdditionalVoteWhileVoting {
 pub struct RevealFirstCardYouDrawEachTurn {
     pub optional: bool,
     pub your_turns_only: bool,
+    pub linked_reveal_pair: Option<ironsmith_core::LinkedExilePair>,
 }
 
 impl RevealFirstCardYouDrawEachTurn {
@@ -1167,6 +1168,7 @@ impl RevealFirstCardYouDrawEachTurn {
         Self {
             optional,
             your_turns_only,
+            linked_reveal_pair: None,
         }
     }
 }
@@ -1195,6 +1197,7 @@ impl StaticAbilityKind for RevealFirstCardYouDrawEachTurn {
             card_number: 1,
             optional: self.optional,
             your_turns_only: self.your_turns_only,
+            linked_reveal_pair: self.linked_reveal_pair,
         })
     }
 }

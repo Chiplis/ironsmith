@@ -4193,6 +4193,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 player,
                 filter,
                 from_source,
+                first_draw_pair: None,
             });
         }
     }

@@ -290,6 +290,7 @@ impl GameState {
 
         self.battlefield_flags_mut().controller_at_last_refresh = controllers;
         self.remember_face_down_exile_source_controllers();
+        self.remember_linked_exile_inspection_entitlements();
         for &id in &changed {
             self.clear_soulbond_pair(id);
             self.set_summoning_sick(id);

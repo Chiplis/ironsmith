@@ -58,3 +58,19 @@ fn static_land_and_spell_pool_requires_the_complete_source_linked_surface() {
         assert!(parse_play_lands_and_spells_from_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none());
     }
 }
+
+#[test]
+fn private_inspection_and_play_share_one_complete_source_antecedent() {
+    for article in ["", "the "] {
+        let line = format!("You may look at {article}cards exiled with this creature, and you may play lands and cast spells from among those cards.");
+        assert!(parse_look_and_play_source_exiled_tokens(&lex_line(&line, 0).unwrap()).is_some());
+    }
+    for line in [
+        "You may look at cards exiled with this creature.",
+        "You may look at cards exiled with this creature, and you may play lands and cast spells from among those cards this turn.",
+        "You may look at cards exiled with this creature, and you may play lands and cast spells from among cards in your graveyard.",
+        "Each player may look at cards exiled with this creature, and you may play lands and cast spells from among those cards.",
+    ] {
+        assert!(parse_look_and_play_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none());
+    }
+}

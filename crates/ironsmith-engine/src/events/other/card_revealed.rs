@@ -27,6 +27,17 @@ pub struct CardRevealedEvent {
     /// mana value less than the result this way" trigger can compare against
     /// it (Priority Boarding).
     pub reveal_context_amount: Option<i32>,
+    /// The draw-time occurrence, separate from generic visibility and Miracle.
+    pub first_draw: Option<FirstDrawRevealOccurrence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirstDrawRevealOccurrence {
+    pub owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub drawn_card: ObjectId,
+    pub drawn_stable_id: crate::ids::StableId,
+    pub player: PlayerId,
+    pub card_number: u32,
 }
 
 impl CardRevealedEvent {
@@ -44,7 +55,13 @@ impl CardRevealedEvent {
             source,
             snapshot,
             reveal_context_amount: None,
+            first_draw: None,
         }
+    }
+
+    pub fn with_first_draw(mut self, occurrence: FirstDrawRevealOccurrence) -> Self {
+        self.first_draw = Some(occurrence);
+        self
     }
 
     pub fn with_reveal_context_amount(mut self, amount: Option<i32>) -> Self {

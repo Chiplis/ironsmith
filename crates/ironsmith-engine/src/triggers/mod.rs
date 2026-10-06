@@ -65,6 +65,7 @@ pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, PendingDelayedTriggerPayment, TriggerIdentity,
     TriggerQueue, TriggeredAbilityEntry, TriggeredAbilitySourceKind, check_delayed_triggers,
     check_delayed_triggers_for_simultaneous_events, check_state_triggers, check_triggers,
+    check_triggers_checked,
     compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
     generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
     verify_intervening_if,

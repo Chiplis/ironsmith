@@ -1482,6 +1482,7 @@ pub struct RevealDrawnCardSpec {
     pub card_number: u32,
     pub optional: bool,
     pub your_turns_only: bool,
+    pub linked_reveal_pair: Option<ironsmith_core::LinkedExilePair>,
 }
 
 /// Spec for "effects from spells named N count this as a card named M" abilities.

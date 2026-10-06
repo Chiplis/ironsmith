@@ -313,7 +313,7 @@ impl FaceDownCastPermission {
 /// put on the stack: the owner reveals the card publicly (the peer front end
 /// opens it on every peer before replaying the answer) and only then is the
 /// reveal event emitted and its triggers checked, identically on every peer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PendingAutomaticDrawReveal {
     pub player: PlayerId,
     pub card: ObjectId,
@@ -321,6 +321,8 @@ pub struct PendingAutomaticDrawReveal {
     pub source: ObjectId,
     /// "You may reveal ..." (the owner may decline).
     pub optional: bool,
+    pub occurrence: crate::events::other::FirstDrawRevealOccurrence,
+    pub source_snapshot: crate::snapshot::ObjectSnapshot,
 }
 
 /// Prefix of every obligation violation message. The peer front end treats
@@ -1763,7 +1765,7 @@ impl GameState {
                 .auxiliary_tracking
                 .pending_hidden_automatic_draw_reveals
                 .first()
-                .copied()?;
+                .cloned()?;
             let in_hand = self
                 .object(next.card)
                 .is_some_and(|object| object.zone == Zone::Hand && object.owner == next.player);

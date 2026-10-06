@@ -4468,8 +4468,10 @@ pub fn parse_source_exiled_play_life_cost_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    if let Some(reference) = crate::grammar::permission_facts::source_exiled::
-        parse_play_lands_and_spells_from_source_exiled_tokens(tokens)
+    let inspected = crate::grammar::permission_facts::source_exiled::parse_look_and_play_source_exiled_tokens(tokens);
+    let may_look = inspected.is_some();
+    if let Some(reference) = inspected.or_else(|| crate::grammar::permission_facts::source_exiled::
+        parse_play_lands_and_spells_from_source_exiled_tokens(tokens))
     {
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
         filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
@@ -4483,6 +4485,7 @@ pub fn parse_you_may_static_grant_line(
             generic_card_pool: true, generic_cast_this_way_subject: true,
         });
         spec.requires_linked_exile_pair = true;
+        spec.may_look_at_linked_exile = may_look;
         return Ok(Some(vec![StaticAbility::grants(spec)]));
     }
     // The dedicated land permission owns this exact surface. Its canonical

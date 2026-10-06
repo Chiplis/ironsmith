@@ -1401,6 +1401,50 @@ fn soulbond_trigger_had_eligible_pair(
     })
 }
 
+/// Typed first-draw receipts are executable evidence, not public claim data.
+/// Reject a partial recovery before absence of a trigger could be interpreted
+/// as a complete negative result. Complete mismatching identities still simply
+/// fail their matcher.
+fn validate_first_draw_reveal_evidence(event: &TriggerEvent) -> Result<(), crate::effects::ExecutionError> {
+    let Some(reveal) = event.downcast::<crate::events::CardRevealedEvent>() else { return Ok(()); };
+    let Some(occurrence) = reveal.first_draw.as_ref() else { return Ok(()); };
+    let Some(owner) = occurrence.owner.as_ref() else { return Ok(()); };
+    let incomplete = || crate::effects::ExecutionError::IncompleteEvidence(
+        "first-draw reveal receipt lacks complete card/source acquisition evidence; native recovery or replay required".into(),
+    );
+    match reveal.source {
+        None => return Err(incomplete()),
+        Some(source) if source != owner.host => return Ok(()),
+        Some(_) => {}
+    }
+    let source = event.lookback_source_snapshots().iter()
+        .find(|source| source.object_id == owner.host).ok_or_else(incomplete)?;
+    let origins = source.ability_origins.as_ref().ok_or_else(incomplete)?;
+    if origins.len() != source.abilities.len() { return Err(incomplete()); }
+    for (slot, ability) in source.abilities.iter().enumerate() {
+        let AbilityKind::Triggered(ability) = &ability.kind else { continue; };
+        if ability.trigger.downcast_ref::<crate::triggers::PlayerRevealsCardTrigger>()
+            .is_some_and(|trigger| trigger.first_draw_pair == Some(owner.pair))
+            && crate::linked_exile::LinkedExileOwner::capture(owner.host, Some(owner.pair), origins.get(slot)).is_none()
+        { return Err(incomplete()); }
+    }
+    let card = reveal.snapshot.as_ref().ok_or_else(incomplete)?;
+    if card.object_id != occurrence.drawn_card || card.stable_id != occurrence.drawn_stable_id
+        || reveal.card != occurrence.drawn_card || reveal.player != occurrence.player
+        || card.zone != Zone::Hand || card.owner != occurrence.player
+    { return Err(incomplete()); }
+    Ok(())
+}
+
+/// Fallible trigger discovery for callers without an enclosing execution meter.
+pub fn check_triggers_checked(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+) -> Result<Vec<TriggeredAbilityEntry>, crate::effects::ExecutionError> {
+    validate_first_draw_reveal_evidence(trigger_event)?;
+    Ok(check_triggers(game, trigger_event))
+}
+
 /// Check all permanents for triggered abilities that match the given event.
 ///
 /// Returns a list of triggered abilities that should go on the stack.
@@ -1408,6 +1452,10 @@ pub fn check_triggers(
     game: &GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
+        game.record_token_resource_failure(&error);
+        return Vec::new();
+    }
     // LKI payloads are common on zone-change events even when none of the
     // sources represented by those payloads can trigger for this event kind.
     // Inspect the captured ability lists before constructing a layered view;
@@ -1448,6 +1496,13 @@ pub(crate) fn check_triggers_batch(
 ) -> Vec<Vec<TriggeredAbilityEntry>> {
     if trigger_events.is_empty() {
         return Vec::new();
+    }
+
+    for event in trigger_events {
+        if let Err(error) = validate_first_draw_reveal_evidence(event) {
+            game.record_token_resource_failure(&error);
+            return vec![Vec::new(); trigger_events.len()];
+        }
     }
 
     let mut kind_may_subscribe = FxMap::default();
@@ -2770,7 +2825,8 @@ fn collect_lookback_source_triggers(
                 filter_ctx,
                 game,
             )
-            .with_trigger_identity(trigger_identity);
+            .with_trigger_identity(trigger_identity)
+            .with_ability_index(ability_index);
             if !trigger_event_is_in_range(
                 game,
                 trigger_event,
@@ -2902,6 +2958,10 @@ fn check_triggers_with_view_and_registry(
     view: &crate::derived_view::DerivedGameView<'_>,
     registry: &TriggerRegistry,
 ) -> Vec<TriggeredAbilityEntry> {
+    if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
+        game.record_token_resource_failure(&error);
+        return Vec::new();
+    }
     if trigger_event.triggers_captured() {
         return Vec::new();
     }

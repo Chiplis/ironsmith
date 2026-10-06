@@ -478,6 +478,11 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// Older source-wide readers remain outside that supported scope.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
     pub requires_linked_exile_pair: bool,
+    /// This static ability also entitles its current beneficiary to inspect
+    /// each exact paired exile member. Once entitled, that player retains
+    /// inspection subject to CR 406.3, independently of play authority.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub may_look_at_linked_exile: bool,
     /// Exact definition-local exile producer paired with this static reader.
     /// Runtime membership also requires the current rules-text acquisition.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -529,6 +534,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            may_look_at_linked_exile: false,
             linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
@@ -572,6 +578,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             cast_this_way_filter: self.cast_this_way_filter,
             on_use_effects: self.on_use_effects.into_iter().map(&mut map_effect).collect::<Result<_, _>>()?,
             requires_linked_exile_pair: self.requires_linked_exile_pair,
+            may_look_at_linked_exile: self.may_look_at_linked_exile,
             linked_exile_pair: self.linked_exile_pair,
             source_exiled_surface: self.source_exiled_surface,
             top_card_only: self.top_card_only,
@@ -680,6 +687,7 @@ where
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            may_look_at_linked_exile: false,
             linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
@@ -765,6 +773,7 @@ where
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
             requires_linked_exile_pair: false,
+            may_look_at_linked_exile: false,
             linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
@@ -1601,6 +1610,10 @@ where
             && let Some(surface) = self.source_exiled_surface.as_ref()
             && is_source_exiled_card_pool(&self.filter)
         {
+            if self.may_look_at_linked_exile {
+                return format!("You may look at cards exiled with {}, and you may play lands and cast spells from among those cards{}",
+                    surface.source.display_text(), cast_this_way_suffix());
+            }
             if surface.plural_spell_subject {
                 return format!("{may_prefix} play lands and cast spells from among cards exiled with {}{}",
                     surface.source.display_text(), cast_this_way_suffix());

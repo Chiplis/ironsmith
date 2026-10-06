@@ -1107,6 +1107,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     RevealFirstCardYouDrawEachTurn {
         optional: bool,
         your_turns_only: bool,
+        /// Exact authored reveal/trigger group (CR 607.2f).
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        linked_reveal_pair: Option<crate::LinkedExilePair>,
     },
     ExileToCounteredExileInsteadOfGraveyard {
         player: PlayerFilter,
@@ -1819,6 +1822,7 @@ where
                     .map(&mut *map_effect)
                     .collect::<Result<_, _>>()?,
                 requires_linked_exile_pair: spec.requires_linked_exile_pair,
+                may_look_at_linked_exile: spec.may_look_at_linked_exile,
                 linked_exile_pair: spec.linked_exile_pair,
                 source_exiled_surface: spec.source_exiled_surface,
                 filtered_zone_surface: spec.filtered_zone_surface,
@@ -2717,9 +2721,11 @@ where
             StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair,
             } => StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair,
             },
             StaticAbilityPayload::ExileToCounteredExileInsteadOfGraveyard {
                 player,
@@ -5545,6 +5551,7 @@ impl<
             payload: StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair: None,
             },
         }
     }

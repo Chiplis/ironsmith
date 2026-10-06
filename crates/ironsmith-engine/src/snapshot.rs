@@ -391,6 +391,10 @@ pub struct ObjectSnapshot {
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// Frozen layer-1 copiable values at the instant this snapshot was made.
     pub copiable_values: CopiableValues,
+    /// Complete native cast definition captured for a revealed-card copy.
+    /// Public claim snapshots are not executable recovery checkpoints.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub revealed_cast_definition: Option<Arc<crate::cards::CardDefinition>>,
     /// For sagas: maximum chapter number.
     /// X value chosen when this object was cast (if any).
     pub x_value: Option<u32>,
@@ -539,6 +543,7 @@ impl ObjectSnapshot {
             ability_origins: None,
             aura_attach_filter: None,
             copiable_values: CopiableValues::default(),
+            revealed_cast_definition: None,
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
@@ -582,6 +587,7 @@ impl ObjectSnapshot {
             && self.abilities.is_empty()
             && self.ability_origins.is_none()
             && self.copiable_values.abilities.is_empty()
+            && self.revealed_cast_definition.is_none()
             && self.secret_chosen_subtype.is_none()
             && self
                 .chosen_object
@@ -606,6 +612,7 @@ impl ObjectSnapshot {
         self.abilities = Arc::new(Vec::new());
         self.ability_origins = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
+        self.revealed_cast_definition = None;
         self.secret_chosen_subtype = None;
     }
 }
@@ -682,6 +689,7 @@ impl ObjectSnapshot {
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
             secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
             copiable_values: CopiableValues::from_object(obj),
+            revealed_cast_definition: None,
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
@@ -1095,6 +1103,7 @@ impl ObjectSnapshot {
             abilities: Arc::new(vec![]),
             ability_origins: None,
             aura_attach_filter: None,
+            revealed_cast_definition: None,
             copiable_values: CopiableValues {
                 name: name.to_string(),
                 ..CopiableValues::default()

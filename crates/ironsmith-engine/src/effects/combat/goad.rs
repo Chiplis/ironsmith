@@ -216,6 +216,7 @@ mod tests {
                 abilities: std::sync::Arc::new(Vec::new()),
                 aura_attach_filter: None,
                 copiable_values: crate::snapshot::CopiableValues::default(),
+                revealed_cast_definition: None,
                 x_value: None,
                 cast_order_this_turn: None,
                 mana_spent_to_cast: crate::player::ManaPool::default(),

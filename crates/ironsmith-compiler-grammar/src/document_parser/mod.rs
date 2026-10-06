@@ -3919,7 +3919,7 @@ fn dispatch_remaining_preprocessed_line(
     ) {
         return Ok(next_idx);
     }
-    if try_push_reveal_first_draw_line(line, lines)? {
+    if try_push_reveal_first_draw_line(line_context, line, lines)? {
         return Ok(idx + 1);
     }
     if try_push_trailing_keyword_activation(preprocessed, line, lines)? {
@@ -4169,12 +4169,22 @@ fn try_push_saga_chapter(
 }
 
 fn try_push_reveal_first_draw_line(
+    context: ParseContextView<'_>,
     line: &PreprocessedLine,
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
     let Some(chunks) = split_reveal_first_draw_line_rewrite_lexed(&line.tokens) else {
         return Ok(false);
     };
+    // This typed local key records the exact sentence family recognized here.
+    // Lowering replaces the provisional definition stamp after all finalizers.
+    let pair = ironsmith_core::LinkedExilePair {
+        definition: ironsmith_core::LinkedExileDefinition([0; 32]),
+        pair: u32::try_from(lines.len()).map_err(|_| CardTextError::InvariantViolation(
+            "too many authored ability groups".into(),
+        ))?,
+    };
+    let mut recognized_lines = Vec::new();
     for chunk_tokens in chunks {
         let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
         if line_starts_with_trigger_intro_tokens(&chunk_line.tokens) {
@@ -4183,12 +4193,22 @@ fn try_push_reveal_first_draw_line(
                 let recognized =
                     RecognizedLine::Triggered(recognize_triggered_line(&trigger_line)?);
                 trace_recognized_line(&recognized);
-                lines.push(recognized);
+                recognized_lines.push(recognized);
             }
-        } else if let Some(static_line) = recognize_static_line(&chunk_line)? {
+        } else if let Some(mut static_line) = recognize_static_line(&chunk_line)? {
+            let mut abilities = parse_static_ability_ast_line_lexed(&chunk_line.tokens)?
+                .ok_or_else(|| CardTextError::InvariantViolation("first-draw static lost its typed reading".into()))?;
+            let [crate::model::StaticAbilityAst::Static(ability)] = abilities.as_mut_slice() else {
+                return Err(CardTextError::InvariantViolation("first-draw static must be one ability".into()));
+            };
+            let ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn { linked_reveal_pair, .. } = &mut ability.payload else {
+                return Err(CardTextError::InvariantViolation("first-draw static has the wrong payload".into()));
+            };
+            *linked_reveal_pair = Some(pair);
+            static_line.parsed = Some(Box::new(LineAst::StaticAbilities(abilities)));
             let recognized = RecognizedLine::Static(static_line);
             trace_recognized_line(&recognized);
-            lines.push(recognized);
+            recognized_lines.push(recognized);
         } else {
             return Err(CardTextError::ParseError(format!(
                 "parser could not split reveal-first-draw line family: '{}'",
@@ -4196,6 +4216,25 @@ fn try_push_reveal_first_draw_line(
             )));
         }
     }
+    // This family bypasses the ordinary line registry after splitting. It
+    // must attach the same typed trigger facts as every registered family,
+    // including all sentences of each linked trigger's effect body.
+    let mut dispatch = line_dispatch::LineDispatchResult {
+        lines: recognized_lines,
+        next_idx: 0,
+    };
+    line_dispatch::attach_compiler_trigger_facts(context, &mut dispatch)?;
+    for recognized in &mut dispatch.lines {
+        let RecognizedLine::Triggered(triggered) = recognized else { continue; };
+        let Some(ability) = triggered.info.semantic_facts.triggered_ability.compiler_ability.as_mut() else {
+            return Err(CardTextError::InvariantViolation("first-draw trigger has no compiler facts".into()));
+        };
+        let crate::model::TriggerSpec::PlayerRevealsCard { from_source: true, first_draw_pair, .. } = &mut ability.event.semantics else {
+            return Err(CardTextError::ParseError("first-draw family contains an unrelated trigger".into()));
+        };
+        *first_draw_pair = Some(pair);
+    }
+    lines.extend(dispatch.lines);
     Ok(true)
 }
 

@@ -240,6 +240,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             cast_this_way_filter: spec.cast_this_way_filter,
             on_use_effects: spec.on_use_effects.into_iter().map(runtime_effect_from_core_model).collect::<Result<_, _>>()?,
             requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            may_look_at_linked_exile: spec.may_look_at_linked_exile,
             linked_exile_pair: spec.linked_exile_pair,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
