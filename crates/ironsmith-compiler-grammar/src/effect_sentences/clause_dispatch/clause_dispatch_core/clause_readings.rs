@@ -245,6 +245,12 @@ const CLAUSE_READINGS: &[Reading] = &[
         read: |input| input.outcome(part_2::read_for_each_counter_group_removed_this_way(input)),
     },
     Reading {
+        id: RuleId::new("turn-face-down"),
+        head: HeadDiscriminator::Words(&["turn"]),
+        admits: |_| true,
+        read: |input| input.outcome(part_2::read_turn_face_down(input)),
+    },
+    Reading {
         id: RuleId::new("turn-target-face-up"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

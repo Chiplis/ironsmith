@@ -313,6 +313,20 @@ pub fn parse_turn_target_face_up_shape(
     (!target_tokens.is_empty()).then_some(TurnTargetFaceUpShape { target_tokens })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnFaceDownShape<'a> {
+    pub target_tokens: &'a [OwnedLexToken],
+}
+
+pub fn parse_turn_face_down_shape(tokens: &[OwnedLexToken]) -> Option<TurnFaceDownShape<'_>> {
+    let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("turn"))?;
+    let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(tail, 1, || {
+        (primitives::phrase(&["face", "down"]), primitives::sentence_end()).void()
+    })?;
+    let target_tokens = trim_lexed_commas(target_tokens);
+    (!target_tokens.is_empty()).then_some(TurnFaceDownShape { target_tokens })
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharedAbilityGainShape {
     pub abilities: Vec<KeywordAction>,

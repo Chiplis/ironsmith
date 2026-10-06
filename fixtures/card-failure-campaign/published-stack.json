@@ -1109,6 +1109,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/845"
+    },
+    {
+      "stage": 80,
+      "branch": "fix/card-failures-80-extra-turn-bodies",
+      "base": "fix/card-failures-79-mana-methods-and-linked-exile",
+      "source_integration_commit": "8506434ea8e12d1f61a338b5c108c648a81b299a",
+      "remote_commit": "e4803cb68b075f3c70075ace2cf64d45595dcc88",
+      "tree": "1277db4f2f2aac58f088b8bc8e9ce6010e4ec5cf",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 846,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/846"
     }
   ]
 }

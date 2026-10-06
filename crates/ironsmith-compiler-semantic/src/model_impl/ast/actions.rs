@@ -2049,6 +2049,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("ability", ability)
                 .field("duration", duration)
                 .finish(),
+            Self::PermanentState(PermanentStateActionAst::TurnFaceDown { target }) => f
+                .debug_struct("TurnFaceDown")
+                .field("target", target)
+                .finish(),
             Self::PermanentState(PermanentStateActionAst::TurnFaceUp { target }) => f
                 .debug_struct("TurnFaceUp")
                 .field("target", target)

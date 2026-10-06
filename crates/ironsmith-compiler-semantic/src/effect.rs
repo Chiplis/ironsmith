@@ -725,6 +725,10 @@ impl Effect {
         Self::new(crate::effects::HealDamageEffect::all(target))
     }
 
+    pub fn turn_face_down(target: crate::target::ChooseSpec) -> Self {
+        Self::new(ironsmith_core::TurnFaceDownEffect::new(target))
+    }
+
     pub fn turn_face_up(target: crate::target::ChooseSpec) -> Self {
         Self::new(ironsmith_core::TurnFaceUpEffect::new(target))
     }

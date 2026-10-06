@@ -6646,6 +6646,9 @@
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
         return prompt.description().to_string();
     }
+    if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
+        return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));
+    }
     if let Some(turn_face_up) = effect.downcast_ref::<crate::effects::TurnFaceUpEffect>() {
         if matches!(&turn_face_up.target, ChooseSpec::SurfaceHinted { .. }) {
             return format!("Turn {} face up", describe_choose_spec(&turn_face_up.target));

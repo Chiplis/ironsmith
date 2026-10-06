@@ -183,7 +183,7 @@ pub use permanents::{
     PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
     RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
-    TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UnlockRoomDoorEffect,
+    TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UnlockRoomDoorEffect,
     UntapEffect,
 };
 pub use player::{

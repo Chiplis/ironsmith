@@ -2314,6 +2314,7 @@ where
         crate::effects::RemoveCountersEffect,
         crate::effects::ReorderLibraryTopEffect,
         crate::effects::RetainManaUntilEndOfTurnEffect,
+        crate::effects::TurnFaceDownEffect,
         crate::effects::TurnFaceUpEffect,
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,

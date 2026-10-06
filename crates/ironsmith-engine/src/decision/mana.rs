@@ -1110,7 +1110,12 @@ fn spell_view_for_cost_filter_match(
     let mut changed = selected_price_face.is_some();
     let mut view = selected_price_face.unwrap_or_else(|| spell.clone());
 
-    if casting_method_is_bestow(game, caster, spell, casting_method) {
+    if matches!(casting_method.origin_method(), CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. }) {
+        // Cost modifiers inspect the selected spell characteristics before
+        // announcement publishes the object or its face-down status.
+        view = spell_view_for_face_down_cast(game, &view);
+        changed = true;
+    } else if casting_method_is_bestow(game, caster, spell, casting_method) {
         view.apply_bestow_cast_overlay();
         changed = true;
     } else {

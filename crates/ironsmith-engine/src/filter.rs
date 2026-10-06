@@ -3449,6 +3449,11 @@ impl ObjectFilterExt for ObjectFilter {
             subject.tail_has_static_ability_id(ability_id)
                 || (ability_id == StaticAbilityId::Hexproof
                     && subject.tail_has_static_ability_id(StaticAbilityId::HexproofFrom))
+                // Megamorph is a variant of morph (CR 702.37b); disguise
+                // is a separate ability. Use the current layer-derived
+                // abilities, never the hidden face-down restoration state.
+                || (ability_id == StaticAbilityId::Morph
+                    && subject.tail_has_static_ability_id(StaticAbilityId::Megamorph))
         };
 
         // Required static ability IDs

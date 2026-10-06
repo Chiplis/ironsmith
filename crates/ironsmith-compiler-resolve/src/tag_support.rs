@@ -1906,6 +1906,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
         | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => None,
     }
 }

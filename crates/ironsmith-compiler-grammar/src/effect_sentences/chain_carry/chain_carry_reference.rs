@@ -342,6 +342,7 @@ pub(super) fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
                     target, ..
                 })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
             ..
         }) => explicit_tagged_target(target),
@@ -373,6 +374,7 @@ pub(super) fn explicit_effect_object_target(effect: &EffectAst) -> Option<Choose
                     target, ..
                 })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target })
+                | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }),
             ..
         }) => explicit_target_choose_spec(target),

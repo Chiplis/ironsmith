@@ -4,6 +4,9 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum PermanentStateActionAst {
+    TurnFaceDown {
+        target: TargetAst,
+    },
     TurnFaceUp {
         target: TargetAst,
     },

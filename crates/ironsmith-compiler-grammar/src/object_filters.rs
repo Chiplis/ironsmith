@@ -3807,3 +3807,22 @@ mod same_name_operand_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod morph_ability_filter_tests {
+    use super::*;
+
+    #[test]
+    fn morph_ability_nouns_keep_real_keywords_and_source_exclusion() {
+        for text in ["creature with a morph ability", "creatures with morph abilities"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let filter = parse_object_filter(&tokens, false).unwrap();
+            assert_eq!(filter.static_abilities, [crate::static_abilities::StaticAbilityId::Morph]);
+            assert!(filter.ability_markers.is_empty());
+        }
+        let tokens = crate::lexer::lex_line("creatures with morph abilities other than this creature", 0).unwrap();
+        let filter = parse_object_filter(&tokens, false).unwrap();
+        assert!(filter.other);
+        assert_eq!(filter.static_abilities, [crate::static_abilities::StaticAbilityId::Morph]);
+    }
+}

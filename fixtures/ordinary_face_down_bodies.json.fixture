@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Backslide",
+    "oracle_id": "6d9746bc-0b72-4ac4-b48a-742b63b1c41b",
+    "text": "Mana cost: {1}{U}\nType: Instant\nTurn target creature with a morph ability face down.\nCycling {U} ({U}, Discard this card: Draw a card.)",
+    "source": "https://scryfall.com/card/ons/70/backslide?utm_source=api"
+  },
+  {
+    "name": "Master of the Veil",
+    "oracle_id": "ee9104d5-3583-4549-8dd0-5b69274f4b4f",
+    "text": "Mana cost: {2}{U}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/3\nMorph {2}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, you may turn target creature with a morph ability face down.",
+    "source": "https://scryfall.com/card/lgn/43/master-of-the-veil?utm_source=api"
+  },
+  {
+    "name": "Mischievous Quanar",
+    "oracle_id": "30e3e48c-98dc-4d27-b7ea-e81d39f7d24e",
+    "text": "Mana cost: {4}{U}\nType: Creature — Beast\nPower/Toughness: 3/3\n{3}{U}{U}: Turn this creature face down.\nMorph {1}{U}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, copy target instant or sorcery spell. You may choose new targets for that copy.",
+    "source": "https://scryfall.com/card/plst/SCG-42/mischievous-quanar?utm_source=api"
+  },
+  {
+    "name": "Obscuring Aether",
+    "oracle_id": "70bfb805-2009-44c8-b5bd-2ca281637566",
+    "text": "Mana cost: {G}\nType: Enchantment\nFace-down creature spells you cast cost {1} less to cast.\n{1}{G}: Turn this enchantment face down. (It becomes a 2/2 creature.)",
+    "source": "https://scryfall.com/card/mkc/179/obscuring-aether?utm_source=api"
+  },
+  {
+    "name": "Skittish Valesk",
+    "oracle_id": "d094f78b-acec-4181-9fee-ca523fb8ccc5",
+    "text": "Mana cost: {6}{R}\nType: Creature — Beast\nPower/Toughness: 5/5\nAt the beginning of your upkeep, flip a coin. If you lose the flip, turn this creature face down.\nMorph {5}{R} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+    "source": "https://scryfall.com/card/ons/231/skittish-valesk?utm_source=api"
+  },
+  {
+    "name": "Wall of Deceit",
+    "oracle_id": "73714a40-5e8d-4aea-87fe-5aa0db53d6ff",
+    "text": "Mana cost: {1}{U}\nType: Creature — Wall\nPower/Toughness: 0/5\nDefender (This creature can't attack.)\n{3}: Turn this creature face down.\nMorph {U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+    "source": "https://scryfall.com/card/jvc/5/wall-of-deceit?utm_source=api"
+  },
+  {
+    "name": "Weaver of Lies",
+    "oracle_id": "bb2fca84-fc19-4c04-b146-1059aa975535",
+    "text": "Mana cost: {5}{U}{U}\nType: Creature — Beast\nPower/Toughness: 4/4\nMorph {4}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, turn any number of target creatures with morph abilities other than this creature face down.",
+    "source": "https://scryfall.com/card/lgn/57/weaver-of-lies?utm_source=api"
+  }
+]

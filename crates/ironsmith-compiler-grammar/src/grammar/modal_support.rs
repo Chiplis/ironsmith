@@ -1074,6 +1074,9 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
+                ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                 count: amount, ..

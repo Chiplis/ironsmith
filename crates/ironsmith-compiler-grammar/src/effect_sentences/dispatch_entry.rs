@@ -12890,6 +12890,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
+                ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
             SubjectVerbActionAst::Cant { .. } => {}
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {

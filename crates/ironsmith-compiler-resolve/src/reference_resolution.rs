@@ -2025,6 +2025,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target }) => {
                     maybe_tag_target(target, frame, id_gen, "transformed")?;
                 }
+                SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target }) => {
+                    maybe_tag_target(target, frame, id_gen, "turned_face_down")?;
+                }
                 SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target }) => {
                     // Turning an object face up does not change its identity.
                     // Keep an explicit tagged antecedent (notably a card
@@ -7162,6 +7165,9 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
                 ..
             })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
+                ..
+            })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
                 count: amount, ..
@@ -9113,6 +9119,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor) => 0,
             SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder) => 0,
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
+                ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
                 ..
             }) => 0,
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => 0,

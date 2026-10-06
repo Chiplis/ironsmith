@@ -413,6 +413,21 @@ pub fn parse_filter_keyword_constraint_words(
     if words.is_empty() {
         return None;
     }
+    // Costed face-down keywords are real static abilities. Consume the
+    // optional article and explicit ability noun, retaining the same typed
+    // predicate for "morph", "a morph ability", and "morph abilities".
+    let article = usize::from(words.first() == Some(&"a"));
+    let keyword = match words.get(article) {
+        Some(&"morph") => Some(StaticAbilityId::Morph),
+        Some(&"megamorph") => Some(StaticAbilityId::Megamorph),
+        Some(&"disguise") => Some(StaticAbilityId::Disguise),
+        _ => None,
+    };
+    if let Some(keyword) = keyword {
+        let noun = usize::from(words.get(article + 1)
+            .is_some_and(|word| matches!(*word, "ability" | "abilities")));
+        return Some((FilterKeywordConstraint::Static(keyword), article + 1 + noun));
+    }
     if prefix_one_of(words, &[&["mana", "ability"], &["mana", "abilities"]]) {
         return Some((FilterKeywordConstraint::Marker("mana ability"), 2));
     }

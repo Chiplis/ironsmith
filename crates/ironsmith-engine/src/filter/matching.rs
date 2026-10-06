@@ -822,10 +822,17 @@ pub(super) fn matches_subject(
     if filter.nontoken && subject.is_token() {
         return false;
     }
-    if let Some(require_face_down) = filter.face_down
-        && subject.face_down(game) != require_face_down
-    {
-        return false;
+    if let Some(require_face_down) = filter.face_down {
+        // A prospective cast has a selected object view before its public
+        // status is installed. Use that view only for this exact candidate;
+        // ordinary battlefield and historical filters retain public status.
+        let face_down = match subject {
+            ObjectSubject::Live(object) if ctx.prospective_cast == Some(object.id) => {
+                object.face_down_cast_state.is_some()
+            }
+            _ => subject.face_down(game),
+        };
+        if face_down != require_face_down { return false; }
     }
     if filter.foretold && !game.is_foretold(subject.object_id()) {
         return false;

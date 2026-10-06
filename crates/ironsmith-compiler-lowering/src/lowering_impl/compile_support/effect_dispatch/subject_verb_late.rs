@@ -158,6 +158,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. })
@@ -540,6 +541,13 @@ pub(super) fn compile_subject_verb_late(
                 )],
                 Vec::new(),
             ))
+        }
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target }) => {
+            let (effects, choices) =
+                compile_tagged_effect_for_target(target, ctx, "turned_face_down", |spec| {
+                    Effect::turn_face_down(spec)
+                })?;
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target }) => {
             let (effects, choices) =

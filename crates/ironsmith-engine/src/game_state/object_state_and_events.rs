@@ -701,6 +701,23 @@ impl GameState {
         self.battlefield_flags.face_down.contains(&id)
     }
 
+    /// Eligibility for turning an existing permanent face down (CR 712.11).
+    /// This is deliberately separate from `set_face_down`: a double-faced
+    /// card can enter face down through manifest, cloak, or a face-down cast.
+    pub fn can_turn_face_down_permanent(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else { return false; };
+        if object.zone != Zone::Battlefield || self.is_face_down(id) || self.is_phased_out(id) {
+            return false;
+        }
+        let double_faced = |object: &crate::object::Object| {
+            matches!(object.linked_face_layout, LinkedFaceLayout::TransformLike)
+        };
+        if double_faced(object) { return false; }
+        !self.commander_tracking.merged_permanents.get(&object.stable_id)
+            .is_some_and(|merged| merged.components.iter().any(|component|
+                double_faced(&component.object)))
+    }
+
     /// Set an object face down.
     ///
     /// CR 730.2f turns every face-up component of a merged permanent face

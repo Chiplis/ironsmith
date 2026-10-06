@@ -3296,6 +3296,20 @@ impl TurnFaceUpEffect {
     }
 }
 
+/// Turn existing permanents face down without moving them or granting a
+/// face-down casting/entry method. The default CR 708.2 characteristics apply.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TurnFaceDownEffect {
+    pub target: ChooseSpec,
+}
+
+impl TurnFaceDownEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
 /// "It becomes foretold. Its foretell cost is its mana cost reduced by {N}."
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
