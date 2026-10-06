@@ -4,6 +4,39 @@ use crate::ids::CardId;
 use crate::types::CardType;
 
 #[test]
+fn source_leave_returns_only_cards_with_an_actual_duration_receipt() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Exile duration member")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let battlefield_return = game.create_object_from_definition(&creature, bob, Zone::Exile);
+    let unrelated = game.create_object_from_definition(&creature, bob, Zone::Exile);
+    let hand_return = game.create_object_from_definition(&creature, alice, Zone::Exile);
+    game.add_exiled_with_source_link_returning_to(source, battlefield_return, Zone::Battlefield);
+    game.add_exiled_with_source_link(source, unrelated);
+    game.add_exiled_with_source_link_returning_to(source, hand_return, Zone::Hand);
+    game.mark_return_exiled_when_source_leaves(source);
+
+    game.return_exiled_for_source_leave(source);
+    assert_eq!(game.auxiliary_tracking.pending_duration_end_returns,
+        vec![(source, vec![(battlefield_return, Zone::Battlefield), (hand_return, Zone::Hand)])]);
+    // The pending original moves still own their exile membership. Calling
+    // the duration owner again cannot duplicate the scheduled returns.
+    game.return_exiled_for_source_leave(source);
+    assert_eq!(game.auxiliary_tracking.pending_duration_end_returns.len(), 1);
+    let mut choices = crate::decision::SelectFirstDecisionMaker;
+    game.process_pending_duration_end_returns(&mut choices).unwrap();
+    assert!(game.object(unrelated).is_some_and(|object| object.zone == Zone::Exile));
+    assert_eq!(game.get_exiled_with_source_links(source), &[unrelated]);
+    assert_eq!(game.battlefield.iter().filter(|id|
+        game.object(**id).is_some_and(|object| object.owner == bob)).count(), 1);
+    assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+}
+
+#[test]
 fn full_game_action_history_shares_records_and_isolates_branch_appends() {
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let alice = PlayerId::from_index(0);

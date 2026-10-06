@@ -622,10 +622,11 @@ impl ObjectSnapshot {
     /// Game state is required to access battlefield state like tapped, flipped, etc.
     pub fn from_object(obj: &Object, game: &crate::game_state::GameState) -> Self {
         let was_enchanted = obj.attachments.iter().any(|&attachment_id| {
-            game.object(attachment_id).is_some_and(|attachment| {
-                attachment.card_types.contains(&CardType::Enchantment)
-                    && attachment.subtypes.contains(&Subtype::Aura)
-            })
+            !game.is_phased_out(attachment_id)
+                && game.object(attachment_id).is_some_and(|attachment| {
+                    attachment.card_types.contains(&CardType::Enchantment)
+                        && attachment.subtypes.contains(&Subtype::Aura)
+                })
         });
         Self {
             // Identity
@@ -723,7 +724,7 @@ impl ObjectSnapshot {
 
         // Check if any attachment is an Aura
         snapshot.was_enchanted = obj.attachments.iter().any(|&attachment_id| {
-            game.object(attachment_id)
+            !game.is_phased_out(attachment_id) && game.object(attachment_id)
                 .map(|att| {
                     att.card_types.contains(&CardType::Enchantment)
                         && att.subtypes.contains(&Subtype::Aura)
@@ -823,7 +824,11 @@ impl ObjectSnapshot {
         snapshot.apply_calculated_characteristics(obj, calculated);
         if !obj.attachments.is_empty() {
             let effects = game.all_continuous_effects();
-            snapshot.attachment_snapshots = obj
+            // Phased-out attachments are absent when these characteristics
+            // are captured. Later damage must not turn them into historical
+            // evidence that the source was enchanted (CR 702.26b).
+            snapshot.attachments.retain(|id| !game.is_phased_out(*id));
+            snapshot.attachment_snapshots = snapshot
                 .attachments
                 .iter()
                 .filter_map(|id| game.object(*id))
@@ -835,6 +840,9 @@ impl ObjectSnapshot {
                     child
                 })
                 .collect();
+            snapshot.was_enchanted = snapshot.attachment_snapshots.iter().any(|attachment|
+                attachment.card_types.contains(&CardType::Enchantment)
+                    && attachment.subtypes.contains(&Subtype::Aura));
         }
         snapshot
     }

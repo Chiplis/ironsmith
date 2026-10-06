@@ -1053,6 +1053,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/841"
+    },
+    {
+      "stage": 76,
+      "branch": "fix/card-failures-76-simultaneous-sacrifice-programs",
+      "base": "fix/card-failures-75-conditional-replacement-bodies",
+      "source_integration_commit": "65ae94a20f970ab4efbb0600f9f029fd69df3467",
+      "remote_commit": "69a946ec767deda59927d63f08dd17fabff470f3",
+      "tree": "d611257ba30817fe368188edb7d1f435f396deb7",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 842,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/842"
     }
   ]
 }

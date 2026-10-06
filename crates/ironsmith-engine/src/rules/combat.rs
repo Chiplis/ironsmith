@@ -319,7 +319,8 @@ pub(crate) fn can_block_with_view(
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                if game.current_controller(obj.id) != blocker_controller
+                if game.is_phased_out(obj.id)
+                    || game.current_controller(obj.id) != blocker_controller
                     || !view.object_has_card_type(obj.id, CardType::Land)
                 {
                     return false;

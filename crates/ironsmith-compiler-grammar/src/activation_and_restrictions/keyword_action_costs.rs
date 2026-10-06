@@ -262,6 +262,13 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
             snow: false,
         }),
     ),
+    (
+        "desertwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Desert,
+            snow: false,
+        }),
+    ),
     ("fear", KeywordAction::Fear),
     ("intimidate", KeywordAction::Intimidate),
     ("shadow", KeywordAction::Shadow),

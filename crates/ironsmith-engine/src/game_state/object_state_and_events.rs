@@ -2576,7 +2576,8 @@ impl GameState {
             }
             let linked = tracking
                 .exiled_with_source
-                .remove(&source_id)
+                .get(&source_id)
+                .cloned()
                 .unwrap_or_default();
             let return_zones = tracking
                 .exiled_with_source_return_zones
@@ -2586,16 +2587,14 @@ impl GameState {
         };
         let returns = linked
             .into_iter()
-            .filter(|object_id| {
-                self.object(*object_id)
+            .filter_map(|object_id| {
+                // The source may also have an unrelated exile ability. Only
+                // an actual "exile until" receipt creates this duration;
+                // source ownership alone must not invent a return to play.
+                let return_zone = return_zones.get(&object_id).copied()?;
+                self.object(object_id)
                     .is_some_and(|object| object.zone == Zone::Exile)
-            })
-            .map(|object_id| {
-                let return_zone = return_zones
-                    .get(&object_id)
-                    .copied()
-                    .unwrap_or(Zone::Battlefield);
-                (object_id, return_zone)
+                    .then_some((object_id, return_zone))
             })
             .collect::<Vec<_>>();
         self.return_exiled_cards_at_duration_end(source_id, returns);

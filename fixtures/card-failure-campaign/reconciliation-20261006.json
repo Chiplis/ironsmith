@@ -1,0 +1,59 @@
+{
+  "checked_at": "2026-10-06T05:52:00Z",
+  "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
+  "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+  "latest_published_head": "69a946ec767deda59927d63f08dd17fabff470f3",
+  "latest_published_pr": 842,
+  "open_draft_prs": [
+    821,
+    822,
+    823,
+    824,
+    825,
+    826,
+    827,
+    828,
+    829,
+    830,
+    831,
+    832,
+    833,
+    834,
+    835,
+    836,
+    837,
+    838,
+    839,
+    840,
+    841,
+    842
+  ],
+  "workspace_replaced": true,
+  "published_source_proposals": 1116,
+  "published_source_entries": 1121,
+  "unpublished_pre_outage_source_not_assumed_retained": [
+    "Suspend4",
+    "mana consumer6",
+    "permanent prevention6",
+    "linked exile Bishop prerequisites"
+  ],
+  "current_reconstructed_source_proposals": 1122,
+  "current_reconstructed_source_entries": 1127,
+  "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "verified_compile_recoveries": 40,
+  "verified_unresolved": 3193,
+  "execution": "No builds, compilation, probes, tests, formatters or corpus execution.",
+  "main_ui_delta": {
+    "paths": 22,
+    "scope": "web/ui",
+    "overlap_with_stage77": [],
+    "status": "Separate upstream commit preserved; bounded source compatibility inspection found no overlap with the protocol changes."
+  },
+  "bishop_status": "Partial. Exact duration return membership corrected; linked producer/consumer occurrence identity remains incomplete.",
+  "held_new_cards": [
+    "Qarsi Deceiver",
+    "Karfell Harbinger"
+  ],
+  "held_mana_reason": "Selected casting-face/method projection requires a separate correction; neither identity is counted."
+}

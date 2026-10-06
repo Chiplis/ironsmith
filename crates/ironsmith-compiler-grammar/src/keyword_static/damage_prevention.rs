@@ -117,6 +117,53 @@ pub fn parse_filtered_damage_prevention_line(
     )))
 }
 
+/// Persistent self-prevention uses the shared damage matcher, so the source's
+/// live characteristics (or exact LKI) are tested at every damage event.
+pub fn parse_permanent_self_damage_prevention_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.iter().any(|word| matches!(*word,
+        "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
+        || words.windows(3).any(|words| words == ["as", "long", "as"])
+    {
+        return Ok(None);
+    }
+    let Some(shape) = keyword_static_lines::parse_permanent_damage_prevention_tokens(tokens) else {
+        return Ok(None);
+    };
+    // Attached-object references and combat relationships retain their own
+    // productions; this rule owns only a complete self recipient.
+    if !is_source_reference_words(&parser_token_word_refs(shape.damaged_tokens)) {
+        return Ok(None);
+    }
+    // Existing complete rules own unqualified self-prevention, combat-only
+    // prevention, and the bare "by creatures" form. Keep registry claims
+    // disjoint instead of giving equivalent behavior different AST payloads.
+    let Some(source) = shape.source else { return Ok(None); };
+    if shape.combat_only || shape.noncombat_only
+        || parser_token_word_refs(source.filter_tokens).as_slice() == ["creatures"]
+            && !source.source_noun && source.trailing_filter_tokens.is_empty()
+    {
+        return Ok(None);
+    }
+    let source_filter = damage_source_filter_from_shape(source)?;
+    let mut recipient = ObjectFilter::source();
+    recipient.source_surface = source_reference_surface_for_words(
+        &parser_token_word_refs(shape.damaged_tokens),
+    );
+    Ok(Some(StaticAbility::prevent_matching_damage(PreventMatchingDamageSpec {
+        source_filter,
+        target_player_filter: None,
+        target_object_filter: Some(recipient),
+        combat_only: shape.combat_only,
+        noncombat_only: shape.noncombat_only,
+        maximum_damage: None,
+        amount: StaticDamagePreventionAmount::All,
+        display: render_token_slice(tokens),
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,6 +327,66 @@ mod tests {
                 ),
                 "{text}"
             );
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod permanent_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    fn payload(text: &str) -> PreventMatchingDamageSpec {
+        let ability = parse_permanent_self_damage_prevention_line(&lex_line(text, 0).unwrap())
+            .unwrap().expect("complete permanent prevention");
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else {
+            panic!("one declarative prevention payload");
+        };
+        spec
+    }
+
+    #[test]
+    fn permanent_instruction_retains_source_domain_and_exact_recipient() {
+        let artifact = payload("Prevent all damage that would be dealt to this creature by artifact sources.");
+        assert_eq!(artifact.source_filter.zone, None);
+        assert_eq!(artifact.source_filter.card_types, vec![CardType::Artifact]);
+        assert!(artifact.target_object_filter.unwrap().source);
+        assert_eq!(artifact.amount, StaticDamagePreventionAmount::All);
+        let creature = payload("Prevent all damage that would be dealt to this creature by artifact creatures.");
+        assert_eq!(creature.source_filter.zone, Some(Zone::Battlefield));
+        let desert = payload("Prevent all damage that would be dealt to this creature by Deserts.");
+        assert!(desert.source_filter.subtypes.contains(&Subtype::Desert));
+        assert_eq!(desert.source_filter.zone, Some(Zone::Battlefield));
+        let goblins = payload("Prevent all damage that would be dealt to this creature by Goblins.");
+        assert_eq!(goblins.source_filter.zone, Some(Zone::Battlefield));
+        let goblin_sources = payload("Prevent all damage that would be dealt to this creature by Goblin sources.");
+        assert_eq!(goblin_sources.source_filter.zone, None);
+        let enchanted = payload("Prevent all damage that would be dealt to this creature by enchanted creatures.");
+        assert!(enchanted.source_filter.with_attached_object.is_some());
+        let first_strike = payload("Prevent all damage that would be dealt to this creature by creatures with first strike.");
+        assert_ne!(first_strike.source_filter, ObjectFilter::creature());
+        let controlled = payload("Prevent all damage that would be dealt to this permanent by blue sources you control.");
+        assert!(!controlled.combat_only && !controlled.noncombat_only);
+        assert_eq!(controlled.source_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(controlled.source_filter.zone, None);
+    }
+
+    #[test]
+    fn permanent_instruction_never_discards_duration_condition_or_another_sentence() {
+        for text in [
+            "Prevent all damage that would be dealt to this creature this turn.",
+            "Prevent all damage that would be dealt to this creature by artifact sources until your next turn.",
+            "Prevent all damage that would be dealt to this creature while it's tapped.",
+            "Prevent all damage that would be dealt to this creature as long as you control an artifact.",
+            "Prevent all damage that would be dealt to this creature. Draw a card.",
+            "Prevent all damage that would be dealt to this creature by artifact creatures. Draw a card.",
+            "Prevent all damage that would be dealt to this creature by artifact sources and draw a card.",
+            "Prevent all damage that would be dealt to enchanted creature by artifact sources.",
+            "Prevent all damage that would be dealt to target creature.",
+        ] {
+            assert!(!matches!(parse_permanent_self_damage_prevention_line(&lex_line(text, 0).unwrap()),
+                Ok(Some(_))), "{text}");
         }
     }
 }

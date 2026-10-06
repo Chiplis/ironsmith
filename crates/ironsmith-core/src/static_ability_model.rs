@@ -3831,6 +3831,7 @@ impl<
             "swampwalk" => Self::landwalk(Subtype::Swamp),
             "mountainwalk" => Self::landwalk(Subtype::Mountain),
             "forestwalk" => Self::landwalk(Subtype::Forest),
+            "desertwalk" => Self::landwalk(Subtype::Desert),
             "snow plainswalk" => Self::snow_landwalk(Subtype::Plains),
             "snow islandwalk" => Self::snow_landwalk(Subtype::Island),
             "snow swampwalk" => Self::snow_landwalk(Subtype::Swamp),

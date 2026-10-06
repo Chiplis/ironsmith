@@ -21,7 +21,7 @@ pub use damage_redirection::parse_scoped_damage_redirection_line;
 pub(crate) use damage_redirection::redirection_recipient_filters;
 mod life_change_replacements;
 mod prevention_follow_ups;
-pub use damage_prevention::parse_filtered_damage_prevention_line;
+pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
 pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
@@ -694,7 +694,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_opponents_must_target_flagbearers_line" => {
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
         }
-        "parse_prevent_all_damage_to_you_line" => {
+        "parse_prevent_all_damage_to_you_line" | "parse_permanent_self_damage_prevention_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
         }
         "parse_if_you_would_gain_life_replacement_line"
@@ -1463,6 +1463,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
         single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_permanent_self_damage_prevention_line),
         single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
@@ -5187,6 +5188,15 @@ fn damage_source_filter_from_shape(
             parse_object_filter_lexed(&combined, false)?
         }
     };
+    // A subtype noun by itself denotes permanents (CR 109.2): "Deserts"
+    // is not "Desert cards" or "Desert sources". The shared filter grammar
+    // also serves card-selection contexts, so establish this event-source
+    // domain here without inventing a card type or changing explicit zones.
+    if !shape.source_noun && filter.zone.is_none() && !filter.has_explicit_card_noun()
+        && (!filter.subtypes.is_empty() || !filter.all_subtypes.is_empty())
+    {
+        filter.zone = Some(Zone::Battlefield);
+    }
     // "Creature sources" includes creature cards and spells in any zone.
     // Discard only the battlefield default inferred from a type noun, while
     // retaining an authored battlefield/permanent restriction.
