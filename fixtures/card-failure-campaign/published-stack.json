@@ -1305,6 +1305,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/859"
+    },
+    {
+      "stage": 94,
+      "branch": "fix/card-failures-94-exile-prevention-and-combat-history",
+      "base": "fix/card-failures-93-definition-and-permission-compatibility",
+      "source_integration_commit": "9f838bfa35a05213a58736c554825c1de4f78195",
+      "remote_commit": "d9dbf793fa0d1c54ff14b71076cbaa7942925ed2",
+      "tree": "9d40a1f24a31fe69c9df5e04a3a3c8b043f8772a",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 860,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/860"
     }
   ]
 }

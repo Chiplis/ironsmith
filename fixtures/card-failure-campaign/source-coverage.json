@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
+  "source_implementation_commit": "57bbf8f495802a1a3e2a56dd76fa589fcf176537",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1209,
-    "additional_proposed_compile_entries": 1214,
+    "additional_proposed_unique_cards": 1203,
+    "additional_proposed_compile_entries": 1208,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 0,
+    "known_runtime_partial_previous_proposals": 9,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1209,
+    "identified_source_proposals_with_known_runtime_gaps": 9,
+    "source_proposals_excluding_identified_runtime_gaps": 1203,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -5213,6 +5213,23 @@
       "remaining_blockers": [
         "All twelve text bodies remain partial; authored scenarios do not close token-role, nested/opaque or native provenance domains."
       ]
+    },
+    {
+      "id": "complete-attached-control-subjects",
+      "stage": 95,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/attached_control_bodies.json.fixture",
+      "baseline_entries": [
+        "Domineer",
+        "Steal Enchantment",
+        "In Bolas's Clutches"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "649cba7a391479e7cad5c1da48dd2fc168316076",
+      "integrated_source_commit": "57bbf8f495802a1a3e2a56dd76fa589fcf176537",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete grammar/Enchant/control/layer/SBA source review; corrected current-supertype test API; all five final files byte-identical after integration.",
+      "report": "architecture/card-failure-attached-control-bodies.md"
     }
   ],
   "cards": [
@@ -5327,12 +5344,16 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "reused-token-prototypes-and-emerge-evidence"
       ],
       "source_review_commit": "633d1c0cdce33f03d8d9ab0d139041064250ec82",
-      "integrated_source_review_commit": "86a9fe04069fe4690fe212b5c3807cad41a71f46"
+      "integrated_source_review_commit": "86a9fe04069fe4690fe212b5c3807cad41a71f46",
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Ordinary subtype-derived token names lack the required Token suffix. Typed creating-instruction name-role correction is in progress; explicit names are unaffected."
     },
     {
       "card_name": "Adriana, Captain of the Guard",
@@ -7407,13 +7428,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "trap-alternative-costs"
       ],
       "source_runtime_prerequisites": [
         "generic-turn-event-history-completeness"
-      ]
+      ],
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Ordinary subtype-derived token names lack the required Token suffix. Typed creating-instruction name-role correction is in progress; explicit names are unaffected."
     },
     {
       "card_name": "Balthor the Defiled",
@@ -7823,10 +7848,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "x-tap-activation-costs"
-      ]
+      ],
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Subtype-derived token construction omits the required Token suffix; corrected ordinary/compact owner and coordinated admission remain under review."
     },
     {
       "card_name": "Bell Borca, Spectral Sergeant",
@@ -8835,12 +8864,16 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "reused-token-prototypes-and-emerge-evidence"
       ],
       "source_review_commit": "633d1c0cdce33f03d8d9ab0d139041064250ec82",
-      "integrated_source_review_commit": "86a9fe04069fe4690fe212b5c3807cad41a71f46"
+      "integrated_source_review_commit": "86a9fe04069fe4690fe212b5c3807cad41a71f46",
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Subtype-derived token construction omits the required Token suffix; corrected ordinary/compact owner and coordinated admission remain under review."
     },
     {
       "card_name": "Brood Keeper",
@@ -9222,10 +9255,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "compound-blight-forage-costs"
-      ]
+      ],
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Subtype-derived token construction omits the required Token suffix; corrected ordinary/compact owner and coordinated admission remain under review."
     },
     {
       "card_name": "Camouflage",
@@ -10361,13 +10398,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "trap-alternative-costs"
       ],
       "source_runtime_prerequisites": [
         "generic-turn-event-history-completeness"
-      ]
+      ],
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Ordinary subtype-derived token names lack the required Token suffix. Typed creating-instruction name-role correction is in progress; explicit names are unaffected."
     },
     {
       "card_name": "Code of Constraint",
@@ -11691,11 +11732,15 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "source-lifetime-control"
       ],
-      "source_review_commit": "678f4a32c"
+      "source_review_commit": "678f4a32c",
+      "partial_source_families": [
+        "counter-transfer-original-completion"
+      ],
+      "source_coverage_hold": "Counter removal replacement additions can run before the original placement completes. Shared prepared originals/receipt correction is in progress."
     },
     {
       "card_name": "C\u00edrdan the Shipwright",
@@ -12865,8 +12910,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-attached-control-subjects"
+      ]
     },
     {
       "card_name": "Don't Blink",
@@ -19667,8 +19714,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-attached-control-subjects"
+      ]
     },
     {
       "card_name": "In Search of Greatness",
@@ -26350,10 +26399,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "permanent-zone-movement-triggers"
-      ]
+      ],
+      "partial_source_families": [
+        "derived-creature-token-name"
+      ],
+      "source_coverage_hold": "Subtype-derived token construction omits the required Token suffix; corrected ordinary/compact owner and coordinated admission remain under review."
     },
     {
       "card_name": "Ooze Flux",
@@ -33434,8 +33487,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-attached-control-subjects"
+      ]
     },
     {
       "card_name": "Steam Augury",
@@ -35021,10 +35076,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "increment-triggered-keyword"
-      ]
+      ],
+      "partial_source_families": [
+        "counter-transfer-original-completion"
+      ],
+      "source_coverage_hold": "Counter removal replacement additions can run before the original placement completes. Shared prepared originals/receipt correction is in progress."
     },
     {
       "card_name": "Tetravus",
@@ -41350,6 +41409,35 @@
       "behavior": "Compiler-owned first-draw pair construction normalizes nested CardIds and generated/presentation inputs before retaining its v2 hash. Existing runtime/native pair identities remain opaque and unchanged.",
       "completion_gate": "Authored allocation-order/refinalization and five frozen direct/artifact identity witnesses remain unrun. All five first-draw pair definitions migrate under artifact7/audit20.",
       "temporary_hold": "Source hold raised and cleared during stage93 review; no measured recovery change."
+    },
+    {
+      "id": "counter-transfer-original-completion",
+      "status": "known_source_gap_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Tester of the Tangential",
+        "Cytoplast Manipulator"
+      ],
+      "behavior": "Counter removal replacement additions can run before the original placement completes. Shared prepared originals/receipt correction is in progress.",
+      "complete_coverage_claims_withheld": true,
+      "completion_gate": "Corrected shared owner and exact affected bodies require independent source review and integration before restoring proposals. All runtime validation remains deferred.",
+      "observed_against_source": "9f838bfa35a05213a58736c554825c1de4f78195"
+    },
+    {
+      "id": "derived-creature-token-name",
+      "status": "known_source_gap_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Adipose Offspring",
+        "Baloth Cage Trap",
+        "Cobra Trap",
+        "Camellia, the Seedmiser",
+        "Belisarius Cawl",
+        "Brood Birthing",
+        "Oni-Cult Anvil"
+      ],
+      "behavior": "Confirmed ordinary and compact subtype-derived token names omit the required Token suffix. Typed construction profiles are in progress; explicit names are unaffected. This is a bounded proven subset, not the118-name search inventory.",
+      "complete_coverage_claims_withheld": true,
+      "completion_gate": "Corrected shared owner and exact affected bodies require independent source review and integration before restoring proposals. All runtime validation remains deferred.",
+      "observed_against_source": "9f838bfa35a05213a58736c554825c1de4f78195"
     }
   ],
   "future_mechanic_dependencies": [

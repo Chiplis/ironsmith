@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Domineer",
+    "oracle_id": "ca283839-864f-4252-8452-480e3ba29b20",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant artifact creature\nYou control enchanted artifact creature."
+  },
+  {
+    "name": "Steal Enchantment",
+    "oracle_id": "567a3fa7-5ca9-4812-b81d-4953c401c83d",
+    "mana_cost": "{U}{U}",
+    "type_line": "Enchantment \u2014 Aura",
+    "oracle_text": "Enchant enchantment\nYou control enchanted enchantment."
+  },
+  {
+    "name": "In Bolas's Clutches",
+    "oracle_id": "201a4455-1b6b-4e13-a0d5-4cf2116e1673",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Legendary Enchantment \u2014 Aura",
+    "oracle_text": "Enchant permanent\nYou control enchanted permanent.\nEnchanted permanent is legendary."
+  }
+]
