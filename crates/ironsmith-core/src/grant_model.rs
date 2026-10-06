@@ -5,6 +5,9 @@ use crate::{
     SourceReferenceSurface, ThisSpellCostCondition, Zone,
 };
 
+#[cfg(feature = "serde")]
+fn is_false(value: &bool) -> bool { !*value }
+
 pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_flash() -> Self;
     fn grant_display(&self) -> String;
@@ -471,6 +474,14 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub cast_this_way_filter: Option<ObjectFilter>,
     /// Reflexive instruction triggered only when this exact permission completes a play/cast.
     pub on_use_effects: Vec<E>,
+    /// This reader belongs to the typed definition-pair admission path.
+    /// Older source-wide readers remain outside that supported scope.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    pub requires_linked_exile_pair: bool,
+    /// Exact definition-local exile producer paired with this static reader.
+    /// Runtime membership also requires the current rules-text acquisition.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub linked_exile_pair: Option<crate::LinkedExilePair>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
     /// Only the current top card of the beneficiary's library is permitted.
@@ -517,6 +528,8 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
+            requires_linked_exile_pair: false,
+            linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
@@ -558,6 +571,8 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
                 .collect::<Result<Vec<_>, _>>()?,
             cast_this_way_filter: self.cast_this_way_filter,
             on_use_effects: self.on_use_effects.into_iter().map(&mut map_effect).collect::<Result<_, _>>()?,
+            requires_linked_exile_pair: self.requires_linked_exile_pair,
+            linked_exile_pair: self.linked_exile_pair,
             source_exiled_surface: self.source_exiled_surface,
             top_card_only: self.top_card_only,
             instant_timing: self.instant_timing,
@@ -664,6 +679,8 @@ where
             permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
+            requires_linked_exile_pair: false,
+            linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
@@ -747,6 +764,8 @@ where
             permanent_this_way_grants: Vec::new(),
             cast_this_way_filter: None,
             on_use_effects: Vec::new(),
+            requires_linked_exile_pair: false,
+            linked_exile_pair: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
@@ -1582,6 +1601,10 @@ where
             && let Some(surface) = self.source_exiled_surface.as_ref()
             && is_source_exiled_card_pool(&self.filter)
         {
+            if surface.plural_spell_subject {
+                return format!("{may_prefix} play lands and cast spells from among cards exiled with {}{}",
+                    surface.source.display_text(), cast_this_way_suffix());
+            }
             return format!(
                 "{may_prefix} play cards exiled with {}{}",
                 surface.source.display_text(),

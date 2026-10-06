@@ -953,6 +953,8 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             cast_this_way_filter: spec.cast_this_way_filter,
             on_use_effects: spec.on_use_effects.into_iter().map(|effect|
                 runtime_effect_from_core_model_with_card_definitions(effect, self.card_definition)).collect::<Result<_, _>>()?,
+            requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            linked_exile_pair: spec.linked_exile_pair,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
             top_card_only: spec.top_card_only,
@@ -1563,6 +1565,31 @@ pub fn encode_runtime_effect(
         };
     }
     with_native_direct_effect_types!(encode_direct);
+    if let Some(payload) = effect.downcast_ref::<crate::effects::RedirectNextTimeDamageToSourceEffect>() {
+        let source = match &payload.source {
+            crate::effects::RedirectNextTimeDamageSource::Choice => ironsmith_core::RedirectNextTimeDamageSource::Choice,
+            crate::effects::RedirectNextTimeDamageSource::Filter(filter) => ironsmith_core::RedirectNextTimeDamageSource::Filter(filter.clone()),
+            crate::effects::RedirectNextTimeDamageSource::Target(target) => ironsmith_core::RedirectNextTimeDamageSource::Target(target.clone()),
+        };
+        let destination = match payload.destination {
+            crate::effects::RedirectNextTimeDamageDestination::DamageSource => ironsmith_core::RedirectNextTimeDamageDestination::DamageSource,
+            crate::effects::RedirectNextTimeDamageDestination::SourceObject => ironsmith_core::RedirectNextTimeDamageDestination::SourceObject,
+            crate::effects::RedirectNextTimeDamageDestination::Controller => ironsmith_core::RedirectNextTimeDamageDestination::Controller,
+            crate::effects::RedirectNextTimeDamageDestination::SourceController => ironsmith_core::RedirectNextTimeDamageDestination::SourceController,
+            crate::effects::RedirectNextTimeDamageDestination::TargetObject => ironsmith_core::RedirectNextTimeDamageDestination::TargetObject,
+        };
+        let converted = ironsmith_core::RedirectNextTimeDamageToSourceEffect {
+            source,
+            combat_only: payload.combat_only,
+            target: payload.target.clone(),
+            destination,
+            destination_target: payload.destination_target.clone(),
+            all_this_turn: payload.all_this_turn,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("RedirectNextTimeDamageToSourceEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>() {
         let converted = ironsmith_core::GrantNextSpellAbilityEffect::new(
             payload.player.clone(), payload.filter.clone(),

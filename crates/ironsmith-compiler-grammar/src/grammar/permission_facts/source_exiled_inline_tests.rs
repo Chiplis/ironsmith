@@ -42,3 +42,19 @@ fn plural_source_exiled_spell_fact_preserves_filter_owner_and_source_surface() {
         ironsmith_core::SourceReferenceSurface::ThisPermanentType("this creature".to_string())
     );
 }
+
+#[test]
+fn static_land_and_spell_pool_requires_the_complete_source_linked_surface() {
+    let line = "You may play lands and cast spells from among cards exiled with this creature.";
+    let tokens = lex_line(line, 0).unwrap();
+    let parsed = parse_play_lands_and_spells_from_source_exiled_tokens(&tokens).unwrap();
+    assert_eq!(parsed.surface, ironsmith_core::SourceReferenceSurface::ThisPermanentType("this creature".into()));
+    for line in [
+        "You may play lands and cast spells from among cards exiled with this creature this turn.",
+        "You may play lands and cast creature spells from among cards exiled with this creature.",
+        "You may play lands and cast spells from among cards exiled with this creature without paying their mana costs.",
+        "You may play lands and cast spells from among cards exiled with that creature.",
+    ] {
+        assert!(parse_play_lands_and_spells_from_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none());
+    }
+}

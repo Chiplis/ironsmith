@@ -1165,6 +1165,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/849"
+    },
+    {
+      "stage": 84,
+      "branch": "fix/card-failures-84-join-forces-payments",
+      "base": "fix/card-failures-83-clockwork-and-damage-budgets",
+      "source_integration_commit": "c24fa90a06c5c895054a9122b4ce2d246478df3c",
+      "remote_commit": "46ebb79f5474f9464317478a312431bb805495b3",
+      "tree": "41e46ccd6ff6e412cbc23e783f59aa9bcb0dc7af",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 850,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/850"
     }
   ]
 }

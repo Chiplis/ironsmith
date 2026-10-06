@@ -65,12 +65,12 @@ pub enum RedirectNextTimeDamageSource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedirectNextTimeDamageDestination {
-    /// The source of the damage being replaced, not the ability source.
-    DamageSource,
     SourceObject,
     Controller,
     SourceController,
     TargetObject,
+    /// The source of the damage being replaced, not the ability source.
+    DamageSource,
 }
 
 /// "The next time a source of your choice would deal damage to target creature this turn,

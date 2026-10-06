@@ -2,6 +2,9 @@ use crate::tag::TagKeyWalk;
 
 use super::*;
 
+#[cfg(feature = "serde")]
+fn serialized_bool_is_false(value: &bool) -> bool { !*value }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AddManaOfChosenColorEffect {
@@ -768,7 +771,7 @@ impl RedirectNextDamageToTargetEffect {
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     /// Earlier admitted payloads represent unqualified damage.
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
     pub combat_only: bool,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,

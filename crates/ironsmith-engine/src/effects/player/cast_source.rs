@@ -30,6 +30,10 @@ fn restore_other_face_after_failed_cast(
 
 /// Effect that casts the source card immediately.
 impl EffectExecutor for CastSourceEffect {
+    fn contains_current_source_suspend_cast(&self) -> bool {
+        self.cast_as_suspend && self.require_exile
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

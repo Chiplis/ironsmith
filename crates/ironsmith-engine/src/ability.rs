@@ -36,6 +36,30 @@ pub fn extract_static_abilities(abilities: &[Ability]) -> Vec<NewStaticAbility> 
         .collect()
 }
 
+/// Suspend granted without a cost has no alternative-casting record. Its
+/// executable last-counter trigger nevertheless retains the typed Suspend cast
+/// identity, including in previously admitted artifact/native payloads. Read
+/// that identity from the current ability set, never from presentation labels.
+pub(crate) fn abilities_have_suspend(abilities: &[Ability]) -> bool {
+    abilities.iter().any(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else { return false; };
+        if !ability.functional_zones.contains(&crate::zone::Zone::Exile) { return false; }
+        let is_last_time_counter = if let Some(native) = triggered.trigger
+            .downcast_ref::<crate::triggers::CounterRemovedFromTrigger>()
+        {
+            native.filter.source && native.last
+                && native.counter_type == Some(crate::object::CounterType::Time)
+        } else {
+            triggered.trigger.compiled_model().is_some_and(|model| matches!(&model.kind,
+                ironsmith_core::TriggerKind::CounterRemovedFrom(trigger)
+                    if trigger.filter.source && trigger.last
+                        && trigger.counter_type == Some(crate::object::CounterType::Time)))
+        };
+        is_last_time_counter && triggered.effects.all_effects().into_iter()
+            .any(|effect| effect.0.contains_current_source_suspend_cast())
+    })
+}
+
 #[cfg(test)]
 pub(crate) fn ability_surface_text_for_tests(ability: &Ability) -> Option<String> {
     Some(crate::runtime_display::ability_surface_text_for_tests(

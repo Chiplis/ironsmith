@@ -1690,7 +1690,16 @@ impl GrantRegistry {
                     )).collect::<Vec<_>>()
                 }).unwrap_or_default();
             let printed = characteristics.abilities.iter().enumerate().filter_map(|(slot, ability)| {
-                let origin = characteristics.abilities.origin(slot)?.clone();
+                let Some(origin) = characteristics.abilities.origin(slot).cloned() else {
+                    if source_is_battlefield && ability.functions_in(&source.zone)
+                        && let AbilityKind::Static(ability) = &ability.kind
+                        && ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.linked_exile_pair.is_some())
+                    {
+                        game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                            "linked static permission omitted its rules-text acquisition; native recovery or replay required".into()));
+                    }
+                    return None;
+                };
                 let printed_face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_)).then_some(source.card).flatten();
                 Some((ability, None, GrantPermissionIdentity::Static { source: source_id, origin, printed_face }))
             });
@@ -1719,7 +1728,23 @@ impl GrantRegistry {
                     continue;
                 }
 
-                for spec in spec.zone_specs() {
+                if (spec.requires_linked_exile_pair || spec.linked_exile_pair.is_some())
+                    && !ability.functions_in(&source.zone) { continue; }
+                let linked_targets = match static_linked_exile_targets(game, &spec, &permission_identity) {
+                    Ok(targets) => targets,
+                    Err(error) => { game.record_token_resource_failure(&error); continue; }
+                };
+                for mut spec in spec.zone_specs() {
+                    if linked_targets.is_some() {
+                        // The exact member ObjectId becomes a conjunctive target.
+                        // Never resolve this relation again against source-wide links.
+                        spec.filter.tagged_constraints.retain(|constraint|
+                            !(constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject));
+                    }
+                    let targets = linked_targets.as_ref().map(|members|
+                        members.iter().copied().map(Some).collect::<Vec<_>>())
+                        .unwrap_or_else(|| vec![is_source_self_grant.then_some(source_id)]);
                     let combat = game.combat.as_ref();
                     for player in game.players.iter().filter(|player| {
                         player.is_in_game()
@@ -1731,9 +1756,10 @@ impl GrantRegistry {
                                 combat,
                             )
                     }) {
+                        for &target_id in &targets {
                         grants.push(Grant {
                             permission_identity: Some(permission_identity.clone()),
-                            target_id: is_source_self_grant.then_some(source_id),
+                            target_id,
                             target_stable_id: None,
                             filter: (spec.filter != ObjectFilter::source())
                                 .then(|| normalize_grant_filter(spec.filter.clone())),
@@ -1758,6 +1784,7 @@ impl GrantRegistry {
                             ends_on_next_matching_cast: false,
                             source: GrantSource::StaticAbility { source_id },
                         });
+                        }
                     }
                 }
             }
@@ -1838,6 +1865,38 @@ fn normalize_grant_filter(mut filter: ObjectFilter) -> ObjectFilter {
     dedupe_vec(&mut filter.supertypes);
     dedupe_vec(&mut filter.excluded_supertypes);
     filter
+}
+
+fn has_linked_exile_pool(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint|
+        constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject)
+}
+
+/// Expand a static linked reader into exact live exile incarnations. Missing
+/// pairing/acquisition/recovery state is an error, never a source-wide fallback.
+fn static_linked_exile_targets(
+    game: &crate::GameState,
+    spec: &crate::grant::GrantSpec,
+    identity: &GrantPermissionIdentity,
+) -> Result<Option<Vec<ObjectId>>, crate::effects::ExecutionError> {
+    if !spec.requires_linked_exile_pair && spec.linked_exile_pair.is_none() { return Ok(None); }
+    if spec.zone != Zone::Exile || !spec.additional_zones.is_empty()
+        || !has_linked_exile_pool(&spec.filter)
+        || spec.filter.tagged_constraints.iter().filter(|constraint|
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG).count() != 1
+    {
+        return Err(crate::effects::ExecutionError::IncompleteEvidence(
+            "linked static permission omitted its typed pool relation".into()));
+    }
+    let owner = match identity {
+        GrantPermissionIdentity::Static { source, origin, .. } =>
+            crate::linked_exile::LinkedExileOwner::capture(*source, spec.linked_exile_pair, Some(origin)),
+        _ => None,
+    }.ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+        "linked static permission has no proven definition/acquisition pair; native recovery or replay required".into()))?;
+    Ok(Some(game.linked_exile_pair_members(&owner)?.iter().copied().filter(|member|
+        game.object(*member).is_some_and(|object| object.zone == Zone::Exile)).collect()))
 }
 
 fn grant_filter_context(

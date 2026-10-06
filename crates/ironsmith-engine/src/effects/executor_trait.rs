@@ -571,6 +571,14 @@ pub trait EffectExecutor:
     /// provided by the default capability helpers below.
     fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
 
+    /// Typed Suspend casting identity for this program's current source.
+    /// Only executors which perform that cast, or wrappers which preserve its
+    /// execution source, opt in. The generic child visitor also visits granted,
+    /// copied, deferred and source-rebound programs and is not safe here.
+    fn contains_current_source_suspend_cast(&self) -> bool {
+        false
+    }
+
     /// Direct role use, excluding optional/conditional children until they run.
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         let mut has_children = false;

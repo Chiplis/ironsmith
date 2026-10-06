@@ -1818,6 +1818,8 @@ where
                     .into_iter()
                     .map(&mut *map_effect)
                     .collect::<Result<_, _>>()?,
+                requires_linked_exile_pair: spec.requires_linked_exile_pair,
+                linked_exile_pair: spec.linked_exile_pair,
                 source_exiled_surface: spec.source_exiled_surface,
                 filtered_zone_surface: spec.filtered_zone_surface,
                 top_card_only: spec.top_card_only,

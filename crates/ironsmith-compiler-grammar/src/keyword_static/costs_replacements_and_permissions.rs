@@ -4468,6 +4468,23 @@ pub fn parse_source_exiled_play_life_cost_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(reference) = crate::grammar::permission_facts::source_exiled::
+        parse_play_lands_and_spells_from_source_exiled_tokens(tokens)
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let mut spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
+        ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            source: reference.surface, plural_spell_subject: true,
+            generic_card_pool: true, generic_cast_this_way_subject: true,
+        });
+        spec.requires_linked_exile_pair = true;
+        return Ok(Some(vec![StaticAbility::grants(spec)]));
+    }
     // The dedicated land permission owns this exact surface. Its canonical
     // grant must not compete with the broader play-from permission parser.
     if is_play_lands_from_graveyard_line_lexed(tokens) {

@@ -96,3 +96,18 @@ pub fn parse_cards_from_source_exiled_tokens(
     }
     Some((reference, tail))
 }
+
+/// A complete static land-and-spell permission over one source-linked pool.
+/// Leave durations, price riders and narrower spell subjects to their owners.
+pub fn parse_play_lands_and_spells_from_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&[
+        "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "cards",
+    ]))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you || primitives::probe_all(tail, primitives::sentence_end(),
+        "source-linked land and spell permission").is_none() { return None; }
+    Some(reference)
+}

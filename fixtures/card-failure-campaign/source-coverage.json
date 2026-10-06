@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "a8ca243958c2ca870da1fdcc4beef3653c40decf",
+  "source_implementation_commit": "c2e20559cb357a82ffa0672c171c549e144beb3e",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1164,
-    "additional_proposed_compile_entries": 1169,
+    "additional_proposed_unique_cards": 1169,
+    "additional_proposed_compile_entries": 1174,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1164,
+    "source_proposals_excluding_identified_runtime_gaps": 1169,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -4682,6 +4682,79 @@
         "Fresh native Sequence, ForPlayers and ForEachTagged encoders retain full composition fields. The runtime capability classifier remains strict and still rejects unsupported simultaneous children."
       ],
       "report": "architecture/card-failure-join-forces.md"
+    },
+    {
+      "id": "linked-exile-static-play-permissions",
+      "stage": 85,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Nightveil Specter"
+      ],
+      "partial_entries": [
+        {
+          "card_name": "Bane Alley Broker",
+          "remaining_blocker": "Persistent per-card private inspection and linked activated reader."
+        },
+        {
+          "card_name": "Kheru Mind-Eater",
+          "remaining_blocker": "Private inspection lifetime plus its complete permission body."
+        },
+        {
+          "card_name": "Intellect Devourer",
+          "remaining_blocker": "Each-opponent scoped membership and complete duration return."
+        },
+        {
+          "card_name": "Colfenor's Plans",
+          "remaining_blocker": "Persistent private inspection, spell limit and draw-step body."
+        },
+        {
+          "card_name": "Rogue Class",
+          "remaining_blocker": "Level acquisition, persistent private inspection and complete level bodies."
+        },
+        {
+          "card_name": "Intet, the Dreamer",
+          "remaining_blocker": "Effect-scoped linked permission and full paid trigger lifetime."
+        },
+        {
+          "card_name": "Elder Brain",
+          "remaining_blocker": "Complete hand-exile trigger, effect-scoped lifetime and mana permission."
+        }
+      ],
+      "implementation_commit": "1f5dfdcff90aabd417617f16a271148f39f55412",
+      "integrated_source_commit": "8bb80336b949472d67a82c584e48054be4d2c2bd",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete typed static-reader/body review and final union check at 8bb80336b949472d67a82c584e48054be4d2c2bd, including mixed reader identity and legacy artifact checksum preservation.",
+      "semantic_scope": [
+        "An explicitly required static reader binds to the immutable producer definition pair and current acquisition, emitting exact current exile ObjectId grants. Source/member incarnations, control, phasing, ability loss, copying and replacement rollback remain distinct.",
+        "Missing required pair/acquisition evidence fails explicitly. False requirements and absent pairs omit serialization to preserve old artifact6 and indirect public restricted-mana wire payloads; checkpoint3/audit19 are unchanged."
+      ],
+      "legacy_scope_limit": "Unmarked legacy readers retain their pre-existing source-wide union behavior. The producer adds no new legacy union entries relative to the prior ExileTop owner. This packet makes no correctness claim for those unmodified readers.",
+      "report": "architecture/card-failure-linked-exile-static-permissions.md"
+    },
+    {
+      "id": "suspended-counter-complete-bodies",
+      "stage": 85,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/suspended_counter_bodies.json.fixture",
+      "baseline_entries": [
+        "Fury Charm",
+        "Shivan Sand-Mage",
+        "Timebender",
+        "Timecrafting"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "5503e2ec6577a2268f124db386e283c06df1804b",
+      "integrated_source_commit": "c2e20559cb357a82ffa0672c171c549e144beb3e",
+      "tests": "authored_not_run",
+      "source_review": "Independent full-body scenario and corrected nine-file capability-owner review. All nine integrated paths exactly match the reviewed source tip.",
+      "semantic_scope": [
+        "Separate permanent and suspended-card target domains retain put/remove counter requirements, exact target revalidation, all modes and original paid X. Last-counter removal casts once through the real Suspend owner.",
+        "Current native granted Suspend is recognized from existing typed last-counter cast semantics. Only CastSource and source-preserving May opt into current-source capability; delayed, granted, copied and source-rebound nested programs do not leak capability.",
+        "Opponent-specific grants affect target eligibility without giving the announcing player casting permission. Current ability expiry/loss/concealment and label-free retained legacy carriers remain supported.",
+        "Fury destroy/pump/trample cleanup, Shivan fixed paid Suspend/upkeep/haste/ETB and Timebender paid Morph/face-up modes remain complete."
+      ],
+      "report": "architecture/card-failure-suspended-counter-bodies.md"
     }
   ],
   "cards": [
@@ -6910,8 +6983,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Banon, the Returners' Leader",
@@ -9893,8 +9969,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Collective Inferno",
@@ -13137,8 +13216,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Elderscale Wurm",
@@ -15775,8 +15857,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "suspended-counter-complete-bodies"
+      ]
     },
     {
       "card_name": "Fyndhorn Druid",
@@ -19466,8 +19550,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Intercessor's Arrest",
@@ -19486,8 +19573,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Into the Night",
@@ -20800,8 +20890,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Kheru Spellsnatcher",
@@ -24993,8 +25086,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Nihiloor",
@@ -29355,8 +29450,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "linked-exile-static-play-permissions"
+      ]
     },
     {
       "card_name": "Rogues' Gallery",
@@ -31141,8 +31239,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "suspended-counter-complete-bodies"
+      ]
     },
     {
       "card_name": "Shocker, Unshakable",
@@ -35867,8 +35967,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "suspended-counter-complete-bodies"
+      ]
     },
     {
       "card_name": "Timecrafting",
@@ -35877,8 +35979,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "suspended-counter-complete-bodies"
+      ]
     },
     {
       "card_name": "Timely Reinforcements",
@@ -40646,6 +40750,27 @@
       "completion_gate": "Prepared original/completion split, shared one-shot replacement consumption, actual versus selected receipts, unique event occurrences, checked admission and pending/phasing routing are source-reviewed. Exact Epicenter and By Invitation Only scenarios remain authored/unrun.",
       "source_review_commit": "09f8ba628",
       "integrated_source_review_commit": "65ae94a20f970ab4efbb0600f9f029fd69df3467"
+    },
+    {
+      "id": "effect-payload-default-wire-compatibility",
+      "status": "source_reviewed_remediation_integrated_validation_deferred",
+      "affected_previously_proposed_complete": [
+        "Clockwork Avian",
+        "Clockwork Beast",
+        "Clockwork Steed",
+        "Clockwork Swarm",
+        "Aegis of Honor",
+        "Glarecaster",
+        "Goblin Psychopath",
+        "Hazduhr the Abbot",
+        "Mirrorwood Treefolk",
+        "Shield Dancer",
+        "Soltari Guerrillas"
+      ],
+      "scope": "Only newly introduced counter ceiling and next-time combat qualifier payload fields plus the traced native redirection encoder. Ordinary opaque artifact loading is distinct from typed decode/re-encoding.",
+      "completion_gate": "New absent defaults remain omitted at typed/fresh-native encoding boundaries, including indirect public mana-effect payloads; nondefaults remain explicit. Authored compatibility contracts and consolidated artifact6/checkpoint3/audit19 validation remain unrun.",
+      "source_review_commit": "7da349d7dfa22545691c4cb192a19b59bf355e21",
+      "integrated_source_review_commit": "c2e20559cb357a82ffa0672c171c549e144beb3e"
     }
   ]
 }

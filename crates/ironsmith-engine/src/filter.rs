@@ -655,7 +655,9 @@ impl TailMatchSubject for LayeredSubject<'_> {
         game: &crate::game_state::GameState,
         ctx: &FilterContext,
     ) -> bool {
-        object_has_alternative_cast_kind(self.object, kind, game, ctx)
+        object_has_alternative_cast_kind_in_view(
+            self.object, self.chars.abilities.as_slice(), kind, game, ctx,
+        )
     }
 
     fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool {

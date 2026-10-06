@@ -101,3 +101,75 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
         effects.linked_exile_pair = Some(pair);
     }
 }
+
+/// Prove one exile-top trigger and one static whole-pool play permission.
+/// Leaf evasion keywords are unrelated scopes; any other ability, executable
+/// producer, rider, or level/copy scope stays unbound pending typed analysis.
+/// This is deliberately separate from the scalar binder's stricter contract.
+pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
+    use ironsmith_core::{Grantable, StaticAbilityId, StaticAbilityPayload};
+    if definition.spell_effect.is_some() || !definition.alternative_casts.is_empty()
+        || !definition.optional_costs.is_empty()
+        || definition.additional_cost.has_non_mana_costs()
+        || definition.additional_cost.dynamic_mana_cost().is_some()
+        || definition.additional_cost.as_one_of().is_some()
+    { return; }
+    let mut producer = None;
+    let mut consumer = None;
+    for (slot, ability) in definition.abilities.iter().enumerate() {
+        match &ability.kind {
+            AbilityKind::Triggered(trigger) => {
+                if producer.is_some() { return; }
+                let effects = trigger.effects.all_effects();
+                if effects.len() != 1
+                    || effects[0].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+                        .is_none_or(|exile| exile.face_down)
+                { return; }
+                producer = Some(slot);
+            }
+            AbilityKind::Static(ability) => match &ability.payload {
+                StaticAbilityPayload::None
+                    if matches!(ability.id, Some(StaticAbilityId::Flying | StaticAbilityId::Menace)) => {}
+                StaticAbilityPayload::Grants(spec)
+                    if spec.requires_linked_exile_pair
+                        && matches!(spec.grantable, Grantable::PlayFrom)
+                        && spec.zone == crate::zone::Zone::Exile
+                        && spec.additional_zones.is_empty()
+                        && spec.beneficiary == crate::target::PlayerFilter::You
+                        && spec.usage_limit.is_none() && spec.max_plays.is_none()
+                        && spec.cast_this_way_grants.is_empty()
+                        && spec.permanent_this_way_grants.is_empty()
+                        && spec.on_use_effects.is_empty()
+                        && spec.cast_this_way_filter.is_none()
+                        && !spec.top_card_only && !spec.instant_timing && !spec.may_look_at_top => {
+                    if consumer.is_some() { return; }
+                    let mut filter = spec.filter.clone();
+                    filter.zone = None;
+                    if filter.tagged_constraints.len() != 1
+                        || filter.tagged_constraints[0].tag.as_str() != ironsmith_core::SOURCE_EXILED_TAG
+                        || filter.tagged_constraints[0].relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+                    { return; }
+                    filter.tagged_constraints.clear();
+                    if filter != crate::target::ObjectFilter::default() { return; }
+                    consumer = Some(slot);
+                }
+                _ => return,
+            },
+            _ => return,
+        }
+    }
+    let (Some(producer), Some(consumer)) = (producer, consumer) else { return; };
+    let Ok(bytes) = serde_json::to_vec(&definition.abilities) else { return; };
+    let pair = ironsmith_core::LinkedExilePair {
+        definition: ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()),
+        pair: producer as u32,
+    };
+    if let AbilityKind::Triggered(ability) = &mut definition.abilities[producer].kind {
+        ability.effects.linked_exile_pair = Some(pair);
+    }
+    if let AbilityKind::Static(ability) = &mut definition.abilities[consumer].kind
+        && let StaticAbilityPayload::Grants(spec) = &mut ability.payload
+    {
+        spec.linked_exile_pair = Some(pair);
+    }
+}

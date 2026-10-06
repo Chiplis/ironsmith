@@ -401,6 +401,8 @@ impl StaticAbilityModelInterpreter {
             max_plays: spec.max_plays,
             cast_this_way_filter: spec.cast_this_way_filter.clone(),
             on_use_effects: spec.on_use_effects.clone(),
+            requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            linked_exile_pair: spec.linked_exile_pair,
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),
             top_card_only: spec.top_card_only,

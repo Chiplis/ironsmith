@@ -542,12 +542,12 @@ pub enum RedirectNextTimeDamageSource {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum RedirectNextTimeDamageDestination {
-    /// The source of the damage being replaced, not the ability source.
-    DamageSource,
     SourceObject,
     Controller,
     SourceController,
     TargetObject,
+    /// The source of the damage being replaced, not the ability source.
+    DamageSource,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1522,7 +1522,7 @@ impl UntapEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCountersEffect {
     /// Only this placement is capped; other abilities may exceed the total.
-    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub maximum_total: Option<u32>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub completion_action: Option<crate::event_model::KeywordActionKind>,

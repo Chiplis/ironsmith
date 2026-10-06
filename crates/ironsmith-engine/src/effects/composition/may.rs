@@ -328,6 +328,10 @@ impl MayEffect {
 }
 
 impl EffectExecutor for MayEffect {
+    fn contains_current_source_suspend_cast(&self) -> bool {
+        self.effects.iter().any(|effect| effect.0.contains_current_source_suspend_cast())
+    }
+
     fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
         self.decider.as_ref().is_some_and(|filter| filter.mentions_player_filter(needle))
     }
