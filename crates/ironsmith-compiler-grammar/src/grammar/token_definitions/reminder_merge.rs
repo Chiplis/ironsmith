@@ -1,6 +1,6 @@
 use crate::model::token_definition::{
     ArtifactTokenShape, CreatureTokenRulesShape, EquipmentRuleLineShape, EquipmentRulesShape,
-    TokenDefinitionSpec, TokenRulesSurfaces, VehicleTokenShape,
+    TokenDefinitionSpec, TokenRulesSurfaces, VehicleTokenShape, ModifiedBuiltinTokenShape,
 };
 
 use super::reminder::TokenReminderFacts;

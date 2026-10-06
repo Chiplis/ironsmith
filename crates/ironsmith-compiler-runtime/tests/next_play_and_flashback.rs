@@ -437,6 +437,7 @@ fn doctor_investigates_then_its_actual_optional_sacrifice_owns_the_later_target(
             let clues: Vec<_> = game.battlefield.iter().copied().filter(|id|
                 game.calculated_subtypes(*id).contains(&ironsmith::Subtype::Clue)).collect();
             assert_eq!(clues.len(), 1, "the complete enter trigger investigates");
+            assert_eq!(game.object(clues[0]).unwrap().name, "Clue Token");
             let grave = sorcery(&mut game, Zone::Graveyard);
             let unrelated = creature(&mut game, Zone::Graveyard, "Bear");
             dm.decline = decline;

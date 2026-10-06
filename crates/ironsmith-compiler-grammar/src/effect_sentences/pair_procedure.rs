@@ -43,6 +43,8 @@ use crate::registry::{
 mod kinds;
 #[path = "pair_procedure/life_gain.rs"]
 mod life_gain;
+#[path = "pair_procedure/keyword_replacement.rs"]
+mod keyword_replacement;
 #[path = "pair_procedure/discard_replacement.rs"]
 mod discard_replacement;
 #[path = "pair_procedure/targeted_random_partition.rs"]
@@ -56,6 +58,7 @@ mod collect_mana_payments;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
+        || keyword_replacement::recognizes_replacement_sentence(tokens)
         || discard_replacement::recognizes_replacement_sentence(tokens)
 }
 pub(super) fn validate_discard_replacements(tokens: &[crate::lexer::OwnedLexToken]) -> Result<(), CardTextError> {
@@ -748,6 +751,14 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentence_idx,
                 kinds::open_copy_next_spell_retarget(sentences, sentence_idx),
             )
+        },
+    },
+    Shape {
+        id: RuleId::new("conditional-keyword-action-self-replacement"),
+        head: HeadDiscriminator::words(&["investigate", "amass"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, keyword_replacement::read(sentences, sentence_idx))
         },
     },
     Shape {

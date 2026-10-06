@@ -1,10 +1,12 @@
 # Token word roles: ordinary description increment
 
-This increment is integrated into the unpublished staged artifact 8 / public
-digest 4 / audit 21 boundary. Its schema fingerprint includes the new token-role
-metadata and derived names; no artifact or signed evidence was regenerated.
-See `card-failure-token-role-integration.md`. All twelve
-text-changing cards remain held; every authored scenario remains unrun.
+The ordinary described-token increment is published in draft 862 under artifact 8 /
+public digest 4 / audit 21. Its schema fingerprint includes token-role metadata
+and derived names; no artifact or signed evidence was regenerated. See
+`card-failure-token-role-integration.md`. The subsequent predefined profile increment
+changes additional executable names and definitions and requires a separately
+coordinated admission decision; it does not assign or publish a new version.
+All twelve text-changing cards remain held; every authored scenario remains unrun.
 
 ## Creating instruction versus existing token
 
@@ -79,14 +81,46 @@ definition hash.
 The generic Creature/Artifact/Vehicle/Enchantment description route now retains
 roles in all three lowering entrances, including the fixed-count fast path.
 That fast path previously bypassed role retention and name derivation; the
-shared helper now owns its instruction envelope as well. Compact/predefined
-templates, keyword-built templates such as Gift,
+shared helper now owns its instruction envelope as well. Residual compact
+templates, keyword-built creature templates such as Gift,
 unproven reminder imports, mixed color-role fields, native omitted evidence,
 quoted triggers without immutable definition stamps, and templates requiring
 unmodeled attachment/spell/casting metadata remain explicit holds. This is not
-full token-domain or full text-card coverage. Bare predefined and residual
-compact descriptions need the next profile increment; they are not silently
-assigned ordinary-description roles.
+full token-domain or full text-card coverage.
+
+## Bounded predefined profiles
+
+The typed `BuiltinTokenShape` selects the predefined definition and word roles.
+Its implied colors, subtypes and abilities do not become literal words of the
+creating instruction. Walker, Roles and the four card-name definitions retain
+fixed names. Other predefined artifact/enchantment tokens derive subtype-plus-
+`Token` names. Legacy abbreviated Spawn/Scion shapes retain unknown word roles;
+their full descriptions use the ordinary authored owner above.
+
+`ModifiedBuiltinTokenShape` retains explicit name/color/P/T/supertype/type and
+keyword facts separately from the inherited template. Lowering keeps an ordered
+inherited ability prefix and authored keyword/grant suffix, including a genuinely
+additional ability equal to one of the inherited abilities. Duplicate parsing
+of the same authored shape words is still reconciled within that authored part.
+The wire/native effect envelope already carries the full role vector. Added
+subtype words can overlap inherited values, so the present uniform subtype role
+marks that mixed domain incomplete rather than treating its words as absent.
+Native omitted roles, remaining keyword-built definitions, attachment-bearing
+template traversal and unstamped nested triggers remain held. Presentation can
+expand a predefined blueprint; its strings never reconstruct execution roles.
+
+Eight exact previously proposed bodies require the corrected created names:
+Aerid Konstrari, Hungering Puppetbeast and Tenured Tethermage create
+`Heartwood Token`; Dora Milaje Elite, Shuri's Fabricator, T'Challa, the Black
+Panther, The Great Mound and Vibranium Mining Mech create `Vibranium Token`.
+Their complete frozen fixture is `fixtures/predefined_token_definitions.json.fixture`.
+The canonical leaf selects a typed builtin, `build_builtin_token_definition`
+selects `card_tokens.rs`'s complete definition, and the shared retention owner
+corrects the name before native creation. Their existing full-body scenarios
+now assert those names on independent direct and artifact routes while retaining
+all entry conditions, payments, abilities, tap state, restrictions and tails.
+The four card-name-token bodies keep their exact names. This bounded correction
+does not imply an affected count for other token producers or any text-card credit.
 
 ## Authored evidence
 
@@ -99,8 +133,10 @@ Vehicle colors, and postnominal color forms. Existing reused-token contracts now
 expect the migrated Alien Token name. No builds,
 compilation, compiler probes, formatters, tests or engine/corpus execution ran.
 
-Primary rules: Wizards' 2026-06-19 Comprehensive Rules,
-https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.pdf,
-111.3, 111.4, 612.2a and 612.4. The creation instruction derives names from subtype
+Primary rules: Wizards' 2026-09-25 Comprehensive Rules,
+https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.pdf,
+111.3, 111.4, 111.10w/x, 111.11, 612.2a and 612.4. Neither the Heartwood nor
+Vibranium predefined rule specifies an explicit name, so rule 111.4 applies.
+The creation instruction derives names from subtype
 words when no explicit name is given; changing an existing token's subtype does
 not derive its name again.

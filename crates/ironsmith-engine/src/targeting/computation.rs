@@ -819,10 +819,10 @@ pub(crate) fn protection_from_subject_with_view(
                 )
         }
         crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
-            mana_value_matches_scope(game, target_id, source.protection_mana_value(), filter)
+            mana_value_matches_scope(game, target_id, source.protection_mana_value(game), filter)
         }
         crate::ability::ProtectionFrom::ManaValuesOtherThanChosenNumber => {
-            game.chosen_number(target_id) != Some(source.protection_mana_value())
+            game.chosen_number(target_id) != Some(source.protection_mana_value(game))
         }
         crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity => {
             !colors_outside_commander_identity(game, game.controller_of(target))
@@ -1025,10 +1025,10 @@ impl ObjectSubject<'_> {
             Self::Snapshot(snapshot) => snapshot.card_types.contains(&card_type),
         }
     }
-    fn protection_mana_value(self) -> i32 {
+    fn protection_mana_value(self, game: &GameState) -> i32 {
         // Preserve this targeting query's printed-cost policy, rather than the
         // stack-X/split-card policy used by numeric ObjectFilter predicates.
-        self.mana_cost().map_or(0, |cost| cost.mana_value() as i32)
+        self.mana_cost(game).map_or(0, |cost| cost.mana_value() as i32)
     }
 }
 

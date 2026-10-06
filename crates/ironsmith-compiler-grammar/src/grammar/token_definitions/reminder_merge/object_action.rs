@@ -22,7 +22,18 @@ fn merge_token_definition_facts(
     authored: bool,
 ) -> bool {
     let before = definition.clone();
+    if authored && !reminder.definition.keywords.is_empty()
+        && let TokenDefinitionSpec::Builtin(template) = definition
+    {
+        *definition = TokenDefinitionSpec::ModifiedBuiltin(ModifiedBuiltinTokenShape::new(*template));
+    }
     let imported = match definition {
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+            for keyword in &reminder.definition.keywords {
+                if !shape.keywords.contains(keyword) { shape.keywords.push(*keyword); }
+            }
+            !reminder.definition.keywords.is_empty()
+        }
         TokenDefinitionSpec::Vehicle(VehicleTokenShape {
             flying,
             crew_amount,

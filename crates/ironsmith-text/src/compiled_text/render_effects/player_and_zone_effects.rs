@@ -1371,6 +1371,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::CountPlayers(PlayerFilter::Opponent) => Some("opponent you have".to_string()),
         Value::CountPlayers(PlayerFilter::Any) => Some("player".to_string()),
         Value::CountPlayers(PlayerFilter::NotYou) => Some("player other than you".to_string()),
+        Value::CountPlayers(player) => Some(
+            strip_leading_article(&describe_for_each_player_filter(player)).to_string(),
+        ),
         Value::CommanderCastCount(PlayerFilter::You) => Some(format!(
             "time you've cast {} commander from the command zone this game",
             if value.has_surface_hint(ValueSurfaceHint::IndefiniteCommanderReference) {

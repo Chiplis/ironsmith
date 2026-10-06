@@ -229,7 +229,7 @@ fn eliminate_keeps_clue_pump_and_the_exact_opposing_set() {
         assert!(game.is_suspected(own)); assert!(!game.is_suspected(bob)); assert!(!game.is_suspected(carol));
         assert_eq!(game.current_power(own), Some(3));
         for target in [bob, carol, ordinary] { assert_eq!(game.current_power(target), Some(1)); assert_eq!(game.current_toughness(target), Some(4)); }
-        assert_eq!(game.battlefield.iter().filter(|id| game.object(**id).is_some_and(|object| object.name == "Clue" && object.owner == A)).count(), 1);
+        assert_eq!(game.battlefield.iter().filter(|id| game.object(**id).is_some_and(|object| object.name == "Clue Token" && object.owner == A)).count(), 1);
         let late = creature(&mut game, B, "Later creature", Zone::Battlefield); game.set_suspected(late);
         assert!(game.is_suspected(late)); assert_eq!(game.current_power(late), Some(3));
     } }

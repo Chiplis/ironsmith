@@ -164,7 +164,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .is_some_and(|obj| game.controller_of(obj) == bob && obj.name == "Clue")
+                    .is_some_and(|obj| game.controller_of(obj) == bob && obj.name == "Clue Token")
             })
             .count();
         let alice_clues = game
@@ -172,7 +172,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Clue")
+                    .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Clue Token")
             })
             .count();
         assert_eq!(

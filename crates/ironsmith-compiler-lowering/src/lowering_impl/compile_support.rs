@@ -3519,6 +3519,29 @@ pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDe
         // lowering. Never infer their blueprint from runtime token objects.
         TokenDefinitionSpec::PrototypeReference(_) => None,
         TokenDefinitionSpec::Builtin(builtin) => Some(build_builtin_token_definition(builtin)),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+            let mut definition = build_builtin_token_definition(shape.template);
+            if let Some(name) = shape.name { definition.card.name = name; }
+            if let Some(colors) = shape.colors { definition.card.color_indicator = Some(colors); }
+            if let Some((power, toughness)) = shape.power_toughness {
+                definition.card.power_toughness = Some(PowerToughness::fixed(power, toughness));
+            }
+            for value in shape.supertypes {
+                if !definition.card.supertypes.contains(&value) { definition.card.supertypes.push(value); }
+            }
+            for value in shape.additional_card_types {
+                if !definition.card.card_types.contains(&value) { definition.card.card_types.push(value); }
+            }
+            for value in shape.additional_subtypes {
+                if !definition.card.subtypes.contains(&value) { definition.card.subtypes.push(value); }
+            }
+            // Reuse the keyword construction owner. Only its ordered ability
+            // occurrences are appended; no replacement card is allocated.
+            let mut keywords = CardDefinitionBuilder::new(definition.card.id, "");
+            for keyword in shape.keywords { keywords = apply_standard_token_keyword(keywords, keyword); }
+            definition.abilities.extend(keywords.abilities);
+            Some(definition)
+        }
         TokenDefinitionSpec::Vehicle(vehicle) => build_vehicle_token_definition(vehicle),
         TokenDefinitionSpec::Artifact(artifact) => build_artifact_token_definition(artifact),
         TokenDefinitionSpec::Enchantment(shape) => {

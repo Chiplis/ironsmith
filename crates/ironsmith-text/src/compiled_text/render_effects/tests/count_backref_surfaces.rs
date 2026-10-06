@@ -144,3 +144,19 @@ fn life_amount_preserves_where_x_history_surface() {
         "X life, where X is the number of opponents who were dealt combat damage this turn"
     );
 }
+
+#[test]
+fn investigate_qualified_player_counts_keep_comparison_and_repetition() {
+    let basis = Value::CountPlayers(PlayerFilter::CardsInHandAtLeastMoreThanYou {
+        base: Box::new(PlayerFilter::Opponent), count: 1,
+    });
+    for (count, expected) in [
+        (basis.clone(), "Investigate once for each opponent who has more cards in hand than you"),
+        (Value::Scaled(Box::new(basis), 2), "Investigate twice for each opponent who has more cards in hand than you"),
+    ] {
+        let investigate = Effect::new(crate::effects::InvestigateEffect::you(
+            count.with_surface_hint(ValueSurfaceHint::ForEach),
+        ));
+        assert_eq!(describe_effect(&investigate), expected);
+    }
+}

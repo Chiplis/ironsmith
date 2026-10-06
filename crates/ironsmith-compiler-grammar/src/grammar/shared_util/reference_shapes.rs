@@ -524,12 +524,21 @@ pub fn parse_hand_advantage_player(words: &[&str]) -> Option<PlayerFilter> {
         return None;
     }
     idx += 2;
-    if permission_shapes::starts_at_words(words, idx, &["at", "least"]) {
+    let explicit_minimum = permission_shapes::starts_at_words(words, idx, &["at", "least"]);
+    if explicit_minimum {
         idx += 2;
     }
-    let count =
-        crate::grammar::primitives::probe_shape(leaf::parse_number_complete(words.get(idx)?))?;
-    idx += 1;
+    // Bare "more cards" is a strict comparison, equivalent to at least one
+    // additional card. An explicit "at least" still requires its number.
+    let count = if !explicit_minimum && words.get(idx) == Some(&"more") {
+        1
+    } else {
+        let count = crate::grammar::primitives::probe_shape(
+            leaf::parse_number_complete(words.get(idx)?),
+        )?;
+        idx += 1;
+        count
+    };
     if !prefix_at_one_of(
         words,
         idx,

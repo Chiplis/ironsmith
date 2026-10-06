@@ -1,6 +1,11 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    if let ["for", "each", player_words @ ..] = words
+        && let Some(filter) = crate::grammar::shared_util::reference_shapes::parse_hand_advantage_player(player_words)
+    {
+        return Some((Value::CountPlayers(filter), words.len()));
+    }
     if let ["for", "each", noun @ ("opponent" | "player"), tail @ ..] = words {
         let plural = if *noun == "opponent" {
             "opponents"

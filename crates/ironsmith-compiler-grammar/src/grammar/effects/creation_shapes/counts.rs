@@ -359,6 +359,21 @@ pub fn parse_investigate_for_each_count_tokens(
     if let Some(value) = parse_creation_for_each_dynamic_count_tokens(tokens) {
         return Ok(value.with_surface_hint(ValueSurfaceHint::ForEach));
     }
+    if words.first().is_some_and(|word| matches!(*word, "opponent" | "opponents" | "player" | "players")) {
+        // A participant domain cannot fall through to the permanent-filter
+        // parser: doing so silently discards a relative player predicate.
+        let player = match words.as_slice() {
+            ["opponent" | "opponents"] => Some(PlayerFilter::Opponent),
+            ["player" | "players"] => Some(PlayerFilter::Any),
+            _ => None,
+        };
+        return player.map(|player| Value::CountPlayers(player)
+            .with_surface_hint(ValueSurfaceHint::ForEach)).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported investigate player count (clause: '{}')", words.join(" "),
+            ))
+        });
+    }
     reject_lossy_count(tokens, &words)?;
     Ok(
         Value::Count(crate::object_filters::parse_object_filter(tokens, false)?)

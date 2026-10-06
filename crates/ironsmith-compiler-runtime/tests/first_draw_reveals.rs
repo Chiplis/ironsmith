@@ -234,6 +234,10 @@ fn eisenhorn_combat_body_investigates_the_damage_amount_and_rejects_noncombat() 
         if combat { resolve_stack_entry_with(&mut game, &mut answers).unwrap(); }
         assert_eq!(game.battlefield.iter().filter_map(|id| game.object(*id)).filter(|object|
             object.subtypes.contains(&ironsmith::types::Subtype::Clue)).count(), if combat { 3 } else { 0 });
+        for clue in game.battlefield.iter().filter_map(|id| game.object(*id)).filter(|object|
+            object.subtypes.contains(&ironsmith::types::Subtype::Clue)) {
+            assert_eq!(clue.name, "Clue Token");
+        }
     } }
 }
 

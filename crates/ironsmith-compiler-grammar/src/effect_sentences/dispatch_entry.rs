@@ -3936,6 +3936,13 @@ pub(crate) fn parse_complete_investigate_statement(
     {
         return Ok(None);
     }
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
+        || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+    {
+        // The leaf owns one complete investigate instruction. The chain
+        // owner must retain subsequent targets and values in source order.
+        return Ok(None);
+    }
     super::creation_handlers::parse_investigate(&tokens[1..], None).map(|effect| Some(vec![effect]))
 }
 

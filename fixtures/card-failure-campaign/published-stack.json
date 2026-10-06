@@ -1333,6 +1333,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/861"
+    },
+    {
+      "stage": 96,
+      "branch": "fix/card-failures-96-number-counter-token-boundary",
+      "base": "fix/card-failures-95-aura-control-bodies",
+      "source_integration_commit": "34130e276395b22574a17aa5a9f210ef8d1eda34",
+      "remote_commit": "0e2a3ea4aa4c31c17c1f89f209c5c38236bc5900",
+      "tree": "af4d5896f7d88dd92e8d49a8d28084c951ebc724",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 862,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/862"
     }
   ]
 }

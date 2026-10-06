@@ -73,11 +73,57 @@ pub fn parse_token_definition_shape_tokens(
         Some(BuiltinTokenShape::Blood)
     } else if has("powerstone") && !has("creature") {
         Some(BuiltinTokenShape::Powerstone)
+    } else if has("heartwood") && !has("creature") {
+        Some(BuiltinTokenShape::Heartwood)
+    } else if has("vibranium") && !has("creature") {
+        Some(BuiltinTokenShape::Vibranium)
     } else {
         None
     };
     if let Some(builtin) = builtin {
-        return Some(TokenDefinitionSpec::Builtin(builtin));
+        let mut shape = ModifiedBuiltinTokenShape::new(builtin);
+        shape.name = scope.name.clone();
+        if words.iter().any(|word| matches!(*word,
+            "white" | "blue" | "black" | "red" | "green" | "colorless"))
+            || common::phrase_present(words, &["all", "colors"])
+        {
+            let (colors, role) = token_color_words(words);
+            shape.colors = Some(colors);
+            shape.color_words = role;
+        }
+        shape.power_toughness = pt;
+        shape.supertypes = words.iter().filter_map(|word| leaf::parse_leaf_supertype_complete(word).ok()).collect();
+        let inherited_types = builtin.card_types();
+        shape.additional_card_types = words.iter().filter_map(|word| leaf::parse_leaf_card_type_complete(word).ok())
+            .filter(|kind| !inherited_types.contains(kind)).collect();
+        // The predefined-token noun denotes its complete rule definition.
+        // Other subtype nouns in the descriptor are separate authored facts.
+        let identifier: &[&str] = match builtin {
+            BuiltinTokenShape::Treasure => &["treasure"], BuiltinTokenShape::Clue => &["clue"],
+            BuiltinTokenShape::Map => &["map"], BuiltinTokenShape::Lander => &["lander"],
+            BuiltinTokenShape::Junk => &["junk"], BuiltinTokenShape::Mutagen => &["mutagen"],
+            BuiltinTokenShape::Gold => &["gold"], BuiltinTokenShape::Shard => &["shard"],
+            BuiltinTokenShape::Walker => &["walker"], BuiltinTokenShape::Food => &["food"],
+            BuiltinTokenShape::Blood => &["blood"], BuiltinTokenShape::Powerstone => &["powerstone"],
+            BuiltinTokenShape::Heartwood => &["heartwood"], BuiltinTokenShape::Vibranium => &["vibranium"],
+            BuiltinTokenShape::EldraziSpawn => &["eldrazi", "spawn"],
+            BuiltinTokenShape::EldraziScion => &["eldrazi", "scion"],
+            BuiltinTokenShape::WickedRole => &["wicked", "role"],
+            BuiltinTokenShape::YoungHeroRole => &["young", "hero", "role"],
+            BuiltinTokenShape::MonsterRole => &["monster", "role"],
+            BuiltinTokenShape::SorcererRole => &["sorcerer", "role"],
+            BuiltinTokenShape::RoyalRole => &["royal", "role"],
+            BuiltinTokenShape::CursedRole => &["cursed", "role"],
+            BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
+            | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
+        };
+        let additional_words: Vec<_> = words.iter().copied().filter(|word| !identifier.contains(word)).collect();
+        shape.additional_subtypes = creature_subtypes(&additional_words);
+        shape.keywords = token_keywords(&outer_words);
+        shape.words_complete = scope.complete_quotes;
+        return Some(if shape == ModifiedBuiltinTokenShape::new(builtin) {
+            TokenDefinitionSpec::Builtin(builtin)
+        } else { TokenDefinitionSpec::ModifiedBuiltin(shape) });
     }
 
     if all(&["vehicle", "artifact"]) && !has("creature") {

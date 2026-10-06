@@ -157,13 +157,42 @@ fn token_text_names_source_exiled(
 pub(super) fn retain_token_description_roles(
     source: &crate::model::token_definition::TokenDefinitionSpec,
     token: &mut crate::cards::CardDefinition,
+    shape_ability_count: usize,
 ) -> Result<Option<ironsmith_core::TokenTextRoles>, CardTextError> {
+    use crate::model::token_definition::TokenDefinitionSpec;
     let Some(roles) = source.text_roles() else { return Ok(None); };
+    let fixed_name = match source {
+        TokenDefinitionSpec::Builtin(template) => template.fixed_name(),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => shape.name.as_deref().or_else(|| shape.template.fixed_name()),
+        _ => None,
+    };
+    if let Some(name) = fixed_name { token.card.name = name.into(); }
     if roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived {
         token.card.name = ironsmith_core::subtype_derived_token_name(&token.card.subtypes)
             .ok_or_else(|| CardTextError::InvariantViolation("token subtype has no retained canonical rules spelling".into()))?;
     }
-    Ok(Some(roles.retained(token.abilities.len())))
+    let authored_start = token_shape_authored_ability_start(source, shape_ability_count)?;
+    let mut roles = roles.retained(shape_ability_count);
+    if let TokenDefinitionSpec::ModifiedBuiltin(shape) = source {
+        roles.abilities[authored_start..].fill(shape.keyword_words);
+    }
+    let added = token.abilities.len().checked_sub(shape_ability_count).ok_or_else(||
+        CardTextError::InvariantViolation("token grant owner removed shape abilities".into()))?;
+    roles.abilities.extend(std::iter::repeat_n(ironsmith_core::TokenWordRole::Authored, added));
+    Ok(Some(roles))
+}
+
+fn token_shape_authored_ability_start(
+    source: &crate::model::token_definition::TokenDefinitionSpec,
+    shape_ability_count: usize,
+) -> Result<usize, CardTextError> {
+    use crate::model::token_definition::TokenDefinitionSpec;
+    match source {
+        TokenDefinitionSpec::Builtin(_) => Ok(shape_ability_count),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => shape_ability_count.checked_sub(shape.keywords.len())
+            .ok_or_else(|| CardTextError::InvariantViolation("token keyword occurrence inventory exceeds its definition".into())),
+        _ => Ok(0),
+    }
 }
 
 pub(super) fn compile_create_token_with_mods_action(
@@ -202,8 +231,10 @@ pub(super) fn compile_create_token_with_mods_action(
     };
     let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-    apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
-    let text_roles = retain_token_description_roles(definition, &mut token)?;
+    let shape_ability_count = token.abilities.len();
+    let authored_start = token_shape_authored_ability_start(definition, shape_ability_count)?;
+    apply_token_definition_granted_abilities(&mut token, granted_abilities, authored_start)?;
+    let text_roles = retain_token_description_roles(definition, &mut token, shape_ability_count)?;
     let subject = if *action_player == PlayerAst::Opponent {
         LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
     } else {
@@ -3612,8 +3643,10 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-            apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
-            let text_roles = retain_token_description_roles(definition, &mut token)?;
+            let shape_ability_count = token.abilities.len();
+            let authored_start = token_shape_authored_ability_start(definition, shape_ability_count)?;
+            apply_token_definition_granted_abilities(&mut token, granted_abilities, authored_start)?;
+            let text_roles = retain_token_description_roles(definition, &mut token, shape_ability_count)?;
             let subject = if *action_player == PlayerAst::Opponent {
                 // A singular authored "an opponent creates ..." is a
                 // resolution-time player choice. Export that chosen player so
@@ -4253,6 +4286,7 @@ pub(super) fn compile_subject_verb_middle(
 fn apply_token_definition_granted_abilities(
     token: &mut crate::cards::CardDefinition,
     abilities: &[GrantedAbilityAst],
+    authored_shape_start: usize,
 ) -> Result<(), CardTextError> {
     // Abilities the typed token shape already installed from the same words.
     // A quoted rule re-parsed by the generic grant parser must not install a
@@ -4279,8 +4313,8 @@ fn apply_token_definition_granted_abilities(
         for ability in
             lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))?
         {
-            if token.abilities.contains(&ability)
-                || token.abilities[..shape_ability_count]
+            if token.abilities[authored_shape_start..].contains(&ability)
+                || token.abilities[authored_shape_start..shape_ability_count]
                     .iter()
                     .any(|existing| token_abilities_are_same_printed_ability(existing, &ability))
             {

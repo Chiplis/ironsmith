@@ -373,7 +373,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
         match first {
-            "once" => (Value::Fixed(1), 1),
+            "once" | "again" => (Value::Fixed(1), 1),
             "twice" => (Value::Fixed(2), 1),
             _ => parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(

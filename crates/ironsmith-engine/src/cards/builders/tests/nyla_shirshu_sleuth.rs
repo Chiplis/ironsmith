@@ -85,7 +85,7 @@ fn nyla_uses_the_exiled_graveyard_cards_mana_value_and_returns_that_card() {
         .battlefield
         .iter()
         .copied()
-        .filter(|id| game.object(*id).is_some_and(|object| object.name == "Clue"))
+        .filter(|id| game.object(*id).is_some_and(|object| object.name == "Clue Token"))
         .collect::<Vec<_>>();
     assert_eq!(
         clues.len(),

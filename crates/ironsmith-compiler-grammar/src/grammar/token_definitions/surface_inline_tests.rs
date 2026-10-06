@@ -29,6 +29,34 @@ fn fully_described_creatures_keep_authored_fields_instead_of_compact_templates()
 }
 
 #[test]
+fn predefined_token_modifiers_preserve_literal_fields_beside_the_typed_template() {
+    let TokenDefinitionSpec::ModifiedBuiltin(shape) = parse_token_definition_shape_text(
+        "a legendary blue Heartwood token named Red with protection from red").unwrap() else {
+        panic!("explicit modifications to a predefined token");
+    };
+    assert_eq!(shape.template, BuiltinTokenShape::Heartwood);
+    assert_eq!(shape.name.as_deref(), Some("Red"));
+    assert_eq!(shape.colors, Some(ColorSet::BLUE));
+    assert_eq!(shape.supertypes, vec![ironsmith_core::Supertype::Legendary]);
+    assert!(shape.additional_subtypes.is_empty());
+    assert_eq!(shape.keywords, vec![TokenKeywordShape::ProtectionFromColors(ColorSet::RED)]);
+    let roles = shape.text_roles();
+    assert_eq!(roles.name, ironsmith_core::TokenNameTextRole::Explicit);
+    assert_eq!(roles.colors, ironsmith_core::TokenWordRole::Authored);
+    assert_eq!(roles.subtypes, ironsmith_core::TokenWordRole::RulesImplied);
+    assert_eq!(roles.abilities, ironsmith_core::TokenWordRole::RulesImplied);
+    assert_eq!(shape.keyword_words, ironsmith_core::TokenWordRole::Authored);
+
+    assert_eq!(parse_token_definition_shape_text("a Heartwood token"),
+        Some(TokenDefinitionSpec::Builtin(BuiltinTokenShape::Heartwood)));
+    let TokenDefinitionSpec::ModifiedBuiltin(shape) = parse_token_definition_shape_text(
+        "a Forest land Food token").unwrap() else { panic!("added subtype facts"); };
+    assert_eq!(shape.additional_card_types, vec![CardType::Land]);
+    assert_eq!(shape.additional_subtypes, vec![Subtype::Forest]);
+    assert_eq!(shape.text_roles().subtypes, ironsmith_core::TokenWordRole::Unrecorded);
+}
+
+#[test]
 fn token_shape_preserves_vehicle_crew_and_named_creature_facts() {
     let vehicle = parse_token_definition_shape_text(
         "3/3 colorless artifact Vehicle token named Airship with flying and crew 2",

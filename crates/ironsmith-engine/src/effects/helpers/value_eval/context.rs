@@ -875,7 +875,9 @@ impl EvaluationContext<'_, '_> {
                 self.game
                     .players
                     .iter()
-                    .filter(|p| p.is_in_game() && filter.matches_player(p.id, &filter_ctx))
+                    .filter(|p| p.is_in_game() && crate::filter::player_filter_matches_game(
+                        filter, p.id, self.game, &filter_ctx,
+                    ))
                     .map(|p| p.id)
                     .collect()
             }
@@ -1126,5 +1128,43 @@ mod known_noncreature_source_tests {
             crate::effects::helpers::resolve_value(&game, &Value::SourcePower, &ctx),
             Err(ExecutionError::UnresolvableValue(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod qualified_player_count_tests {
+    use super::*;
+
+    #[test]
+    fn counted_hand_advantage_matches_current_hands_and_team_opponents_in_both_contexts() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Teammate".into(), "Dan".into()], 20);
+        let [alice, bob, teammate, dan] = std::array::from_fn(|index| game.players[index].id);
+        game.restore_alternating_teams(vec![vec![alice, teammate], vec![bob, dan]],
+            vec![alice, bob, teammate, dan], alice,
+            crate::game_state::FreeForAllAttackOption::MultiplePlayers, None, false).unwrap();
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Count witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        for (owner, size) in [(alice, 2), (bob, 3), (teammate, 7), (dan, 2)] {
+            for _ in 0..size { game.create_object_from_card(&card, owner, Zone::Hand); }
+        }
+        let count = Value::CountPlayers(PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base: Box::new(PlayerFilter::Opponent), count: 1,
+        });
+        let check = |game: &GameState, expected| {
+            let ctx = ExecutionContext::new_default(source, alice);
+            assert_eq!(super::super::resolve(&count, &EvaluationContext::execution_context(game, &ctx)).unwrap(), expected);
+            assert_eq!(crate::continuous::resolve_value_direct(&count, game.objects_map(), &[], &game.battlefield,
+                &std::collections::HashSet::new(), source, alice, game), expected);
+        };
+        check(&game, 1);
+        let discarded = game.player(bob).unwrap().hand[0];
+        game.move_object_by_effect(discarded, Zone::Graveyard);
+        check(&game, 0);
+        game.create_object_from_card(&card, dan, Zone::Hand);
+        check(&game, 1);
+        let discarded = game.player(alice).unwrap().hand[0];
+        game.move_object_by_effect(discarded, Zone::Graveyard);
+        check(&game, 2);
     }
 }

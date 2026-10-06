@@ -1656,6 +1656,18 @@
                 format!("{player} investigates for each {basis}")
             };
         }
+        if let Some((multiplier, basis)) = describe_for_each_multiplier_and_basis(&investigate.count) {
+            let repetitions = match multiplier {
+                1 => "once".to_string(),
+                2 => "twice".to_string(),
+                count => format!("{count} times"),
+            };
+            return if player == "you" {
+                format!("Investigate {repetitions} for each {basis}")
+            } else {
+                format!("{player} investigates {repetitions} for each {basis}")
+            };
+        }
         if let Some(count) = describe_effect_count_backref(&investigate.count) {
             return if player == "you" {
                 format!("Investigate {count} times")

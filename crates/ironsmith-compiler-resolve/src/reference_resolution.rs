@@ -781,6 +781,12 @@ fn created_token_kind(
 ) -> Option<ObjectFilter> {
     use crate::model::token_definition::TokenDefinitionSpec;
     let card_types = match definition {
+        TokenDefinitionSpec::Builtin(template) => template.card_types(),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+            let mut kinds = shape.template.card_types();
+            for value in &shape.additional_card_types { if !kinds.contains(value) { kinds.push(*value); } }
+            kinds
+        }
         TokenDefinitionSpec::Creature(_)
         | TokenDefinitionSpec::Angel
         | TokenDefinitionSpec::Wall

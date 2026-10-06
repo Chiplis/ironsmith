@@ -1921,7 +1921,12 @@ pub fn parse_create(
                 ))
             })?;
     if has_raw_name_override {
+        if let crate::model::token_definition::TokenDefinitionSpec::Builtin(template) = &definition {
+            definition = crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(
+                crate::model::token_definition::ModifiedBuiltinTokenShape::new(*template));
+        }
         match &mut definition {
+            crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(shape) => shape.name = Some(name.clone()),
             crate::model::token_definition::TokenDefinitionSpec::Vehicle(shape) => {
                 shape.name = name.clone();
                 if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
@@ -1934,13 +1939,27 @@ pub fn parse_create(
                 shape.name = name.clone();
                 if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
             }
+            crate::model::token_definition::TokenDefinitionSpec::Enchantment(shape) => {
+                shape.name = name.clone();
+                if let Some(roles) = &mut shape.text_roles { roles.name = ironsmith_core::TokenNameTextRole::Explicit; }
+            }
             _ => {}
         }
     }
     if let Some((postnominal_colors, color_role)) =
         token_definition_grammar::parse_postnominal_token_color_words_tokens(&tail_tokens)
     {
+        if let crate::model::token_definition::TokenDefinitionSpec::Builtin(template) = &definition {
+            definition = crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(
+                crate::model::token_definition::ModifiedBuiltinTokenShape::new(*template));
+        }
         match &mut definition {
+            crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+                if shape.colors.is_none_or(|colors| colors.is_empty()) || shape.color_words == color_role {
+                    shape.color_words = color_role;
+                } else { shape.color_words = ironsmith_core::TokenWordRole::Unrecorded; }
+                shape.colors = Some(shape.colors.unwrap_or_default().union(postnominal_colors));
+            }
             crate::model::token_definition::TokenDefinitionSpec::Creature(creature) => {
                 if let Some(roles) = &mut creature.text_roles {
                     if creature.colors.is_empty() || roles.colors == color_role { roles.colors = color_role; }
@@ -2350,9 +2369,13 @@ pub fn parse_investigate(
             (Value::Fixed(1), Value::Count(filter)) => {
                 Value::CountScaled(filter, 1).with_surface_hint(ValueSurfaceHint::ForEach)
             }
-            (Value::Fixed(1), each_count) => each_count,
+            (Value::Fixed(1), each_count) => each_count.with_surface_hint(ValueSurfaceHint::ForEach),
             (Value::Fixed(multiplier), Value::Count(filter)) => {
                 Value::CountScaled(filter, multiplier).with_surface_hint(ValueSurfaceHint::ForEach)
+            }
+            (Value::Fixed(multiplier), each_count) => {
+                Value::Scaled(Box::new(each_count), multiplier)
+                    .with_surface_hint(ValueSurfaceHint::ForEach)
             }
             (multiplier, each_count) => {
                 return Err(CardTextError::ParseError(format!(

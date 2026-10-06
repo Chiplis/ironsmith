@@ -277,3 +277,129 @@ fn quoted_spawn_mana_followups_keep_each_authored_rule_without_name_based_skips(
         }
     }
 }
+
+#[test]
+fn predefined_profiles_preserve_implied_words_and_card_names() {
+    for (noun, expected_name, colors, subtypes) in [
+        ("Heartwood", "Heartwood Token", ColorSet::RED.union(ColorSet::GREEN), vec![Subtype::Heartwood]),
+        ("Vibranium", "Vibranium Token", ColorSet::default(), vec![Subtype::Vibranium]),
+        ("Walker", "Walker", ColorSet::BLACK, vec![Subtype::Zombie]),
+        ("Spellgorger Weird", "Spellgorger Weird", ColorSet::RED, vec![Subtype::Weird]),
+    ] {
+        for definition in routes(&format!("Create a {noun} token.")) {
+            let effect = instruction(&definition);
+            let original = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+            assert_eq!(original.token.card.name, expected_name);
+            assert_eq!(original.token.card.subtypes, subtypes);
+            let roles = original.text_roles.as_ref().unwrap();
+            assert_eq!(roles.colors, TokenWordRole::RulesImplied);
+            assert_eq!(roles.subtypes, TokenWordRole::RulesImplied);
+            assert!(roles.abilities.iter().all(|role| *role == TokenWordRole::RulesImplied));
+            let changed = effect.with_text_change(TextChange::color(Color::Red, Color::Blue).unwrap()).unwrap()
+                .with_text_change(TextChange::creature_type(Subtype::Zombie, Subtype::Elf).unwrap()).unwrap()
+                .with_text_change(TextChange::creature_type(Subtype::Weird, Subtype::Human).unwrap()).unwrap();
+            let encoded = ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(changed).unwrap();
+            let restored = ironsmith_runtime_catalog::artifact_materializer::materialize_effect(encoded).unwrap();
+            let changed = restored.downcast_ref::<CreateTokenEffect>().unwrap();
+            assert_eq!(changed.token.card.name, expected_name);
+            assert_eq!(changed.token.card.subtypes, subtypes);
+            assert_eq!(changed.token.card.colors(), colors);
+            assert_eq!(changed.token.card.mana_cost, original.token.card.mana_cost);
+            assert_eq!(changed.token.abilities, original.token.abilities);
+            assert_eq!(changed.text_roles, original.text_roles);
+        }
+    }
+}
+
+#[test]
+fn explicit_predefined_modifiers_keep_separate_color_name_and_ability_roles() {
+    use ironsmith::ability::{AbilityKind, ProtectionFrom};
+    for definition in routes("Create a legendary blue Heartwood token named Red with protection from red.") {
+        let effect = instruction(&definition);
+        let original = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+        assert_eq!(original.token.card.name, "Red");
+        assert_eq!(original.token.card.colors(), ColorSet::BLUE);
+        assert!(original.token.card.supertypes.contains(&ironsmith::Supertype::Legendary));
+        let roles = original.text_roles.as_ref().unwrap();
+        assert_eq!(roles.name, TokenNameTextRole::Explicit);
+        assert_eq!(roles.colors, TokenWordRole::Authored);
+        assert_eq!(roles.abilities, vec![TokenWordRole::RulesImplied, TokenWordRole::Authored]);
+        let changed = effect.with_text_change(TextChange::color(Color::Red, Color::Green).unwrap()).unwrap()
+            .with_text_change(TextChange::color(Color::Blue, Color::Black).unwrap()).unwrap();
+        let changed = changed.downcast_ref::<CreateTokenEffect>().unwrap();
+        assert_eq!(changed.token.card.name, "Red");
+        assert_eq!(changed.token.card.colors(), ColorSet::BLACK);
+        assert_eq!(changed.token.abilities[0], original.token.abilities[0]);
+        let AbilityKind::Static(protection) = &changed.token.abilities[1].kind else { panic!("authored protection"); };
+        assert_eq!(protection.protection_from(), Some(&ProtectionFrom::Color(ColorSet::GREEN)));
+    }
+    for definition in routes("Create a Food token that's green.") {
+        let effect = instruction(&definition);
+        let token = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+        assert_eq!(token.token.card.colors(), ColorSet::GREEN);
+        assert_eq!(token.text_roles.as_ref().unwrap().colors, TokenWordRole::Authored);
+    }
+}
+
+#[test]
+fn inherited_and_authored_equal_predefined_abilities_keep_two_occurrences() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::static_abilities::StaticAbilityId;
+    for definition in routes("Create a Vibranium token with \"Indestructible.\"") {
+        let effect = instruction(&definition);
+        let token = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+        let occurrences: Vec<_> = token.token.abilities.iter().enumerate().filter_map(|(index, ability)|
+            matches!(&ability.kind, AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Indestructible)
+                .then_some(index)).collect();
+        assert_eq!(occurrences.len(), 2);
+        let roles = token.text_roles.as_ref().unwrap();
+        assert_eq!(roles.abilities[occurrences[0]], TokenWordRole::RulesImplied);
+        assert_eq!(roles.abilities[occurrences[1]], TokenWordRole::Authored);
+    }
+}
+
+#[test]
+fn predefined_tokens_keep_quoted_rules_without_an_embedded_rule_owner() {
+    use ironsmith::ability::AbilityKind;
+    for description in ["a Heartwood token", "a blue Heartwood token named Witness"] {
+        for definition in routes(&format!(
+            "Create {description} with \"When this token dies, create a Treasure token.\""
+        )) {
+            let effect = instruction(&definition);
+            let token = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+            assert_eq!(token.token.abilities.len(), 2);
+            assert!(matches!(&token.token.abilities[0].kind, AbilityKind::Activated(_)));
+            assert!(matches!(&token.token.abilities[1].kind, AbilityKind::Triggered(_)));
+            assert_eq!(token.text_roles.as_ref().unwrap().abilities,
+                vec![TokenWordRole::RulesImplied, TokenWordRole::Authored]);
+            let encoded = ironsmith_runtime_catalog::artifact_materializer::encode_runtime_effect(effect).unwrap();
+            let restored = ironsmith_runtime_catalog::artifact_materializer::materialize_effect(encoded).unwrap();
+            let restored = restored.downcast_ref::<CreateTokenEffect>().unwrap();
+            assert_eq!(restored.token.abilities.len(), 2);
+            assert!(matches!(&restored.token.abilities[1].kind, AbilityKind::Triggered(_)));
+        }
+    }
+}
+
+#[test]
+fn predefined_role_names_are_fixed_and_added_subtype_proof_stays_explicitly_incomplete() {
+    for (noun, name) in [("Wicked Role", "Wicked"), ("Royal Role", "Royal"), ("Sorcerer Role", "Sorcerer")] {
+        for definition in routes(&format!("Create a {noun} token.")) {
+            let effect = instruction(&definition);
+            let token = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+            assert_eq!(token.token.card.name, name);
+            assert_eq!(token.text_roles.as_ref().unwrap().name, TokenNameTextRole::Explicit);
+            assert_eq!(token.token.card.subtypes, vec![Subtype::Aura, Subtype::Role]);
+            assert!(token.token.aura_attach_filter.is_some());
+        }
+    }
+    for definition in routes("Create a Forest land Food token.") {
+        let effect = instruction(&definition);
+        let original = effect.downcast_ref::<CreateTokenEffect>().unwrap();
+        assert_eq!(original.token.card.name, "Food Forest Token");
+        assert_eq!(original.token.card.subtypes, vec![Subtype::Food, Subtype::Forest]);
+        assert_eq!(original.text_roles.as_ref().unwrap().subtypes, TokenWordRole::Unrecorded);
+        assert!(effect.with_text_change(TextChange::basic_land_type(Subtype::Forest, Subtype::Island).unwrap()).is_err());
+        assert_eq!(original.token.card.name, "Food Forest Token");
+    }
+}

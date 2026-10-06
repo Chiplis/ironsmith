@@ -33,7 +33,10 @@ pub fn clue_token_definition() -> CardDefinition {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    CardDefinitionBuilder::new(CardId::new(), "Clue")
+    // The predefined Clue supplies no explicit name (CR 111.10f). Its name
+    // is therefore its subtype followed by Token (CR 111.4), including when
+    // a native keyword or token replacement uses this blueprint directly.
+    CardDefinitionBuilder::new(CardId::new(), "Clue Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Clue])

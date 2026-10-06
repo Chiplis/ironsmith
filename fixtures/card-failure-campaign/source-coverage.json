@@ -7,14 +7,14 @@
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1213,
-    "additional_proposed_compile_entries": 1218,
+    "additional_proposed_unique_cards": 1185,
+    "additional_proposed_compile_entries": 1190,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
-    "known_runtime_partial_previous_proposals": 8,
+    "known_runtime_partial_previous_proposals": 36,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
-    "identified_source_proposals_with_known_runtime_gaps": 8,
-    "source_proposals_excluding_identified_runtime_gaps": 1213,
+    "identified_source_proposals_with_known_runtime_gaps": 36,
+    "source_proposals_excluding_identified_runtime_gaps": 1185,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -6925,10 +6925,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Atalya, Samite Master",
@@ -7188,11 +7192,15 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "recovered-dynamic-bolster-and-mobilize"
       ],
-      "source_review_commit": "b53c489ec"
+      "source_review_commit": "b53c489ec",
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Avenging Arrow",
@@ -7617,10 +7625,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Bard's Company",
@@ -8155,10 +8167,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Black Market Tycoon",
@@ -8472,13 +8488,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "effect-granted-casting-prices",
         "combat-defending-actor-references"
       ],
       "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd",
-      "integrated_source_review_commit": "6afb57377"
+      "integrated_source_review_commit": "6afb57377",
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Blue, Loyal Raptor",
@@ -8551,10 +8571,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "excess-damage-result-binding"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Bomb Squad",
@@ -11847,13 +11871,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "complete-anthem-tails"
       ],
       "source_runtime_prerequisites": [
         "token-resources-source-reviewed-validation-deferred"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Danse Macabre",
@@ -13263,10 +13291,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Drain Life",
@@ -13851,12 +13883,16 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "suspected-designation-bodies"
       ],
       "source_review_commit": "29c6b38304fb5a7f7d10347620d7bf561d52abfd",
-      "integrated_source_review_commit": "6afb57377"
+      "integrated_source_review_commit": "6afb57377",
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Elite Arcanist",
@@ -14717,10 +14753,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "collect-evidence-shared-action-and-costs"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Excalibur II",
@@ -15101,10 +15141,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "excess-damage-result-binding"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Fallaji Wayfarer",
@@ -19856,11 +19900,15 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "recovered-dynamic-bolster-and-mobilize"
       ],
-      "source_review_commit": "b53c489ec"
+      "source_review_commit": "b53c489ec",
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Infernal Darkness",
@@ -19952,10 +20000,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "passive-damage-recipients"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Inquisition",
@@ -19986,10 +20038,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "first-draw-reveal-complete-bodies"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Inquisitor's Flail",
@@ -23284,12 +23340,16 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "complete-compound-static-bodies"
       ],
       "source_review_commit": "7f58016ce656c5bd6d43a0e03b5d2d0e88598b14",
-      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8"
+      "integrated_source_review_commit": "9e72247c6ec20bd33d8732026a44542ec90133a8",
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Madame Masque",
@@ -24707,10 +24767,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Monomania",
@@ -25782,13 +25846,17 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "complete-anthem-tails"
       ],
       "source_runtime_prerequisites": [
         "token-resources-source-reviewed-validation-deferred"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Nissa of Shadowed Boughs",
@@ -25964,10 +26032,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "permanent-lifecycle-triggers"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Norritt",
@@ -26847,10 +26919,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Pale Moon",
@@ -29279,10 +29355,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Redemptor Dreadnought",
@@ -29514,10 +29594,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "x-tap-activation-costs"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Resourceful Defense",
@@ -30487,10 +30571,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Saheeli's Lattice // Mastercraft Raptor",
@@ -30587,10 +30675,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Sanar, Innovative First-Year",
@@ -35603,12 +35695,16 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "next-play-timing-and-granted-flashback"
       ],
       "source_review_commit": "6dad813235c1186b0b325bcdc45a847185b2c044",
-      "integrated_source_review_commit": "2b8b34d0d7d04f1d406d3be022e0eca64d9db443"
+      "integrated_source_review_commit": "2b8b34d0d7d04f1d406d3be022e0eca64d9db443",
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "The Ghoul, Gunslinger",
@@ -36289,10 +36385,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Thieves' Auction",
@@ -36355,10 +36455,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "venture-dispatch"
-      ]
+      ],
+      "partial_source_families": [
+        "native-investigate-amass-token-names"
+      ],
+      "source_coverage_hold": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending."
     },
     {
       "card_name": "Thought Hemorrhage",
@@ -39343,10 +39447,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "Watchdog",
@@ -39863,10 +39971,14 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_status": "partial_not_counted",
       "source_families": [
         "job-select"
-      ]
+      ],
+      "partial_source_families": [
+        "native-job-mobilize-incubate-token-names"
+      ],
+      "source_coverage_hold": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending."
     },
     {
       "card_name": "White Tiger, Ava Ayala",
@@ -41531,6 +41643,54 @@
       "evidence": "architecture/card-failure-predefined-token-definitions.md; rules/embedded_rules.rs:416-434; compile_support.rs:3096-3100; compiler-lowering/card_tokens.rs:495/514",
       "primary_rules": "https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.pdf, CR111.4/111.10w/111.10x/111.11",
       "completion_gate": "Independent bounded source review and integrated typed profile correction before restoring proposals; all actual runtime validation remains deferred."
+    },
+    {
+      "id": "native-investigate-amass-token-names",
+      "status": "known_source_gap_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Bolg of the North",
+        "Eliminate the Impossible",
+        "Evidence Examiner",
+        "Fall of Cair Andros",
+        "Innocent Bystander",
+        "Inquisitor Eisenhorn",
+        "Resonance Technician",
+        "The Fugitive Doctor",
+        "Thorough Investigation"
+      ],
+      "behavior": "Native Investigate/Amass bypass compiler token profiles and create bare Clue/Goblin-or-Orc Army names rather than the CR111.4 derived Token names. Exact native factory correction is committed but independent review and admission remain pending.",
+      "complete_coverage_claims_withheld": true,
+      "evidence": "architecture/native-keyword-token-names.md",
+      "completion_gate": "Actual native and compiler producer correction, exact affected-body source review and coordinated admission before restoring proposals. All authored and corpus/runtime validation remains deferred."
+    },
+    {
+      "id": "native-job-mobilize-incubate-token-names",
+      "status": "known_source_gap_remediation_in_progress",
+      "affected_previously_proposed_complete": [
+        "Astrologian's Planisphere",
+        "Avenger of the Fallen",
+        "Bard's Bow",
+        "Black Mage's Rod",
+        "Blue Mage's Cane",
+        "Dancer's Chakrams",
+        "Dragoon's Lance",
+        "Infantry Shield",
+        "Machinist's Arsenal",
+        "Monk's Fist",
+        "Ninja's Blades",
+        "Norn's Inquisitor",
+        "Paladin's Arms",
+        "Red Mage's Rapier",
+        "Sage's Nouliths",
+        "Samurai's Katana",
+        "Thief's Knife",
+        "Warrior's Sword",
+        "White Mage's Staff"
+      ],
+      "behavior": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending.",
+      "complete_coverage_claims_withheld": true,
+      "evidence": "crates/ironsmith-compiler-semantic/src/card_builders.rs; native keyword/token constructors",
+      "completion_gate": "Actual native and compiler producer correction, exact affected-body source review and coordinated admission before restoring proposals. All authored and corpus/runtime validation remains deferred."
     }
   ],
   "future_mechanic_dependencies": [

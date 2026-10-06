@@ -2778,7 +2778,8 @@ fn compile_plain_fixed_token_creation(
     };
     let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-    let text_roles = subject_verb_middle::retain_token_description_roles(definition, &mut token)?;
+    let shape_ability_count = token.abilities.len();
+    let text_roles = subject_verb_middle::retain_token_description_roles(definition, &mut token, shape_ability_count)?;
     let mut create = crate::effects::CreateTokenEffect::you(token, count.clone());
     create.text_roles = text_roles;
     if use_source_chosen_color {
