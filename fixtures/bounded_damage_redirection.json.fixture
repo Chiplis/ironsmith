@@ -1,0 +1,81 @@
+[
+  {
+    "name": "Aegis of Honor",
+    "oracle_id": "ea93acc8-0c1f-42a2-bed3-f385d210d58f",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "{1}: The next time an instant or sorcery spell would deal damage to you this turn, that spell deals that damage to its controller instead.",
+    "keywords": [],
+    "source": "https://scryfall.com/card/ody/1/aegis-of-honor?utm_source=api"
+  },
+  {
+    "name": "Glarecaster",
+    "oracle_id": "9c058107-b2a1-4300-8d97-c697c248df96",
+    "mana_cost": "{4}{W}{W}",
+    "type_line": "Creature — Bird Cleric",
+    "oracle_text": "Flying\n{5}{W}: The next time damage would be dealt to this creature and/or you this turn, that damage is dealt to any target instead.",
+    "keywords": [
+      "Flying"
+    ],
+    "power": "3",
+    "toughness": "3",
+    "source": "https://scryfall.com/card/ons/30/glarecaster?utm_source=api"
+  },
+  {
+    "name": "Goblin Psychopath",
+    "oracle_id": "9369f131-3356-4926-9a9f-88a636305bd0",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Goblin Mutant",
+    "oracle_text": "Whenever this creature attacks or blocks, flip a coin. If you lose the flip, the next time it would deal combat damage this turn, it deals that damage to you instead.",
+    "keywords": [],
+    "power": "5",
+    "toughness": "5",
+    "source": "https://scryfall.com/card/j22/544/goblin-psychopath?utm_source=api"
+  },
+  {
+    "name": "Hazduhr the Abbot",
+    "oracle_id": "35844d8b-8f68-4248-b921-e766757a9e26",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Legendary Creature — Human Cleric",
+    "oracle_text": "{X}, {T}: The next X damage that would be dealt this turn to target white creature you control is dealt to Hazduhr instead.",
+    "keywords": [],
+    "power": "2",
+    "toughness": "5",
+    "source": "https://scryfall.com/card/hml/8/hazduhr-the-abbot?utm_source=api"
+  },
+  {
+    "name": "Mirrorwood Treefolk",
+    "oracle_id": "fec51ab9-484f-46a8-b2b0-772a61d89e41",
+    "mana_cost": "{3}{G}",
+    "type_line": "Creature — Treefolk",
+    "oracle_text": "{2}{R}{W}: The next time damage would be dealt to this creature this turn, that damage is dealt to any target instead.",
+    "keywords": [],
+    "power": "2",
+    "toughness": "4",
+    "source": "https://scryfall.com/card/pls/83/mirrorwood-treefolk?utm_source=api"
+  },
+  {
+    "name": "Shield Dancer",
+    "oracle_id": "0ca9c400-c62a-49d8-8dce-5caca7f92ed9",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Human Rebel",
+    "oracle_text": "{2}{W}: The next time target attacking creature would deal combat damage to this creature this turn, that creature deals that damage to itself instead.",
+    "keywords": [],
+    "power": "1",
+    "toughness": "3",
+    "source": "https://scryfall.com/card/pcy/23/shield-dancer?utm_source=api"
+  },
+  {
+    "name": "Soltari Guerrillas",
+    "oracle_id": "37da03c2-c03e-453c-8fbf-e1039faceb8c",
+    "mana_cost": "{2}{R}{W}",
+    "type_line": "Creature — Soltari Soldier",
+    "oracle_text": "Shadow (This creature can block or be blocked by only creatures with shadow.)\n{0}: The next time this creature would deal combat damage to an opponent this turn, it deals that damage to target creature instead.",
+    "keywords": [
+      "Shadow"
+    ],
+    "power": "3",
+    "toughness": "2",
+    "source": "https://scryfall.com/card/tmp/272/soltari-guerrillas?utm_source=api"
+  }
+]

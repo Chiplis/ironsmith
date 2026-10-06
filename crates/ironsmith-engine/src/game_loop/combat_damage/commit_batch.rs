@@ -50,7 +50,6 @@ pub(super) fn commit_combat_damage_batch(
         game,
         processed
             .iter()
-            .filter(|result| !result.replacement_prevented)
             .flat_map(|result| &result.assignments)
             .filter_map(|assignment| match assignment.target {
                 EventDamageTarget::Object(object) => Some(object),
@@ -87,9 +86,8 @@ pub(super) fn commit_combat_damage_batch(
                 result.programs,
             ));
         }
-        if result.replacement_prevented {
-            continue;
-        }
+        // A prevented split branch can coexist with surviving assignments.
+        // Only the actual assignments determine the damage still to commit.
         let keywords = crate::rules::damage::SourceDamageKeywords {
             has_deathtouch: plan.result.has_deathtouch,
             has_infect: plan.result.has_infect,

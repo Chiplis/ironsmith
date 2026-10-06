@@ -425,7 +425,6 @@ pub(crate) fn commit_damage_batch(
     }
     let mut dealt = std::collections::HashMap::<ObjectId, u64>::new();
     // Avoid aliasing the parent's decision-maker borrow while copying context.
-    let cause = parent.cause.clone();
     let provenance = parent.provenance;
     let scope = parent.replacement.clone();
     for (index, result) in processed.into_iter().enumerate() {
@@ -444,7 +443,7 @@ pub(crate) fn commit_damage_batch(
             let state = &states[index];
             let mut ctx =
                 ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                    .with_cause(cause.clone())
+                    .with_cause(events[index].cause.clone())
                     .with_provenance(observation);
             ctx.source_snapshot = state.snapshot.clone();
             ctx.replacement = scope.clone();
@@ -482,7 +481,7 @@ pub(crate) fn commit_damage_batch(
                 assignment.target,
                 assignment.amount,
                 events[index].is_combat,
-                cause.clone(),
+                events[index].cause.clone(),
             )
             .with_excess_damage(excess);
             if let Some(snapshot) = plan.target_snapshot.clone() {
@@ -549,7 +548,7 @@ pub(crate) fn commit_damage_batch(
         let state = &states[index];
         let mut ctx =
             ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                .with_cause(cause.clone())
+                .with_cause(events[index].cause.clone())
                 .with_provenance(observation);
         ctx.source_snapshot = state.snapshot.clone();
         ctx.replacement = scope.clone();
@@ -573,7 +572,7 @@ pub(crate) fn commit_damage_batch(
         let state = &states[index];
         let mut ctx =
             ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                .with_cause(cause.clone())
+                .with_cause(events[index].cause.clone())
                 .with_provenance(observation);
         ctx.source_snapshot = state.snapshot.clone();
         ctx.replacement = scope.clone();
@@ -590,7 +589,7 @@ pub(crate) fn commit_damage_batch(
         let state = &states[index];
         let mut ctx =
             ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                .with_cause(cause.clone())
+                .with_cause(events[index].cause.clone())
                 .with_provenance(observation);
         ctx.source_snapshot = state.snapshot.clone();
         ctx.replacement = scope.clone();
@@ -710,7 +709,7 @@ pub(crate) fn commit_damage_batch(
         let state = &states[index];
         let mut ctx =
             ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                .with_cause(cause.clone())
+                .with_cause(events[index].cause.clone())
                 .with_provenance(observation);
         ctx.source_snapshot = state.snapshot.clone();
         ctx.replacement = scope.clone();
@@ -728,7 +727,7 @@ pub(crate) fn commit_damage_batch(
         let state = &states[index];
         let mut ctx =
             ExecutionContext::new(state.source, state.controller, &mut *parent.decision_maker)
-                .with_cause(cause.clone())
+                .with_cause(events[index].cause.clone())
                 .with_provenance(observation);
         ctx.source_snapshot = state.snapshot.clone();
         ctx.replacement = scope.clone();

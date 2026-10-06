@@ -169,7 +169,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
                 target,
             })
             | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. },
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target: Some(target), .. },
             )
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

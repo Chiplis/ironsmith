@@ -1123,6 +1123,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/846"
+    },
+    {
+      "stage": 81,
+      "branch": "fix/card-failures-81-ordinary-face-down",
+      "base": "fix/card-failures-80-extra-turn-bodies",
+      "source_integration_commit": "7c57d973107ae249a1a62c5551d7d7fdfb9c63c5",
+      "remote_commit": "c2d21f514164174fa2deb12c1bd1785754411242",
+      "tree": "bb7d9ca659669b4c6606176d2c6faa149ffabd70",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 847,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/847"
     }
   ]
 }

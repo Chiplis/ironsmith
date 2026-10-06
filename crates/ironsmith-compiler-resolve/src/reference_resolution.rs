@@ -2492,7 +2492,7 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "controlled")?;
                     remember_explicit_object_target_binding(target, frame);
                 }
-                SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. })
+                SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource { target: Some(target), .. })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                     source: target,
                 })
@@ -8719,7 +8719,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 },
             ) => {
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
-                    + bind_unresolved_it_in_target(target, seed_tag)
+                    + target.as_mut().map(|target| bind_unresolved_it_in_target(target, seed_tag)).unwrap_or(0)
                     + destination_target
                         .as_mut()
                         .map(|target| bind_unresolved_it_in_target(target, seed_tag))

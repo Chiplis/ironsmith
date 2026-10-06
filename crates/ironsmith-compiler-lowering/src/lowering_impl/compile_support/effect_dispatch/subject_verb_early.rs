@@ -3237,7 +3237,12 @@ pub(super) fn compile_subject_verb_early(
                     effect.protected_target = protected_spec;
                     effect
                 }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
+                    let mut effect = crate::effects::RedirectNextDamageToTargetEffect::new(amount, ChooseSpec::Source);
+                    effect.protected_target = protected_spec;
+                    effect
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::DamageSource
                 | crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
                     return Err(CardTextError::ParseError(
                         "unsupported redirected-next damage destination".to_string(),
@@ -3248,65 +3253,48 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                source,
-                target,
-                destination,
-                destination_target,
-                all_this_turn,
+                source, target, combat_only, destination, destination_target, all_this_turn,
             },
         ) => {
-            let source_spec = match source {
-                PreventNextTimeDamageSourceAst::Choice => {
-                    crate::effects::RedirectNextTimeDamageSource::Choice
-                }
-                PreventNextTimeDamageSourceAst::Target(_) => {
-                    return Err(CardTextError::ParseError(
-                        "target-referenced redirect damage source is unsupported".to_string(),
-                    ));
-                }
-                PreventNextTimeDamageSourceAst::Filter(filter) => {
-                    crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(
-                        filter,
-                        &current_reference_env(ctx),
-                    )?)
-                }
-            };
             let refs = current_reference_env(ctx);
-            let (protected_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
-            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
-                source_spec,
-                protected_spec,
-            );
+            let mut choices = Vec::new();
+            let source_spec = match source {
+                PreventNextTimeDamageSourceAst::Choice => crate::effects::RedirectNextTimeDamageSource::Choice,
+                PreventNextTimeDamageSourceAst::Target(target) => {
+                    let (spec, source_choices) = resolve_target_spec_with_choices(target, &refs)?;
+                    for choice in source_choices { push_choice(&mut choices, choice); }
+                    crate::effects::RedirectNextTimeDamageSource::Target(spec)
+                }
+                PreventNextTimeDamageSourceAst::Filter(filter) => crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(filter, &refs)?),
+            };
+            let protected_spec = if let Some(target) = target {
+                let (spec, protected_choices) = resolve_target_spec_with_choices(target, &refs)?;
+                for choice in protected_choices { push_choice(&mut choices, choice); }
+                Some(spec)
+            } else { None };
+            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect {
+                source: source_spec, target: protected_spec, combat_only: *combat_only,
+                destination: ironsmith_core::RedirectNextTimeDamageDestination::SourceObject,
+                destination_target: None, all_this_turn: *all_this_turn,
+            };
             effect = match destination {
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
-                    effect
-                }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
-                    effect.to_controller()
-                }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
-                    effect.to_source_controller()
-                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => effect,
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::DamageSource => effect.to_damage_source(),
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => effect.to_controller(),
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => effect.to_source_controller(),
                 crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
-                    let destination_target = destination_target.as_ref().ok_or_else(|| {
-                        CardTextError::ParseError(
-                            "missing redirected-next-time damage destination target".to_string(),
-                        )
-                    })?;
-                    let (destination_spec, destination_choices) =
-                        resolve_target_spec_with_choices(destination_target, &refs)?;
-                    for choice in destination_choices {
-                        push_choice(&mut choices, choice);
-                    }
-                    effect.to_target(destination_spec)
+                    let destination_target = destination_target.as_ref().ok_or_else(|| CardTextError::ParseError("missing redirected-next-time damage destination target".into()))?;
+                    let (spec, destination_choices) = resolve_target_spec_with_choices(destination_target, &refs)?;
+                    for choice in destination_choices { push_choice(&mut choices, choice); }
+                    effect.to_target(spec)
                 }
             };
-            let effect = if *all_this_turn {
-                effect.all_this_turn()
-            } else {
-                effect
-            };
-            Ok((vec![Effect::new(effect)], choices))
+            // Keep each announced target in oracle order; the runtime effect
+            // exposes the final one and binds all references by assignment spec.
+            let mut effects: Vec<_> = choices.iter().take(choices.len().saturating_sub(1))
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone()))).collect();
+            effects.push(Effect::new(effect));
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

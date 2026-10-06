@@ -21,7 +21,14 @@ pub(super) fn classify_next_time_destination(
     {
         return Some(RedirectDamageDestinationShape::Controller);
     }
-    let is_target = primitives::parse_prefix(tokens, primitives::kw("target")).is_some();
+    if primitives::parse_all(tokens, (primitives::phrase(&["its", "controller"]), winnow::combinator::eof).void(), "damage source controller").is_ok() {
+        return Some(RedirectDamageDestinationShape::SourceController);
+    }
+    if primitives::parse_all(tokens, (primitives::kw("itself"), winnow::combinator::eof).void(), "damage source itself").is_ok() {
+        return Some(RedirectDamageDestinationShape::DamageSource);
+    }
+    let is_target = primitives::parse_prefix(tokens, primitives::kw("target")).is_some()
+        || primitives::parse_prefix(tokens, primitives::phrase(&["any", "target"])).is_some();
     let mentions_choice = {
         let mut input = LexStream::new(tokens);
         repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), primitives::kw("choice"))
@@ -38,6 +45,9 @@ pub(super) fn classify_next_time_destination(
 pub(super) fn classify_next_amount_destination(
     tokens: &[OwnedLexToken],
 ) -> RedirectDamageDestinationShape<'_> {
+    if primitives::parse_all(tokens, (source_reference, winnow::combinator::eof).void(), "redirect amount source destination").is_ok() {
+        return RedirectDamageDestinationShape::SourceObject;
+    }
     if primitives::parse_all(
         tokens,
         (primitives::kw("you"), winnow::combinator::eof).void(),

@@ -2297,6 +2297,14 @@ fn trait_effect_matches_event(
 ) -> Result<Option<ReplacementPriority>, crate::effects::ExecutionError> {
     use crate::events::ReplacementPriority as TraitPriority;
 
+    if !game
+        .effect_store
+        .replacement_effects
+        .available_in_damage_occurrence(effect.id)
+    {
+        return Ok(None);
+    }
+
     if let ReplacementAction::EnterWithCounters {
         count,
         otherwise_count,
@@ -6704,6 +6712,9 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
             .effect_store
             .prevention_effects
             .begin_follow_up_deferral();
+        game.effect_store
+            .replacement_effects
+            .begin_damage_occurrence();
         let mut results = Vec::with_capacity(events.len());
         for (index, item) in events.iter().enumerate() {
             results.push(
@@ -6725,6 +6736,11 @@ pub(crate) fn process_simultaneous_damage_assignments_with_event_with_scope(
                 break;
             }
         }
+        // All matching siblings have now seen the same registrations. Later
+        // damage from a prevention follow-up starts a separate occurrence.
+        game.effect_store
+            .replacement_effects
+            .finish_damage_occurrence();
         game.effect_store.trigger_matching_holds -= 1;
         coalesce_simultaneous_shield_prevention_events(game, pending_event_start).map_err(
             |error| DamageProcessingError {
@@ -6895,6 +6911,9 @@ pub(crate) fn process_damage_assignments_with_event_with_source_snapshot_opts_wi
     }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
+    game.effect_store
+        .replacement_effects
+        .begin_damage_occurrence();
     let result =
         process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
             game,
@@ -6920,6 +6939,10 @@ pub(crate) fn process_damage_assignments_with_event_with_source_snapshot_opts_wi
     }
     if result.is_err() {
         game.restore_execution_checkpoint(checkpoint, false);
+    } else {
+        game.effect_store
+            .replacement_effects
+            .finish_damage_occurrence();
     }
     result
 }
@@ -7137,7 +7160,9 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
         branch_scope
             .suppressed_replacement_effect_keys
             .extend(pending.applied_effect_keys);
-        let remainder = process_damage_assignments_with_event_with_source_snapshot_opts_with_scope(
+        // A split remainder belongs to the same damage occurrence as its
+        // primary branch, including when that primary branch was replaced.
+        let remainder = process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_allocation(
             game,
             pending.event.source,
             pending.event.target,
@@ -7147,6 +7172,7 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
             pending.event.cause,
             source_snapshot,
             dm,
+            None,
             &branch_scope,
         )?;
         if dm.awaiting_choice() {
@@ -9297,6 +9323,9 @@ mod life_modification_tests;
 
 #[cfg(test)]
 mod entry_failure_tests;
+
+#[cfg(test)]
+mod next_damage_occurrence_tests;
 
 #[cfg(test)]
 mod tests {

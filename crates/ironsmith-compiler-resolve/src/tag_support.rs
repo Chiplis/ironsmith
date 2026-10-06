@@ -382,7 +382,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 },
             )
             | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. },
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target: Some(target), .. },
             )
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

@@ -542,6 +542,8 @@ pub enum RedirectNextTimeDamageSource {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum RedirectNextTimeDamageDestination {
+    /// The source of the damage being replaced, not the ability source.
+    DamageSource,
     SourceObject,
     Controller,
     SourceController,

@@ -1976,6 +1976,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                 source,
+                combat_only,
                 target,
                 destination,
                 destination_target,
@@ -1983,6 +1984,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             }) => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
+                .field("combat_only", combat_only)
                 .field("target", target)
                 .field("destination", destination)
                 .field("destination_target", destination_target)

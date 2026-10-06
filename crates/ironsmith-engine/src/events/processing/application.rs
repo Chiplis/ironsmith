@@ -1964,9 +1964,10 @@ fn resolve_trait_redirect_target(
             let controller = if game.object(source).is_some() && !game.is_phased_out(source) {
                 game.current_controller(source)
             } else {
-                event
-                    .0
-                    .source_snapshot()
+                game.turn_store
+                    .turn_history
+                    .source_last_known_snapshot(source)
+                    .or_else(|| event.0.source_snapshot())
                     .filter(|snapshot| snapshot.object_id == source)
                     .map(|snapshot| snapshot.controller)
             }?;

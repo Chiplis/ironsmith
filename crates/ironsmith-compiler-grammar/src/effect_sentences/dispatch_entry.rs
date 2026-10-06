@@ -13313,7 +13313,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     ..
                 })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                    target: effect_target,
+                    target: Some(effect_target),
                     ..
                 })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

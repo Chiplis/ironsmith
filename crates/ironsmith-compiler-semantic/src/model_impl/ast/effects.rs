@@ -3187,7 +3187,8 @@ impl EffectAst {
             SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                     source,
-                    target,
+                    combat_only: false,
+                    target: Some(target),
                     destination,
                     destination_target: None,
                     all_this_turn: false,
@@ -3207,7 +3208,8 @@ impl EffectAst {
             SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                     source,
-                    target,
+                    combat_only: false,
+                    target: Some(target),
                     destination: RedirectNextTimeDamageDestinationAst::TargetObject,
                     destination_target: Some(destination_target),
                     all_this_turn: false,
@@ -3227,7 +3229,8 @@ impl EffectAst {
             SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                     source,
-                    target,
+                    combat_only: false,
+                    target: Some(target),
                     destination,
                     destination_target: None,
                     all_this_turn: true,

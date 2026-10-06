@@ -767,6 +767,9 @@ impl RedirectNextDamageToTargetEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
+    /// Earlier admitted payloads represent unqualified damage.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub combat_only: bool,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
     pub destination_target: Option<ChooseSpec>,
@@ -777,6 +780,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn new(source: RedirectNextTimeDamageSource, target: ChooseSpec) -> Self {
         Self {
             source,
+            combat_only: false,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
             destination_target: None,
@@ -787,6 +791,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn from_source_target(source: ChooseSpec) -> Self {
         Self {
             source: RedirectNextTimeDamageSource::Target(source),
+            combat_only: false,
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
             destination_target: None,
@@ -796,6 +801,12 @@ impl RedirectNextTimeDamageToSourceEffect {
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_damage_source(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::DamageSource;
         self.destination_target = None;
         self
     }

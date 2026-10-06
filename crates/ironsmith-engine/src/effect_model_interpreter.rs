@@ -1411,13 +1411,15 @@ where
         } else {
             crate::effects::RedirectNextTimeDamageToSourceEffect {
                 source,
+                combat_only: payload.combat_only,
                 target: None,
                 destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
                 destination_target: None,
                 all_this_turn: false,
             }
         };
-        let effect = match payload.destination {
+        let mut effect = match payload.destination {
+            ironsmith_core::RedirectNextTimeDamageDestination::DamageSource => effect.to_damage_source(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceObject => effect,
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
@@ -1432,6 +1434,7 @@ where
                 effect.to_target(target)
             }
         };
+        effect.combat_only = payload.combat_only;
         let effect = if payload.all_this_turn {
             effect.all_this_turn()
         } else {

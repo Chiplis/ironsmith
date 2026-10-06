@@ -2382,6 +2382,50 @@ mod tests {
         );
     }
 
+    #[test]
+    fn redirected_combat_branch_prevention_keeps_the_original_remainder_and_lifelink() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = create_creature(
+            &mut game, "Lifelink attacker", 3, 3, alice, vec![StaticAbility::lifelink()],
+        );
+        let recipient = create_creature(&mut game, "Protected redirect recipient", 2, 5, bob, vec![]);
+        game.effect_store.replacement_effects.add_resolution_effect(
+            ReplacementEffect::with_matcher(
+                recipient, bob,
+                crate::events::damage::matchers::DamageToObjectMatcher::new(ObjectFilter::specific(recipient)),
+                ReplacementAction::PreventDamage,
+            ),
+        );
+        let redirect = game.effect_store.replacement_effects.add_one_shot_effect(
+            ReplacementEffect::with_matcher(
+                recipient, bob,
+                crate::events::damage::matchers::DamageToPlayerMatcher::new(
+                    crate::target::PlayerFilter::Specific(bob),
+                ),
+                ReplacementAction::RedirectDamageAmount {
+                    target: crate::replacement::RedirectTarget::ToObject(recipient),
+                    which: crate::replacement::RedirectWhich::First,
+                    amount: 1,
+                },
+            ),
+        );
+        let combat = CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker, target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        };
+        let events = execute_combat_damage_step(&mut game, &combat, false);
+        assert_eq!(game.player(bob).unwrap().life, 18);
+        assert_eq!(game.player(alice).unwrap().life, 22);
+        assert_eq!(game.damage_on(recipient), 0);
+        assert_eq!(events.iter().map(|event| event.amount).sum::<u32>(), 2);
+        assert!(events.iter().filter(|event| event.amount > 0).all(|event| event.source == attacker));
+        assert!(game.effect_store.replacement_effects.get_effect(redirect).is_none());
+    }
+
     fn add_fiery_emancipation_like_effect(
         game: &mut GameState,
         controller: PlayerId,
