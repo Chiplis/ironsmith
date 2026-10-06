@@ -226,9 +226,9 @@ impl ManaProduction<'_> {
             Self::ColorsAmong {
                 filter, choose_one, ..
             } => {
-                let available = super::add_mana_of_colors_among::colors_among_filter(
-                    game, filter, ctx.source, recipient,
-                );
+                let available = super::add_mana_of_colors_among::colors_among_for_execution(
+                    game, filter, ctx, recipient,
+                )?;
                 if choose_one && !available.is_empty() {
                     Choice {
                         available,

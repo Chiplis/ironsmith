@@ -283,7 +283,8 @@ fn restriction_references_identity(
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }
-        Restriction::BeTargetedPlayerFrom(player, source) => {
+        Restriction::BeTargetedPlayerFrom(player, source)
+        | Restriction::PlayerHexproofFrom(player, source) => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(source, identity)
         }

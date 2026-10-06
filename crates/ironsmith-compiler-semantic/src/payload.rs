@@ -205,6 +205,8 @@ pub enum KeywordAction {
     Increment,
     BolsterValue { amount: Value, display: String },
     MobilizeValue { amount: Value, display: String },
+    ProtectionFromOwnColors,
+    ProtectionFromColorsAmong(ObjectFilter),
 }
 
 pub fn describe_soulshift_value(value: &Value) -> String {
@@ -330,6 +332,8 @@ impl KeywordAction {
                 | Self::ProtectionFromEachManaValueAmong(_)
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
+                | Self::ProtectionFromOwnColors
+                | Self::ProtectionFromColorsAmong(_)
                 | Self::Unblockable
                 | Self::CantBeBlockedByMoreThan(_)
                 | Self::Devoid
@@ -520,6 +524,9 @@ impl KeywordAction {
             Self::ProtectionFrom(colors) => single_color_name(*colors)
                 .map(|name| format!("Protection from {name}"))
                 .unwrap_or_else(|| "Protection from colors".to_string()),
+            Self::ProtectionFromOwnColors => "Protection from each of its colors".to_string(),
+            Self::ProtectionFromColorsAmong(filter) => format!(
+                "Protection from each color among {}", describe_protection_mana_value_scope(filter)),
             Self::ProtectionFromAllColors => "Protection from all colors".to_string(),
             Self::ProtectionFromColorless => "Protection from colorless".to_string(),
             Self::ProtectionFromEverything => "Protection from everything".to_string(),
@@ -535,6 +542,10 @@ impl KeywordAction {
             Self::ProtectionFromFilter(filter) => {
                 if let Some(quality) = filter.protection_mana_value_parity_quality() {
                     format!("Protection from {quality}")
+                } else if *filter == ObjectFilter::default().monocolored() {
+                    "Protection from monocolored".to_string()
+                } else if *filter == ObjectFilter::default().with_supertype(crate::types::Supertype::Snow) {
+                    "Protection from snow".to_string()
                 } else if *filter == ObjectFilter::default().multicolored() {
                     "Protection from multicolored".to_string()
                 } else {

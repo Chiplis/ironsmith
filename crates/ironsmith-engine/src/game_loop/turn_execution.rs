@@ -516,6 +516,26 @@ pub fn queue_combat_damage_triggers(
     generate_damage_triggers(game, events, trigger_queue);
 }
 
+/// Preserve typed failures from grouped counter receipts in combat's damage
+/// consequences and lifelink replacements before publishing the queue.
+pub fn try_queue_combat_damage_triggers(
+    game: &mut GameState,
+    events: &[CombatDamageEvent],
+    trigger_queue: &mut TriggerQueue,
+) -> Result<(), crate::effects::ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    generate_damage_triggers(game, events, trigger_queue);
+    let result = game.token_resource_failure().map_or(Ok(()), Err);
+    if result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, false);
+        *trigger_queue = queue_checkpoint;
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

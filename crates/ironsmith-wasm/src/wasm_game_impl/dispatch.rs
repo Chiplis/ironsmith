@@ -232,7 +232,8 @@ impl WasmGame {
                 .map_err(ForceFaceUpError::Execution)?;
             if dm.awaiting_choice() { return Err(ForceFaceUpError::PendingChoice); }
             if outcome.as_count() != Some(1) { return Err(ForceFaceUpError::NotTurnedFaceUp); }
-            ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+            ironsmith::game_loop::try_drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue)
+                .map_err(ForceFaceUpError::Execution)?;
             ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)
                 .map_err(|error| ForceFaceUpError::TriggerStack(format!("{error:?}")))?;
             Ok(())
@@ -4122,7 +4123,8 @@ impl WasmGame {
                     game.freeze_completed_entry_events(std::iter::once(&mut event))
                         .map_err(|error| error.to_string())?;
                     game.queue_trigger_event(provenance, event);
-                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                    ironsmith::game_loop::try_drain_pending_trigger_events(game, trigger_queue)
+                        .map_err(|error| error.to_string())?;
                     ironsmith::game_loop::handle_saga_enters_battlefield(
                         game,
                         entered_id,
@@ -4134,7 +4136,8 @@ impl WasmGame {
                 finish_manual_entry_receipt(game, temp_id, player_id, receipt, dm)?;
                 align_manual_add_stable_id(game, entered_id);
                 if !skip_triggers {
-                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                    ironsmith::game_loop::try_drain_pending_trigger_events(game, trigger_queue)
+                        .map_err(|error| error.to_string())?;
                 }
                 Ok(entered_id.0)
             };
@@ -4168,10 +4171,10 @@ impl WasmGame {
             self.game.set_as_commander(object_id, player_id);
         }
         if !skip_triggers {
-            ironsmith::game_loop::drain_pending_trigger_events(
+            ironsmith::game_loop::try_drain_pending_trigger_events(
                 &mut self.game,
                 &mut self.trigger_queue,
-            );
+            ).map_err(|error| error.to_string())?;
         }
         Ok(object_id.0)
     }
@@ -5090,7 +5093,14 @@ impl WasmGame {
                 if legend_pending_context.is_some() {
                     // The probe restores the original live state before replay.
                 } else {
-                    drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+                    if let Err(error) = ironsmith::game_loop::try_drain_pending_trigger_events(
+                        &mut self.game, &mut self.trigger_queue,
+                    ) {
+                        self.restore_replay_checkpoint(&replay.checkpoint);
+                        self.pending_decision = Some(pending_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return Err(JsValue::from_str(&error.to_string()));
+                    }
                     self.pending_action_checkpoint = None;
                     self.pending_replay_action = None;
                     self.pending_decision = None;

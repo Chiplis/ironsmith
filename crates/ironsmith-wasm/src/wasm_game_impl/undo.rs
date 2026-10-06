@@ -1620,10 +1620,10 @@ impl WasmGame {
                 };
                 self.game.queue_trigger_event(etb_event_provenance, event);
 
-                ironsmith::game_loop::drain_pending_trigger_events(
+                ironsmith::game_loop::try_drain_pending_trigger_events(
                     &mut self.game,
                     &mut self.trigger_queue,
-                );
+                ).map_err(|error| JsValue::from_str(&error.to_string()))?;
 
                 ironsmith::game_loop::handle_saga_enters_battlefield(
                     &mut self.game,
@@ -1641,7 +1641,8 @@ impl WasmGame {
                 .move_object_by_effect(temp_id, zone)
                 .unwrap_or(temp_id)
         };
-        ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+        ironsmith::game_loop::try_drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.recompute_ui_decision()?;
         Ok(object_id)
     }

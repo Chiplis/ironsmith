@@ -1185,6 +1185,11 @@ pub enum Restriction {
     /// A source-owned positive blocking requirement, independent of abilities
     /// on the matching creatures. Appended to preserve serialized ordinals.
     MustBlock(ObjectFilter),
+    /// Player hexproof, optionally qualified by the source's characteristics.
+    /// The targeting spell/ability's controller is compared with the protected
+    /// player; it is not part of the physical source-quality filter.
+    /// Appended to preserve existing serialized variant ordinals.
+    PlayerHexproofFrom(PlayerFilter, ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1586,6 +1591,10 @@ impl Restriction {
 
     pub fn be_targeted_player_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
         Self::BeTargetedPlayerFrom(player, source_filter)
+    }
+
+    pub fn player_hexproof_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
+        Self::PlayerHexproofFrom(player, source_filter)
     }
 
     pub fn be_countered(filter: ObjectFilter) -> Self {

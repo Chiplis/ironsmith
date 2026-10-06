@@ -195,7 +195,7 @@ fn possession_tracks_the_enchanted_opponent_and_optional_draw_but_skips_its_own_
         assert_eq!(game.player(A).unwrap().hand.len(), 2);
         game.turn.phase = Phase::Beginning;
         game.turn.step = Some(Step::Draw);
-        assert!(ironsmith::turn::execute_draw_step_with(&mut game, &mut dm).is_empty());
+        assert!(ironsmith::turn::execute_draw_step_with(&mut game, &mut dm).unwrap().is_empty());
         assert_eq!(game.player(A).unwrap().hand.len(), 2);
     }
 }
@@ -279,7 +279,7 @@ fn wiretapping_hideaway_free_play_and_first_card_are_scoped_to_each_actual_draw_
         draw(&mut game, source, A, 1);
         assert_eq!(pending(&mut game, &mut dm), 0);
         game.turn.step = Some(Step::Draw);
-        for event in ironsmith::turn::execute_draw_step_with(&mut game, &mut dm) {
+        for event in ironsmith::turn::execute_draw_step_with(&mut game, &mut dm).unwrap() {
             game.queue_trigger_event(event.provenance(), event);
         }
         assert_eq!(pending(&mut game, &mut dm), 1);
@@ -294,7 +294,7 @@ fn wiretapping_hideaway_free_play_and_first_card_are_scoped_to_each_actual_draw_
         assert_eq!(pending(&mut game, &mut dm), 0);
         game.add_step_after(Step::Draw, Step::Draw);
         ironsmith::turn::advance_step(&mut game).unwrap();
-        for event in ironsmith::turn::execute_draw_step_with(&mut game, &mut dm) {
+        for event in ironsmith::turn::execute_draw_step_with(&mut game, &mut dm).unwrap() {
             game.queue_trigger_event(event.provenance(), event);
         }
         assert_eq!(pending(&mut game, &mut dm), 1);

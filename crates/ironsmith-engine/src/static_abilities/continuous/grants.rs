@@ -1003,7 +1003,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                 // "Creatures you control have protection from the chosen card
                 // type": the choice is the granting permanent's (CR 702.16a).
                 Modification::AddAbilityGeneric(grant_ability(&self.ability))
-                    .bind_chosen_protection_qualities(game, source),
+                    .bind_chosen_protection_qualities(game, source, true),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &condition,
@@ -1015,7 +1015,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                     controller,
                     target.clone(),
                     Modification::AddAbilityGeneric(grant_ability(&ability))
-                        .bind_chosen_protection_qualities(game, source),
+                        .bind_chosen_protection_qualities(game, source, true),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &condition,

@@ -825,7 +825,7 @@ fn you_and_permanents_gain_hexproof_splits_player_and_permanent_grants() {
     let debug = format!("{effects:?}");
     assert!(
         string_contains(&debug, "Cant")
-            && string_contains(&debug, "BeTargetedPlayerFrom")
+            && string_contains(&debug, "PlayerHexproofFrom")
             && string_contains(&debug, "GrantAbilitiesAll")
             && string_contains(&debug, "Hexproof"),
         "expected player hexproof restriction plus permanent hexproof grant, got {debug}"
@@ -860,8 +860,7 @@ fn you_and_permanents_gain_hexproof_from_keeps_player_grant_opponent_scoped() {
 
     let debug = format!("{effects:?}");
     assert!(
-        string_contains(&debug, "BeTargetedPlayerFrom")
-            && string_contains(&debug, "Opponent")
+        string_contains(&debug, "PlayerHexproofFrom")
             && string_contains(&debug, "GrantAbilitiesAll")
             && string_contains(&debug, "HexproofFrom"),
         "expected player hexproof-from restriction to apply only to opponents' sources plus permanent hexproof-from grant, got {debug}"
@@ -1259,7 +1258,7 @@ fn players_gain_hexproof_clause_parses_as_player_wide_targeting_restriction() {
     let debug = format!("{effect:?}");
     assert!(
         string_contains(&debug, "Cant")
-            && string_contains(&debug, "BeTargetedPlayerFrom(Any")
+            && string_contains(&debug, "PlayerHexproofFrom(Any")
             && string_contains(&debug, "EndOfTurn"),
         "expected a player-wide temporary targeting restriction, got {debug}"
     );

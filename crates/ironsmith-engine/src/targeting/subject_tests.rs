@@ -68,11 +68,16 @@ fn shared_subject_targeting_prefers_live_source_then_retained_color() {
 }
 
 #[test]
-fn shared_subject_targeting_preserves_ignore_permission_controller_policy() {
+fn shared_subject_targeting_retains_ignore_permission_controller_after_departure() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
+    for (ability, ignored_ability) in [
+        (StaticAbility::shroud(), StaticAbilityId::Shroud),
+        (StaticAbility::hexproof(), StaticAbilityId::Hexproof),
+        (StaticAbility::hexproof_from(ObjectFilter::default().with_colors(ColorSet::RED)), StaticAbilityId::Hexproof),
+    ] {
     for allowed in [alice, bob] {
-        let (mut game, source, target) = fixture(StaticAbility::shroud(), bob);
+        let (mut game, source, target) = fixture(ability.clone(), bob);
         game.effect_store
             .cant_effects
             .targeting_as_though_overrides
@@ -80,7 +85,7 @@ fn shared_subject_targeting_preserves_ignore_permission_controller_policy() {
                 objects: Some(ObjectFilter::creature()),
                 players: None,
                 allowed_source_controller: Some(allowed),
-                ignored_ability: StaticAbilityId::Shroud,
+                ignored_ability,
                 controller: alice,
                 source,
             });
@@ -92,8 +97,10 @@ fn shared_subject_targeting_preserves_ignore_permission_controller_policy() {
         game.move_object_by_effect(source, Zone::Graveyard);
         assert_eq!(
             target_result(&game, source, target, Some(&snapshot)).is_legal(),
-            allowed == bob
+            allowed == alice,
+            "the LKI source controller cannot acquire the targeting ability's permission"
         );
+    }
     }
 }
 

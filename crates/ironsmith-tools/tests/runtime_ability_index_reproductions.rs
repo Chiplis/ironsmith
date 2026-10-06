@@ -192,7 +192,7 @@ fn start_next_turn(
     ironsmith::turn::execute_untap_step(g);
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    let events = ironsmith::turn::execute_draw_step_with(g, dm);
+    let events = ironsmith::turn::execute_draw_step_with(g, dm).unwrap();
     for event in events {
         for t in ironsmith::triggers::check_triggers(g, &event) {
             q.add(t);

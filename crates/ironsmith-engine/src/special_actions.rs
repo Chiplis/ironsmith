@@ -957,7 +957,7 @@ fn perform_repeatable_mana_payment_action(
         let mut reported = Vec::new();
         for (index, effect) in action.effects.iter().enumerate() {
             let outcome = crate::effects::execute_effect(game, effect, &mut ctx)
-                .map_err(|_| ActionError::InvalidTarget)?;
+                .map_err(|error| ActionError::ExecutionFailure { source: action.source, error })?;
             reported.extend(outcome.events);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(());
@@ -967,7 +967,7 @@ fn perform_repeatable_mana_payment_action(
                 &ctx,
                 action.effects.get(index + 1),
                 reported.iter(),
-            ) {
+            ).map_err(|error| ActionError::ExecutionFailure { source: action.source, error })? {
                 reported.clear();
             }
         }

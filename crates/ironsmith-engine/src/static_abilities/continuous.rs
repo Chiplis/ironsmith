@@ -6542,7 +6542,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     &self.ability,
                     source,
                 ))
-                .bind_chosen_protection_qualities(game, source),
+                .bind_chosen_protection_qualities(game, source, true),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -6556,7 +6556,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     Modification::AddAbilityGeneric(materialize_named_granting_source(
                         &ability, source,
                     ))
-                    .bind_chosen_protection_qualities(game, source),
+                    .bind_chosen_protection_qualities(game, source, true),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

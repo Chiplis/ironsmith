@@ -1605,6 +1605,7 @@ impl GameState {
             self.turn_store.turn_history.total_spells_cast_this_turn();
         let completed_turn_history = std::mem::take(&mut self.turn_store.turn_history);
         self.turn_store.turn_history.ability_activation_counts = Some(HashMap::new());
+        self.turn_store.turn_history.draw_occurrences = Some(Default::default());
         for player in completed_turn_players {
             self.turn_store
                 .last_turn_history_by_player

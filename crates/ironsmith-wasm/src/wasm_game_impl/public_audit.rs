@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact9 and signed audit22. Full-snapshot claim encoding
-// changes this public evidence, never the native gameplay recovery owner.
-// Historical digests are not upgraded by injecting current snapshot defaults.
-const PUBLIC_AUDIT_VERSION: u32 = 5;
+// Coordinated with artifact10 and signed audit23. Restricted mana can carry
+// typed protection and targeting programs through its on-spend payloads.
+// Historical digests retain their bytes; native recovery is unchanged.
+const PUBLIC_AUDIT_VERSION: u32 = 6;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -1815,14 +1815,14 @@ mod public_audit_tests {
     use ironsmith::game_state::HiddenCardInfo;
 
     #[test]
-    fn public_audit_v5_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
+    fn public_audit_v6_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
         let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
         let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         let unset = checkpoint(&wasm);
-        assert_eq!(unset["version"], 5);
+        assert_eq!(unset["version"], 6);
         let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
             pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
             acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
@@ -1838,7 +1838,7 @@ mod public_audit_tests {
     }
 
     #[test]
-    fn public_audit_v5_retains_exact_manifest_and_cloak_provenance() {
+    fn public_audit_v6_retains_exact_manifest_and_cloak_provenance() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut wasm = WasmGame::new();
         wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
@@ -1849,7 +1849,7 @@ mod public_audit_tests {
         let baseline = wasm.game.clone();
         let object_evidence = |wasm: &WasmGame| {
             let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-            assert_eq!(checkpoint["version"], 5);
+            assert_eq!(checkpoint["version"], 6);
             checkpoint["objects"].as_array().unwrap().iter()
                 .find(|object| object["id"] == id.0).unwrap().clone()
         };
@@ -1927,6 +1927,92 @@ mod public_audit_tests {
         assert_eq!(encoded, serde_json::to_value(repeated).unwrap());
         assert_ne!(encoded, serde_json::to_value(changed).unwrap());
         assert!(encoded.to_string().contains("GainLifeEffect"));
+    }
+
+    #[test]
+    fn public_audit_preserves_new_protection_programs_in_mana_spend_payloads() {
+        use ironsmith::ability::ProtectionFrom;
+        use ironsmith::effects::player::GrantNextSpellAbilityEffect;
+        use ironsmith::static_abilities::StaticAbility;
+        use ironsmith_core::{ObjectFilter, PlayerFilter};
+
+        fn unit(effects: Vec<ironsmith::Effect>) -> ironsmith::ability::RestrictedManaUnit {
+            ironsmith::ability::RestrictedManaUnit {
+                symbol: ironsmith::mana::ManaSymbol::Green,
+                source: ObjectId::from_raw(17),
+                source_controller: Some(PlayerId(0)),
+                source_chosen_creature_type: None,
+                restrictions: vec![ironsmith_core::ManaUsageRestriction::PaymentTransaction {
+                    restriction: Some(ironsmith_core::ManaPaymentPredicate::Any),
+                    on_spend: vec![ironsmith_core::ManaSpendPayload {
+                        predicate: ironsmith_core::ManaPaymentPredicate::Any,
+                        effects: ironsmith_core::ResolutionProgram::from_effects(effects),
+                        choices: vec![],
+                    }],
+                }],
+            }
+        }
+        let filter = ObjectFilter::creature().you_control();
+        let variants = [
+            ProtectionFrom::OwnColors,
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: None },
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: Some(ObjectId::from_raw(40)) },
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: Some(ObjectId::from_raw(41)) },
+            ProtectionFrom::ColorsAmongAtResolution(filter),
+        ];
+        let mut encoded = Vec::new();
+        for protection in variants {
+            let source = unit(vec![ironsmith::Effect::new(GrantNextSpellAbilityEffect::new(
+                PlayerFilter::You,
+                ObjectFilter::creature(),
+                StaticAbility::protection(protection).into(),
+            ))]);
+            let first = serde_json::to_value(sync_restricted_mana(&[source.clone()]).unwrap()).unwrap();
+            let repeated = serde_json::to_value(sync_restricted_mana(&[source]).unwrap()).unwrap();
+            assert_eq!(first, repeated, "projection must retain the same typed program");
+            for previous in &encoded {
+                assert_ne!(&first, previous, "different color sources and capture semantics remain distinct");
+            }
+            assert!(first.to_string().contains("GrantNextSpellAbilityEffect"));
+            encoded.push(first);
+        }
+        assert!(encoded[0].to_string().contains("OwnColors"));
+        assert!(encoded[1].to_string().contains("ColorsAmong"));
+        assert!(encoded[4].to_string().contains("ColorsAmongAtResolution"));
+
+        let source_filter = ObjectFilter::creature();
+        let restrictions = [
+            ironsmith_core::Restriction::BeTargetedPlayerFrom(PlayerFilter::You, source_filter.clone()),
+            ironsmith_core::Restriction::PlayerHexproofFrom(PlayerFilter::You, source_filter),
+        ];
+        let projected_restrictions: Vec<_> = restrictions.into_iter().map(|restriction| {
+            let source = unit(vec![ironsmith::Effect::new(GrantNextSpellAbilityEffect::new(
+                PlayerFilter::You,
+                ObjectFilter::creature(),
+                StaticAbility::from_model(ironsmith_core::StaticAbility::restriction(
+                    restriction, "targeting restriction",
+                )).into(),
+            ))]);
+            serde_json::to_value(sync_restricted_mana(&[source]).unwrap()).unwrap()
+        }).collect();
+        assert_ne!(projected_restrictions[0], projected_restrictions[1],
+            "source protection and retained-controller hexproof are distinct public programs");
+        assert!(projected_restrictions[1].to_string().contains("PlayerHexproofFrom"));
+
+        #[derive(Debug, Clone)]
+        struct UnencodedProgram;
+        impl ironsmith::effects::EffectExecutor for UnencodedProgram {
+            fn execute(
+                &self,
+                _game: &mut ironsmith::GameState,
+                _ctx: &mut ironsmith::effects::ExecutionContext,
+            ) -> Result<ironsmith::effect::EffectOutcome, ironsmith::effects::ExecutionError> {
+                panic!("audit encoding must never execute an opaque mana program");
+            }
+        }
+        let unsupported = unit(vec![ironsmith::Effect::new(UnencodedProgram)]);
+        assert!(sync_restricted_mana(&[unsupported]).is_err(),
+            "an unencodable on-spend body must not disappear from public evidence");
     }
 
     #[test]

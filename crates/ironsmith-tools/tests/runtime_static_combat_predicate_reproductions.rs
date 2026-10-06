@@ -328,7 +328,7 @@ fn next_main(g: &mut GameState, d: &mut ProbeDm, trace: &mut Vec<Value>) -> Resu
     }
     resolve(g, &mut q, d)?;
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    let events = ironsmith::turn::execute_draw_step_with(g, d);
+    let events = ironsmith::turn::execute_draw_step_with(g, d).unwrap();
     for e in events {
         for t in ironsmith::triggers::check_triggers(g, &e) {
             q.add(t);

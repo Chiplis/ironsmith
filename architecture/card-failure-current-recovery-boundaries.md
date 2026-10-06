@@ -11,22 +11,22 @@ Do not reintroduce a lossy gameplay serializer to implement a new card family.
 
 ## Three distinct compatibility surfaces
 
-- **Compiled artifact format 9** represents card definitions and programs.
+- **Compiled artifact format 10** represents card definitions and programs.
   Required regeneration and exact default/ordinal compatibility remain part of
   the deferred artifact validation gate.
-- **Public audit checkpoint version 5** is a redacted digest input exported by
+- **Public audit checkpoint version 6** is a redacted digest input exported by
   `wasm_game_impl/public_audit.rs`. It is not an executable gameplay snapshot
   and cannot restore continuations, history, replacement managers or private
   state. Changes to this encoding require explicit compatibility analysis.
-- **Signed audit protocol 22** governs current action/replay compatibility.
+- **Signed audit protocol 23** governs current action/replay compatibility.
   Verifying an older transcript's signatures does not establish that replaying
   it in the current engine reproduces its former semantics or public hashes.
 
-The earlier 6/3/19, stage93 7/3/20 and published862 8/4/21 descriptions remain
-historical boundaries. The current source proposal is 9/5/22; see
-[`card-failure-prepared-main-compatibility.md`](card-failure-prepared-main-compatibility.md)
-for the concrete model/evidence changes, signature-only historical21 admission
-and deferred regeneration. These are separate surfaces. In particular, digest5
+The earlier 6/3/19, stage93 7/3/20 and published862 8/4/21 and published863 9/5/22 descriptions remain
+historical boundaries. The current source proposal is 10/6/23; see
+[`card-failure-protection-targeting-compatibility.md`](card-failure-protection-targeting-compatibility.md)
+for the concrete model/evidence changes, signature-only historical22 admission
+and deferred regeneration. These are separate surfaces. In particular, digest6
 does not promise serialized gameplay recovery. Existing runtime identity tests
 require `exportSyncCheckpoint`, `exportRedactedSyncCheckpoint`,
 `importSyncCheckpoint`, `importForeignSyncCheckpoint` and

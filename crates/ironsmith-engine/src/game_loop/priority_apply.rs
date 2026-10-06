@@ -110,7 +110,7 @@ pub fn apply_priority_response_with_dm(
     }
     // Entry and activation can suspend inside replacement programs. Their
     // priority actor and loop bookkeeping are part of the same operation.
-    let checkpoint = matches!(
+    let restore_on_pending = matches!(
         response,
         PriorityResponse::PriorityAction(
             LegalAction::PlayLand { .. }
@@ -120,20 +120,21 @@ pub fn apply_priority_response_with_dm(
         ) | PriorityResponse::NextCostChoice(_)
             | PriorityResponse::SacrificeTarget(_)
             | PriorityResponse::CardCostChoice(_)
-    )
-    .then(|| (game.clone(), trigger_queue.clone(), state.clone()));
+    );
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
     let result =
         apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
-    if let Some((game_before, queue_before, state_before)) = checkpoint {
-        if result.is_err() || decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                game_before,
-                result.is_ok() && decision_maker.awaiting_choice(),
-            );
-            *trigger_queue = queue_before;
-            *state = state_before;
-        }
-        if decision_maker.awaiting_choice() {
+    let incomplete = matches!(&result, Err(GameLoopError::ExecutionFailed(error))
+        if error.is_incomplete_execution());
+    if incomplete || (restore_on_pending && (result.is_err() || decision_maker.awaiting_choice())) {
+        let (game_before, queue_before, state_before) = checkpoint;
+        game.restore_execution_checkpoint(
+            game_before,
+            result.is_ok() && decision_maker.awaiting_choice(),
+        );
+        *trigger_queue = queue_before;
+        *state = state_before;
+        if restore_on_pending && decision_maker.awaiting_choice() && !incomplete {
             return Ok(GameProgress::Continue);
         }
     }
@@ -309,7 +310,7 @@ pub(super) fn begin_mana_ability_activation(
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance),
                 );
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
 
                 let activation_origin = source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
                     .and_then(|origins| origins.get(*ability_index).cloned());
@@ -344,7 +345,7 @@ pub(super) fn begin_mana_ability_activation(
                     return Ok(GameProgress::Continue);
                 }
                 drop(mana_ctx);
-                queue_triggers_for_events(game, trigger_queue, outcome.events);
+                queue_triggers_for_events(game, trigger_queue, outcome.events)?;
 
                 // Execute additional effects (for complex mana abilities)
                 if !effects_to_run.is_empty() {
@@ -374,8 +375,8 @@ pub(super) fn begin_mana_ability_activation(
                         }
                         emitted_events.extend(outcome.events);
                     }
-                    queue_triggers_for_events(game, trigger_queue, emitted_events);
-                    drain_pending_trigger_events(game, trigger_queue);
+                    queue_triggers_for_events(game, trigger_queue, emitted_events)?;
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
 
                 queue_ability_activated_event(
@@ -387,7 +388,7 @@ pub(super) fn begin_mana_ability_activation(
                     true,
                     None,
                     activation_cost_has_tap,
-                );
+                )?;
 
                 // Player retains priority after activating mana ability
                 return advance_priority_with_dm(game, trigger_queue, decision_maker);
@@ -688,7 +689,7 @@ fn apply_priority_response_with_dm_inner(
                     decision_maker,
                     |game, decision_maker, new_id, kind, event| {
                         if matches!(kind, crate::special_actions::LandPlayObservationKind::Entry) {
-                            drain_pending_trigger_events(game, trigger_queue);
+                            try_drain_pending_trigger_events(game, trigger_queue)?;
                         }
                         for trigger in check_triggers(game, &event) {
                             trigger_queue.add(trigger);
@@ -703,7 +704,7 @@ fn apply_priority_response_with_dm_inner(
                 if decision_maker.awaiting_choice() {
                     return Ok(());
                 }
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
                 Ok(())
             })();
             if instruction.is_err() || decision_maker.awaiting_choice() {
@@ -1157,7 +1158,7 @@ fn apply_priority_response_with_dm_inner(
                     false,
                     Some(source_stable_id),
                     activation_cost_has_tap,
-                );
+                )?;
 
                 priority_after_player_action(game, &mut state.tracker, player);
                 advance_priority_with_dm(game, trigger_queue, decision_maker)
@@ -1201,7 +1202,7 @@ fn apply_priority_response_with_dm_inner(
                 game,
                 decision_maker,
             )?;
-            drain_pending_trigger_events(game, trigger_queue);
+            try_drain_pending_trigger_events(game, trigger_queue)?;
 
             // CR 116.3 / 117.3c / 117.4: the player retains priority, and the
             // action breaks any run of passes in succession.
@@ -1257,7 +1258,7 @@ fn apply_priority_response_with_dm_inner(
                         true,
                         None,
                         activation_cost_has_tap,
-                    );
+                    )?;
                 }
             }
 
@@ -1733,6 +1734,8 @@ fn finish_special_action_response(
             decision_maker.on_action_cancelled(game, "Special action cancelled");
             Ok(false)
         }
+        Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) =>
+            Err(GameLoopError::ExecutionFailed(error)),
         Err(error) => Err(GameLoopError::InvalidState(format!(
             "Failed special action: {error}"
         ))),

@@ -161,15 +161,6 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             .map(|p| p.id)
             .collect()
     }
-    pub fn single_player(&self, value: &Value, filter: &PlayerFilter) -> PlayerId {
-        continuous_single_player(
-            value,
-            self.calculation,
-            filter,
-            self.controller,
-            self.source,
-        )
-    }
     pub fn unsupported(&self, value: &Value, reason: &str) -> ! {
         unsupported_continuous_value(value, reason)
     }

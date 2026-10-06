@@ -99,7 +99,7 @@ fn run_scripted_turn(
     game.empty_mana_pools();
 
     game.turn.step = Some(Step::Draw);
-    let _ = execute_draw_step(game);
+    let _ = execute_draw_step(game).unwrap();
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
     game.empty_mana_pools();

@@ -72,7 +72,7 @@ fn check_and_apply_sbas_with_inner(
     // (or the rule-driven changes below) changes it: a permanent that is about
     // to be put into a graveyard still sees them (Chandra, Fire Artisan dealt
     // lethal combat damage still triggers on her removed loyalty counters).
-    drain_pending_trigger_events(game, trigger_queue);
+    try_drain_pending_trigger_events(game, trigger_queue)?;
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
     game.refresh_continuous_state();
@@ -95,7 +95,7 @@ fn check_and_apply_sbas_with_inner(
         // Events since the previous check (the transforms above, sector
         // choices, dungeon completion) are matched before this check's
         // actions are performed (CR 603.2).
-        drain_pending_trigger_events(game, trigger_queue);
+        try_drain_pending_trigger_events(game, trigger_queue)?;
         game.refresh_continuous_state();
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
@@ -1175,10 +1175,8 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
         Err(error) => return Err(error),
     };
 
-    for event in all_events {
-        queue_triggers_from_event(game, trigger_queue, event, false);
-    }
-    drain_pending_trigger_events(game, trigger_queue);
+    queue_triggers_for_events(game, trigger_queue, all_events)?;
+    try_drain_pending_trigger_events(game, trigger_queue)?;
     Ok(())
 }
 
@@ -1190,7 +1188,7 @@ pub(crate) fn resolve_pending_mana_triggers(
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
     let mut queue = TriggerQueue::default();
-    drain_pending_trigger_events(game, &mut queue);
+    try_drain_pending_trigger_events(game, &mut queue)?;
     let result = resolve_triggered_mana_abilities_with_dm(game, &mut queue, decision_maker);
     game.effect_store
         .pending_trigger_entries

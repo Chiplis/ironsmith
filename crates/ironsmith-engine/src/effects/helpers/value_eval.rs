@@ -14,7 +14,7 @@ pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>
         .unwrap_or_else(|error| panic!("unsupported continuous-effect value {value:?}: {error:?}"))
 }
 
-/// A CDA scalar uses the same checked characteristic boundary as later P/T
+/// A characteristic-setting scalar uses the same checked boundary as later P/T
 /// arithmetic. Its provisional value cannot be published by a checked query
 /// when this records a range error; in particular an aggregate counter total
 /// must not wrap or panic before that boundary can inspect it.
@@ -41,7 +41,10 @@ pub(crate) fn resolve_continuous_characteristic(
             evidence_error.get_or_insert("the source numeric pair or acquisition is unrecorded");
             0
         }
-        Err(error) => panic!("unsupported continuous-effect value {value:?}: {error:?}"),
+        Err(_) => {
+            evidence_error.get_or_insert("the continuous characteristic value is unavailable");
+            0
+        }
     }
 }
 
@@ -387,6 +390,13 @@ pub(crate) fn resolve_wide(
                 }
             });
             Ok(i64::from(seen.len() as i64))
+        }
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(player)) => {
+            context.validate_history_player_reference(value, player)?;
+            let filter_ctx = context.filter_context(game);
+            game.turn_store
+                .turn_history
+                .cards_drawn_matching_players_wide(|id| player.matches_player(id, &filter_ctx))
         }
         Value::TurnHistoryCount(query) => {
             Ok(i64::from(crate::turn_history::resolve_turn_history_count(
@@ -771,17 +781,14 @@ pub(crate) fn resolve_wide(
             })?))
         }
         Value::MaxCardsDrawnThisTurn(player_spec) => {
-            let player_ids = context.player_ids(value, player_spec)?;
-            if player_ids.is_empty() {
-                return Err(ExecutionError::UnresolvableValue(
-                    "MaxCardsDrawnThisTurn requires a matching player".to_string(),
-                ));
+            let player_ids = context.aggregate_player_ids(value, player_spec)?;
+            for player in &player_ids {
+                game.player(*player)
+                    .ok_or(ExecutionError::PlayerNotFound(*player))?;
             }
-            Ok(i64::from(
-                game.turn_store
-                    .turn_history
-                    .max_cards_drawn_for_players(&player_ids) as i64,
-            ))
+            game.turn_store
+                .turn_history
+                .max_cards_drawn_for_players_wide(&player_ids)
         }
         Value::MaxDiceRolledThisTurn(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
@@ -1653,8 +1660,8 @@ fn resolve_event_value(
                     )
                 });
             }
-            if let Some(markers_event) = triggering_event.downcast::<MarkersChangedEvent>() {
-                return Ok(i64::from(markers_event.amount as i64));
+            if triggering_event.downcast::<MarkersChangedEvent>().is_some() {
+                return triggering_event.counter_trigger_amount();
             }
             if let Some(counter_event) = triggering_event.downcast::<CounterPlacedEvent>() {
                 return Ok(i64::from(counter_event.amount as i64));

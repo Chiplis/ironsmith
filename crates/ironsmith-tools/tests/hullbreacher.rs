@@ -92,7 +92,7 @@ fn opponents_first_draw_step_draw_is_kept_and_later_draws_become_treasures() {
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(Step::Draw);
 
-    ironsmith::turn::execute_draw_step(&mut game);
+    ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert_eq!(
         hand_size(&game, bob()),
         1,
@@ -131,7 +131,7 @@ fn opponent_draws_on_controllers_turn_are_replaced_but_controller_draws_normally
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(Step::Draw);
 
-    ironsmith::turn::execute_draw_step(&mut game);
+    ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert_eq!(
         hand_size(&game, alice()),
         1,

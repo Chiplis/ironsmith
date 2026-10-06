@@ -3947,7 +3947,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         let trigger_identity = compute_delayed_trigger_identity(delayed);
 
         let mut fired = false;
-        let mut one_shot_matches = Vec::new();
+        let mut matches: Vec<TriggeredAbilityEntry> = Vec::new();
+        let mut counter_groups: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
         for trigger_event in events.iter().copied() {
             for &source in candidate_sources {
                 let mut ctx = TriggerContext::for_delayed_source(
@@ -4092,19 +4093,44 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         source_kind: TriggeredAbilitySourceKind::Object,
                         trigger_identity,
                     };
-                    if delayed.one_shot {
-                        one_shot_matches.push(entry);
-                    } else {
-                        triggered.push(entry);
+                    if let Some(group @ crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterRecipient { .. }) =
+                        delayed.trigger.simultaneous_trigger_key(&entry.triggering_event)
+                    {
+                        // Each delayed registration owns its groups. Keep a
+                        // watched source and every singular recipient distinct;
+                        // one-shot alternatives are whole recipient groups.
+                        let key = (source, group);
+                        if let Some(&index) = counter_groups.get(&key) {
+                            let previous: &mut TriggeredAbilityEntry = &mut matches[index];
+                            if let Err(error) = previous.triggering_event.accumulate_counter_trigger_amount(
+                                &entry.triggering_event,
+                            ) {
+                                game.record_token_resource_failure(&error);
+                                // Nothing from any delayed registration has
+                                // been published or consumed yet.
+                                return Vec::new();
+                            }
+                            super::merge_trigger_group_tags(
+                                &mut previous.tagged_objects,
+                                &entry.tagged_objects,
+                            );
+                            continue;
+                        }
+                        counter_groups.insert(key, matches.len());
                     }
+                    matches.push(entry);
                 }
             }
         }
-        if let Some((first, others)) = one_shot_matches.split_first() {
-            if !others.is_empty() {
-                alternatives.push(one_shot_matches.clone());
+        if delayed.one_shot {
+            if let Some((first, others)) = matches.split_first() {
+                if !others.is_empty() {
+                    alternatives.push(matches.clone());
+                }
+                triggered.push(first.clone());
             }
-            triggered.push(first.clone());
+        } else {
+            triggered.extend(matches);
         }
 
         if fired && delayed.one_shot {

@@ -431,12 +431,10 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
         (_, Some(snapshot)) => Some(ObjectSubject::Snapshot(snapshot)),
         (_, None) => None,
     };
-    // Historically, permission to ignore shroud/hexproof is queried for the
-    // caster with a live source and the retained controller with LKI.
-    let permission_player = match source {
-        Some(ObjectSubject::Snapshot(snapshot)) => snapshot.controller,
-        Some(ObjectSubject::Live(_)) | None => caster,
-    };
+    // Permission belongs to the targeting spell/ability's retained
+    // controller. The physical source (including its LKI controller) supplies
+    // source qualities only; theft or departure cannot transfer permission.
+    let permission_player = caster;
 
     // Rule restrictions are not hexproof/shroud and apply in every authored
     // zone, to either controller. A permission to ignore those abilities never
@@ -556,7 +554,7 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     // have hexproof" also covers "hexproof from [quality]" (CR 702.11e).
     if game.are_opponents(
         game.controller_of(target),
-        source.protection_controller(game),
+        caster,
     ) && !ignores_hexproof
         && !game
             .effect_store
@@ -738,6 +736,7 @@ fn has_protection_from_subject_with_view(
         return false;
     };
 
+    if !protection_characteristics_available(game, target_id) { return false; }
     // A card can have protection in its text box without that ability
     // functioning in its current zone (for example, in a graveyard).
     let target_abilities = view.abilities_rc(target_id);
@@ -793,6 +792,35 @@ pub(crate) fn protection_among_abilities_from_source(
     })
 }
 
+/// A boolean protection query runs beneath checked targeting/combat/damage
+/// owners. Preserve unavailable discovery on their shared failure latch;
+/// negation must never turn incomplete characteristics into permission.
+fn protection_characteristics_available(game: &GameState, id: ObjectId) -> bool {
+    match game.try_current_characteristics(id) {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(error) => {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+            false
+        }
+    }
+}
+
+fn protection_current_characteristics(
+    game: &GameState,
+    id: ObjectId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Option<std::sync::Arc<crate::continuous::CalculatedCharacteristics>> {
+    if !protection_characteristics_available(game, id) { return None; }
+    let chars = view.current_characteristics_arc(id);
+    if chars.is_none() {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id },
+        ));
+    }
+    chars
+}
+
 /// Evaluate one protection quality against live or last-known source data.
 /// Shared by targeting and damage prevention.
 pub(crate) fn protection_from_subject_with_view(
@@ -805,17 +833,36 @@ pub(crate) fn protection_from_subject_with_view(
     let Some(target) = game.object(target_id) else {
         return false;
     };
+    if !protection_characteristics_available(game, target_id)
+        || matches!(source, ObjectSubject::Live(object) if !protection_characteristics_available(game, object.id))
+    { return false; }
     match protection_from {
+        crate::ability::ProtectionFrom::OwnColors => {
+            protection_current_characteristics(game, target_id, view)
+                .is_some_and(|chars| !chars.colors.intersection(source.protection_colors(game, view)).is_empty())
+        }
+        crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source } => {
+            let reference_id = reference_source.unwrap_or(target_id);
+            let Some(reference) = protection_current_characteristics(game, reference_id, view) else { return false; };
+            let controller = reference.controller;
+            let context = game.filter_context_for(controller, Some(reference_id));
+            let colors = source.protection_colors(game, view);
+            game.battlefield.iter().copied().any(|id| {
+                !game.is_phased_out(id)
+                    && protection_current_characteristics(game, id, view).is_some_and(|chars| !chars.colors.intersection(colors).is_empty())
+                    && game.object(id).is_some_and(|object| filter.matches_with_view(object, &context, game, view))
+            })
+        }
         crate::ability::ProtectionFrom::ChosenPlayer => game
             .chosen_player(target_id)
             .is_some_and(|chosen| source.is_from_player(game, chosen)),
         crate::ability::ProtectionFrom::ChosenColor => {
             game.chosen_color(target_id)
-                .is_some_and(|chosen| source.protection_colors(view).contains(chosen))
+                .is_some_and(|chosen| source.protection_colors(game, view).contains(chosen))
                 || attached_grant_protects_from_chosen_color(
                     game,
                     target,
-                    source.protection_colors(view),
+                    source.protection_colors(game, view),
                 )
         }
         crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
@@ -826,7 +873,7 @@ pub(crate) fn protection_from_subject_with_view(
         }
         crate::ability::ProtectionFrom::ColorsOutsideCommanderIdentity => {
             !colors_outside_commander_identity(game, game.controller_of(target))
-                .intersection(source.protection_colors(view))
+                .intersection(source.protection_colors(game, view))
                 .is_empty()
         }
         // "Protection from creatures your opponents control" (Crypsis): the
@@ -893,8 +940,10 @@ fn subject_matches_protection(
 ) -> bool {
     use crate::ability::ProtectionFrom;
 
-    // Get calculated characteristics for the source
-    let source_colors = source.protection_colors(view);
+    if matches!(source, ObjectSubject::Live(object) if !protection_characteristics_available(game, object.id)) {
+        return false;
+    }
+    let source_colors = source.protection_colors(game, view);
 
     match protection {
         // Protection from a color or set of colors
@@ -907,6 +956,7 @@ fn subject_matches_protection(
         // Protection from creatures
         ProtectionFrom::Creatures => source.protection_has_card_type(view, CardType::Creature),
         // Protection from the chosen player is target-specific and handled by the caller.
+        ProtectionFrom::OwnColors | ProtectionFrom::ColorsAmong { .. } => false,
         ProtectionFrom::ChosenPlayer => false,
         ProtectionFrom::ChosenColor => false,
         // Relative to the protected permanent's controller; handled by
@@ -914,7 +964,7 @@ fn subject_matches_protection(
         ProtectionFrom::ColorsOutsideCommanderIdentity => false,
         // Materialized to `Color` when the granting instruction resolves;
         // an unmaterialized reference protects from nothing.
-        ProtectionFrom::ColorsOf(_) => false,
+        ProtectionFrom::ColorsOf(_) | ProtectionFrom::ColorsAmongAtResolution(_) => false,
         // Protection from a card type
         ProtectionFrom::CardType(card_type) => source.protection_has_card_type(view, *card_type),
         // Protection from permanents matching a filter
@@ -1008,10 +1058,11 @@ impl ObjectSubject<'_> {
     }
     fn protection_colors(
         self,
+        game: &GameState,
         view: &crate::derived_view::DerivedGameView<'_>,
     ) -> crate::color::ColorSet {
         match self {
-            Self::Live(object) => view.object_colors(object.id),
+            Self::Live(object) => protection_current_characteristics(game, object.id, view).map(|chars| chars.colors).unwrap_or_default(),
             Self::Snapshot(snapshot) => snapshot.colors,
         }
     }
@@ -1120,11 +1171,11 @@ pub(crate) fn compute_legal_targets_with_execution_context_and_view(
             .iter()
             .filter(|p| p.is_in_game())
             .filter(|p| {
-                can_target_player_from_source_or_snapshot(
-                    game,
+                game.can_target_player_from_source_or_snapshot(
                     p.id,
-                    ctx.source,
+                    Some(ctx.source),
                     ctx.source_snapshot.as_ref(),
+                    ctx.controller,
                 )
             })
             .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
@@ -1467,16 +1518,11 @@ fn compute_any_targets_with_view(
     for player in &game.players {
         if player.is_in_game()
             && (range_exempt || game.player_is_within_range(caster, player.id))
-            && source_id.map_or_else(
-                || game.can_target_player(player.id),
-                |source| {
-                    can_target_player_from_source_or_snapshot(
-                        game,
-                        player.id,
-                        source,
-                        source_snapshot,
-                    )
-                },
+            && game.can_target_player_from_source_or_snapshot(
+                player.id,
+                source_id,
+                source_snapshot,
+                caster,
             )
         {
             targets.push(Target::Player(player.id));
@@ -1563,58 +1609,16 @@ fn compute_player_targets(
         .iter()
         .filter(|p| p.is_in_game())
         .filter(|p| {
-            source_id.map_or_else(
-                || game.can_target_player(p.id),
-                |source| {
-                    can_target_player_from_source_or_snapshot(game, p.id, source, source_snapshot)
-                },
+            game.can_target_player_from_source_or_snapshot(
+                p.id,
+                source_id,
+                source_snapshot,
+                controller,
             )
         })
         .filter(|p| player_filter_matches_game(filter, p.id, game, &filter_ctx))
         .map(|p| Target::Player(p.id))
         .collect()
-}
-
-fn can_target_player_from_source_or_snapshot(
-    game: &GameState,
-    player: PlayerId,
-    source_id: ObjectId,
-    source_snapshot: Option<&ObjectSnapshot>,
-) -> bool {
-    if game.object(source_id).is_some() || source_snapshot.is_none() {
-        return game.can_target_player_from_source(player, source_id);
-    }
-    if !game.can_target_player(player) {
-        return false;
-    }
-    let source_snapshot = source_snapshot.expect("checked above");
-    if game
-        .effect_store
-        .cant_effects
-        .ignores_target_ability_for_player(
-            game,
-            player,
-            source_snapshot.controller,
-            crate::static_abilities::StaticAbilityId::Hexproof,
-        )
-    {
-        return true;
-    }
-    !game
-        .effect_store
-        .cant_effects
-        .cant_target_players_from
-        .iter()
-        .any(|restriction| {
-            if restriction.player != player {
-                return false;
-            }
-            let filter_ctx =
-                game.filter_context_for(restriction.controller, Some(source_snapshot.object_id));
-            restriction
-                .source_filter
-                .matches_snapshot(source_snapshot, &filter_ctx, game)
-        })
 }
 
 fn compute_object_targets_with_view(
@@ -2694,14 +2698,13 @@ mod tests {
 
         game.effect_store
             .cant_effects
-            .cant_target_players_from
+            .player_hexproof_from
             .push(crate::game_state::PlayerCantBeTargetedFrom {
                 player: p1,
                 source_filter: ObjectFilter {
                     colors: Some(ColorSet::from(Color::Blue)),
                     ..Default::default()
-                }
-                .controlled_by(PlayerFilter::Opponent),
+                },
                 controller: p1,
             });
 
@@ -2993,3 +2996,7 @@ mod tests {
 #[cfg(test)]
 #[path = "subject_tests.rs"]
 mod subject_tests;
+
+#[cfg(test)]
+#[path = "player_subject_tests.rs"]
+mod player_subject_tests;

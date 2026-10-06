@@ -504,6 +504,18 @@ fn read_protection_attachment_exception(
     let sentences = split_lexed_sentences(tokens);
     let words = parser_token_word_refs(tokens);
     if sentences.len() == 2
+        && let Some(retention) = parse_static_text_marker_line(sentences[1])
+        && matches!(retention.id(), crate::static_abilities::StaticAbilityId::ProtectionDoesntRemoveThisAura | crate::static_abilities::StaticAbilityId::ProtectionDoesntRemoveAuras)
+        && let Some(mut abilities) = parse_enchanted_creature_has_line(sentences[0])?
+        && abilities.iter().all(|ability| matches!(ability, StaticAbilityAst::AttachedKeywordActionGrant { action, .. } if matches!(action,
+            KeywordAction::ProtectionFrom(_) | KeywordAction::ProtectionFromFilter(_)
+            | KeywordAction::ProtectionFromOwnColors | KeywordAction::ProtectionFromColorsAmong(_)
+            | KeywordAction::ProtectionFromAllColors | KeywordAction::ProtectionFromChosenColor)))
+    {
+        abilities.push(StaticAbilityAst::Static(retention));
+        return Ok(Some(abilities));
+    }
+    if sentences.len() == 2
         && crate::word_primitives::any_sequence_occurs(
             &words,
             &[

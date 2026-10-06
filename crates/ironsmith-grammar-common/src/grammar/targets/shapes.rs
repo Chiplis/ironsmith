@@ -253,14 +253,12 @@ fn parse_leading_player_object_union_target<'a>(
         _ => return None,
     };
     let object_words = &words[object_start..];
-    if object_words.iter().any(|word| {
-        matches!(
-            *word,
-            "player" | "players" | "opponent" | "opponents" | "you" | "your" | "that" | "its"
-        )
-    }) {
-        return None;
-    }
+    // Player words inside an object arm may name its controller, owner, or
+    // another relative qualifier. The complete object-filter reader owns
+    // those predicates; a lexical veto here loses valid mixed domains such
+    // as "opponent, creature an opponent controls, or planeswalker an
+    // opponent controls". This shape only separates the leading player arm
+    // and preserves every token for semantic validation by that reader.
     if let [single] = object_words
         && (matches!(
             *single,
@@ -415,6 +413,19 @@ mod tests {
             TokenWordView::new(parsed.object_tokens).to_word_refs(),
             ["artifact", "creature", "planeswalker"]
         );
+    }
+
+    #[test]
+    fn leading_player_union_preserves_relative_player_qualifiers() {
+        let tokens = lex_line(
+            "opponent, creature an opponent controls, or planeswalker you control",
+            0,
+        ).unwrap();
+        let parsed = parse_object_or_player_union_target(&tokens).unwrap();
+        assert_eq!(parsed.player_kind, TrailingPlayerTargetKind::Opponent);
+        assert_eq!(TokenWordView::new(parsed.object_tokens).to_word_refs(), [
+            "creature", "an", "opponent", "controls", "or", "planeswalker", "you", "control",
+        ]);
     }
 
     #[test]

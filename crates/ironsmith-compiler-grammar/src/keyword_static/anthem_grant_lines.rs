@@ -901,9 +901,9 @@ fn split_union_grant_subjects(
 
 fn player_you_hexproof_static() -> StaticAbility {
     StaticAbility::restriction(
-        crate::effect::Restriction::be_targeted_player_from(
+        crate::effect::Restriction::player_hexproof_from(
             PlayerFilter::You,
-            ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+            ObjectFilter::default(),
         ),
         "You have hexproof".to_string(),
     )
@@ -1187,6 +1187,7 @@ fn parse_complete_miracle_cost_grant_line(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     if super::combat_requirements::owns_combat_requirement_line(tokens) {
         return super::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
@@ -5087,7 +5088,7 @@ mod dynamic_anthem_tests {
         };
 
         assert!(
-            format!("{player_hexproof:?}").contains("BeTargetedPlayerFrom(You"),
+            format!("{player_hexproof:?}").contains("PlayerHexproofFrom(You"),
             "the player member must compile as a typed targeting restriction: {player_hexproof:#?}"
         );
         assert_eq!(filter.controller, Some(PlayerFilter::You));

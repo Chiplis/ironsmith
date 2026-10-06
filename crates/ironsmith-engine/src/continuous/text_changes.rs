@@ -67,6 +67,11 @@ pub(crate) fn rewrite_protection_words(
             ProtectionFrom::Permanents(rewrite_filter_words(filter, change)?),
         ProtectionFrom::EachManaValueAmong(filter) =>
             ProtectionFrom::EachManaValueAmong(rewrite_filter_words(filter, change)?),
+        ProtectionFrom::ColorsAmong { filter, reference_source } => ProtectionFrom::ColorsAmong {
+            filter: rewrite_filter_words(filter, change)?, reference_source: *reference_source,
+        },
+        ProtectionFrom::ColorsAmongAtResolution(filter) =>
+            ProtectionFrom::ColorsAmongAtResolution(rewrite_filter_words(filter, change)?),
         ProtectionFrom::ColorsOf(spec) => ProtectionFrom::ColorsOf(Box::new(
             super::text_change_predicates::rewrite_choose_spec_words(spec, change)?)),
         // These are rules concepts or runtime choices, not authored color
@@ -74,7 +79,7 @@ pub(crate) fn rewrite_protection_words(
         ProtectionFrom::Colorless | ProtectionFrom::AllColors | ProtectionFrom::Creatures
         | ProtectionFrom::CardType(_) | ProtectionFrom::ChosenPlayer | ProtectionFrom::ChosenColor
         | ProtectionFrom::ColorsOutsideCommanderIdentity | ProtectionFrom::ManaValuesOtherThanChosenNumber
-        | ProtectionFrom::Everything => from.clone(),
+        | ProtectionFrom::Everything | ProtectionFrom::OwnColors => from.clone(),
     })
 }
 

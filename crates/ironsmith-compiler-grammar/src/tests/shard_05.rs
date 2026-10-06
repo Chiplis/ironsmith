@@ -4058,8 +4058,7 @@ pub(super) fn witchbane_orb_player_hexproof_and_attached_curse_destroy_parse() {
         .expect("Witchbane Orb text should parse");
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("BeTargetedPlayerFrom")
-            && debug.contains("Opponent")
+        debug.contains("PlayerHexproofFrom")
             && debug.contains("DestroyEffect")
             && debug.contains("attached_to_player: Some(You)")
             && debug.contains("Curse"),

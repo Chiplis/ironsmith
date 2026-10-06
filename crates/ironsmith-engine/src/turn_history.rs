@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::color::ColorSet;
+use crate::effects::ExecutionError;
 use crate::events::EnterBattlefieldEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBlockedEvent};
 use crate::events::other::CounterPlacedEvent;
@@ -26,6 +27,22 @@ use crate::triggers::TriggerIdentity;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
+
+/// Keep draw-history leaves wide until the numeric interpreter reaches its
+/// scalar boundary. Empty retained history is a genuine zero; a total outside
+/// the wide range is an error rather than a wrapped or saturated count.
+fn checked_draw_history_total(
+    counts: impl IntoIterator<Item = usize>,
+) -> Result<i64, ExecutionError> {
+    counts.into_iter().try_fold(0i64, |total, count| {
+        let requested = total as u128 + count as u128;
+        i64::try_from(requested).map_err(|_| ExecutionError::ResourceLimitExceeded {
+            resource: "draw-history count",
+            requested,
+            maximum: i64::MAX as u128,
+        })
+    })
+}
 
 /// One ingested trigger/event observation for the current turn.
 #[derive(Debug, Clone)]
@@ -231,6 +248,12 @@ pub struct TurnHistory {
     checkpoint_targeted_objects: HashSet<ObjectId>,
     pub event_records: TurnEventRecords,
     pub staged_event_records: TurnEventRecords,
+    /// Native first-observation order for physical draws. Publication can
+    /// promote a later staged receipt before an earlier one, so concatenating
+    /// the two journals cannot establish draw ordinals. None is unknown history;
+    /// only a fresh game or a new turn establishes a complete empty ledger.
+    /// This is retained runtime evidence, never a serialized/public carrier.
+    pub(crate) draw_occurrences: Option<TurnEventRecords>,
     /// Index into `event_records` where the simultaneous action whose events
     /// are being matched began (CR 603.2c: e.g. all combat damage of one
     /// step, CR 510.2). Records from that index on are the same event, not
@@ -279,6 +302,7 @@ impl TurnHistory {
         self.checkpoint_targeted_objects.clear();
         self.event_records.clear();
         self.staged_event_records.clear();
+        self.draw_occurrences = Some(TurnEventRecords::default());
         self.simultaneous_batch_start = None;
 
         spells_cast_last_turn_total
@@ -336,8 +360,68 @@ impl TurnHistory {
         object_snapshot: Option<ObjectSnapshot>,
         source_snapshot: Option<ObjectSnapshot>,
     ) -> Option<Arc<TurnEventRecord>> {
-        self.event_records
-            .refresh_completed_action_record(event, object_snapshot, source_snapshot)
+        let record = self.event_records
+            .refresh_completed_action_record(event, object_snapshot, source_snapshot)?;
+        self.retain_draw_occurrence(record.clone(), false);
+        Some(record)
+    }
+
+    /// Keep the first physical observation's position through staging,
+    /// promotion, receipt enrichment, and aliases from enclosing aggregates.
+    /// An alias cannot change its drawing player or actual drawn cards.
+    fn retain_draw_occurrence(&mut self, record: Arc<TurnEventRecord>, allow_new: bool) {
+        let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else { return; };
+        let Some(records) = self.draw_occurrences.as_mut() else { return; };
+        let previous = records.iter().find(|previous| previous.event.ptr_eq(&record.event)).cloned();
+        if let Some(previous) = previous {
+            if !previous.event.downcast::<CardsDrawnEvent>()
+                .is_some_and(|old| old.player == draw.player && old.cards == draw.cards)
+            {
+                // Do not rebuild uncertain chronology from publication order.
+                self.draw_occurrences = None;
+                return;
+            }
+            let record = if previous.event.completed_action_provenance().is_some() {
+                Arc::new(TurnEventRecord {
+                    event: record.event.with_completed_action_receipt(&previous.event),
+                    object_snapshot: previous.object_snapshot,
+                    source_snapshot: previous.source_snapshot,
+                })
+            } else { record };
+            records.replace_shared(record);
+        } else if allow_new {
+            records.push_shared(record);
+        } else {
+            self.draw_occurrences = None;
+        }
+    }
+
+    /// Require the native observation owner; public or manually reconstructed
+    /// aggregate journals cannot silently supply an empty ordinal history.
+    pub(crate) fn ordered_draw_occurrences(&self) -> Result<&TurnEventRecords, ExecutionError> {
+        let incomplete = || ExecutionError::IncompleteEvidence(
+            "numbered draw trigger lacks complete native draw chronology; native recovery or replay required".into(),
+        );
+        let records = self.draw_occurrences.as_ref().ok_or_else(incomplete)?;
+        let retained: HashMap<_, _> = records.iter()
+            .map(|record| (record.event.occurrence_key(), &record.event)).collect();
+        for record in self.projected_records() {
+            let Some(draw) = record.event.downcast::<CardsDrawnEvent>() else { continue; };
+            if !retained.get(&record.event.occurrence_key())
+                .and_then(|event| event.downcast::<CardsDrawnEvent>())
+                .is_some_and(|old| old.player == draw.player && old.cards == draw.cards)
+            { return Err(incomplete()); }
+        }
+        Ok(records)
+    }
+
+    /// First/nonfirst needs occurrence evidence, not a narrowed numeric sum.
+    /// Only the native owner can prove that an empty current history is empty.
+    pub(crate) fn has_drawn_cards_this_turn(&self, player: PlayerId) -> Result<bool, ExecutionError> {
+        Ok(self.ordered_draw_occurrences()?.iter().any(|record| {
+            record.event.downcast::<CardsDrawnEvent>()
+                .is_some_and(|draw| draw.player == player && !draw.cards.is_empty())
+        }))
     }
 
     /// The power of creatures this player actually declared as attackers in
@@ -400,11 +484,13 @@ impl TurnHistory {
         self.staged_event_records
             .retain(|record| record.event.occurrence_key() != event.occurrence_key());
         self.remove_staged_event(event.provenance());
-        self.staged_event_records.push(TurnEventRecord {
+        let record = Arc::new(TurnEventRecord {
             event: event.clone(),
             object_snapshot,
             source_snapshot,
         });
+        self.retain_draw_occurrence(record.clone(), true);
+        self.staged_event_records.push_shared(record);
     }
 
     pub fn record_event(
@@ -444,11 +530,13 @@ impl TurnHistory {
         if let Some(cast) = event.downcast::<SpellCastEvent>() {
             *self.spells_cast_this_game.entry(cast.caster).or_insert(0) += 1;
         }
-        self.event_records.push(TurnEventRecord {
+        let record = Arc::new(TurnEventRecord {
             event: event.clone(),
             object_snapshot,
             source_snapshot,
         });
+        self.retain_draw_occurrence(record.clone(), true);
+        self.event_records.push_shared(record);
     }
 
     pub fn event_kind_count(&self, kind: EventKind) -> u32 {
@@ -522,6 +610,34 @@ impl TurnHistory {
             .filter(|event| event.player == player)
             .map(CardsDrawnEvent::amount)
             .sum()
+    }
+
+    pub(crate) fn cards_drawn_matching_players_wide(
+        &self,
+        matches_player: impl Fn(PlayerId) -> bool,
+    ) -> Result<i64, ExecutionError> {
+        checked_draw_history_total(
+            self.projected_records()
+                .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
+                .filter(|event| matches_player(event.player))
+                .map(|event| event.cards.len()),
+        )
+    }
+
+    pub(crate) fn max_cards_drawn_for_players_wide(
+        &self,
+        players: &[PlayerId],
+    ) -> Result<i64, ExecutionError> {
+        let mut maximum = None;
+        for player in players {
+            let count = self.cards_drawn_matching_players_wide(|id| id == *player)?;
+            maximum = Some(maximum.map_or(count, |previous: i64| previous.max(count)));
+        }
+        maximum.ok_or_else(|| {
+            ExecutionError::UnresolvableValue(
+                "MaxCardsDrawnThisTurn requires a matching player".into(),
+            )
+        })
     }
 
     pub fn cards_discarded_by_player(&self, player: PlayerId) -> u32 {
@@ -2825,5 +2941,248 @@ mod passive_blocked_history_tests {
             history.creature_was_blocked_this_turn(attacker),
             "an effect can make an attacker blocked without a blocker"
         );
+    }
+}
+
+#[cfg(test)]
+mod draw_scalar_tests {
+    // Source-only regression coverage: intentionally unrun during this repair.
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::continuous::{
+        CalculationContext, ContinuousEffect, ContinuousEffectManager, EffectTarget,
+        Modification, PtSublayer,
+    };
+    use crate::continuous::value_context::LayerValueContext;
+    use crate::effect::Value;
+    use crate::effects::ExecutionContext;
+    use crate::effects::helpers::value_eval::{self, EvaluationContext};
+    use crate::filter::PlayerFilter;
+    use crate::ids::CardId;
+    use crate::static_ability_processor::StaticEffectDiscoveryError;
+
+    fn fixture() -> (GameState, ObjectId, PlayerId, PlayerId) {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Draw scalar source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(0, 3))
+            .build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        (game, source, alice, bob)
+    }
+
+    fn draw(player: PlayerId, count: usize) -> TriggerEvent {
+        TriggerEvent::new_with_provenance(
+            CardsDrawnEvent::new(player, vec![ObjectId::from_raw(900); count], false),
+            ProvNodeId::default(),
+        )
+    }
+
+    fn count(player: PlayerFilter) -> Value {
+        Value::TurnHistoryCount(TurnHistoryCount::CardsDrawn(player))
+    }
+
+    #[test]
+    fn draw_values_share_player_filtering_staged_projection_and_real_empty_zero() {
+        let (mut game, source, alice, bob) = fixture();
+        let zero_values = [count(PlayerFilter::You), Value::MaxCardsDrawnThisTurn(PlayerFilter::Any)];
+        let execution = ExecutionContext::new_default(source, alice);
+        for value in &zero_values {
+            assert_eq!(value_eval::resolve(value,
+                &EvaluationContext::execution_context(&game, &execution)).unwrap(), 0);
+        }
+        game.turn_store.turn_history.record_event(&draw(alice, 2), None, None);
+        game.turn_store.turn_history.record_event(&draw(bob, 3), None, None);
+        game.turn_store.turn_history.record_event(&draw(alice, 0), None, None);
+        let staged = draw(alice, 4);
+        game.turn_store.turn_history.stage_event(&staged, None, None);
+        for committed in [false, true] {
+            if committed {
+                game.turn_store.turn_history.record_event(&staged, None, None);
+            }
+            let effects = ContinuousEffectManager::new();
+            let calculation = CalculationContext {
+                objects: game.objects_map(), effects: &effects, battlefield: &game.battlefield,
+                game: &game, current_object: source,
+            };
+            for (value, expected) in [
+                (count(PlayerFilter::You), 6),
+                (count(PlayerFilter::Opponent), 3),
+                (count(PlayerFilter::Any), 9),
+                (Value::MaxCardsDrawnThisTurn(PlayerFilter::Any), 6),
+                (Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent), 3),
+            ] {
+                assert_eq!(value_eval::resolve(&value,
+                    &EvaluationContext::execution_context(&game, &execution)).unwrap(), expected);
+                assert_eq!(value_eval::resolve_continuous(&value,
+                    LayerValueContext::new(&calculation, source, alice)), expected);
+            }
+        }
+        game.turn_store.turn_history.clear_for_new_turn();
+        for value in &zero_values {
+            assert_eq!(value_eval::resolve(value,
+                &EvaluationContext::execution_context(&game, &execution)).unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn draw_maximum_requires_a_player_and_does_not_invent_zero_for_missing_players() {
+        let (game, source, alice, _) = fixture();
+        assert!(game.turn_store.turn_history.max_cards_drawn_for_players_wide(&[]).is_err());
+        let missing = PlayerId::from_index(99);
+        let value = Value::MaxCardsDrawnThisTurn(PlayerFilter::Specific(missing));
+        let execution = ExecutionContext::new_default(source, alice);
+        assert!(matches!(value_eval::resolve_wide(&value,
+            &EvaluationContext::execution_context(&game, &execution)),
+            Err(ExecutionError::PlayerNotFound(id)) if id == missing));
+        let effects = ContinuousEffectManager::new();
+        let calculation = CalculationContext {
+            objects: game.objects_map(), effects: &effects, battlefield: &game.battlefield,
+            game: &game, current_object: source,
+        };
+        let mut range_error = None;
+        let mut evidence_error = None;
+        value_eval::resolve_continuous_characteristic(&value,
+            LayerValueContext::new(&calculation, source, alice),
+            &mut range_error, &mut evidence_error);
+        assert!(range_error.is_none());
+        assert!(evidence_error.is_some(), "an unavailable maximum cannot publish zero");
+    }
+
+    #[test]
+    fn draw_count_requires_its_controller_but_valid_empty_history_remains_zero() {
+        let (game, source, alice, _) = fixture();
+        let missing = PlayerId::from_index(99);
+        let value = count(PlayerFilter::You);
+        let valid = ExecutionContext::new_default(source, alice);
+        assert_eq!(value_eval::resolve(&value,
+            &EvaluationContext::execution_context(&game, &valid)).unwrap(), 0);
+        let invalid = ExecutionContext::new_default(source, missing);
+        assert!(matches!(value_eval::resolve(&value,
+            &EvaluationContext::execution_context(&game, &invalid)),
+            Err(ExecutionError::PlayerNotFound(player)) if player == missing));
+        let effects = ContinuousEffectManager::new();
+        let calculation = CalculationContext {
+            objects: game.objects_map(), effects: &effects, battlefield: &game.battlefield,
+            game: &game, current_object: source,
+        };
+        let mut range_error = None;
+        let mut evidence_error = None;
+        value_eval::resolve_continuous_characteristic(&value,
+            LayerValueContext::new(&calculation, source, missing),
+            &mut range_error, &mut evidence_error);
+        assert!(range_error.is_none() && evidence_error.is_some());
+    }
+
+    #[test]
+    fn draw_aggregation_exceeds_u32_without_allocating_billions_of_cards() {
+        assert_eq!(checked_draw_history_total([]).unwrap(), 0);
+        assert_eq!(checked_draw_history_total([i32::MAX as usize, i32::MAX as usize, 2]).unwrap(),
+            i64::from(u32::MAX) + 1);
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn draw_aggregation_rejects_wide_overflow_with_the_exact_requested_total() {
+        assert_eq!(checked_draw_history_total([i64::MAX as usize]).unwrap(), i64::MAX);
+        assert!(matches!(checked_draw_history_total([i64::MAX as usize, 1]),
+            Err(ExecutionError::ResourceLimitExceeded { resource: "draw-history count", requested, maximum })
+                if requested == i64::MAX as u128 + 1 && maximum == i64::MAX as u128));
+        assert!(matches!(checked_draw_history_total([usize::MAX]),
+            Err(ExecutionError::ResourceLimitExceeded { requested, .. })
+                if requested == usize::MAX as u128));
+    }
+
+    #[test]
+    fn draw_interpreter_keeps_large_leaves_wide_through_arithmetic_and_checked_cdas() {
+        let (mut game, source, alice, bob) = fixture();
+        // A bounded aggregate fixture shares one immutable batch payload across
+        // many ledger entries. It exercises the actual interpreter above u32::MAX
+        // without allocating billions of card IDs; normal ingestion and staged
+        // deduplication are covered separately above.
+        let batch = Arc::new(TurnEventRecord {
+            event: draw(alice, 1 << 16), object_snapshot: None, source_snapshot: None,
+        });
+        for _ in 0..(1 << 16) {
+            game.turn_store.turn_history.event_records.push_shared(batch.clone());
+        }
+        game.turn_store.turn_history.record_event(&draw(bob, 5), None, None);
+        let exact = i64::from(u32::MAX) + 1;
+        let maximum = Value::MaxCardsDrawnThisTurn(PlayerFilter::Any);
+        let execution = ExecutionContext::new_default(source, alice);
+        let effects = ContinuousEffectManager::new();
+        let calculation = CalculationContext {
+            objects: game.objects_map(), effects: &effects, battlefield: &game.battlefield,
+            game: &game, current_object: source,
+        };
+        for value in [count(PlayerFilter::You), maximum.clone()] {
+            assert_eq!(value_eval::resolve_wide(&value,
+                &EvaluationContext::execution_context(&game, &execution)).unwrap(), exact);
+            assert!(value_eval::resolve(&value,
+                &EvaluationContext::execution_context(&game, &execution)).is_err());
+            let mut range_error = None;
+            let mut evidence_error = None;
+            value_eval::resolve_continuous_characteristic(&value,
+                LayerValueContext::new(&calculation, source, alice),
+                &mut range_error, &mut evidence_error);
+            assert_eq!(range_error, Some(("characteristic-defining scalar", i128::from(exact))));
+            assert!(evidence_error.is_none());
+        }
+        let difference = Value::Add(Box::new(count(PlayerFilter::Any)),
+            Box::new(Value::Scaled(Box::new(maximum.clone()), -1)));
+        for (value, expected) in [
+            (difference, 5),
+            (Value::DividedRoundedDown(Box::new(count(PlayerFilter::You)), 4), 1_073_741_824),
+        ] {
+            assert_eq!(value_eval::resolve(&value,
+                &EvaluationContext::execution_context(&game, &execution)).unwrap(), expected);
+            let mut range_error = None;
+            let mut evidence_error = None;
+            assert_eq!(value_eval::resolve_continuous_characteristic(&value,
+                LayerValueContext::new(&calculation, source, alice),
+                &mut range_error, &mut evidence_error), expected);
+            assert!(range_error.is_none() && evidence_error.is_none());
+        }
+        let arithmetic_overflow = Value::Add(
+            Box::new(Value::Scaled(Box::new(maximum.clone()), i32::MAX)),
+            Box::new(maximum.clone()),
+        );
+        assert!(matches!(value_eval::resolve_wide(&arithmetic_overflow,
+            &EvaluationContext::execution_context(&game, &execution)),
+            Err(ExecutionError::UnresolvableValue(_))));
+
+        // Knowledge Is Power's admitted Dynamic anthem must retain this same
+        // checked leaf through its generated layer-7c modification.
+        let mut anthem_game = game.clone();
+        let draw_count = count(PlayerFilter::You);
+        let anthem = crate::static_abilities::Anthem::new(
+            crate::target::ObjectFilter::creature().you_control(), 0, 0,
+        ).with_values(
+            crate::static_abilities::AnthemValue::Dynamic(draw_count.clone()),
+            crate::static_abilities::AnthemValue::Dynamic(draw_count),
+        );
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Draw-history anthem")
+            .card_types(vec![CardType::Enchantment])
+            .with_ability(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::new(anthem),
+            )).build();
+        anthem_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        assert!(matches!(anthem_game.try_current_characteristics(source),
+            Err(StaticEffectDiscoveryError::ScalarRange { value, .. }) if value == i128::from(exact)));
+        anthem_game.next_turn();
+        anthem_game.record_turn_history_event(&draw(alice, 2));
+        let recovered = anthem_game.try_current_characteristics(source).unwrap().unwrap();
+        assert_eq!((recovered.power, recovered.toughness), (Some(2), Some(5)));
+
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            source, alice, EffectTarget::Specific(source), Modification::SetPower {
+                value: maximum, sublayer: PtSublayer::CharacteristicDefining,
+            },
+        ));
+        assert!(matches!(game.try_current_characteristics(source),
+            Err(StaticEffectDiscoveryError::ScalarRange { value, .. })
+                if value == i128::from(exact)), "checked CDA queries must reject the provisional scalar");
     }
 }

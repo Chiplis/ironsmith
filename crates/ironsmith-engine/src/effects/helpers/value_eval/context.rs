@@ -113,7 +113,12 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
     ) -> Result<&crate::player::Player, ExecutionError> {
         let id = match self.mode {
             Mode::Execution(ctx) => resolve_player_filter(self.game, filter, ctx)?,
-            Mode::Continuous(layer) => layer.single_player(value, filter),
+            Mode::Continuous(layer) => match layer.aggregate_players(filter).as_slice() {
+                [player] => *player,
+                _ => return Err(ExecutionError::UnresolvableValue(format!(
+                    "{value:?} requires one available player in continuous-effect context",
+                ))),
+            },
         };
         self.game
             .player(id)
@@ -181,6 +186,35 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             Mode::Execution(_) => self.player_ids(value, filter),
             Mode::Continuous(layer) => Ok(layer.filtered_players(filter)),
         }
+    }
+
+    /// Source-controller and explicit-player histories need an available
+    /// player even when their retained draw history is genuinely empty.
+    /// Other history filters keep their existing participant-binding owner.
+    pub(super) fn validate_history_player_reference(
+        &self,
+        value: &Value,
+        filter: &PlayerFilter,
+    ) -> Result<(), ExecutionError> {
+        if !matches!(filter, PlayerFilter::You | PlayerFilter::Specific(_)) {
+            return Ok(());
+        }
+        let players = self.aggregate_player_ids(value, filter)?;
+        if players.is_empty() {
+            return Err(ExecutionError::UnresolvableValue(
+                "draw history requires an available referenced player".into(),
+            ));
+        }
+        for player in players {
+            let evidence = self.game.player(player)
+                .ok_or(ExecutionError::PlayerNotFound(player))?;
+            if !evidence.is_in_game() {
+                return Err(ExecutionError::UnresolvableValue(
+                    "draw history referenced player is no longer available".into(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn count_objects(&self, filter: &ObjectFilter, allow_prevented_amount: bool) -> i32 {

@@ -41,6 +41,8 @@ use crate::zone::Zone;
 
 mod chosen_type_references;
 mod color_and_sticker_facts;
+mod complete_mixed_target;
+pub(crate) use complete_mixed_target::parse_complete_mixed_target_object_filter;
 mod counter_constraints;
 mod decorations;
 mod domain_unions;

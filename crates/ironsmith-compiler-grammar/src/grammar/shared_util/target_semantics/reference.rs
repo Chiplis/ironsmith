@@ -986,9 +986,19 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
-    if let Some(union) = parse_object_or_player_union_target(remaining)
-        && let Ok(mut filter) = parse_object_filter(union.object_tokens, other)
-    {
+    if let Some(union) = parse_object_or_player_union_target(remaining) {
+        // Once the mixed domain is recognized, every object-arm token must
+        // validate. Falling through on a malformed qualifier can otherwise
+        // reinterpret only a shorter player/object prefix.
+        let mut filter = if remaining.first().is_some_and(|token| {
+            token.is_any_word(&["player", "players", "opponent", "opponents"])
+        }) {
+            crate::grammar::filters::parse_complete_mixed_target_object_filter(
+                union.object_tokens, other,
+            )?
+        } else {
+            parse_object_filter(union.object_tokens, other)?
+        };
         filter.other = other;
         let player_filter = match union.player_kind {
             TrailingPlayerTargetKind::Any => PlayerFilter::Any,

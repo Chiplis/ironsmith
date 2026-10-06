@@ -2032,6 +2032,29 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::PlayerHexproofFrom(player_filter, source_filter) => {
+                let bound_filter = source.and_then(|source| {
+                    crate::static_abilities::bind_chosen_filter_qualities(
+                        source_filter,
+                        game,
+                        source,
+                    )
+                });
+                let source_filter = bound_filter.as_ref().unwrap_or(source_filter);
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_restriction_filter(player.id, player_filter)
+                    {
+                        tracker.player_hexproof_from.push(
+                            crate::game_state::PlayerCantBeTargetedFrom {
+                                player: player.id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
+                    }
+                }
+            }
             Restriction::BeCountered(filter) => {
                 for entry in &game.stack {
                     let obj_id = entry.object_id;

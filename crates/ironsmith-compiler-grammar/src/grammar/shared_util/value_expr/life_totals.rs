@@ -4,6 +4,15 @@ use super::*;
 /// half-starting-life threshold as typed data, independently of the consumer.
 pub fn parse_life_total_quantity_words(words: &[&str]) -> Option<(Value, usize)> {
     let offset = usize::from(words.first() == Some(&"the"));
+    // This is a scoped extremum, not a player choice. In particular, a
+    // higher-life controller must not enter the opponent aggregate.
+    const MOST_LIFE_OPPONENT: &[&str] = &[
+        "life", "total", "of", "an", "opponent", "with", "the", "most", "life",
+    ];
+    if words.get(offset..).is_some_and(|tail| tail.starts_with(MOST_LIFE_OPPONENT)) {
+        return Some((Value::MaximumLifeTotal(PlayerFilter::Opponent),
+            offset + MOST_LIFE_OPPONENT.len()));
+    }
     for (phrase, player) in [
         (
             &["your", "starting", "life", "total"][..],
@@ -110,6 +119,21 @@ pub fn parse_life_total_quantity_words(words: &[&str]) -> Option<(Value, usize)>
 #[cfg(test)]
 mod minimum_life_total_tests {
     use super::*;
+    #[test]
+    fn opponent_maximum_difference_retains_signed_arithmetic_and_scope() {
+        let words = "your life total minus the life total of an opponent with the most life"
+            .split_whitespace().collect::<Vec<_>>();
+        assert_eq!(parse_value_expr_words(&words), Some((
+            Value::Add(Box::new(Value::LifeTotal(PlayerFilter::You)),
+                Box::new(Value::Scaled(Box::new(Value::MaximumLifeTotal(PlayerFilter::Opponent)), -1))),
+            words.len(),
+        )));
+        for text in ["the life total of an opponent with the least life",
+            "the life total of a player with the most life"]
+        {
+            assert!(parse_life_total_quantity_words(&text.split_whitespace().collect::<Vec<_>>()).is_none());
+        }
+    }
     #[test]
     fn all_player_minimum_does_not_guess_an_opponent_scope_or_rounding() {
         let words = "the lowest life total among all players"

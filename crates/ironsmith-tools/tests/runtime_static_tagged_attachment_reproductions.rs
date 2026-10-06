@@ -229,7 +229,7 @@ fn ready_next_own_turn(
         ironsmith::turn::execute_untap_step(g);
         ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
         ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-        for e in ironsmith::turn::execute_draw_step_with(g, dm) {
+        for e in ironsmith::turn::execute_draw_step_with(g, dm).unwrap() {
             for t in ironsmith::triggers::check_triggers(g, &e) {
                 q.add(t);
             }

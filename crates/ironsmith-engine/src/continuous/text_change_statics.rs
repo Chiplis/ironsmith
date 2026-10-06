@@ -706,7 +706,8 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             *player = rewrite_player_filter_words(player, change)?;
         }
         R::CastSpellsMatching(player, filter) | R::CastMoreThanOneSpellEachTurn(player, filter)
-        | R::BeTargetedPlayerFrom(player, filter) | R::PlayLandsMatching(player, filter)
+        | R::BeTargetedPlayerFrom(player, filter) | R::PlayerHexproofFrom(player, filter)
+        | R::PlayLandsMatching(player, filter)
         | R::AttackPlayerOrPlaneswalkersControlledBy { attackers: filter, player }
         | R::AttackPlayer { attackers: filter, player } => {
             *player = rewrite_player_filter_words(player, change)?;

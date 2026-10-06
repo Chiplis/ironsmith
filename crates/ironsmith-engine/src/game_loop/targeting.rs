@@ -159,16 +159,63 @@ pub(crate) fn capture_completed_spell_cast(
 /// are matched together, so a "one or more ... on one or more ..." trigger
 /// fires once for the whole placement. Dice rolled by one instruction are
 /// grouped the same way for "whenever you roll one or more dice".
+pub(crate) fn try_queue_triggers_from_reported_events(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+    include_delayed: bool,
+) -> Result<(), crate::effects::ExecutionError> {
+    try_queue_reported_events_with_batch_policy(game, trigger_queue, events, include_delayed, false)
+}
+
+fn try_queue_reported_events_with_batch_policy(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+    include_delayed: bool,
+    counter_batches_only: bool,
+) -> Result<(), crate::effects::ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    queue_reported_events_with_batch_policy(game, trigger_queue, events, include_delayed, counter_batches_only);
+    let result = game.token_resource_failure().map_or(Ok(()), Err);
+    if result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, false);
+        *trigger_queue = queue_checkpoint;
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+/// Legacy matching adapter. Counter-capable production callers use the
+/// checked adapter above or an enclosing checked capture scope.
 pub(crate) fn queue_triggers_from_reported_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     events: Vec<TriggerEvent>,
     include_delayed: bool,
 ) {
+    queue_reported_events_with_batch_policy(game, trigger_queue, events, include_delayed, false);
+}
+
+fn queue_reported_events_with_batch_policy(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    events: Vec<TriggerEvent>,
+    include_delayed: bool,
+    counter_batches_only: bool,
+) {
     if game.action_observations_suppressed() {
         return;
     }
-    let groups_by_batch = |event: &TriggerEvent| event.simultaneous_batch();
+    let groups_by_batch = |event: &TriggerEvent| {
+        if counter_batches_only && event.kind() != crate::events::EventKind::MarkersChanged {
+            None
+        } else {
+            event.simultaneous_batch()
+        }
+    };
     let mut events = events
         .into_iter()
         .filter(|event| !event.triggers_captured())
@@ -212,15 +259,14 @@ pub(crate) fn queue_triggers_from_reported_events(
     }
 }
 
-/// Queue trigger matches for each event in this list.
+/// Keep legacy per-event behavior for other families while retaining counter
+/// producers' authored batch boundaries. Never regroup separate instructions.
 pub(super) fn queue_triggers_for_events(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     events: Vec<TriggerEvent>,
-) {
-    for event in events {
-        queue_triggers_from_event(game, trigger_queue, event, false);
-    }
+) -> Result<(), crate::effects::ExecutionError> {
+    try_queue_reported_events_with_batch_policy(game, trigger_queue, events, false, true)
 }
 
 /// Queue trigger matches for events produced by one simultaneous game action.
@@ -246,6 +292,16 @@ pub(super) fn queue_triggers_for_simultaneous_events(
 
     game.refresh_continuous_state();
     let trigger_groups = check_triggers_batch(game, &events);
+    let trigger_groups = match crate::triggers::counters::coalesce_counter_recipient_groups(trigger_groups) {
+        Ok(groups) => groups,
+        Err(error) => {
+            // Typed capture/drain adapters own rollback. No entry from this
+            // simultaneous action has reached the caller's queue yet.
+            game.record_token_resource_failure(&error);
+            game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
+            return;
+        }
+    };
     let mut speed_controllers = std::collections::HashSet::new();
     let mut simultaneous_groups_seen = HashSet::new();
     let mut zone_groups = std::collections::HashMap::new();
@@ -266,6 +322,11 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                 .ability
                 .trigger
                 .simultaneous_trigger_key(&trigger.triggering_event)
+                // Counter recipients were already checked and coalesced by
+                // instance. Generic seen-key suppression must not discard an
+                // additional identical instance first matching a later receipt.
+                .filter(|group| !matches!(group,
+                    crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterRecipient { .. }))
             {
                 let key = (trigger.source_stable_id, trigger.trigger_identity, group);
                 if matches!(group,
@@ -378,19 +439,23 @@ pub(super) fn target_events_from_targets(
 }
 
 pub(super) fn is_crime_target(game: &GameState, committer: PlayerId, target: &Target) -> bool {
+    let opponent = |player| game.player(player).is_some_and(|player| player.is_in_game())
+        && game.are_opponents(committer, player);
     match target {
-        Target::Player(player) => *player != committer,
+        Target::Player(player) => opponent(*player),
         Target::Object(object_id) => {
             let Some(obj) = game.object(*object_id) else {
                 // A spell or ability an opponent controls (CR 700.13).
                 return game
                     .stack_ability_entry(*object_id)
-                    .is_some_and(|entry| entry.controller != committer);
+                    .is_some_and(|entry| opponent(entry.controller));
             };
             if obj.zone == Zone::Graveyard {
-                obj.owner != committer
+                opponent(obj.owner)
+            } else if matches!(obj.zone, Zone::Battlefield | Zone::Stack) {
+                game.current_controller(*object_id).is_some_and(opponent)
             } else {
-                game.current_controller(*object_id) != Some(committer)
+                false
             }
         }
     }
@@ -404,6 +469,60 @@ pub(super) fn targets_commit_crime(
     targets
         .iter()
         .any(|target| is_crime_target(game, committer, target))
+}
+
+#[cfg(test)]
+mod crime_scope_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    #[test]
+    fn crimes_use_live_opponents_and_only_the_authored_rule_zones() {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into(), "D".into()], 20);
+        let [a, b, c, d] = [0, 1, 2, 3].map(PlayerId::from_index);
+        game.set_teams(vec![vec![a, b], vec![c, d]]).unwrap();
+        for (player, expected) in [(a, false), (b, false), (c, true), (d, true)] {
+            assert_eq!(is_crime_target(&game, a, &Target::Player(player)), expected);
+            for zone in [Zone::Battlefield, Zone::Stack, Zone::Graveyard,
+                Zone::Hand, Zone::Library, Zone::Exile, Zone::Command]
+            {
+                let card = CardBuilder::new(CardId::new(), "Crime target")
+                    .card_types(vec![CardType::Artifact]).build();
+                let object = game.create_object_from_card(&card, player, zone);
+                assert_eq!(is_crime_target(&game, a, &Target::Object(object)),
+                    expected && matches!(zone, Zone::Battlefield | Zone::Stack | Zone::Graveyard),
+                    "player={player:?}, zone={zone:?}");
+            }
+        }
+        game.player_mut(c).unwrap().has_left_game = true;
+        assert!(!is_crime_target(&game, a, &Target::Player(c)));
+        assert!(!is_crime_target(&game, a, &Target::Player(PlayerId::from_index(99))));
+        assert!(!is_crime_target(&game, a, &Target::Object(ObjectId::from_raw(999_999))));
+    }
+
+    #[test]
+    fn crime_uses_current_permanent_control_graveyard_ownership_and_stack_ability_control() {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        let [a, b, c] = [0, 1, 2].map(PlayerId::from_index);
+        game.set_teams(vec![vec![a, b], vec![c]]).unwrap();
+        let card = CardBuilder::new(CardId::new(), "Borrowed crime target")
+            .card_types(vec![CardType::Artifact]).build();
+        let object = game.create_object_from_card(&card, c, Zone::Battlefield);
+        game.set_current_controller(object, b).unwrap();
+        assert!(!is_crime_target(&game, a, &Target::Object(object)));
+        let grave = game.move_object_by_effect(object, Zone::Graveyard).unwrap();
+        assert!(is_crime_target(&game, a, &Target::Object(grave)));
+        let source = game.create_object_from_card(&card, b, Zone::Battlefield);
+        let ability_id = game.allocate_stack_ability_id();
+        let mut entry = StackEntry::ability(source, c,
+            crate::resolution::ResolutionProgram::from_effects(vec![]));
+        entry.ability_id = Some(ability_id);
+        game.push_to_stack(entry);
+        assert!(is_crime_target(&game, a, &Target::Object(ability_id)),
+            "the stack ability's controller is independent of its source");
+        assert!(!is_crime_target(&game, a, &Target::Object(source)));
+    }
 }
 
 fn queue_target_selection_events(
@@ -560,7 +679,7 @@ pub(super) fn queue_ability_activated_event(
     is_mana_ability: bool,
     source_stable_id: Option<StableId>,
     activation_cost_has_tap: bool,
-) {
+) -> Result<(), GameLoopError> {
     let snapshot = if let Some(obj) = game.object(source) {
         Some(ObjectSnapshot::from_object(obj, game))
     } else if let Some(stable_id) = source_stable_id {
@@ -638,14 +757,13 @@ pub(super) fn queue_ability_activated_event(
         event_provenance,
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
-    if is_mana_ability
-        && matches!(
-            resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker),
-            Err(GameLoopError::MandatoryLoopDraw)
-        )
-    {
-        game.mark_mandatory_loop_draw();
+    if is_mana_ability {
+        match resolve_triggered_mana_abilities_with_dm(game, trigger_queue, decision_maker) {
+            Err(GameLoopError::MandatoryLoopDraw) => game.mark_mandatory_loop_draw(),
+            result => result?,
+        }
     }
+    Ok(())
 }
 
 pub(super) fn activated_ability_has_tap_cost(
@@ -831,6 +949,29 @@ pub fn drain_pending_trigger_events(game: &mut GameState, trigger_queue: &mut Tr
         Ok(()) => {}
         Err(never) => match never {},
     }
+}
+
+/// Checked matching-only drain. Like the legacy no-decision adapter, this
+/// leaves duration-end returns queued and never introduces player prompts.
+/// A failed simultaneous projection restores the entire queue and pending
+/// event set, even when the caller has no enclosing execution resource scope.
+pub fn try_drain_pending_trigger_events(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+) -> Result<(), crate::effects::ExecutionError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
+    let mut result = drain_pending_trigger_events_inner::<crate::effects::ExecutionError>(
+        game, trigger_queue, |_| Ok(false),
+    );
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if result.is_err() {
+        game.restore_execution_checkpoint(checkpoint, false);
+        *trigger_queue = queue_checkpoint;
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
 }
 
 /// `drain_pending_trigger_events` for a caller with a player decision

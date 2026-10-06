@@ -452,8 +452,11 @@ impl crate::effects::CostExecutableEffect for DrawCardsEffect {
             .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?;
         let count = resolve_value(game, &self.count, &ctx)
             .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))?.max(0);
-        if count == 0 || (game.can_draw(player) && (game.can_draw_extra_cards(player)
-            || (count == 1 && game.turn_store.turn_history.cards_drawn_by_player(player) == 0)))
+        if count == 0 { return Ok(()); }
+        if !game.can_draw(player) { return Err(crate::effects::CostValidationError::NotEnoughCards); }
+        let has_drawn = game.turn_store.turn_history.has_drawn_cards_this_turn(player)
+            .map_err(crate::effects::CostValidationError::ExecutionFailed)?;
+        if game.can_draw_extra_cards(player) || (count == 1 && !has_drawn)
         { Ok(()) } else { Err(crate::effects::CostValidationError::NotEnoughCards) }
     }
 }
@@ -493,6 +496,9 @@ fn finish_direct_draw_segment(
         .downcast::<CardsDrawnEvent>()
         .expect("draw notification is typed");
     game.record_cards_drawn_in_current_draw_step(player, draw.amount());
+    // Physical order is already established even when trigger matching is held.
+    // Added programs can draw again before the enclosing outcome is published.
+    game.stage_turn_history_event(&event);
     game.note_hidden_draw_for_reveal_window(&event);
     let reveals = super::miracle_reveal_event(game, draw, draw_provenance);
     let mut events = vec![event];
@@ -507,12 +513,14 @@ fn commit_expanded_draw_original(
     ctx: &mut ExecutionContext,
     requested_player: PlayerId,
     result: TraitEventResult,
+    prior_events: &[TriggerEvent],
 ) -> Result<EffectOutcome, ExecutionError> {
     commit_draw_original_with_reveal_mode(
         game,
         ctx,
         requested_player,
         result,
+        prior_events,
         HiddenDrawRevealMode::Inline,
     )
 }
@@ -522,6 +530,7 @@ fn commit_draw_original_with_reveal_mode(
     ctx: &mut ExecutionContext,
     requested_player: PlayerId,
     result: TraitEventResult,
+    prior_events: &[TriggerEvent],
     _hidden_mode: HiddenDrawRevealMode,
 ) -> Result<EffectOutcome, ExecutionError> {
     match result {
@@ -555,10 +564,15 @@ fn commit_draw_original_with_reveal_mode(
             if !game.can_draw(player) {
                 return Ok(EffectOutcome::count(0));
             }
-            let before = game.turn_store.turn_history.cards_drawn_by_player(player);
+            let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player)?
+                && !prior_events.iter().any(|event| {
+                    event.downcast::<CardsDrawnEvent>().is_some_and(|draw| {
+                        draw.player == player && !draw.cards.is_empty()
+                    })
+                });
             let step = game.draw_step_context_for_player(player);
             let completed = super::draw_cards_with_miracle_window(
-                game, player, count, before == 0, &mut *ctx.decision_maker, ctx.provenance)?;
+                game, player, count, is_first, &mut *ctx.decision_maker, ctx.provenance)?;
             let mut drawn = completed.cards;
             let mut miracle = completed.miracle;
             let mut automatic_reveals = completed.automatic_reveals;
@@ -580,7 +594,7 @@ fn commit_draw_original_with_reveal_mode(
                 ctx,
                 player,
                 &mut drawn,
-                draw.is_first_this_turn,
+                is_first,
                 step,
                 &mut miracle,
                 &mut automatic_reveals,
@@ -614,10 +628,10 @@ pub(crate) fn execute_turn_draw_proposal(
 ) -> Result<EffectOutcome, ExecutionError> {
     game.update_replacement_effects()
         .map_err(ExecutionError::ContinuousDiscovery)?;
-    let before = game.turn_store.turn_history.cards_drawn_by_player(player);
+    let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player)?;
     let (in_step, step_draws) = game.draw_step_context_for_player(player);
     let event =
-        Event::draw_in_instruction(player, 1, before == 0, true, in_step && step_draws == 0)
+        Event::draw_in_instruction(player, 1, is_first, true, in_step && step_draws == 0)
             .with_provenance(ctx.provenance);
     let result = process_trait_event_with_execution_context(game, event, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
@@ -629,6 +643,7 @@ pub(crate) fn execute_turn_draw_proposal(
         ctx,
         player,
         original,
+        &[],
         HiddenDrawRevealMode::Defer,
     )?;
     if ctx.decision_maker.awaiting_choice() {
@@ -671,15 +686,13 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
     game: &mut GameState, ctx: &mut ExecutionContext) -> Result<EffectOutcome, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
     let PreparedDrawInstruction { player: player_id, requested_count } = prepared;
+    if requested_count == 0 { return Ok(EffectOutcome::count(0)); }
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
     let count = if !game.can_draw_extra_cards(player_id) {
-        let current_draws = game
-            .turn_store
-            .turn_history
-            .cards_drawn_by_player(player_id);
+        let has_drawn = game.turn_store.turn_history.has_drawn_cards_this_turn(player_id)?;
         // Player can only draw their first card of the turn
-        if current_draws >= 1 {
+        if has_drawn {
             // Already drew this turn, can't draw any more
             return Ok(EffectOutcome::prevented());
         }
@@ -705,12 +718,8 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
             continue;
         }
 
-        let current_draws = game
-            .turn_store
-            .turn_history
-            .cards_drawn_by_player(player_id)
-            .saturating_add(direct_drawn.len() as u32);
-        let is_first = current_draws == 0 && !events.iter().any(|event: &TriggerEvent|
+        let is_first = !game.turn_store.turn_history.has_drawn_cards_this_turn(player_id)?
+            && direct_drawn.is_empty() && !events.iter().any(|event: &TriggerEvent|
             event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == player_id && !draw.cards.is_empty()));
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(player_id);
@@ -761,7 +770,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
             )?;
         }
         if !programs.is_empty() {
-            let original = commit_expanded_draw_original(game, ctx, player_id, processed)?;
+            let original = commit_expanded_draw_original(game, ctx, player_id, processed, &events)?;
             original_draw_facts.extend(
                 original
                     .events
@@ -846,11 +855,20 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                     if !game.can_draw(redirected_player) {
                         continue;
                     }
-                    let redirected_is_first = game
-                        .turn_store
-                        .turn_history
-                        .cards_drawn_by_player(redirected_player)
-                        == 0 && !events.iter().any(|event: &TriggerEvent|
+                    // Earlier direct cards precede this recipient change even
+                    // when their enclosing instruction has not been published.
+                    let segment = finish_direct_draw_segment(
+                        game, ctx, player_id, &mut direct_drawn, direct_draw_is_first,
+                        direct_draw_step_context, &mut direct_miracle,
+                        &mut direct_automatic_reveals,
+                    );
+                    original_draw_facts.extend(segment.iter().flat_map(|event| {
+                        crate::effects::outcome_recording::event_facts(game, event)
+                    }));
+                    events.extend(segment);
+                    let redirected_is_first = !game.turn_store.turn_history
+                        .has_drawn_cards_this_turn(redirected_player)?
+                        && !events.iter().any(|event: &TriggerEvent|
                             event.downcast::<CardsDrawnEvent>().is_some_and(|draw| draw.player == redirected_player && !draw.cards.is_empty()));
                     let (redirected_in_draw_step, redirected_previous) =
                         game.draw_step_context_for_player(redirected_player);
@@ -876,6 +894,7 @@ pub(crate) fn execute_prepared_draw_instruction(prepared: PreparedDrawInstructio
                         .map(CardsDrawnEvent::amount)
                         .unwrap_or(0);
                     game.record_cards_drawn_in_current_draw_step(redirected_player, drawn_count);
+                    game.stage_turn_history_event(&event);
                     game.note_hidden_draw_for_reveal_window(&event);
                     original_draw_facts
                         .extend(crate::effects::outcome_recording::event_facts(game, &event));
@@ -1764,5 +1783,308 @@ mod removed_draw_selected_api_tests {
             assert_eq!(game.turn_store.turn_history.cards_drawn_by_player(alice), 0);
             assert!(game.take_pending_trigger_events().is_empty());
         }
+    }
+}
+
+#[cfg(test)]
+mod checked_first_draw_producer_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::effects::{CostExecutableEffect, CostValidationError, SequenceEffect, execute_effect};
+    use crate::ids::CardId;
+    use crate::types::CardType;
+
+    fn fixture() -> (GameState, ObjectId, PlayerId, PlayerId) {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let a = PlayerId::from_index(0);
+        let b = PlayerId::from_index(1);
+        let card = CardBuilder::new(CardId::new(), "Draw receipt witness")
+            .card_types(vec![CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, a, Zone::Battlefield);
+        for player in [a, b] {
+            for _ in 0..8 { game.create_object_from_card(&card, player, Zone::Library); }
+        }
+        (game, source, a, b)
+    }
+
+    fn draw(game: &mut GameState, source: ObjectId, player: PlayerId, amount: i32) -> EffectOutcome {
+        execute_effect(game, &Effect::draw(amount),
+            &mut ExecutionContext::new_default(source, player)).unwrap()
+    }
+
+    #[test]
+    fn real_draws_keep_first_nonfirst_receipts_across_batch_publication_and_native_recovery() {
+        let (mut game, source, a, b) = fixture();
+        let first = draw(&mut game, source, a, 2);
+        let event = first.events_of_type::<CardsDrawnEvent>().next().unwrap();
+        assert!(event.is_first_this_turn);
+        assert_eq!(event.cards.len(), 2);
+        assert!(game.turn_store.turn_history.has_drawn_cards_this_turn(a).unwrap());
+        assert!(!game.turn_store.turn_history.has_drawn_cards_this_turn(b).unwrap());
+        let checkpoint = game.clone();
+        for event in first.events { game.queue_trigger_event(event.provenance(), event); }
+        assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 1);
+        let second = draw(&mut game, source, a, 1);
+        assert!(!second.events_of_type::<CardsDrawnEvent>().next().unwrap().is_first_this_turn);
+        game.restore_execution_checkpoint(checkpoint, false);
+        let replayed = draw(&mut game, source, a, 1);
+        assert!(!replayed.events_of_type::<CardsDrawnEvent>().next().unwrap().is_first_this_turn);
+        assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 2);
+        game.next_turn();
+        let new_turn = draw(&mut game, source, a, 1);
+        assert!(new_turn.events_of_type::<CardsDrawnEvent>().next().unwrap().is_first_this_turn);
+    }
+
+    #[test]
+    fn redirected_draws_bind_first_status_to_actual_drawer_and_unpublished_local_segments() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        for prior in [false, true] {
+            let (mut game, source, a, b) = fixture();
+            if prior { draw(&mut game, source, b, 1); }
+            let replacement_card = CardBuilder::new(CardId::new(), "Draw redirect source")
+                .card_types(vec![CardType::Artifact]).build();
+            let replacement_source = game.create_object_from_card(&replacement_card, b, Zone::Battlefield);
+            game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+                replacement_source, b, crate::events::cards::matchers::WouldDrawCardMatcher::opponent(),
+                ReplacementAction::RedirectDrawToController,
+            ));
+            let result = draw(&mut game, source, a, 2);
+            let draws: Vec<_> = result.events_of_type::<CardsDrawnEvent>().collect();
+            assert_eq!(draws.len(), 2);
+            assert!(draws.iter().all(|draw| draw.player == b && draw.cards.len() == 1));
+            assert_eq!(draws.iter().map(|draw| draw.is_first_this_turn).collect::<Vec<_>>(),
+                vec![!prior, false]);
+            assert!(game.player(a).unwrap().hand.is_empty());
+            assert_eq!(game.player(b).unwrap().hand.len(), if prior { 3 } else { 2 });
+            assert!(!game.turn_store.turn_history.has_drawn_cards_this_turn(a).unwrap());
+            assert!(game.turn_store.turn_history.has_drawn_cards_this_turn(b).unwrap());
+        }
+    }
+
+    #[test]
+    fn held_expanded_originals_keep_first_status_for_actual_drawers() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        for simultaneous in [false, true] {
+            for redirect in [false, true] {
+                for prior in [false, true] {
+                    let (mut game, source, a, b) = fixture();
+                    let drawer = if redirect { b } else { a };
+                    if prior { draw(&mut game, source, drawer, 1); }
+                    let mut addition = ReplacementEffect::with_matcher(
+                        source, a,
+                        crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                        ReplacementAction::Additionally(vec![Effect::gain_life(1)]),
+                    );
+                    addition.priority_override = Some(crate::events::ReplacementPriority::SelfReplacement);
+                    game.effect_store.replacement_effects.add_resolution_effect(addition);
+                    if redirect {
+                        let redirect_source = game.create_object_from_card(
+                            &CardBuilder::new(CardId::new(), "Held draw redirect")
+                                .card_types(vec![CardType::Artifact]).build(), b, Zone::Battlefield);
+                        game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+                            redirect_source, b, crate::events::cards::matchers::WouldDrawCardMatcher::opponent(),
+                            ReplacementAction::RedirectDrawToController,
+                        ));
+                    }
+                    if simultaneous { assert!(game.open_simultaneous_action()); }
+                    else { game.effect_store.trigger_matching_holds = 1; }
+                    let result = draw(&mut game, source, a, 2);
+                    let draws: Vec<_> = result.events_of_type::<CardsDrawnEvent>().collect();
+                    assert_eq!(draws.len(), 2);
+                    assert!(draws.iter().all(|draw| draw.player == drawer && draw.cards.len() == 1));
+                    assert_eq!(draws.iter().map(|draw| draw.is_first_this_turn).collect::<Vec<_>>(),
+                        vec![!prior, false]);
+                    assert_eq!(game.player(a).unwrap().life, 22, "both expanded originals execute their addition");
+                    assert_eq!(game.player(drawer).unwrap().hand.len(), if prior { 3 } else { 2 });
+                    assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(),
+                        if prior { 3 } else { 2 });
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn held_added_draws_observe_original_occurrences_before_aggregate_publication() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        for simultaneous in [false, true] {
+            let (mut game, source, a, _) = fixture();
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                source, a, crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                ReplacementAction::Additionally(vec![Effect::draw(1)]),
+            ));
+            if simultaneous { assert!(game.open_simultaneous_action()); }
+            else { game.effect_store.trigger_matching_holds = 1; }
+            let result = draw(&mut game, source, a, 2);
+            let draws: Vec<_> = result.events_of_type::<CardsDrawnEvent>().collect();
+            assert_eq!(draws.len(), 3);
+            assert_eq!(draws.iter().map(|draw| draw.is_first_this_turn).collect::<Vec<_>>(),
+                vec![true, false, false]);
+            assert_eq!(result.instruction_result().count_or_zero(), 2);
+            assert_eq!(game.player(a).unwrap().hand.len(), 3);
+            let ordered_cards: Vec<_> = game.turn_store.turn_history.ordered_draw_occurrences().unwrap()
+                .iter().flat_map(|record| record.event.downcast::<CardsDrawnEvent>().unwrap().cards.iter().copied())
+                .collect();
+            let observed_cards: Vec<_> = draws.iter().flat_map(|draw| draw.cards.iter().copied()).collect();
+            assert_eq!(ordered_cards, observed_cards, "native chronology must retain original, addition, then later original");
+            for event in result.events { game.queue_trigger_event(event.provenance(), event); }
+            assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 3,
+                "aggregate publication enriches each occurrence once");
+        }
+    }
+
+    #[test]
+    fn held_mixed_direct_redirected_and_expanded_segments_retain_physical_order() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        #[derive(Debug, Clone)]
+        struct LaterCard;
+        impl crate::events::traits::ReplacementMatcher for LaterCard {
+            fn matches_prepared_event(&self, event: &dyn crate::events::traits::GameEventType,
+                _: &crate::events::context::PreparedEventContext) -> bool {
+                crate::events::downcast_event::<crate::events::DrawEvent>(event)
+                    .is_some_and(|draw| !draw.first_of_instruction)
+            }
+            fn display(&self) -> String { "Later card of this draw instruction".into() }
+        }
+        for simultaneous in [false, true] {
+            for redirected_then_expanded in [false, true] {
+                let (mut game, source, a, b) = fixture();
+                let redirect_source = game.create_object_from_card(
+                    &CardBuilder::new(CardId::new(), "Mixed draw redirect")
+                        .card_types(vec![CardType::Artifact]).build(), b, Zone::Battlefield);
+                let redirect = if redirected_then_expanded {
+                    ReplacementEffect::with_matcher(redirect_source, b,
+                        crate::events::cards::matchers::WouldDrawCardMatcher::opponent(),
+                        ReplacementAction::RedirectDrawToController)
+                } else {
+                    ReplacementEffect::with_matcher(redirect_source, b, LaterCard,
+                        ReplacementAction::RedirectDrawToController)
+                };
+                game.effect_store.replacement_effects.add_resolution_effect(redirect);
+                if redirected_then_expanded {
+                    let mut addition = ReplacementEffect::with_matcher(source, a, LaterCard,
+                        ReplacementAction::Additionally(vec![Effect::gain_life(1)]));
+                    addition.priority_override = Some(crate::events::ReplacementPriority::SelfReplacement);
+                    game.effect_store.replacement_effects.add_resolution_effect(addition);
+                }
+                if simultaneous { assert!(game.open_simultaneous_action()); }
+                else { game.effect_store.trigger_matching_holds = 1; }
+                let result = draw(&mut game, source, a, 2);
+                let draws: Vec<_> = result.events_of_type::<CardsDrawnEvent>().collect();
+                assert_eq!(draws.len(), 2);
+                assert_eq!(draws.iter().map(|draw| draw.player).collect::<Vec<_>>(),
+                    if redirected_then_expanded { vec![b, b] } else { vec![a, b] });
+                assert_eq!(draws.iter().map(|draw| draw.is_first_this_turn).collect::<Vec<_>>(),
+                    vec![true, !redirected_then_expanded]);
+                let observed: Vec<_> = draws.iter().flat_map(|draw| draw.cards.iter().copied()).collect();
+                let retained: Vec<_> = game.turn_store.turn_history.ordered_draw_occurrences().unwrap()
+                    .iter().flat_map(|record| record.event.downcast::<CardsDrawnEvent>().unwrap().cards.iter().copied())
+                    .collect();
+                assert_eq!(retained, observed);
+                assert_eq!(game.player(a).unwrap().life, if redirected_then_expanded { 21 } else { 20 });
+                for event in result.events { game.queue_trigger_event(event.provenance(), event); }
+                assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn held_added_program_error_or_pending_restores_staged_original_draw() {
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        struct Pause { pending: bool }
+        impl DecisionMaker for Pause {
+            fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+                self.pending = true;
+                false
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        for simultaneous in [false, true] {
+            for pending in [false, true] {
+                let (mut game, source, a, _) = fixture();
+                let payload = if pending { vec![Effect::may(vec![Effect::gain_life(2)])] }
+                    else { vec![Effect::gain_life(2), Effect::lose_life(crate::effect::Value::X)] };
+                let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                    source, a, crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                    ReplacementAction::Additionally(payload),
+                ));
+                if simultaneous { assert!(game.open_simultaneous_action()); }
+                else { game.effect_store.trigger_matching_holds = 1; }
+                let library = game.player(a).unwrap().library.to_vec();
+                let mut pause = Pause { pending: false };
+                let result = execute_effect(&mut game, &Effect::draw(2),
+                    &mut ExecutionContext::new(source, a, &mut pause));
+                if pending {
+                    assert!(pause.pending);
+                    assert_eq!(result.unwrap().events_of_type::<CardsDrawnEvent>().count(), 0);
+                } else {
+                    assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
+                }
+                assert_eq!(game.player(a).unwrap().library.as_slice(), library.as_slice());
+                assert!(game.player(a).unwrap().hand.is_empty());
+                assert_eq!(game.player(a).unwrap().life, 20);
+                assert!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().is_empty());
+                assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_history_stops_real_draws_and_cost_queries_without_publishing_partial_work() {
+        let (mut game, source, a, _) = fixture();
+        game.turn_store.turn_history.draw_occurrences = None;
+        let library = game.player(a).unwrap().library.to_vec();
+        let records = game.turn_store.turn_history.event_records.len();
+        assert!(matches!(DrawCardsEffect::you(1).can_execute_as_cost(&game, source, a),
+            Err(CostValidationError::ExecutionFailed(ExecutionError::IncompleteEvidence(_)))));
+        let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(5), Effect::draw(1)]));
+        let result = execute_effect(&mut game, &sequence, &mut ExecutionContext::new_default(source, a));
+        assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_))));
+        assert_eq!(game.player(a).unwrap().life, 20);
+        assert_eq!(game.player(a).unwrap().library.as_slice(), library.as_slice());
+        assert!(game.player(a).unwrap().hand.is_empty());
+        assert_eq!(game.turn_store.turn_history.event_records.len(), records);
+        assert!(game.turn_store.turn_history.draw_occurrences.is_none());
+        DrawCardsEffect::you(0).can_execute_as_cost(&game, source, a).unwrap();
+        let zero = draw(&mut game, source, a, 0);
+        assert_eq!(zero.events_of_type::<CardsDrawnEvent>().count(), 0);
+        assert!(game.turn_store.turn_history.draw_occurrences.is_none(), "a no-op cannot invent history");
+        game.next_turn();
+        let actual = draw(&mut game, source, a, 1);
+        assert!(actual.events_of_type::<CardsDrawnEvent>().next().unwrap().is_first_this_turn);
+    }
+
+    #[test]
+    fn pending_physical_draw_does_not_consume_first_draw_before_retry() {
+        struct Pause { pending: bool }
+        impl DecisionMaker for Pause {
+            fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool {
+                self.pending = true;
+                false
+            }
+            fn awaiting_choice(&self) -> bool { self.pending }
+        }
+        struct Decline;
+        impl DecisionMaker for Decline {
+            fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool { false }
+        }
+        let (mut game, source, a, _) = fixture();
+        let commander = CardBuilder::new(CardId::new(), "Pending commander draw")
+            .card_types(vec![CardType::Creature]).build();
+        let commander = game.create_object_from_card(&commander, a, Zone::Library);
+        game.set_as_commander(commander, a);
+        let library = game.player(a).unwrap().library.to_vec();
+        let mut pause = Pause { pending: false };
+        let outcome = execute_effect(&mut game, &Effect::draw(2),
+            &mut ExecutionContext::new(source, a, &mut pause)).unwrap();
+        assert!(pause.pending);
+        assert_eq!(outcome.events_of_type::<CardsDrawnEvent>().count(), 0);
+        assert_eq!(game.player(a).unwrap().library.as_slice(), library.as_slice());
+        assert!(!game.turn_store.turn_history.has_drawn_cards_this_turn(a).unwrap());
+        let complete = execute_effect(&mut game, &Effect::draw(2),
+            &mut ExecutionContext::new(source, a, &mut Decline)).unwrap();
+        let event = complete.events_of_type::<CardsDrawnEvent>().next().unwrap();
+        assert!(event.is_first_this_turn);
+        assert_eq!(event.cards.len(), 2);
+        assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 1);
     }
 }

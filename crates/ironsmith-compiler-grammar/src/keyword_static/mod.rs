@@ -11,6 +11,7 @@ pub use combat_requirements::{
     parse_source_owned_flying_block_limit_line,
 };
 mod dynamic_anthem_values;
+mod dynamic_characteristic_statics;
 pub use blocking_permissions::parse_blocking_capacity_static_line;
 mod alternative_prices;
 mod costs_replacements_and_permissions;
@@ -2101,6 +2102,7 @@ fn parse_complete_attached_restriction_quoted_activation(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_attached_restriction_quoted_activation(tokens)? {
         return Ok(Some(abilities));
     }
@@ -2510,6 +2512,12 @@ mod single_line_readings;
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) = dynamic_characteristic_statics::parse_timed_source_pt(tokens)? {
+        return Ok(Some(vec![ability.into()]));
+    }
+    if let Some(ability) = dynamic_characteristic_statics::parse_bound_base_pt(tokens)? {
+        return Ok(Some(vec![ability.into()]));
+    }
     if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens)
         && let Some(ability) = parse_characteristic_defining_pt_line(split.remainder_tokens)?
     {
@@ -3784,9 +3792,9 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
             }
             keyword_static_lines::StaticTextMarkerKind::YouHaveHexproof => {
                 StaticAbility::restriction(
-                    crate::effect::Restriction::be_targeted_player_from(
+                    crate::effect::Restriction::player_hexproof_from(
                         PlayerFilter::You,
-                        ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+                        ObjectFilter::default(),
                     ),
                     "You have hexproof".to_string(),
                 )
@@ -6245,7 +6253,9 @@ pub fn parse_characteristic_defining_pt_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     // Conditional characteristic assignments must retain their predicate;
     // the enclosing static parser owns the prefix and wraps the body.
-    if split_as_long_as_condition_prefix_lexed(tokens).is_some() {
+    if split_as_long_as_condition_prefix_lexed(tokens).is_some()
+        || anthem_grant_grammar::parse_fixed_prefix_condition_shape(tokens).is_some()
+    {
         return Ok(None);
     }
     let sentence_tokens = trim_edge_punctuation(tokens);

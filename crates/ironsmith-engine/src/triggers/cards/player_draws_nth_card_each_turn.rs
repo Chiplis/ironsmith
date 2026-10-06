@@ -1,6 +1,7 @@
 //! Numbered-card draw triggers such as "your second card each turn" and
 //! "your first or second card each turn".
 
+use crate::effects::ExecutionError;
 use crate::events::EventKind;
 use crate::events::other::CardsDrawnEvent;
 use crate::target::PlayerFilter;
@@ -51,35 +52,85 @@ impl PlayerDrawsNumberedCardsEachTurnTrigger {
     }
 
     fn matching_card_numbers(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
-        let Some((total_before, total_after)) = draw_number_window(&self.player, event, ctx) else {
-            return 0;
-        };
-        self.card_numbers
-            .iter()
-            .filter(|number| total_before < **number && **number <= total_after)
-            .count() as u32
+        let result = (|| {
+            let Some((total_before, total_after)) = draw_number_window(&self.player, event, ctx)? else {
+                return Ok(0);
+            };
+            let count = self.card_numbers
+                .iter()
+                .filter(|number| total_before < i64::from(**number) && i64::from(**number) <= total_after)
+                .count();
+            u32::try_from(count).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                resource: "numbered draw trigger count",
+                requested: count as u128,
+                maximum: u32::MAX as u128,
+            })
+        })();
+        match result {
+            Ok(count) => count,
+            Err(error) => { ctx.game.record_token_resource_failure(&error); 0 }
+        }
     }
+}
+
+/// Accumulate only the prefix ending at this exact draw occurrence. Later
+/// staged events belong to later windows, even when collected in one batch.
+fn checked_draw_number_window(
+    draws: impl IntoIterator<Item = (usize, bool)>,
+) -> Result<(i64, i64), ExecutionError> {
+    let mut before = 0i64;
+    for (count, is_current) in draws {
+        let requested = before as u128 + count as u128;
+        let after = i64::try_from(requested).map_err(|_| ExecutionError::ResourceLimitExceeded {
+            resource: "draw-history ordinal",
+            requested,
+            maximum: i64::MAX as u128,
+        })?;
+        if is_current {
+            return Ok((before, after));
+        }
+        before = after;
+    }
+    Err(ExecutionError::IncompleteEvidence(
+        "numbered draw trigger lacks its exact retained draw occurrence; native recovery or replay required".into(),
+    ))
 }
 
 fn draw_number_window(
     player: &PlayerFilter,
     event: &TriggerEvent,
     ctx: &TriggerContext,
-) -> Option<(u32, u32)> {
+) -> Result<Option<(i64, i64)>, ExecutionError> {
     if event.kind() != EventKind::CardsDrawn {
-        return None;
+        return Ok(None);
     }
-    let e = event.downcast::<CardsDrawnEvent>()?;
-    let player_matches = crate::filter::player_filter_matches_game(player, e.player, ctx.game, &ctx.filter_ctx);
-    if !player_matches {
-        return None;
+    let e = event.downcast::<CardsDrawnEvent>().ok_or_else(|| ExecutionError::IncompleteEvidence(
+        "numbered draw trigger lacks its draw event payload".into(),
+    ))?;
+    if !crate::filter::player_filter_matches_game(player, e.player, ctx.game, &ctx.filter_ctx) {
+        return Ok(None);
     }
-    let total_after = ctx
-        .game
-        .turn_store
-        .turn_history
-        .cards_drawn_by_player(e.player);
-    Some((total_after.saturating_sub(e.amount()), total_after))
+    if ctx.game.player(e.player).is_none() {
+        return Err(ExecutionError::IncompleteEvidence(
+            "numbered draw trigger lacks its drawing player".into(),
+        ));
+    }
+    let records = ctx.game.turn_store.turn_history.ordered_draw_occurrences()?;
+    let retained = records.iter()
+        .find(|record| record.event.ptr_eq(event))
+        .and_then(|record| record.event.downcast::<CardsDrawnEvent>())
+        .ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "numbered draw trigger lacks its exact retained draw occurrence; native recovery or replay required".into(),
+        ))?;
+    if retained.player != e.player || retained.cards != e.cards {
+        return Err(ExecutionError::IncompleteEvidence(
+            "numbered draw trigger payload differs from its retained draw occurrence".into(),
+        ));
+    }
+    checked_draw_number_window(records.iter().filter_map(|record| {
+        let draw = record.event.downcast::<CardsDrawnEvent>()?;
+        (draw.player == e.player).then_some((draw.cards.len(), record.event.ptr_eq(event)))
+    })).map(Some)
 }
 
 fn numbered_draw_display(player: &PlayerFilter, card_numbers: &[u32]) -> String {
@@ -122,9 +173,15 @@ impl TriggerMatcher for PlayerDrawsNthCardEachTurnTrigger {
         if self.card_number == 0 {
             return false;
         }
-        draw_number_window(&self.player, event, ctx).is_some_and(|(total_before, total_after)| {
-            total_before < self.card_number && self.card_number <= total_after
-        })
+        match draw_number_window(&self.player, event, ctx) {
+            Ok(Some((total_before, total_after))) => {
+                total_before < i64::from(self.card_number) && i64::from(self.card_number) <= total_after
+            }
+            Ok(None) => false,
+            // Existing checked trigger collection owns the failure scope and
+            // returns this error instead of interpreting a skipped match as zero.
+            Err(error) => { ctx.game.record_token_resource_failure(&error); false }
+        }
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -174,6 +231,281 @@ mod tests {
     use super::*;
     use crate::game_state::GameState;
     use crate::ids::{ObjectId, PlayerId};
+
+    fn observer(game: &mut GameState, player: PlayerId, numbered: bool) -> ObjectId {
+        let trigger = if numbered {
+            crate::triggers::Trigger::new(PlayerDrawsNumberedCardsEachTurnTrigger::new(
+                PlayerFilter::You, [1, 2],
+            ))
+        } else {
+            crate::triggers::Trigger::player_draws_nth_card_each_turn(PlayerFilter::You, 2)
+        };
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Draw observer")
+            .card_types(vec![crate::types::CardType::Enchantment])
+            .with_ability(crate::Ability::triggered(trigger, vec![crate::Effect::gain_life(1)]))
+            .build();
+        game.create_object_from_definition(&definition, player, crate::zone::Zone::Battlefield)
+    }
+
+    #[test]
+    fn ordinal_window_stays_wide_and_ends_at_the_exact_occurrence() {
+        let before = usize::try_from(u32::MAX).unwrap();
+        assert_eq!(checked_draw_number_window([
+            (before, false), (1, true), (usize::MAX, false),
+        ]).unwrap(), (i64::from(u32::MAX), i64::from(u32::MAX) + 1));
+        assert!(matches!(checked_draw_number_window([(1, false)]),
+            Err(ExecutionError::IncompleteEvidence(_))));
+    }
+
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn ordinal_window_reports_wide_overflow_instead_of_saturating() {
+        assert!(matches!(checked_draw_number_window([
+            (usize::try_from(i64::MAX).unwrap(), false), (1, true),
+        ]), Err(ExecutionError::ResourceLimitExceeded {
+            resource: "draw-history ordinal", requested, maximum,
+        }) if requested == i64::MAX as u128 + 1 && maximum == i64::MAX as u128));
+    }
+
+    #[test]
+    fn collected_draw_batch_preserves_each_players_exact_event_windows() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        observer(&mut game, alice, false);
+        let events = [
+            CardsDrawnEvent::single(alice, ObjectId::from_raw(10), true),
+            CardsDrawnEvent::new(bob, vec![ObjectId::from_raw(11), ObjectId::from_raw(12)], true),
+            CardsDrawnEvent::single(alice, ObjectId::from_raw(13), false),
+            CardsDrawnEvent::single(alice, ObjectId::from_raw(14), false),
+        ].map(|draw| TriggerEvent::new_with_provenance(draw, Default::default()));
+        for event in &events { game.stage_turn_history_event(event); }
+        let (root, meter) = game.begin_token_resource_scope();
+        let counts: Vec<_> = crate::triggers::check_triggers_batch(&game, &events)
+            .iter().map(Vec::len).collect();
+        assert_eq!(counts, vec![0, 0, 1, 0]);
+        assert!(game.token_resource_failure().is_none());
+        game.end_token_resource_scope(root, &meter);
+    }
+
+    #[test]
+    fn native_draw_windows_survive_later_receipt_publication_before_earlier_staging() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = observer(&mut game, alice, false);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Draw witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        for _ in 0..2 { game.create_object_from_card(&card, alice, crate::zone::Zone::Library); }
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
+        let first = crate::effects::execute_effect(&mut game, &crate::Effect::draw(1), &mut ctx).unwrap();
+        let mut second = crate::effects::execute_effect(&mut game, &crate::Effect::draw(1), &mut ctx).unwrap();
+        // A replacement original can publish its receipt while an enclosing
+        // earlier draw still waits in the staged observation journal.
+        crate::effects::capture_triggers_before_added_program(
+            &mut game, &ctx, None, second.events.iter_mut(),
+        ).unwrap();
+        assert_eq!(game.effect_store.pending_trigger_entries.len(), 1);
+        let first_draw = first.events.iter().find(|event| event.kind() == EventKind::CardsDrawn).unwrap();
+        assert!(crate::triggers::check_triggers_checked(&game, first_draw).unwrap().is_empty());
+        let second_draw = second.events.iter().find(|event| event.kind() == EventKind::CardsDrawn).unwrap();
+        assert!(game.effect_store.pending_trigger_entries[0].triggering_event.ptr_eq(second_draw));
+    }
+
+    #[test]
+    fn checked_collection_rejects_missing_or_reconstructed_draw_occurrences() {
+        for numbered in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            observer(&mut game, alice, numbered);
+            let draw = CardsDrawnEvent::new(alice,
+                vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true);
+            let event = TriggerEvent::new_with_provenance(draw.clone(), Default::default());
+            assert!(matches!(crate::triggers::check_triggers_checked(&game, &event),
+                Err(ExecutionError::IncompleteEvidence(_))));
+            game.stage_turn_history_event(&event);
+            let alias = event.clone();
+            assert_eq!(crate::triggers::check_triggers_checked(&game, &alias).unwrap().len(),
+                if numbered { 2 } else { 1 });
+            let reconstructed = TriggerEvent::new_with_provenance(draw, event.provenance());
+            assert!(matches!(crate::triggers::check_triggers_checked(&game, &reconstructed),
+                Err(ExecutionError::IncompleteEvidence(_))));
+            let altered = event.with_inner_event(CardsDrawnEvent::single(alice,
+                ObjectId::from_raw(10), true));
+            assert!(matches!(crate::triggers::check_triggers_checked(&game, &altered),
+                Err(ExecutionError::IncompleteEvidence(_))));
+        }
+    }
+
+    #[test]
+    fn public_pending_draw_collection_returns_incomplete_evidence_and_restores_queue() {
+        for simultaneous in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            observer(&mut game, alice, false);
+            let event = TriggerEvent::new_with_provenance(CardsDrawnEvent::new(alice,
+                vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true), Default::default());
+            game.record_turn_history_event(&event);
+            let altered = event.with_inner_event(CardsDrawnEvent::single(alice,
+                ObjectId::from_raw(10), true));
+            let altered = if simultaneous {
+                altered.with_simultaneous_batch(Default::default())
+            } else { altered };
+            game.effect_store.pending_trigger_events.push(altered);
+            let mut queue = crate::triggers::TriggerQueue::new();
+            assert!(matches!(crate::game_loop::put_triggers_on_stack_with_dm(
+                &mut game, &mut queue, &mut crate::decision::SelectFirstDecisionMaker,
+            ), Err(crate::game_loop::GameLoopError::ExecutionFailed(
+                ExecutionError::IncompleteEvidence(_),
+            ))));
+            assert!(game.stack_is_empty());
+            assert!(queue.entries.is_empty());
+            assert_eq!(game.effect_store.pending_trigger_events.len(), 1);
+            assert_eq!(game.turn_store.turn_history.event_records.len(), 1);
+            assert_eq!(game.turn_store.turn_history.event_records[0].event
+                .downcast::<CardsDrawnEvent>().unwrap().cards.len(), 2);
+        }
+    }
+
+    #[test]
+    fn numbered_set_ignores_later_draws_after_its_retained_batch() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        observer(&mut game, alice, true);
+        let batch = TriggerEvent::new_with_provenance(CardsDrawnEvent::new(alice,
+            vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true), Default::default());
+        let later = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+            ObjectId::from_raw(12), false), Default::default());
+        game.stage_turn_history_event(&batch);
+        game.stage_turn_history_event(&later);
+        assert_eq!(crate::triggers::check_triggers_checked(&game, &batch).unwrap().len(), 2);
+        assert!(crate::triggers::check_triggers_checked(&game, &later).unwrap().is_empty());
+    }
+
+    #[test]
+    fn draw_alias_enrichment_and_promotion_preserve_first_observation_order() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = observer(&mut game, alice, false);
+        let first = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+            ObjectId::from_raw(10), true), Default::default());
+        let second = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+            ObjectId::from_raw(11), false), Default::default());
+        game.stage_turn_history_event(&first);
+        game.stage_turn_history_event(&second);
+        let enriched = first.clone().with_player_tags(std::collections::HashMap::from([
+            (crate::tag::TagKey::from("drawer"), vec![alice]),
+        ]));
+        game.stage_turn_history_event(&enriched);
+        game.record_turn_history_event(&second);
+        let mut completed = vec![enriched];
+        crate::effects::observe_lifecycle_completions(&mut game, &mut completed).unwrap();
+        game.record_turn_history_event(&completed[0]);
+        let enriched = completed[0].clone().with_player_tags(std::collections::HashMap::from([
+            (crate::tag::TagKey::from("completed drawer"), vec![alice]),
+        ]));
+        // Exercise GameState's already-completed refresh-and-return path.
+        game.stage_turn_history_event(&enriched);
+        let records = game.turn_store.turn_history.ordered_draw_occurrences().unwrap();
+        assert_eq!(records.len(), 2);
+        assert!(records[0].event.ptr_eq(&enriched));
+        assert_eq!(records[0].event.player_tags().get(&crate::tag::TagKey::from("completed drawer")), Some(&vec![alice]));
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert_eq!(draw_number_window(&PlayerFilter::You, &enriched, &ctx).unwrap(), Some((0, 1)));
+        assert_eq!(draw_number_window(&PlayerFilter::You, &second, &ctx).unwrap(), Some((1, 2)));
+    }
+
+    #[test]
+    fn missing_native_chronology_and_conflicting_aliases_do_not_become_zero() {
+        for missing_owner in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            observer(&mut game, alice, false);
+            let first = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+                ObjectId::from_raw(10), true), Default::default());
+            if missing_owner {
+                game.turn_store.turn_history.draw_occurrences = None;
+            } else {
+                // Reconstructed aggregate records do not prove native order.
+                game.turn_store.turn_history.event_records.push(crate::turn_history::TurnEventRecord {
+                    event: first.clone(), object_snapshot: None, source_snapshot: None,
+                });
+            }
+            let second = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+                ObjectId::from_raw(11), false), Default::default());
+            game.stage_turn_history_event(&second);
+            assert!(matches!(crate::triggers::check_triggers_checked(&game, &second),
+                Err(ExecutionError::IncompleteEvidence(_))));
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        observer(&mut game, alice, false);
+        let event = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+            ObjectId::from_raw(10), true), Default::default());
+        game.stage_turn_history_event(&event);
+        let changed = event.with_inner_event(CardsDrawnEvent::new(alice,
+            vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true));
+        game.stage_turn_history_event(&changed);
+        assert!(game.turn_store.turn_history.draw_occurrences.is_none());
+        assert!(matches!(crate::triggers::check_triggers_checked(&game, &changed),
+            Err(ExecutionError::IncompleteEvidence(_))));
+    }
+
+    #[test]
+    fn native_checkpoint_restores_root_and_inactive_lane_draw_chronology() {
+        let mut game = GameState::new((0..8).map(|index| format!("P{index}")).collect(), 20);
+        game.restore_grand_melee((0..8).map(PlayerId::from_index).collect()).unwrap();
+        let markers = game.grand_melee_marker_views();
+        let root = markers[0].number;
+        let other = markers[1].number;
+        let root_player = markers[0].holder;
+        let other_player = markers[1].holder;
+        let root_event = TriggerEvent::new_with_provenance(CardsDrawnEvent::new(root_player,
+            vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true), Default::default());
+        game.stage_turn_history_event(&root_event);
+        game.select_grand_melee_turn_marker(other).unwrap();
+        let other_event = TriggerEvent::new_with_provenance(CardsDrawnEvent::new(other_player,
+            vec![ObjectId::from_raw(12), ObjectId::from_raw(13), ObjectId::from_raw(14)], true), Default::default());
+        game.stage_turn_history_event(&other_event);
+        game.select_grand_melee_turn_marker(root).unwrap();
+        let checkpoint = game.clone();
+        game.turn_store.turn_history.draw_occurrences = None;
+        game.select_grand_melee_turn_marker(other).unwrap();
+        game.turn_store.turn_history.draw_occurrences = None;
+        game.restore_execution_checkpoint(checkpoint.clone(), false);
+        let ctx = TriggerContext::for_source(ObjectId::from_raw(99), root_player, &game);
+        assert_eq!(draw_number_window(&PlayerFilter::You, &root_event, &ctx).unwrap(), Some((0, 2)));
+        game.select_grand_melee_turn_marker(other).unwrap();
+        let ctx = TriggerContext::for_source(ObjectId::from_raw(99), other_player, &game);
+        assert_eq!(draw_number_window(&PlayerFilter::You, &other_event, &ctx).unwrap(), Some((0, 3)));
+        let mut sibling = checkpoint;
+        sibling.select_grand_melee_turn_marker(other).unwrap();
+        sibling.turn_store.turn_history.draw_occurrences = None;
+        assert_eq!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn only_real_new_turn_boundaries_reestablish_complete_empty_draw_history() {
+        assert!(crate::turn_history::TurnHistory::default().ordered_draw_occurrences().is_err());
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = observer(&mut game, alice, false);
+        let old = TriggerEvent::new_with_provenance(CardsDrawnEvent::new(alice,
+            vec![ObjectId::from_raw(10), ObjectId::from_raw(11)], true), Default::default());
+        game.stage_turn_history_event(&old);
+        game.next_turn();
+        assert!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().is_empty());
+        let fresh = TriggerEvent::new_with_provenance(CardsDrawnEvent::single(alice,
+            ObjectId::from_raw(12), true), Default::default());
+        game.stage_turn_history_event(&fresh);
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert_eq!(draw_number_window(&PlayerFilter::You, &fresh, &ctx).unwrap(), Some((0, 1)));
+        assert!(matches!(draw_number_window(&PlayerFilter::You, &old, &ctx),
+            Err(ExecutionError::IncompleteEvidence(_))));
+        game.turn_store.turn_history.draw_occurrences = None;
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(game.turn_store.turn_history.ordered_draw_occurrences().unwrap().is_empty());
+    }
 
     #[test]
     fn test_display() {

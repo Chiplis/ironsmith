@@ -2,6 +2,60 @@ use super::*;
 use crate::lexer::lex_line;
 
 #[test]
+fn qualified_mixed_target_lists_are_one_operand() {
+    for target in [
+        "opponent, creature an opponent controls, or planeswalker an opponent controls",
+        "player, creature you control, or planeswalker an opponent controls",
+        "opponent or creature an opponent controls",
+    ] {
+        let text = format!("This enchantment deals 3 damage to target {target}.");
+        let tokens = lex_line(&text, 0).unwrap();
+        assert!(matches!(recognize_coordination(&tokens), ParseOutcome::NoMatch), "{text}");
+        let segments = super::super::chain_splitting::split_segments_on_comma_effect_head_tokens(
+            vec![&tokens],
+        );
+        assert_eq!(segments, vec![tokens.as_slice()], "{text}");
+        let effects = crate::effect_sentences::parse_effect_chain_lexed(&tokens).unwrap();
+        assert_eq!(effects.len(), 1, "one damage instruction: {effects:#?}");
+    }
+}
+
+#[test]
+fn qualified_mixed_target_lists_preserve_real_following_actions() {
+    for (connective, ordering) in [
+        ("and", EffectOrderingAst::Unordered),
+        (", then", EffectOrderingAst::Ordered),
+        ("or", EffectOrderingAst::Alternative),
+    ] {
+        let text = format!(
+            "This enchantment deals 3 damage to target opponent, creature an opponent controls, or planeswalker an opponent controls {connective} draw a card."
+        );
+        let tokens = lex_line(&text, 0).unwrap();
+        let ParseOutcome::Match(plan) = recognize_coordination(&tokens) else {
+            panic!("expected the authored action boundary: {text}");
+        };
+        assert_eq!(plan.value.members.len(), 2, "{plan:#?}");
+        assert_eq!(plan.value.boundaries[0].ordering, ordering);
+        assert!(plan.value.members[1].tokens[0].is_word("draw"));
+        assert!(plan.value.members[0].tokens.iter().any(|token| token.is_word("planeswalker")));
+    }
+}
+
+#[test]
+fn mixed_target_recognition_does_not_drop_unknown_or_quoted_tails() {
+    for tail in ["unrecognized qualifier", "with \"unrecognized ability\""] {
+        let text = format!(
+            "This enchantment deals 3 damage to target opponent, creature an opponent controls, or planeswalker an opponent controls {tail}."
+        );
+        let tokens = lex_line(&text, 0).unwrap();
+        let (parsed, loss) = crate::parse_loss::capture(|| {
+            crate::effect_sentences::parse_effect_chain_lexed(&tokens)
+        });
+        assert!(parsed.is_err() || loss.is_lossy(), "must consume the full tail: {text}");
+    }
+}
+
+#[test]
 fn modified_type_union_stays_inside_one_return_operand() {
     for text in [
         "Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it.",

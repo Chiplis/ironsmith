@@ -412,9 +412,7 @@ fn execute_planned_mana_activations(
             // Do not advance the plan cursor until that replay completes.
             return Ok(true);
         }
-        for event in events {
-            queue_triggers_from_event(game, trigger_queue, event, false);
-        }
+        queue_triggers_for_events(game, trigger_queue, events)?;
         queue_ability_activated_event(
             game,
             trigger_queue,
@@ -424,7 +422,7 @@ fn execute_planned_mana_activations(
             true,
             None,
             activation_cost_has_tap,
-        );
+        )?;
         if replay.awaiting_choice() {
             return Ok(true);
         }
@@ -435,7 +433,7 @@ fn execute_planned_mana_activations(
         }
         *undo_locked_by_mana |= !step.undo_safe;
         payment.next_activation += 1;
-        drain_pending_trigger_events(game, trigger_queue);
+        try_drain_pending_trigger_events(game, trigger_queue)?;
     }
     Ok(false)
 }
@@ -568,7 +566,7 @@ fn execute_planned_keyword_payments(
     }
     game.close_simultaneous_action(opened_batch);
     result?;
-    drain_pending_trigger_events(game, trigger_queue);
+    try_drain_pending_trigger_events(game, trigger_queue)?;
     Ok(())
 }
 
@@ -2166,7 +2164,7 @@ pub(super) fn execute_pending_mana_ability(
         game.finish_library_top_announcement(
             crate::game_state::LibraryTopAnnouncement::Activation(pending.provenance),
         );
-        drain_pending_trigger_events(game, trigger_queue);
+        try_drain_pending_trigger_events(game, trigger_queue)?;
 
         game.record_ability_activation_with_origin(pending.source, pending.ability_index, pending.activation_origin.clone(), pending.effects.activation_definition);
         let mut mana_ctx =
@@ -2200,7 +2198,7 @@ pub(super) fn execute_pending_mana_ability(
             return Ok(());
         }
         drop(mana_ctx);
-        queue_triggers_for_events(game, trigger_queue, outcome.events);
+        queue_triggers_for_events(game, trigger_queue, outcome.events)?;
 
         // Execute additional effects (for complex mana abilities)
         if !pending.effects.is_empty() {
@@ -2233,8 +2231,8 @@ pub(super) fn execute_pending_mana_ability(
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(());
             }
-            queue_triggers_for_events(game, trigger_queue, emitted_events);
-            drain_pending_trigger_events(game, trigger_queue);
+            queue_triggers_for_events(game, trigger_queue, emitted_events)?;
+            try_drain_pending_trigger_events(game, trigger_queue)?;
         }
 
         let activation_cost_has_tap =
@@ -2249,7 +2247,7 @@ pub(super) fn execute_pending_mana_ability(
             true,
             None,
             activation_cost_has_tap,
-        );
+        )?;
 
         Ok(())
     })();
@@ -2538,7 +2536,7 @@ pub(super) fn apply_sacrifice_target_response(
                 return Ok(GameProgress::Continue);
             }
 
-            drain_pending_trigger_events(game, trigger_queue);
+            try_drain_pending_trigger_events(game, trigger_queue)?;
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = activation_stage_after_targets(&pending);
@@ -2585,7 +2583,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::ExileFromHand {
                     cost, color_filter, ..
@@ -2620,7 +2618,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::ExileFromGraveyard {
                     cost, card_type, ..
@@ -2651,7 +2649,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::ExileChosenObject {
                     cost,
@@ -2693,7 +2691,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::RevealFromHand {
                     cost,
@@ -2769,7 +2767,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::MoveChosenObjectToZone {
                     cost,
@@ -2810,7 +2808,7 @@ pub(super) fn apply_sacrifice_target_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
             }
 
@@ -2907,7 +2905,7 @@ pub(super) fn apply_card_cost_choice_response(
                 );
             }
 
-            drain_pending_trigger_events(game, trigger_queue);
+            try_drain_pending_trigger_events(game, trigger_queue)?;
 
             pending.remaining_cost_steps.remove(0);
             pending.stage = CastStage::ChoosingNextCost;
@@ -2963,7 +2961,7 @@ pub(super) fn apply_card_cost_choice_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::ExileFromHand {
                     cost, color_filter, ..
@@ -2999,7 +2997,7 @@ pub(super) fn apply_card_cost_choice_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::ExileFromGraveyard {
                     cost, card_type, ..
@@ -3042,7 +3040,7 @@ pub(super) fn apply_card_cost_choice_response(
                     }
 
                     if !delve {
-                        drain_pending_trigger_events(game, trigger_queue);
+                        try_drain_pending_trigger_events(game, trigger_queue)?;
                     }
                 }
                 ActivationCardCostChoice::ExileChosenObject {
@@ -3085,7 +3083,7 @@ pub(super) fn apply_card_cost_choice_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::RevealFromHand {
                     cost,
@@ -3161,7 +3159,7 @@ pub(super) fn apply_card_cost_choice_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
                 ActivationCardCostChoice::MoveChosenObjectToZone {
                     cost,
@@ -3203,7 +3201,7 @@ pub(super) fn apply_card_cost_choice_response(
                         return Ok(GameProgress::Continue);
                     }
 
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
             }
 
@@ -4698,6 +4696,13 @@ pub fn run_priority_loop_with<D: DecisionMaker>(
                     // Handle errors with checkpoint rollback
                     let result = match result {
                         Ok(progress) => progress,
+                        Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution() =>
+                        {
+                            // An unfinished engine calculation is not a
+                            // rejected player action. The typed response owner
+                            // has restored its attempt; retain it for recovery.
+                            return Err(GameLoopError::ExecutionFailed(error));
+                        }
                         Err(e) => {
                             // Check if we have a checkpoint to restore
                             if let Some(checkpoint) = state.checkpoint.take() {
@@ -4753,6 +4758,23 @@ pub fn run_priority_loop_with<D: DecisionMaker>(
 
 /// Apply a context-based decision directly using typed decision primitives.
 pub fn apply_decision_context_with_dm<D: DecisionMaker>(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    ctx: &crate::decisions::context::DecisionContext,
+    decision_maker: &mut D,
+) -> Result<GameProgress, GameLoopError> {
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
+    let result = apply_decision_context_with_dm_inner(game, trigger_queue, state, ctx, decision_maker);
+    if matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution()) {
+        game.restore_execution_checkpoint(checkpoint.0, false);
+        *trigger_queue = checkpoint.1;
+        *state = checkpoint.2;
+    }
+    result
+}
+
+fn apply_decision_context_with_dm_inner<D: DecisionMaker>(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,

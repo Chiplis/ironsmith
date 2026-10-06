@@ -523,9 +523,9 @@ fn player_gain_effects_for_abilities(
         match action.as_ref() {
             KeywordAction::Hexproof => {
                 effects.push(EffectAst::subject_verb_cant(
-                    crate::effect::Restriction::be_targeted_player_from(
+                    crate::effect::Restriction::player_hexproof_from(
                         player_filter.clone(),
-                        ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+                        ObjectFilter::default(),
                     ),
                     duration.clone(),
                     None,
@@ -533,9 +533,9 @@ fn player_gain_effects_for_abilities(
             }
             KeywordAction::HexproofFrom(filter) => {
                 effects.push(EffectAst::subject_verb_cant(
-                    crate::effect::Restriction::be_targeted_player_from(
+                    crate::effect::Restriction::player_hexproof_from(
                         player_filter.clone(),
-                        filter.clone().controlled_by(PlayerFilter::Opponent),
+                        filter.clone(),
                     ),
                     duration.clone(),
                     None,

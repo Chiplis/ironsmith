@@ -400,7 +400,7 @@ fn put_lore_counters_and_check_chapters_with_cause(
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
-        queue_triggers_from_reported_events(game, trigger_queue, outcome.events, false);
+        try_queue_triggers_from_reported_events(game, trigger_queue, outcome.events, false)?;
         Ok(())
     })();
     if result.is_err() || decision_maker.awaiting_choice() {

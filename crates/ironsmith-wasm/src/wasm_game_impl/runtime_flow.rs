@@ -4380,6 +4380,7 @@ mod live_action_rollback_tests {
     include!("reveal_morph_payment_disclosure_tests.rs");
     include!("nonmana_unless_payment_disclosure_tests.rs");
     include!("combat_defending_actor_savepoint_tests.rs");
+    include!("counter_recipient_savepoint_tests.rs");
     include!("grouped_hand_payment_disclosure_tests.rs");
 
 }

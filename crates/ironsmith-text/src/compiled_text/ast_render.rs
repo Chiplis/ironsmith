@@ -20629,13 +20629,13 @@ fn describe_everybody_lives_program(
         return None;
     };
     let player_cant = player_effect.downcast_ref::<crate::effects::CantEffect>()?;
-    let crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) =
+    let crate::effect::Restriction::PlayerHexproofFrom(player, source_filter) =
         &player_cant.restriction
     else {
         return None;
     };
     if *player != PlayerFilter::Any
-        || source_filter != &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        || source_filter != &ObjectFilter::default()
         || !exact_everybody_lives_cant(player_cant)
     {
         return None;
@@ -20706,9 +20706,9 @@ mod everybody_lives_program_tests {
         ]));
 
         let player_hexproof = Effect::new(crate::effects::CantEffect::until_end_of_turn(
-            crate::effect::Restriction::BeTargetedPlayerFrom(
+            crate::effect::Restriction::PlayerHexproofFrom(
                 PlayerFilter::Any,
-                ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+                ObjectFilter::default(),
             ),
         ));
         let rules_sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
@@ -36844,7 +36844,7 @@ fn describe_source_line_conditioned_player_object_hexproof_group(
         return None;
     };
     let ironsmith_core::StaticAbilityPayload::RuleRestriction {
-        restriction: crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter),
+        restriction: crate::effect::Restriction::PlayerHexproofFrom(player, source_filter),
         additional_restrictions,
         ..
     } = &ability.payload
@@ -36853,7 +36853,7 @@ fn describe_source_line_conditioned_player_object_hexproof_group(
     };
     let (filter, grant_condition, keyword) = modeled_object_static_grant(object_ability)?;
     if *player != PlayerFilter::You
-        || source_filter != &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        || source_filter != &ObjectFilter::default()
         || !additional_restrictions.is_empty()
         || grant_condition != Some(condition)
         || keyword.id() != crate::static_abilities::StaticAbilityId::Hexproof

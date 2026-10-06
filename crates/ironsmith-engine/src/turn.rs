@@ -994,9 +994,11 @@ fn static_ability_may_affect_untap(
 /// Executes the draw step for the active player.
 /// Active player draws a card.
 ///
-/// Returns a list of TriggerEvents for cards that were drawn, which can be used
-/// to check for card-draw triggers (including Miracle).
-pub fn execute_draw_step(game: &mut GameState) -> Vec<crate::triggers::TriggerEvent> {
+/// Returns the completed draw observations, or the typed execution failure after
+/// restoring the draw-step checkpoint. No resource meter is required by callers.
+pub fn execute_draw_step(
+    game: &mut GameState,
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     let mut dm = crate::decision::AutoPassDecisionMaker;
     execute_draw_step_with(game, &mut dm)
 }
@@ -1005,11 +1007,11 @@ pub fn execute_draw_step(game: &mut GameState) -> Vec<crate::triggers::TriggerEv
 pub fn execute_draw_step_with(
     game: &mut GameState,
     decision_maker: &mut dyn DecisionMaker,
-) -> Vec<crate::triggers::TriggerEvent> {
+) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
     let active_players = game.turn_players();
     if active_players.is_empty() {
         game.reset_priority_for_new_window();
-        return Vec::new();
+        return Ok(Vec::new());
     }
     if active_players
         .iter()
@@ -1017,7 +1019,7 @@ pub fn execute_draw_step_with(
         || game.consume_step_skip(game.turn.active_player, Step::Draw)
     {
         game.reset_priority_for_new_window();
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     let checkpoint = game.clone();
@@ -1028,16 +1030,16 @@ pub fn execute_draw_step_with(
             Err(error) => {
                 game.restore_execution_checkpoint(checkpoint, false);
                 game.record_token_resource_failure(&error);
-                return Vec::new();
+                return Err(error);
             }
         }
         if decision_maker.awaiting_choice() {
             game.restore_execution_checkpoint(checkpoint, true);
-            return Vec::new();
+            return Ok(Vec::new());
         }
     }
     game.reset_priority_for_new_window();
-    events
+    Ok(events)
 }
 
 fn execute_draw_step_for_player_with(
@@ -1063,19 +1065,13 @@ fn execute_draw_step_for_player_with(
     }
 
     // Check if player can draw (the draw step draw is the first draw of the turn)
-    let current_draws = game
-        .turn_store
-        .turn_history
-        .cards_drawn_by_player(active_player);
-
-    // Track if this is the first draw of the turn (before drawing)
-    let is_first_draw = current_draws == 0;
+    let is_first_draw = !game.turn_store.turn_history.has_drawn_cards_this_turn(active_player)?;
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
     // The draw step draw is only blocked if they've already drawn this turn
     let can_draw = if !game.can_draw_extra_cards(active_player) {
         // Only allow if they haven't drawn yet this turn
-        current_draws == 0
+        is_first_draw
     } else {
         true
     };
@@ -2084,7 +2080,7 @@ mod tests {
         game.set_as_commander(commander_id, alice);
 
         let mut dm = AlwaysYesDecisionMaker;
-        let events = execute_draw_step_with(&mut game, &mut dm);
+        let events = execute_draw_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             events.is_empty(),
@@ -2113,7 +2109,7 @@ mod tests {
         game.set_as_commander(commander_id, alice);
 
         let mut dm = AlwaysNoDecisionMaker;
-        let events = execute_draw_step_with(&mut game, &mut dm);
+        let events = execute_draw_step_with(&mut game, &mut dm).unwrap();
 
         assert_eq!(
             events.len(),
@@ -2147,14 +2143,14 @@ mod tests {
         game.turn.active_player = alice;
 
         let mut dm = AlwaysNoDecisionMaker;
-        assert!(execute_draw_step_with(&mut game, &mut dm).is_empty());
+        assert!(execute_draw_step_with(&mut game, &mut dm).unwrap().is_empty());
         assert!(game.player(alice).expect("Alice exists").hand.is_empty());
 
         game.set_current_controller(source, bob)
             .expect("finite controller fixture must refresh successfully");
         assert!(!game.player_skips_draw_step(alice));
         assert!(game.player_skips_draw_step(bob));
-        assert_eq!(execute_draw_step_with(&mut game, &mut dm).len(), 1);
+        assert_eq!(execute_draw_step_with(&mut game, &mut dm).unwrap().len(), 1);
         assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 1);
 
         let bob_card = CardBuilder::new(CardId::from_raw(9101), "Bob Draw")
@@ -2162,12 +2158,12 @@ mod tests {
             .build();
         game.create_object_from_card(&bob_card, bob, Zone::Library);
         game.turn.active_player = bob;
-        assert!(execute_draw_step_with(&mut game, &mut dm).is_empty());
+        assert!(execute_draw_step_with(&mut game, &mut dm).unwrap().is_empty());
         assert!(game.player(bob).expect("Bob exists").hand.is_empty());
 
         game.move_object_by_effect(source, Zone::Graveyard);
         assert!(!game.player_skips_draw_step(bob));
-        assert_eq!(execute_draw_step_with(&mut game, &mut dm).len(), 1);
+        assert_eq!(execute_draw_step_with(&mut game, &mut dm).unwrap().len(), 1);
         assert_eq!(game.player(bob).expect("Bob exists").hand.len(), 1);
     }
 
@@ -2181,7 +2177,7 @@ mod tests {
         let _card_id = game.create_object_from_card(&card, alice, Zone::Library);
 
         let mut dm = AlwaysNoDecisionMaker;
-        let events = execute_draw_step_with(&mut game, &mut dm);
+        let events = execute_draw_step_with(&mut game, &mut dm).unwrap();
 
         assert!(
             events.is_empty(),
@@ -2210,7 +2206,7 @@ mod tests {
         let _card_id = game.create_object_from_card(&card, alice, Zone::Library);
 
         let mut dm = AlwaysNoDecisionMaker;
-        let events = execute_draw_step_with(&mut game, &mut dm);
+        let events = execute_draw_step_with(&mut game, &mut dm).unwrap();
 
         // CR 103.8a: a two-player Commander game is a two-player game, so the
         // starting player skips their first draw.
@@ -2242,7 +2238,7 @@ mod tests {
         game.create_object_from_card(&card, alice, Zone::Library);
 
         let mut dm = AlwaysNoDecisionMaker;
-        let events = execute_draw_step_with(&mut game, &mut dm);
+        let events = execute_draw_step_with(&mut game, &mut dm).unwrap();
 
         assert_eq!(
             events.len(),
@@ -2278,9 +2274,44 @@ mod draw_step_ordinal_tests {
         game
     }
     #[test]
+    fn public_draw_adapters_return_missing_history_without_a_manual_meter() {
+        for explicit_decision_maker in [false, true] {
+            let mut game = setup();
+            let player = game.turn.active_player;
+            let library = game.player(player).unwrap().library.to_vec();
+            let ids = game.next_object_id_counter();
+            let step = game.draw_step_context_for_player(player);
+            game.turn_store.turn_history.draw_occurrences = None;
+            assert!(game.token_resource_failure().is_none());
+            let result = if explicit_decision_maker {
+                execute_draw_step_with(&mut game, &mut crate::decision::AutoPassDecisionMaker)
+            } else {
+                execute_draw_step(&mut game)
+            };
+            assert!(matches!(result, Err(crate::effects::ExecutionError::IncompleteEvidence(_))));
+            assert_eq!(game.player(player).unwrap().library.as_slice(), library.as_slice());
+            assert!(game.player(player).unwrap().hand.is_empty());
+            assert_eq!(game.next_object_id_counter(), ids);
+            assert_eq!(game.draw_step_context_for_player(player), step);
+            assert!(game.turn_store.turn_history.draw_occurrences.is_none());
+            assert!(game.token_resource_failure().is_none(), "the Result owns the failure without a meter");
+
+            game.next_turn();
+            game.turn.phase = Phase::Beginning;
+            game.turn.step = Some(Step::Draw);
+            let player = game.turn.active_player;
+            let completed = execute_draw_step(&mut game).unwrap();
+            let draw = completed.iter().find_map(|event| event.downcast::<CardsDrawnEvent>()).unwrap();
+            assert_eq!(draw.player, player);
+            assert!(draw.is_first_this_turn);
+            assert_eq!(game.player(player).unwrap().hand.len(), 1);
+        }
+    }
+
+    #[test]
     fn turn_draw_retains_ordinal_through_priority_and_resets_for_adjacent_extra_step() {
         let mut game = setup();
-        let events = execute_draw_step(&mut game);
+        let events = execute_draw_step(&mut game).unwrap();
         let draw = events
             .iter()
             .find_map(|event| event.downcast::<CardsDrawnEvent>())
@@ -2293,7 +2324,7 @@ mod draw_step_ordinal_tests {
         advance_step(&mut game).unwrap();
         assert_eq!(game.turn.step, Some(Step::Draw));
         assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 0));
-        execute_draw_step(&mut game);
+        execute_draw_step(&mut game).unwrap();
         assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (true, 1));
         advance_step(&mut game).unwrap();
         assert_eq!(game.draw_step_context_for_player(PlayerId(0)), (false, 0));
@@ -2310,7 +2341,7 @@ mod draw_step_ordinal_tests {
             PlayerId(1),
         )
         .unwrap();
-        execute_draw_step(&mut game);
+        execute_draw_step(&mut game).unwrap();
         for player in [PlayerId(0), PlayerId(1)] {
             assert_eq!(game.draw_step_context_for_player(player), (true, 1));
         }
@@ -2326,7 +2357,7 @@ mod draw_step_ordinal_tests {
     fn ending_the_turn_clears_draw_ordinals_at_the_cleanup_jump() {
         use crate::effects::EffectExecutor;
         let mut game = setup();
-        execute_draw_step(&mut game);
+        execute_draw_step(&mut game).unwrap();
         let source = game.new_object_id();
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         let mut ctx = crate::effects::EffectContext::new(source, PlayerId(0), &mut dm);

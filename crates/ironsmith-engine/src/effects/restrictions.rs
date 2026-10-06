@@ -478,7 +478,27 @@ impl EffectExecutor for CantEffect {
         // A resolved player prohibition must retain its announced player after
         // this context and target slots disappear. The land set remains a rule
         // about future plays, not the currently visible lands.
-        let restriction = if let Restriction::PlayLandsMatching(player, filter) = restriction {
+        let restriction = if let Restriction::PlayerHexproofFrom(player, filter) = restriction {
+            // A temporary player grant must keep its resolved recipient after
+            // target slots and other execution-only references are gone.
+            let player = match player {
+                crate::target::PlayerFilter::Target(_)
+                | crate::target::PlayerFilter::AliasedTarget(_)
+                | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::IteratedPlayer
+                | crate::target::PlayerFilter::TaggedPlayer(_)
+                | crate::target::PlayerFilter::ChosenPlayer => {
+                    crate::target::PlayerFilter::Specific(
+                        crate::effects::helpers::resolve_player_filter(game, &player, ctx)?,
+                    )
+                }
+                player => player,
+            };
+            let filter = crate::static_abilities::bind_chosen_filter_qualities(
+                &filter, game, ctx.source,
+            ).unwrap_or(filter);
+            Restriction::PlayerHexproofFrom(player, filter)
+        } else if let Restriction::PlayLandsMatching(player, filter) = restriction {
             let player = match player {
                 crate::target::PlayerFilter::Target(_)
                 | crate::target::PlayerFilter::AliasedTarget(_)

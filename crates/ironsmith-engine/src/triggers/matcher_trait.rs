@@ -59,6 +59,12 @@ pub enum SimultaneousTriggerKey {
     ObjectLeavesGameBatch,
     /// All counters one instruction puts on one or more objects.
     CounterBatch,
+    /// All matching counter kinds one instruction puts on one singular
+    /// recipient. An authored actor subject keeps different actors separate.
+    CounterRecipient {
+        recipient: crate::game_state::Target,
+        actor: Option<PlayerId>,
+    },
     /// All dice one instruction rolls ("whenever you roll one or more dice").
     DieRollBatch,
     /// Every object and player one spell or ability targets as it's put on

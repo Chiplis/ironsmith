@@ -206,12 +206,12 @@ fn legacy_draw_action_restores_a_pending_reveal_and_replays_the_same_first_arriv
         let original = resource(&mut game, "Pending first draw", A, Zone::Library, "Enchantment", "{6}{U}");
         let stable = game.object(original).unwrap().stable_id;
         let mut answers = MiracleAnswers { reveal: true, cast: true, pause: true, granter_at_reveal: Some(source), ..Default::default() };
-        let events = ironsmith::turn::execute_draw_step_with(&mut game, &mut answers);
+        let events = ironsmith::turn::execute_draw_step_with(&mut game, &mut answers).unwrap();
         assert!(answers.pending && events.is_empty());
         assert_eq!(game.player(A).unwrap().library, vec![original]);
         assert!(game.player(A).unwrap().hand.is_empty());
         answers.pause = false; answers.pending = false;
-        let events = ironsmith::turn::execute_draw_step_with(&mut game, &mut answers);
+        let events = ironsmith::turn::execute_draw_step_with(&mut game, &mut answers).unwrap();
         let drawn = events.iter().find_map(|event| event.downcast::<ironsmith::events::CardsDrawnEvent>()).unwrap();
         assert_eq!(drawn.cards.len(), 1);
         let ironsmith::events::other::MiracleDrawDecision::Revealed(proof) = drawn.miracle.as_ref().unwrap() else { panic!("completed original reveal"); };

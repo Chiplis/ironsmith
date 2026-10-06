@@ -141,7 +141,7 @@ impl ActionProgramCursor for SelectedBranchCursor {
                         self.outcomes
                             .iter()
                             .flat_map(|outcome| outcome.events.iter()),
-                    );
+                    )?;
                     Ok(())
                 })?;
             }

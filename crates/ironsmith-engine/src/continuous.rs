@@ -1104,6 +1104,7 @@ impl Modification {
         self,
         game: &crate::game_state::GameState,
         chooser_source: ObjectId,
+        static_grant: bool,
     ) -> Self {
         match self {
             Modification::AddAbility(ability) => {
@@ -1111,6 +1112,7 @@ impl Modification {
                     &ability,
                     game,
                     chooser_source,
+                    static_grant,
                 ) {
                     Some(bound) => Modification::AddAbility(bound),
                     None => Modification::AddAbility(ability),
@@ -1122,6 +1124,7 @@ impl Modification {
                         static_ability,
                         game,
                         chooser_source,
+                        static_grant,
                     )
                 {
                     ability.kind = crate::ability::AbilityKind::Static(bound);
@@ -5769,7 +5772,9 @@ pub(crate) fn static_ability_matches_variant_selector(
             }
             match ability.protection_from() {
                 Some(crate::ability::ProtectionFrom::Color(colors)) => !colors.is_empty(),
-                Some(crate::ability::ProtectionFrom::AllColors) => true,
+                Some(crate::ability::ProtectionFrom::AllColors
+                    | crate::ability::ProtectionFrom::OwnColors
+                    | crate::ability::ProtectionFrom::ColorsAmong { .. }) => true,
                 _ => false,
             }
         }
@@ -6369,7 +6374,7 @@ fn apply_modification_to_chars(
         Modification::SetPower { value, sublayer }
             if *sublayer == PtSublayer::CharacteristicDefining =>
         {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6379,12 +6384,15 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetToughness { value, sublayer }
             if *sublayer == PtSublayer::CharacteristicDefining =>
         {
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6394,6 +6402,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetPowerToughness {
@@ -6433,7 +6444,7 @@ fn apply_modification_to_chars(
 
         // Layer 7b: Setting P/T
         Modification::SetPower { value, sublayer } if *sublayer == PtSublayer::Setting => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6443,10 +6454,13 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetToughness { value, sublayer } if *sublayer == PtSublayer::Setting => {
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6456,6 +6470,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetPowerToughness {
@@ -6463,7 +6480,7 @@ fn apply_modification_to_chars(
             toughness,
             sublayer,
         } if *sublayer == PtSublayer::Setting => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power,
                 objects,
                 effects,
@@ -6473,8 +6490,11 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
                 objects,
                 effects,
@@ -6484,6 +6504,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
 
@@ -6525,7 +6548,7 @@ fn apply_modification_to_chars(
             power: power_value,
             toughness: toughness_value,
         } => {
-            let p_delta = layer_resolution::resolve_value_direct_for_recipient(
+            let p_delta = layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power_value,
                 objects,
                 effects,
@@ -6535,8 +6558,11 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             );
-            let t_delta = layer_resolution::resolve_value_direct_for_recipient(
+            let t_delta = layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness_value,
                 objects,
                 effects,
@@ -6546,6 +6572,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             );
             add_pt_checked(
                 &mut chars.power,

@@ -37,7 +37,7 @@ fn definitions(name: &str) -> [CardDefinition; 2] {
     let restored = CompiledCardArtifact::from_json(&encoded).unwrap();
     restored.validate().unwrap();
     assert_eq!(artifact, restored);
-    assert_eq!(ironsmith_compiled_artifact::FORMAT_VERSION, 7);
+    assert_eq!(restored.format_version, ironsmith_compiled_artifact::FORMAT_VERSION);
     [direct, materialize_artifact(&restored).unwrap()]
 }
 fn game() -> GameState {

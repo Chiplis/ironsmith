@@ -394,7 +394,7 @@ impl crate::effects::ActionProgramCursor for SequenceCursor {
                 ctx,
                 Some(effect),
                 self.events.iter(),
-            );
+            )?;
         }
         let assignment_count = if self.child_assignments.is_some() {
             if self.coordinated {

@@ -5520,13 +5520,14 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
-            let opponent_sources_only =
-                source_filter.controller == Some(crate::target::PlayerFilter::Opponent) && {
-                    let mut stripped = source_filter.clone();
-                    stripped.controller = None;
-                    stripped == ObjectFilter::default()
-                };
-            if opponent_sources_only {
+            format!(
+                "{} can't be the target of spells or abilities from {}",
+                describe_player_set_filter(player),
+                source_filter.description()
+            )
+        }
+        crate::effect::Restriction::PlayerHexproofFrom(player, source_filter) => {
+            if source_filter == &ObjectFilter::default() {
                 return format!("{} have hexproof", describe_player_set_filter(player));
             }
             let source_description = describe_hexproof_from_filter(source_filter);

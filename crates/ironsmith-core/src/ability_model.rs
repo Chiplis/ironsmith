@@ -391,6 +391,21 @@ pub enum ProtectionFrom {
     /// mana value.
     ManaValuesOtherThanChosenNumber,
     Everything,
+    /// Continuously reads the protected object's own colors (CR 702.16).
+    OwnColors,
+    /// Continuously reads colors among the filtered objects. `None` uses
+    /// the protected object's context. A grant binds its exact source
+    /// incarnation, whose current controller supplies "you" on every query.
+    /// Only continuous static grants bind this reference. A quoted static
+    /// ability granted by resolution retains its own recipient context.
+    ColorsAmong {
+        filter: ObjectFilter,
+        reference_source: Option<ObjectId>,
+    },
+    /// An unquoted instruction to gain protection from a color population
+    /// reads the resolving spell/ability controller and population once
+    /// (CR 109.5, 608.2h). Materialized to `Color` at resolution.
+    ColorsAmongAtResolution(ObjectFilter),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

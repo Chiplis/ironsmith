@@ -976,7 +976,7 @@ fn execute_resolution_program_inner(
                     ctx,
                     next,
                     unmatched_outcome_events.iter(),
-                )
+                )?
             {
                 unmatched_outcome_events.clear();
             }
@@ -1450,7 +1450,7 @@ fn resolve_stack_entry_full_inner(
     }
     // Process events from effect outcomes for triggers
     if let Some(ref mut tq) = trigger_queue {
-        crate::game_loop::queue_triggers_from_reported_events(game, tq, all_events, false);
+        crate::game_loop::try_queue_triggers_from_reported_events(game, tq, all_events, false)?;
     }
 
     // Process pending primitive trigger events emitted by effects and zone changes.
@@ -1463,7 +1463,7 @@ fn resolve_stack_entry_full_inner(
     if let Some(ref mut tq) = trigger_queue {
         let completion =
             crate::effects::permanents::complete_crew_ability_resolution(game, &mut ctx, &entry)?;
-        crate::game_loop::queue_triggers_from_reported_events(game, tq, completion.events, false);
+        crate::game_loop::try_queue_triggers_from_reported_events(game, tq, completion.events, false)?;
     }
 
     if let Some(chapter_resolution) = chapter_resolution {

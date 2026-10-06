@@ -800,7 +800,7 @@ pub(super) fn gruul_spellbreaker_union_hexproof_covers_you_and_the_source_only()
     let debug = format!("{:?}", definition.abilities);
 
     assert!(
-        debug.contains("BeTargetedPlayerFrom(You"),
+        debug.contains("PlayerHexproofFrom(You"),
         "the \"you\" half of the union must compile to a player targeting restriction: {debug}"
     );
     assert!(

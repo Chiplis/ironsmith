@@ -1666,6 +1666,12 @@ pub fn resolve_restriction_it_tag(
                 resolve_it_tag(source_filter, refs)?,
             )
         }
+        Restriction::PlayerHexproofFrom(player, source_filter) => {
+            Restriction::player_hexproof_from(
+                resolve_contextual_player_filter(player, refs)?,
+                resolve_it_tag(source_filter, refs)?,
+            )
+        }
         Restriction::BeCountered(filter) => {
             Restriction::be_countered(resolve_it_tag(filter, refs)?)
         }

@@ -611,7 +611,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
             object_filter_mentions_iterated_player(blockers)
                 || object_filter_mentions_iterated_player(attacker)
         }
-        BeTargetedPlayerFrom(player, source) => {
+        BeTargetedPlayerFrom(player, source) | PlayerHexproofFrom(player, source) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
         PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),

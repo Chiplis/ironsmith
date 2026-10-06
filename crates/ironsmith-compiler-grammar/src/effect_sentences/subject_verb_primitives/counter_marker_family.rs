@@ -121,6 +121,7 @@ fn retarget_it_restriction_for_counter_followup(
         }
         Restriction::ActivateLoyaltyAbilitiesOf(source)
         | Restriction::PreventDamageFrom { sources: source, .. }
+        | Restriction::PlayerHexproofFrom(_, source)
         | Restriction::BeTargetedPlayerFrom(_, source) => {
             retarget_it_filter_for_counter_followup(source, source_filter);
         }

@@ -84,6 +84,7 @@ mod sba_triggers;
 mod stack_resolution;
 pub(crate) use targeting::{
     AssignmentLegalTargets, capture_completed_spell_cast, queue_triggers_from_event, queue_triggers_from_reported_events,
+    try_queue_triggers_from_reported_events,
     specialize_iterated_player_choose_spec,
     stack_entry_assignment_legal_targets, current_stack_entry_target_assignments,
 };
@@ -147,7 +148,7 @@ pub(crate) use self::targeting::{
     spell_program_uses_chosen_creature_type_target,
 };
 pub use self::targeting::{
-    drain_pending_trigger_events, drain_pending_trigger_events_with_dm,
+    drain_pending_trigger_events, drain_pending_trigger_events_with_dm, try_drain_pending_trigger_events,
     extract_target_requirements_from_program_with_modes,
 };
 

@@ -1181,8 +1181,8 @@
             });
         }
         if cant.duration == Until::EndOfTurn && cant.start == crate::effect::RestrictionStart::Immediate
-            && let crate::effect::Restriction::BeTargetedPlayerFrom(player, sources) = &cant.restriction
-            && sources == &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+            && let crate::effect::Restriction::PlayerHexproofFrom(player, sources) = &cant.restriction
+            && sources == &ObjectFilter::default()
         {
             let subject = describe_player_filter(player);
             return format!("{} {} hexproof until end of turn", capitalize_first(&subject), player_verb(&subject, "gain", "gains"));
@@ -2753,6 +2753,15 @@
             return format!(
                 "Choose a color of {}. Add one mana of that color{}",
                 add_any_color_among.filter.description(),
+                describe_add_mana_destination_suffix(&add_any_color_among.player)
+            );
+        }
+        if add_any_color_among.filter.is_source_only() {
+            let source = add_any_color_among.filter.source_surface.as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            return format!(
+                "Add one mana of any of {source}'s colors{}",
                 describe_add_mana_destination_suffix(&add_any_color_among.player)
             );
         }

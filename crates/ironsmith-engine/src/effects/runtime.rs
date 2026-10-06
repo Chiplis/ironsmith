@@ -59,18 +59,24 @@ pub fn validate_target(
             }
         }
         (ResolvedTarget::Player(id), ChooseSpec::Player(filter)) => {
-            game.can_target_player_from_source(*id, ctx.source)
+            game.can_target_player_from_source_or_snapshot(
+                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+            )
                 && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::ObjectOrPlayer(filter, _)) => game
             .object(*id)
             .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
         (ResolvedTarget::Player(id), ChooseSpec::ObjectOrPlayer(_, filter)) => {
-            game.can_target_player_from_source(*id, ctx.source)
+            game.can_target_player_from_source_or_snapshot(
+                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+            )
                 && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Player(id), ChooseSpec::PlayerOrPlaneswalker(filter)) => {
-            game.can_target_player_from_source(*id, ctx.source)
+            game.can_target_player_from_source_or_snapshot(
+                *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+            )
                 && filter.matches_player(*id, &filter_ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::PlayerOrPlaneswalker(_)) => {
@@ -80,14 +86,18 @@ pub fn validate_target(
         (ResolvedTarget::Object(id), ChooseSpec::AnyTarget) => game.object(*id).is_some(),
         (ResolvedTarget::Player(id), ChooseSpec::AnyTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
-                && game.can_target_player_from_source(*id, ctx.source)
+                && game.can_target_player_from_source_or_snapshot(
+                    *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+                )
         }
         (ResolvedTarget::Object(id), ChooseSpec::AnyOtherTarget) => {
             game.object(*id).is_some_and(|obj| obj.id != ctx.source)
         }
         (ResolvedTarget::Player(id), ChooseSpec::AnyOtherTarget) => {
             game.player(*id).is_some_and(|p| p.is_in_game())
-                && game.can_target_player_from_source(*id, ctx.source)
+                && game.can_target_player_from_source_or_snapshot(
+                    *id, Some(ctx.source), ctx.source_snapshot.as_ref(), ctx.controller,
+                )
         }
         (ResolvedTarget::Object(id), ChooseSpec::SpecificObject(expected)) => id == expected,
         (ResolvedTarget::Player(id), ChooseSpec::SpecificPlayer(expected)) => id == expected,
@@ -138,7 +148,7 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
     ctx: &ExecutionContext,
     next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
-) -> bool {
+) -> Result<bool, ExecutionError> {
     if game.action_observations_suppressed()
         || !game.effect_store.per_event_trigger_matching
         || game.has_open_simultaneous_action()
@@ -146,8 +156,23 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
         || ctx.decision_maker.awaiting_choice()
         || next.is_some_and(effect_chooses_new_targets_for_copy)
     {
-        return false;
+        return game.token_resource_failure().map_or(Ok(false), Err);
     }
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let mut result = Ok(match_triggers_at_instruction_boundary_inner(game, ctx, next, reported));
+    if let Some(error) = game.token_resource_failure() { result = Err(error); }
+    if result.is_err() { game.restore_execution_checkpoint(checkpoint, false); }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+fn match_triggers_at_instruction_boundary_inner<'a>(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    next: Option<&Effect>,
+    reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
+) -> bool {
     let fresh = reported
         .into_iter()
         .filter(|event| !outcome_event_already_matched(game, event))

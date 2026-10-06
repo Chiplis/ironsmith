@@ -1,26 +1,26 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
+  "source_implementation_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1227,
-    "additional_proposed_compile_entries": 1232,
+    "additional_proposed_unique_cards": 1241,
+    "additional_proposed_compile_entries": 1246,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1227,
+    "source_proposals_excluding_identified_runtime_gaps": 1241,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 370,
+    "source_identities_until_majority_gate": 356,
     "current_base_owner_admission_blocked": false
   },
   "workflow": {
@@ -5572,6 +5572,59 @@
       "evidence": "architecture/keyword-action-bodies-source-plan.md",
       "tests": "authored_not_run",
       "working_base_admission": "shared_owner_port_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "complete-protection-bodies",
+      "stage": 98,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/complete_protection_bodies.json.fixture",
+      "baseline_entries": [
+        "Guardian of the Guildpact",
+        "Oversoul of Dusk",
+        "Elite Inquisitor",
+        "Earnest Fellowship",
+        "Empty-Shrine Kannushi",
+        "Pledge of Loyalty",
+        "Ronom Hulk",
+        "Katilda, Dawnhart Prime"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
+      "evidence": "architecture/card-failure-complete-protection-bodies.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "dynamic-characteristic-statics",
+      "stage": 98,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/dynamic_characteristic_statics.json.fixture",
+      "baseline_entries": [
+        "Aettir and Priwen",
+        "Angry Mob",
+        "Duelist of the Mind",
+        "Roiling Horror"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
+      "evidence": "architecture/card-failure-dynamic-characteristic-statics.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "complete-qualified-mixed-target-bodies",
+      "stage": 98,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/card-failure-campaign/cards-20261003.json.xz",
+      "baseline_entries": [
+        "All Will Be One",
+        "Nicol Bolas, God-Pharaoh"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
+      "evidence": "architecture/card-failure-counter-recipient-groups.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
     }
   ],
   "cards": [
@@ -5805,7 +5858,16 @@
         "additive-damage-replacements"
       ],
       "source_review_commit": "093130e1d",
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Player hexproof target legality reads the live source controller instead of the retained spell/ability controller after source theft. Source-based protection qualities need a distinct owner.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Aether Searcher",
@@ -5872,8 +5934,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-characteristic-statics"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Aeve, Progenitor Ooze",
@@ -6106,8 +6171,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-qualified-mixed-target-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Alliance of Arms",
@@ -6406,7 +6474,16 @@
       "source_families": [
         "player-life-damage-history-quantities"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Player hexproof target legality reads the live source controller instead of the retained spell/ability controller after source theft. Source-based protection qualities need a distinct owner.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Ancient Lumberknot",
@@ -6519,8 +6596,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-characteristic-statics"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Animation Module",
@@ -7299,9 +7379,16 @@
           "reason": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending.",
           "resolved_by_source": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
           "validation": "unrun"
+        },
+        {
+          "reason": "The third-draw trigger uses an unchecked u32 history sum and a saturating ordinal window.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
         }
       ],
-      "source_review_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028"
+      "source_review_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Atalya, Samite Master",
@@ -10198,7 +10285,16 @@
       "source_families": [
         "prior-damage-quantities"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Numeric TurnHistoryCount(CardsDrawn) narrows through the legacy u32 aggregate before the checked scalar boundary.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Chain Assassination",
@@ -14152,8 +14248,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "dynamic-characteristic-statics"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Dulcet Sirens",
@@ -14297,8 +14396,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Earthlore",
@@ -14562,8 +14664,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Elkin Bottle",
@@ -14766,8 +14871,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Empyrial Archangel",
@@ -18921,8 +19029,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Guff Rewrites History",
@@ -19663,7 +19774,16 @@
       "source_families": [
         "declared-any-target-programs"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Player hexproof target legality reads the live source controller instead of the retained spell/ability controller after source theft. Source-based protection qualities need a distinct owner.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Hero of Bretagard",
@@ -22219,8 +22339,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Kaust, Eyes of the Glade",
@@ -22827,7 +22950,16 @@
       "source_families": [
         "signed-controller-state-dynamic-anthems"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "The live layer-7c ModifyPowerToughnessValue consumer still uses an unchecked scalar adapter in addition to the draw leaf.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Knowledge Pool",
@@ -24353,7 +24485,16 @@
       "source_families": [
         "source-context-and-ward"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "The second-draw trigger uses an unchecked u32 history sum and a saturating ordinal window.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Madame Null, Power Broker",
@@ -25753,8 +25894,16 @@
         "completed-zone-shuffle-and-native-continuations"
       ],
       "source_review_commit": "7cbf27a1a39648c0d856a262354b0617196658c8",
-      "integrated_source_review_commit": "ad6bc1d17f0ea42a0dd742072ecdefaf507a921f",
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Numeric TurnHistoryCount(CardsDrawn) narrows through the legacy u32 aggregate before the checked scalar boundary.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ]
     },
     {
       "card_name": "Molten Sentry",
@@ -26779,8 +26928,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-qualified-mixed-target-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Nighthowler",
@@ -27864,8 +28016,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Overwhelming Splendor",
@@ -28849,8 +29004,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Poison the Cup",
@@ -31418,10 +31576,12 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "variable-suspend-counter-bodies"
-      ]
+        "variable-suspend-counter-bodies",
+        "dynamic-characteristic-statics"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Roiling Terrain",
@@ -31469,8 +31629,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "complete-protection-bodies"
+      ],
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Rootwire Amalgam",
@@ -31690,7 +31853,16 @@
       "source_families": [
         "aggregate-damage-quantities"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Player hexproof target legality reads the live source controller instead of the retained spell/ability controller after source theft. Source-based protection qualities need a distinct owner.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Runed Halo",
@@ -35154,7 +35326,16 @@
       "source_families": [
         "scheduled-turn-skips"
       ],
-      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation"
+      "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_coverage_hold_history": [
+        {
+          "reason": "Player hexproof target legality reads the live source controller instead of the retained spell/ability controller after source theft. Source-based protection qualities need a distinct owner.",
+          "resolved_by_source": "5d993c24f934059039f580bbfd2f6a466464681b",
+          "validation": "unrun",
+          "review_scope": "shared owner correction and additive integration; prior whole-body source evidence retained"
+        }
+      ],
+      "integrated_source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     },
     {
       "card_name": "Stonework Packbeast",
@@ -43378,6 +43559,39 @@
       "prior_gap_description": "Compiler/native Job select and Mobilize factories create bare Hero/Warrior names; native Incubate creates bare Incubator. The exact frozen bodies reach these owners and require the CR111.4 derived Token names. Corrective profiles and independent source review remain pending.",
       "source_review_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
       "source_closure_stage": 97
+    },
+    {
+      "id": "checked-draw-history-scalar-and-ordinal-owners",
+      "status": "source_corrected_reviewed_runtime_validation_deferred",
+      "affected_previously_proposed_complete": [
+        "Astrologian's Planisphere",
+        "Cerebral Vortex",
+        "Knowledge Is Power",
+        "Madame Masque",
+        "Molten Psyche"
+      ],
+      "source_observed": "ab340d7b2bbe7425051a57bf5d016e1fd5ec467c",
+      "partial_correction_checkpoint": "68299118626f5f30d1a1da93a26b25035ad51dc4",
+      "evidence": "architecture/card-failure-draw-quantity-review-holds.md",
+      "complete_coverage_claims_withheld": false,
+      "completion_gate": "Source correction reviewed on integrated owner; all authored runtime scenarios and full-corpus validation remain deferred.",
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
+    },
+    {
+      "id": "retained-controller-player-hexproof-targeting",
+      "status": "source_corrected_reviewed_runtime_validation_deferred",
+      "affected_previously_proposed_complete": [
+        "Aether Revolt",
+        "Ancient Cellarspawn",
+        "Heretic's Punishment",
+        "Runebound Wolf",
+        "Stonehorn Dignitary"
+      ],
+      "scope": "Bounded source-confirmed subset, not an exhaustive impacted-card inventory.",
+      "evidence": "architecture/card-failure-player-hexproof-review-holds.md",
+      "complete_coverage_claims_withheld": false,
+      "completion_gate": "Source correction reviewed on integrated owner; all authored runtime scenarios and full-corpus validation remain deferred.",
+      "source_review_commit": "5d993c24f934059039f580bbfd2f6a466464681b"
     }
   ],
   "future_mechanic_dependencies": [
@@ -43411,12 +43625,12 @@
       "definitions": "b595fc21dfc9cff126a9ab70325a72eacd31584e"
     },
     "proposed_compatibility_boundary": {
-      "artifact_format": 9,
-      "engine_schema_hash": "b3895accd8d36443d5ec72a6985ebf4e96650975eaa53d8581e484040dd312d7",
-      "public_audit_digest": 5,
-      "signed_audit_protocol": 22,
+      "artifact_format": 10,
+      "engine_schema_hash": "e27b521de2a44a2c1c3349a8b8cbf5392da6882c14270112de24faecced0adc9",
+      "public_audit_digest": 6,
+      "signed_audit_protocol": 23,
       "status": "source_reviewed_no_execution",
-      "evidence": "architecture/card-failure-prepared-main-compatibility.md"
+      "evidence": "architecture/card-failure-protection-targeting-compatibility.md"
     },
     "combined_owner_review_commit": "54a523387187b0b5a5c7faa0b8dbe7a175e12b58",
     "token_profile_port_review_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
@@ -43424,7 +43638,7 @@
     "readmitted_pre_port_entries": 1190,
     "restored_specific_naming_holds": 36,
     "new_keyword_action_identities": 6,
-    "current_base_proposed_unique": 1227,
-    "current_base_proposed_entries": 1232
+    "current_base_proposed_unique": 1241,
+    "current_base_proposed_entries": 1246
   }
 }

@@ -181,13 +181,13 @@ fn library_actor_is_captured_but_draw_skip_play_and_new_inspection_follow_live_c
         assert!(!game.player_skips_draw_step(A)); assert!(game.player_skips_draw_step(B));
         for member in &members { assert!(look(&game, *member, B)); assert!(!look(&game, *member, A)); assert!(may_play(&game, *member, B)); }
         game.turn.phase = Phase::Beginning; game.turn.step = Some(Step::Draw);
-        let before = game.player(A).unwrap().hand.len(); ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker);
+        let before = game.player(A).unwrap().hand.len(); ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
         assert_eq!(game.player(A).unwrap().hand.len(), before + 1);
         game.next_turn(); assert_eq!(game.turn.active_player, B); game.turn.step = Some(Step::Draw);
-        let before = game.player(B).unwrap().hand.len(); assert!(ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker).is_empty());
+        let before = game.player(B).unwrap().hand.len(); assert!(ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker).unwrap().is_empty());
         assert_eq!(game.player(B).unwrap().hand.len(), before);
         game.move_object_by_game_rule(source, Zone::Hand).unwrap(); game.refresh_continuous_state().unwrap();
-        assert!(!game.player_skips_draw_step(B)); ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker);
+        assert!(!game.player_skips_draw_step(B)); ironsmith::turn::execute_draw_step_with(&mut game, &mut SelectFirstDecisionMaker).unwrap();
         assert_eq!(game.player(B).unwrap().hand.len(), before + 1);
         for member in members { assert!(look(&game, member, B)); assert!(!may_play(&game, member, B)); }
     }

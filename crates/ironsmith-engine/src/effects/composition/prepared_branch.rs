@@ -422,7 +422,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
                     self.selection_receipts
                         .iter()
                         .flat_map(|outcome| outcome.outcome.events.iter()),
-                );
+                )?;
             }
             let action = self.action.as_ref().ok_or_else(|| {
                 ExecutionError::Impossible("prepared branch has no selected action".into())

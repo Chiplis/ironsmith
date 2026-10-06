@@ -307,7 +307,7 @@ impl crate::effects::ActionProgramCursor for RepetitionCursor {
                 ctx,
                 None,
                 self.events[self.reported_cursor..].iter(),
-            )
+            )?
         {
             self.reported_cursor = self.events.len();
         }

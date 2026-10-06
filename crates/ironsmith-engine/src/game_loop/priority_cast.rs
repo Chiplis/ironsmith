@@ -3529,7 +3529,7 @@ pub(super) fn finalize_pending_spell_cast(
     // this point they remain in GameState so CR 729 rollback erases them with
     // the rest of an illegal proposal.
     game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    drain_pending_trigger_events(game, trigger_queue);
+    try_drain_pending_trigger_events(game, trigger_queue)?;
     if pending.effect_miracle_cast {
         let cost = pending_cast_base_mana_cost(game, &pending).ok_or_else(||
             GameLoopError::InvalidState("revealed Miracle lost its captured base price".into()))?;
@@ -4340,7 +4340,7 @@ fn auto_pay_spell_tap_cost_steps_inner(
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.spell_id);
                 pending.tagged_objects = cost_ctx.tagged_objects;
                 pending.effect_outcomes = cost_ctx.effect_outcomes;
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
             }
             crate::costs::CostPaymentResult::NeedsChoice(description) => {
                 return Err(GameLoopError::InvalidState(format!(
@@ -4407,7 +4407,7 @@ pub(super) fn continue_spell_cost_payment(
                     pending.tagged_objects = cost_ctx.tagged_objects;
                     pending.effect_outcomes = cost_ctx.effect_outcomes;
                     pending.remaining_cost_steps.remove(0);
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                     continue_spell_next_cost_or_finalize(
                         game,
                         trigger_queue,
@@ -5037,12 +5037,14 @@ fn apply_declaration_mana_ability_window_response(
         player,
         decision_maker,
     )
-    .map_err(|err| {
-        GameLoopError::InvalidState(format!(
-            "Failed to activate mana ability during {declaration_kind}: {err}"
-        ))
+    .map_err(|err| match err {
+        crate::special_actions::ActionError::ExecutionFailure { error, .. } =>
+            GameLoopError::ExecutionFailed(error),
+        other => GameLoopError::InvalidState(format!(
+            "Failed to activate mana ability during {declaration_kind}: {other}"
+        )),
     })?;
-    drain_pending_trigger_events(game, trigger_queue);
+    try_drain_pending_trigger_events(game, trigger_queue)?;
     queue_ability_activated_event(
         game,
         trigger_queue,
@@ -5052,7 +5054,7 @@ fn apply_declaration_mana_ability_window_response(
         true,
         None,
         activation_cost_has_tap,
-    );
+    )?;
 
     Ok(false)
 }
@@ -6428,7 +6430,7 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             let paid_cost = crate::costs::Cost::effect(cost.clone());
             record_immediate_cost_payment(&mut pending.payment_trace, &paid_cost, pending.source);
             pending.remaining_cost_steps.remove(0);
-            drain_pending_trigger_events(game, trigger_queue);
+            try_drain_pending_trigger_events(game, trigger_queue)?;
             pending.stage = activation_stage_after_targets(&pending);
             return continue_activation(game, trigger_queue, state, pending, decision_maker);
         };
@@ -6627,7 +6629,7 @@ pub(super) fn continue_activation_cost_payment(
                         state.rollback_action(game); return Err(GameLoopError::InvalidState(format!("declared payment receipt: {error:?}")));
                     }
                     pending.remaining_cost_steps.remove(0);
-                    drain_pending_trigger_events(game, trigger_queue);
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                     pending.stage = activation_stage_after_targets(&pending);
                     continue_activation(game, trigger_queue, state, pending, decision_maker)
                 }
@@ -7381,7 +7383,7 @@ pub(super) fn continue_activation(
                     false,
                     Some(pending.source_stable_id),
                     pending.activation_cost_has_tap,
-                );
+                )?;
 
                 // Clear pending state and checkpoint - action completed successfully
                 state.pending_activation = None;
@@ -7443,7 +7445,7 @@ fn auto_pay_activation_tap_cost_steps_inner(
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.source);
                 pending.tagged_objects = cost_ctx.tagged_objects;
                 pending.effect_outcomes = cost_ctx.effect_outcomes;
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
             }
             crate::costs::CostPaymentResult::NeedsChoice(description) => {
                 return Err(GameLoopError::InvalidState(format!(

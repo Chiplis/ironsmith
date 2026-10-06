@@ -1969,6 +1969,10 @@ pub struct CantEffectTracker {
     /// Players that can't be targeted by sources matching a filter.
     pub cant_target_players_from: Vec<PlayerCantBeTargetedFrom>,
 
+    /// Player hexproof uses the retained targeting controller, independently
+    /// of the live/LKI source whose characteristics qualify "hexproof from".
+    pub player_hexproof_from: Vec<PlayerCantBeTargetedFrom>,
+
     /// Players with protection from sources matching a filter (CR 702.16).
     /// Targeting and damage are handled by their own trackers; this is the
     /// single "player has protection from X" record for the other
@@ -2624,6 +2628,8 @@ impl CantEffectTracker {
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
+        self.player_hexproof_from
+            .extend(other.player_hexproof_from);
         self.player_protections
             .extend(other.player_protections.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
@@ -2696,6 +2702,7 @@ impl CantEffectTracker {
         self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
+        self.player_hexproof_from.clear();
         self.player_protections.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
@@ -3114,30 +3121,53 @@ impl CantEffectTracker {
         player: PlayerId,
         source_id: ObjectId,
     ) -> bool {
+        let Some(source) = game.object(source_id) else {
+            return self.can_target_player(player);
+        };
+
+        self.can_target_player_from_subject(
+            game,
+            player,
+            Some(crate::filter::ObjectSubject::Live(source)),
+            game.controller_of(source),
+        )
+    }
+
+    pub(crate) fn can_target_player_from_subject(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        source: Option<crate::filter::ObjectSubject<'_>>,
+        targeting_controller: PlayerId,
+    ) -> bool {
         if !self.can_target_player(player) {
             return false;
         }
-
-        let Some(source) = game.object(source_id) else {
-            return true;
-        };
-
-        if self.ignores_target_ability_for_player(
-            game,
-            player,
-            game.controller_of(source),
-            crate::static_abilities::StaticAbilityId::Hexproof,
-        ) {
-            return true;
-        }
-
-        !self.cant_target_players_from.iter().any(|restriction| {
-            if restriction.player != player {
-                return false;
+        let matches_source = |restriction: &PlayerCantBeTargetedFrom| {
+            restriction.player == player && {
+                let filter_ctx = game.filter_context_for(
+                    restriction.controller,
+                    source.map(|source| source.object_id()),
+                );
+                source.map_or_else(
+                    || restriction.source_filter == crate::target::ObjectFilter::default(),
+                    |source| source.matches(&restriction.source_filter, &filter_ctx, game),
+                )
             }
-            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
-            restriction.source_filter.matches(source, &filter_ctx, game)
-        })
+        };
+        // Protection and independent prohibitions keep the source's actual
+        // qualities/controller and cannot be bypassed by ignoring hexproof.
+        if self.cant_target_players_from.iter().any(matches_source) {
+            return false;
+        }
+        !game.are_opponents(targeting_controller, player)
+            || self.ignores_target_ability_for_player(
+                game,
+                player,
+                targeting_controller,
+                crate::static_abilities::StaticAbilityId::Hexproof,
+            )
+            || !self.player_hexproof_from.iter().any(matches_source)
     }
 
     /// Check if a spell on the stack can be countered by effects.
@@ -4607,6 +4637,7 @@ impl GameState {
                 turn_order,
                 turn_history: TurnHistory {
                     ability_activation_counts: Some(HashMap::new()),
+                    draw_occurrences: Some(Default::default()),
                     ..TurnHistory::default()
                 },
                 ..TurnStore::default()
@@ -8013,6 +8044,36 @@ impl GameState {
         self.effect_store
             .cant_effects
             .can_target_player_from_source(self, player, source_id)
+    }
+
+    /// Targeting by a spell/ability whose controller is independent of its
+    /// physical source. Use retained characteristics only after the source
+    /// leaves or phases out; controller-only hexproof needs no source object.
+    pub fn can_target_player_from_source_or_snapshot(
+        &self,
+        player: PlayerId,
+        source_id: Option<ObjectId>,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+        targeting_controller: PlayerId,
+    ) -> bool {
+        if !self.source_snapshot_is_exempt_from_range(source_id, source_snapshot)
+            && !self.player_is_within_range(targeting_controller, player)
+        {
+            return false;
+        }
+        let source = match (source_id.and_then(|id| self.object(id)), source_snapshot) {
+            (Some(object), _) if !self.is_phased_out(object.id) => {
+                Some(crate::filter::ObjectSubject::Live(object))
+            }
+            (_, Some(snapshot)) => Some(crate::filter::ObjectSubject::Snapshot(snapshot)),
+            (_, None) => None,
+        };
+        self.effect_store.cant_effects.can_target_player_from_subject(
+            self,
+            player,
+            source,
+            targeting_controller,
+        )
     }
 
     /// Can this spell on the stack be countered?

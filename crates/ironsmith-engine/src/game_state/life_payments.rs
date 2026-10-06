@@ -209,7 +209,7 @@ impl GameState {
         // observer. Do not drain other held original events or resolve triggers
         // while a containing cast/activation is still paying its other costs.
         let mut matched = TriggerQueue::new();
-        crate::game_loop::queue_triggers_from_reported_events(self, &mut matched, events, true);
+        crate::game_loop::try_queue_triggers_from_reported_events(self, &mut matched, events, true)?;
         self.defer_trigger_entries(matched.take_all());
         for outcome in outcomes {
             for event in &mut outcome.events {

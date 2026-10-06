@@ -990,38 +990,36 @@ pub(super) fn apply_layer_7_effects(
 
         match &effect.modification {
             Modification::SetPower { value, .. } => {
-                power = Some(resolve_value_with_context(
+                power = Some(crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                     value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
+                    super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                        .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                    &mut chars.numeric_range_error,
+                    &mut chars.numeric_choice_error,
                 ));
             }
             Modification::SetToughness { value, .. } => {
-                toughness = Some(resolve_value_with_context(
+                toughness = Some(crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                     value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
+                    super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                        .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                    &mut chars.numeric_range_error,
+                    &mut chars.numeric_choice_error,
                 ));
             }
             Modification::SetPowerToughness {
                 power: p,
                 toughness: t,
-                sublayer,
+                ..
             } => {
                 let mut resolve = |value: &Value| {
-                    if *sublayer == PtSublayer::CharacteristicDefining {
-                        crate::effects::helpers::value_eval::resolve_continuous_characteristic(
-                            value,
-                            super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
-                                .with_numeric_origin(effect.originating_ability.as_ref().map(|origin|&origin.ability)),
-                            &mut chars.numeric_range_error,
-                            &mut chars.numeric_choice_error,
-                        )
-                    } else {
-                        resolve_value_with_context(value, ctx, effect.source, effect.controller)
-                    }
+                    crate::effects::helpers::value_eval::resolve_continuous_characteristic(
+                        value,
+                        super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                            .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                        &mut chars.numeric_range_error,
+                        &mut chars.numeric_choice_error,
+                    )
                 };
                 power = Some(resolve(p));
                 toughness = Some(resolve(t));
@@ -1063,14 +1061,17 @@ pub(super) fn apply_layer_7_effects(
                 power: power_value,
                 toughness: toughness_value,
             } => {
-                let dp =
-                    resolve_value_with_context(power_value, ctx, effect.source, effect.controller);
-                let dt = resolve_value_with_context(
-                    toughness_value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                );
+                let mut resolve = |value: &Value| {
+                    crate::effects::helpers::value_eval::resolve_continuous_characteristic(
+                        value,
+                        super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                            .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                        &mut chars.numeric_range_error,
+                        &mut chars.numeric_choice_error,
+                    )
+                };
+                let dp = resolve(power_value);
+                let dt = resolve(toughness_value);
                 add_pt_checked(
                     &mut power,
                     i128::from(dp),
@@ -1517,25 +1518,6 @@ pub(super) fn required_continuous_value_players(
         );
     }
     players
-}
-
-pub(super) fn continuous_single_player(
-    value: &Value,
-    ctx: &CalculationContext<'_>,
-    player_filter: &PlayerFilter,
-    controller: PlayerId,
-    source: ObjectId,
-) -> PlayerId {
-    let players = continuous_value_players(ctx, player_filter, controller, source);
-    match players.as_slice() {
-        [player] => *player,
-        [] => panic!(
-            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} has no state-resolvable player"
-        ),
-        _ => panic!(
-            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} is ambiguous"
-        ),
-    }
 }
 
 pub(super) fn for_each_matching_continuous_object(
