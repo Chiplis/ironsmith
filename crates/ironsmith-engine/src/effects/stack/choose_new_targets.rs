@@ -52,7 +52,7 @@ impl EffectExecutor for ChooseNewTargetsEffect {
             // One requirement per announced target slot; each may keep its
             // current targets (CR 707.10c, 115.7d).
             let Some(slots) =
-                super::retarget_stack_object::stack_entry_retarget_requirements(game, &entry, true)
+                super::retarget_stack_object::stack_entry_retarget_requirements(game, &entry, true)?
             else {
                 if self.may {
                     continue;

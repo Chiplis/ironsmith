@@ -190,8 +190,29 @@ pub(crate) fn create_stack_copy_from_object(
             return Ok(None);
         }
     }
+    // A spell copy takes the source's frozen layer-1 definition, including
+    // earlier copy effects. Layer-3 word substitutions remain uncopiable.
+    // Ability copies keep their independently captured StackEntry program.
+    let copied_values = if original_entry.is_ability { None } else {
+        let values = if game.object(source.id).is_some_and(|object| object.zone == Zone::Stack) {
+            let view = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+            let effects = view.all_continuous_effects();
+            crate::continuous::copiable_values_with_effects(source.id, view.objects_map(), &effects,
+                &view.battlefield, view.commander_objects(), &view)
+                .ok_or_else(|| ExecutionError::IncompleteEvidence("copied spell has no layer-one definition".into()))?
+        } else {
+            crate::snapshot::CopiableValues::from_spell_object(source)
+        };
+        if !values.spell_effect.has_complete_definition() {
+            return Err(ExecutionError::ContinuousDiscovery(
+                crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                    crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+        }
+        Some(values)
+    };
     let copy_id = game.new_object_id();
     let mut copy_obj = Object::spell_copy_of(source, copy_id, copier);
+    if let Some(values) = &copied_values { copy_obj.copy_spell_values_from_values(values); }
     if !removed_supertypes.is_empty() {
         copy_obj
             .supertypes

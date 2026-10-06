@@ -1137,6 +1137,10 @@ impl Landwalk {
 }
 
 impl StaticAbilityKind for Landwalk {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::new(self.kind))
+    }
+
     fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
         -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
     {

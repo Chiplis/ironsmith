@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "502ce3f55e60231006e1228dced28b351a855545",
+  "source_implementation_commit": "546b7bb9fbe05ee66752831e3fe70dbee9adcf91",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
@@ -5007,6 +5007,56 @@
         "Actual display/proposal/announcement/payment/native recovery and signed replay integration; selected-face proof at production callers; all three complete bodies."
       ],
       "report": "architecture/card-failure-exact-play-permission-mana.md"
+    },
+    {
+      "id": "typed-current-and-captured-programs",
+      "stage": 92,
+      "status": "source_prerequisite_only_no_card_coverage",
+      "fixture": "fixtures/typed_text_changes.json.fixture",
+      "baseline_entries": [],
+      "partial_entries": [
+        "Alter Reality",
+        "Artificial Evolution",
+        "Balduvian Shaman",
+        "Crystal Spray",
+        "Glamerdye",
+        "Magical Hack",
+        "Mind Bend",
+        "New Blood",
+        "Sleight of Mind",
+        "Spectral Shift",
+        "Trait Doctoring",
+        "Whim of Volrath"
+      ],
+      "candidate_entries": [
+        "Alter Reality",
+        "Artificial Evolution",
+        "Balduvian Shaman",
+        "Crystal Spray",
+        "Glamerdye",
+        "Magical Hack",
+        "Mind Bend",
+        "New Blood",
+        "Sleight of Mind",
+        "Spectral Shift",
+        "Trait Doctoring",
+        "Whim of Volrath"
+      ],
+      "implementation_commit": "75e059ed5b236a54ca02115029df9e4db15ee547",
+      "integrated_source_commit": "546b7bb9fbe05ee66752831e3fe70dbee9adcf91",
+      "tests": "authored_not_run",
+      "source_coverage_count": 0,
+      "source_review": "Independent program/current-versus-captured review, typed error and Bestow corrections, final additive metadata/condition review and bounded public-audit/hidden-metadata carrier check.",
+      "semantic_scope": [
+        "Current layer-three spell programs and frozen layer-one copy programs have distinct checked owners. Missing retained copy evidence remains unavailable rather than empty. Captured abilities retain their original instructions and exact identities.",
+        "Complete typed predicate/effect visitors, native codecs, current target rereads, repeated retargets, spell-to-permanent transfer and live/departed Bestow overlays are connected within the documented supported domain.",
+        "Additive integration preserves linked-exile pairing, activation stamps and copied-program completeness together. Frozen program evidence is excluded from public-claim, public-audit and hidden-metadata digest carriers."
+      ],
+      "remaining_blockers": [
+        "Trigger acquisition identity, complete static and nested target domains, intrinsic basic-land mana provenance, full choice/frontend/rendering owners and all twelve complete bodies remain held.",
+        "The proposed intrinsic-mana/exact-permission compatibility boundary is separate and not included in this prerequisite."
+      ],
+      "report": "architecture/card-failure-typed-text-changes.md"
     }
   ],
   "cards": [
@@ -5621,8 +5671,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Altered Ego",
@@ -6440,8 +6493,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Aryel, Knight of Windgrace",
@@ -7170,8 +7226,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Balduvian Warlord",
@@ -11102,8 +11161,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Crystalline Giant",
@@ -16855,8 +16917,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Glamorous Outlaw",
@@ -23022,8 +23087,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Magmablood Archaic",
@@ -23838,8 +23906,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Mind Carver",
@@ -25239,8 +25310,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Next of Kin",
@@ -32137,8 +32211,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Slime Against Humanity",
@@ -32684,8 +32761,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Spelljack",
@@ -36625,8 +36705,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Traitor's Clutch",
@@ -39342,8 +39425,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [],
+      "partial_source_families": [
+        "typed-current-and-captured-programs"
+      ]
     },
     {
       "card_name": "Whims of the Fates",

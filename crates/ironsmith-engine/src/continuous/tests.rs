@@ -734,6 +734,8 @@ fn test_ability_granting_counters() {
         static_abilities: extract_static_abilities(&creature.abilities).into(),
         numeric_range_error: None,
         text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -799,6 +801,8 @@ fn test_multiple_ability_counters() {
         static_abilities: Vec::new().into(),
         numeric_range_error: None,
         text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -880,6 +884,8 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
         static_abilities: vec![printed_flying].into(),
         numeric_range_error: None,
         text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -2201,6 +2207,7 @@ fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<Str
         loyalty: Some(5),
         defense: Some(6),
         abilities: vec!["first payload".into(), "second payload".into()],
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
         aura_attach_filter: Some(crate::object::AuraAttachmentFilter::from(
             ObjectFilter::creature(),
         )),
@@ -2251,6 +2258,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
         loyalty: copy.loyalty,
         defense: copy.defense,
         abilities: std::sync::Arc::new(vec![ability]),
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
         aura_attach_filter: copy.aura_attach_filter,
     };
     let model = crate::snapshot::RetainedCopiableValues::from(native.clone());

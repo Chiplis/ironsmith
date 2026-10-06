@@ -33,6 +33,10 @@ pub struct ResolutionProgram<E> {
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub activation_definition: Option<LinkedExileDefinition>,
     flattened_default_effects: Vec<E>,
+    /// A legacy copied object lacked the definition evidence needed for its
+    /// spell program. This is incomplete data, never an executable empty body.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    unavailable_copied_definition: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -65,6 +69,17 @@ pub struct SelfReplacementBranch<E> {
     pub starts_new_source_line: bool,
 }
 
+fn is_false(value: &bool) -> bool { !*value }
+
+impl<E> ResolutionProgram<E> {
+    pub fn unavailable_copied_definition() -> Self {
+        let mut program = Self::default();
+        program.unavailable_copied_definition = true;
+        program
+    }
+    pub fn has_complete_definition(&self) -> bool { !self.unavailable_copied_definition }
+}
+
 impl<E> Default for ResolutionProgram<E> {
     fn default() -> Self {
         Self {
@@ -72,6 +87,7 @@ impl<E> Default for ResolutionProgram<E> {
             linked_exile_pair: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
+            unavailable_copied_definition: false,
         }
     }
 }
@@ -83,6 +99,7 @@ impl<E: Clone> ResolutionProgram<E> {
             linked_exile_pair: None,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
+            unavailable_copied_definition: false,
         };
         program.refresh_flattened_defaults();
         program
@@ -164,6 +181,7 @@ impl<E: Clone> ResolutionProgram<E> {
     }
 
     pub fn extend(&mut self, other: Self) {
+        self.unavailable_copied_definition |= other.unavailable_copied_definition;
         if self.segments.is_empty() {
             self.linked_exile_pair = other.linked_exile_pair;
             self.activation_definition = other.activation_definition;
@@ -233,6 +251,7 @@ impl<E> ResolutionProgram<E> {
         let mut mapped = ResolutionProgram::new(segments);
         mapped.linked_exile_pair = self.linked_exile_pair;
         mapped.activation_definition = self.activation_definition;
+        mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
     }
 }
@@ -360,6 +379,7 @@ impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
             .field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
             .field("activation_definition", &self.activation_definition)
+            .field("unavailable_copied_definition", &self.unavailable_copied_definition)
             .finish()
     }
 }
@@ -428,5 +448,57 @@ mod activation_definition_tests {
         other.activation_definition = Some(LinkedExileDefinition([38; 32]));
         retained.extend(other);
         assert_eq!(retained.activation_definition, None);
+    }
+}
+
+#[cfg(test)]
+mod copied_program_completeness_tests {
+    use super::*;
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn incomplete_copy_and_exact_ability_metadata_survive_the_same_native_map_and_wire() {
+        let definition = LinkedExileDefinition([61; 32]);
+        let pair = LinkedExilePair { definition, pair: 4 };
+        let mut program = ResolutionProgram::<u8>::unavailable_copied_definition()
+            .with_linked_exile_pair(pair);
+        program.activation_definition = Some(LinkedExileDefinition([62; 32]));
+        program.replace_segments(vec![ResolutionSegment::from_effects(vec![3])]);
+        let mapped = program.try_map_effects(|value| Ok::<_, ()>(u16::from(value))).unwrap();
+        let decoded: ResolutionProgram<u16> =
+            serde_json::from_value(serde_json::to_value(&mapped).unwrap()).unwrap();
+        assert!(!decoded.has_complete_definition());
+        assert_eq!(decoded.linked_exile_pair, Some(pair));
+        assert_eq!(decoded.activation_definition, Some(LinkedExileDefinition([62; 32])));
+        assert_eq!(decoded.flattened_default_effects(), &[3]);
+    }
+
+    #[test]
+    fn missing_copy_evidence_survives_mapping_and_program_composition() {
+        let unknown = ResolutionProgram::<u8>::unavailable_copied_definition();
+        assert!(!unknown.has_complete_definition());
+        let mut mapped = unknown.try_map_effects(|value| Ok::<_, ()>(u16::from(value))).unwrap();
+        mapped.extend(ResolutionProgram::from_effects(vec![7]));
+        assert!(!mapped.has_complete_definition());
+        mapped.replace_segments(vec![ResolutionSegment::from_effects(vec![9])]);
+        assert!(!mapped.has_complete_definition(), "replacement instructions do not supply missing definition evidence");
+        let mut before = ResolutionProgram::from_effects(vec![1u8]);
+        before.extend(ResolutionProgram::unavailable_copied_definition());
+        assert!(!before.has_complete_definition());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn complete_legacy_program_default_and_explicit_missing_evidence_round_trip_distinctly() {
+        let complete = ResolutionProgram::<u8>::default();
+        let old = serde_json::to_value(&complete).unwrap();
+        assert!(old.get("unavailable_copied_definition").is_none());
+        assert!(serde_json::from_value::<ResolutionProgram<u8>>(old).unwrap().has_complete_definition());
+        let unknown = ResolutionProgram::<u8>::unavailable_copied_definition();
+        let wire = serde_json::to_value(&unknown).unwrap();
+        assert_eq!(wire["unavailable_copied_definition"], true);
+        let decoded: ResolutionProgram<u8> = serde_json::from_value(wire.clone()).unwrap();
+        assert!(!decoded.has_complete_definition());
+        assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
     }
 }

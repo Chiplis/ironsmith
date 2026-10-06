@@ -2671,6 +2671,17 @@ fn creature_blocked_or_was_blocked_by_matching_this_turn(
         })
 }
 
+/// Legacy boolean filter adapters cannot return an execution error. Preserve
+/// it on the shared checked-action latch before returning any provisional
+/// boolean, so neither negation nor a zero match count can complete the action.
+fn checked_spell_program_for_filter(game: &GameState, object: ObjectId)
+    -> Result<crate::resolution::ResolutionProgram, crate::static_ability_processor::StaticEffectDiscoveryError>
+{
+    game.current_spell_program(object).inspect_err(|error| {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error.clone()));
+    })
+}
+
 fn effects_for_stack_entry(
     game: &crate::game_state::GameState,
     entry: &crate::game_state::StackEntry,
@@ -2679,10 +2690,10 @@ fn effects_for_stack_entry(
         return effects.to_vec();
     }
 
-    game.object(entry.object_id)
-        .and_then(|object| object.spell_effect_owned())
-        .map(|effects| effects.to_vec())
-        .unwrap_or_default()
+    match checked_spell_program_for_filter(game, entry.object_id) {
+        Ok(effects) => effects.to_vec(),
+        Err(_) => Vec::new(), // The checked owner retains the incomplete latch.
+    }
 }
 
 fn stack_entry_has_ability_marker(

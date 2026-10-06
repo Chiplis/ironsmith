@@ -34,6 +34,8 @@ pub use ability_origins::{
 };
 mod layer_resolution;
 pub mod text_changes;
+pub(crate) mod text_change_predicates;
+pub(crate) mod text_change_programs;
 pub(crate) mod value_context;
 use layer_resolution::*;
 pub(crate) use layer_resolution::{bind_effect_controller_to_layer_frame, resolve_value_direct};
@@ -64,6 +66,8 @@ pub(crate) fn next_turn_end_prediction_correction(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod text_change_spell_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySortMode {
@@ -2102,6 +2106,11 @@ pub struct CalculatedCharacteristics {
     /// Copiable printed defense number; current defense counters are separate.
     pub defense: Option<u32>,
     pub abilities: CalculatedAbilities,
+    /// Current layer-derived spell program. Raw object programs and captured
+    /// stack abilities remain immutable, separately owned definitions.
+    pub spell_effect: crate::snapshot::SpellProgramState<crate::effect::Effect>,
+    /// Directed substitutions used to reread a spell's announced target specs.
+    pub text_changes: Vec<ironsmith_core::TextChange>,
     /// Static abilities that this object currently has (including from effects)
     pub static_abilities: SharedVec<StaticAbility>,
     /// Ability templates that this object is prohibited from having or gaining
@@ -2447,6 +2456,8 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         loyalty: object.base_loyalty,
         defense: object.base_defense,
         abilities: abilities.clone().into(),
+        spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
+        text_changes: Vec::new(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
         text_change_error: None,
@@ -2571,6 +2582,8 @@ fn copy_characteristics_from_copiable_values(
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
+    chars.spell_effect = values.spell_effect.clone();
+    chars.text_changes.clear();
     chars.ability_labels = values.ability_labels.clone().into();
     chars.power = values.power;
     chars.toughness = values.toughness;

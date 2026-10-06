@@ -1154,13 +1154,13 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
-        .with_announced_target_assignments(entry.target_assignments.clone());
+        .with_announced_target_assignments(super::targeting::current_stack_entry_target_assignments(game, &entry)?);
     ctx.snapshot_targets(game);
 
     let effects = if let Some(ref ability_effects) = entry.ability_effects {
         ability_effects.clone()
     } else if let Some(obj) = game.object(entry.object_id) {
-        get_effects_for_stack_entry(game, &entry, obj)
+        get_effects_for_stack_entry(game, &entry, obj)?
     } else {
         crate::resolution::ResolutionProgram::default()
     };

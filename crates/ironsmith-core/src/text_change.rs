@@ -8,7 +8,7 @@
 use crate::{Color, ColorSet, Subtype};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextWord {
     Color(Color),
     BasicLandType(Subtype),
@@ -19,7 +19,7 @@ pub enum TextWord {
 /// choosing two different words in the declared family is sufficient.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(try_from = "TextChangeModel"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextChange {
     from: TextWord,
     to: TextWord,

@@ -4211,23 +4211,23 @@ fn effect_contains_exchange_control(effect: &Effect) -> bool {
 
 /// The target specs of every exchange-control effect in this stack entry,
 /// with each later target relaxed exactly as it was when targets were chosen.
-fn stack_entry_exchange_control_specs(game: &GameState, entry: &StackEntry) -> Vec<ChooseSpec> {
+fn stack_entry_exchange_control_specs(game: &GameState, entry: &StackEntry) -> Result<Vec<ChooseSpec>, crate::effects::ExecutionError> {
     let effects = if let Some(effects) = &entry.ability_effects {
         effects.clone()
     } else if let Some(obj) = game.object(entry.object_id) {
-        get_effects_for_stack_entry(game, entry, obj)
+        get_effects_for_stack_entry(game, entry, obj)?
     } else {
         crate::resolution::ResolutionProgram::default()
     };
 
-    effects
+    Ok(effects
         .all_effects()
         .iter()
         .filter(|effect| effect_contains_exchange_control(effect))
         .filter_map(|effect| exchange_control_target_specs(effect))
         .flat_map(|(first, second)| [first, relaxed_exchange_later_target_spec(&second)])
         .filter(requires_target_selection)
-        .collect()
+        .collect())
 }
 
 /// An exchange-control target whose recorded assignment spec went stale is
@@ -4273,11 +4273,11 @@ fn exchange_control_target_still_targetable(
 pub(super) fn stack_entry_validation_target_specs(
     game: &GameState,
     entry: &StackEntry,
-) -> Vec<ChooseSpec> {
+) -> Result<Vec<ChooseSpec>, crate::effects::ExecutionError> {
     let effects = if let Some(effects) = &entry.ability_effects {
         effects.clone()
     } else if let Some(obj) = game.object(entry.object_id) {
-        get_effects_for_stack_entry(game, entry, obj)
+        get_effects_for_stack_entry(game, entry, obj)?
     } else {
         crate::resolution::ResolutionProgram::default()
     };
@@ -4294,7 +4294,7 @@ pub(super) fn stack_entry_validation_target_specs(
             &mut specs,
         );
     }
-    specs
+    Ok(specs)
 }
 
 pub(super) fn validate_stack_entry_targets(
@@ -4628,7 +4628,40 @@ pub(crate) struct AssignmentLegalTargets {
     pub(crate) prior_object_targets: Vec<Target>,
 }
 
+pub(crate) fn current_stack_entry_target_assignments(
+    game: &GameState, entry: &StackEntry,
+) -> Result<Vec<crate::game_state::TargetAssignment>, crate::effects::ExecutionError> {
+    let mut assignments = entry.target_assignments.clone();
+    if entry.is_ability { return Ok(assignments); }
+    // Declaration slots alone cannot prove the current copied spell's program.
+    // Missing historical program evidence must not masquerade as no targets.
+    game.current_spell_program(entry.object_id)
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    if assignments.is_empty() { return Ok(assignments); }
+    let chars = game.calculated_characteristics(entry.object_id).ok_or(
+        crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: entry.object_id }))?;
+    chars.validate_numeric_range().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    for assignment in &mut assignments {
+        for change in &chars.text_changes {
+            assignment.spec = crate::continuous::text_change_predicates::rewrite_choose_spec_words(&assignment.spec, *change)
+                .map_err(|error| crate::effects::ExecutionError::ContinuousDiscovery(
+                    crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(error)))?;
+        }
+    }
+    Ok(assignments)
+}
+
 pub(crate) fn stack_entry_assignment_legal_targets(
+    game: &GameState, entry: &StackEntry, assignment_index: usize,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> Result<AssignmentLegalTargets, crate::effects::ExecutionError> {
+    let mut current = entry.clone();
+    current.target_assignments = current_stack_entry_target_assignments(game, entry)?;
+    Ok(stack_entry_current_assignment_legal_targets(game, &current, assignment_index, view))
+}
+
+fn stack_entry_current_assignment_legal_targets(
     game: &GameState,
     entry: &StackEntry,
     assignment_index: usize,
@@ -4639,7 +4672,7 @@ pub(crate) fn stack_entry_assignment_legal_targets(
     // inferring "ability" merely from a snapshot's presence.
     if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
         return view.with_casting_spell(entry.object_id, || {
-            stack_entry_assignment_legal_targets(game, entry, assignment_index, view)
+            stack_entry_current_assignment_legal_targets(game, entry, assignment_index, view)
         });
     }
     let assignment = &entry.target_assignments[assignment_index];
@@ -4924,6 +4957,16 @@ fn assignment_aggregate_still_legal(
 }
 
 pub(super) fn validate_stack_entry_targets_with_view(
+    game: &GameState, entry: &StackEntry,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    ctx: Option<&crate::effects::ExecutionContext>,
+) -> Result<(Vec<ResolvedTarget>, Vec<crate::game_state::TargetAssignment>, bool), crate::effects::ExecutionError> {
+    let mut current = entry.clone();
+    current.target_assignments = current_stack_entry_target_assignments(game, entry)?;
+    validate_current_stack_entry_targets_with_view(game, &current, view, ctx)
+}
+
+fn validate_current_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
     view: &crate::derived_view::DerivedGameView<'_>,
@@ -4938,7 +4981,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
 > {
     if !entry.is_ability && !view.is_casting_spell(entry.object_id) {
         return view.with_casting_spell(entry.object_id, || {
-            validate_stack_entry_targets_with_view(game, entry, view, ctx)
+            validate_current_stack_entry_targets_with_view(game, entry, view, ctx)
         });
     }
     if entry.targets.is_empty() {
@@ -4947,7 +4990,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
 
     if let Some(reference) = entry.defending_player_reference
         && entry.target_assignments.iter().map(|assignment| &assignment.spec)
-            .chain(stack_entry_validation_target_specs(game, entry).iter())
+            .chain(stack_entry_validation_target_specs(game, entry)?.iter())
             .any(|spec| spec.mentions_player_filter(&PlayerFilter::Defending))
     { game.defending_player_candidates(reference)?; }
 
@@ -4955,14 +4998,14 @@ pub(super) fn validate_stack_entry_targets_with_view(
         let mut valid_targets = Vec::new();
         let mut valid_assignments = Vec::with_capacity(entry.target_assignments.len());
         let mut invalid_count = 0usize;
-        let exchange_specs = stack_entry_exchange_control_specs(game, entry);
+        let exchange_specs = stack_entry_exchange_control_specs(game, entry)?;
 
         for (assignment_index, assignment) in entry.target_assignments.iter().enumerate() {
             let AssignmentLegalTargets {
                 legal_targets,
                 relative_object_target,
                 prior_object_targets,
-            } = stack_entry_assignment_legal_targets(game, entry, assignment_index, view);
+            } = stack_entry_current_assignment_legal_targets(game, entry, assignment_index, view);
 
             let start = valid_targets.len();
             let assigned = entry.targets.get(assignment.range.clone()).ok_or_else(|| {
@@ -5016,7 +5059,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
         return Ok((valid_targets, valid_assignments, all_invalid));
     }
 
-    let validation_specs = stack_entry_validation_target_specs(game, entry);
+    let validation_specs = stack_entry_validation_target_specs(game, entry)?;
     if validation_specs
         .iter()
         .any(|spec| spec.target_set_aggregate_constraint().is_some())
@@ -5031,7 +5074,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
             spec: spec.clone(),
             range: 0..entry.targets.len(),
         }];
-        return validate_stack_entry_targets_with_view(game, &assigned, view, ctx);
+        return validate_current_stack_entry_targets_with_view(game, &assigned, view, ctx);
     }
     let legal_target_sets: Vec<Vec<Target>> = validation_specs
         .iter()
@@ -5253,7 +5296,7 @@ mod prior_object_controller_recheck_tests {
     fn legal(prior: u8) {
         let (game, entry, index, to, other) = scenario(prior, false, false);
         let view = crate::derived_view::DerivedGameView::new(&game);
-        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view);
+        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view).unwrap();
         assert!(
             result.legal_targets.contains(&Target::Object(to)),
             "the destination must use the source endpoint's controller at resolution"
@@ -5279,7 +5322,7 @@ mod prior_object_controller_recheck_tests {
     fn typed_controller_reference_uses_current_source_controller() {
         let (game, entry, index, to, other) = scenario(2, false, true);
         let view = crate::derived_view::DerivedGameView::new(&game);
-        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view);
+        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view).unwrap();
         assert!(!result.legal_targets.contains(&Target::Object(to)));
         assert!(
             result.legal_targets.contains(&Target::Object(other)),
@@ -5290,7 +5333,7 @@ mod prior_object_controller_recheck_tests {
     fn empty_source_role_does_not_borrow_unrelated_object_controller() {
         let (game, entry, index, _, _) = scenario(2, true, false);
         let view = crate::derived_view::DerivedGameView::new(&game);
-        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view);
+        let result = stack_entry_assignment_legal_targets(&game, &entry, index, &view).unwrap();
         assert!(
             result.legal_targets.is_empty(),
             "an empty source endpoint must preserve its position instead of falling back to a different assignment"

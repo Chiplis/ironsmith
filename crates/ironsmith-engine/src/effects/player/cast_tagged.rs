@@ -59,6 +59,11 @@ impl EffectExecutor for CastTaggedEffect {
                     let mut object = crate::object::Object::from_card_definition(
                         snapshot.object_id, definition, snapshot.owner, snapshot.zone,
                     );
+                    if !snapshot.copiable_values.spell_effect.has_complete_definition() {
+                        return Err(ExecutionError::ContinuousDiscovery(
+                            crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                                crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+                    }
                     object.copy_copiable_values_from_values(&snapshot.copiable_values);
                     Some(object)
                 } else { None };

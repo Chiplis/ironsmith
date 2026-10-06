@@ -1,6 +1,8 @@
 //! Materialization of versioned compiled-card artifacts into engine values.
 
 use ironsmith_compiled_artifact as wire;
+#[path = "artifact_text_program_codec.rs"]
+mod text_program_codec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtifactMaterializationError {
@@ -1679,6 +1681,7 @@ pub fn encode_runtime_effect(
             .map(|payload| wire::WireEffect::new("ForEachTaggedEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
+    if let Some(model) = text_program_codec::encode_text_changed_native_effect(&effect)? { return Ok(model); }
     Err(RuntimePayloadEncodingError::MissingModel { component: "effect" })
 }
 
@@ -1749,16 +1752,18 @@ pub fn restore_runtime_ability(
 /// Encode every copy characteristic and executable ability model.
 pub fn encode_runtime_copy_values(
     values: crate::snapshot::CopiableValues,
-) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility>, RuntimePayloadEncodingError>
+) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>, RuntimePayloadEncodingError>
 {
-    crate::snapshot::RetainedCopiableValues::from(values).try_map_abilities(encode_runtime_ability)
+    crate::snapshot::RetainedCopiableValues::from(values).try_map_abilities(encode_runtime_ability)?
+        .try_map_effects(encode_runtime_effect)
 }
 
 pub fn restore_runtime_copy_values(
-    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility>,
+    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>,
 ) -> Result<crate::snapshot::CopiableValues, ArtifactMaterializationError> {
     values
-        .try_map_abilities(restore_runtime_ability)
+        .try_map_abilities(restore_runtime_ability)?
+        .try_map_effects(materialize_effect)
         .map(Into::into)
 }
 

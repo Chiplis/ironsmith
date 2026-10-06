@@ -162,6 +162,27 @@ fn merge_retained_tagged_objects(
 }
 
 impl GameState {
+    /// A spell reads its current layer-derived program. Captured activated and
+    /// triggered abilities are owned by their StackEntry instead (CR 113.7a).
+    pub fn current_spell_program(&self, id: ObjectId)
+        -> Result<crate::resolution::ResolutionProgram, crate::static_ability_processor::StaticEffectDiscoveryError>
+    {
+        let chars = self.calculated_characteristics(id).ok_or(
+            crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
+        chars.validate_numeric_range()?;
+        if !chars.spell_effect.has_complete_definition() {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                crate::continuous::text_changes::TextChangeDomainError::SpellProgram));
+        }
+        match chars.spell_effect {
+            crate::snapshot::SpellProgramState::Present(program) => Ok(program),
+            crate::snapshot::SpellProgramState::Absent => Ok(Default::default()),
+            crate::snapshot::SpellProgramState::Unavailable => Err(
+                crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                    crate::continuous::text_changes::TextChangeDomainError::SpellProgram)),
+        }
+    }
+
     /// The rest of an enter-as-copy choice once the copy entered: "If you do,
     /// it gains haste until end of turn" applies as part of the replacement;
     /// "When you do, exile that card" is a reflexive triggered ability
@@ -1037,6 +1058,14 @@ impl GameState {
             && new_zone != Zone::Battlefield
         {
             self.detach_relations_for_leaving_object(old_id);
+        }
+        if self.object(old_id).is_some_and(|object| object.zone == Zone::Stack) {
+            if let (Some(snapshot), Some(previous)) = (pre_move_snapshot.as_ref(),
+                self.turn_store.cast_spell_lki.get(&old_id).cloned()) {
+                let (mut object, entry) = (*previous).clone();
+                object.copy_spell_values_from_values(&snapshot.copiable_values);
+                self.turn_store.cast_spell_lki.insert(old_id, Arc::new((object, entry)));
+            }
         }
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
@@ -4515,6 +4544,8 @@ impl GameState {
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
             text_change_error: None,
+            spell_effect: crate::snapshot::SpellProgramState::Absent,
+            text_changes: Vec::new(),
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: None,
             controller: owner,
@@ -4780,6 +4811,8 @@ impl GameState {
                         .into(),
                     numeric_range_error: None,
                     text_change_error: None,
+                    spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
+                    text_changes: Vec::new(),
                     ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),
                     controller: self.controller_of(object),

@@ -76,6 +76,10 @@ fn describe_color_set(colors: crate::color::ColorSet) -> String {
 }
 
 impl StaticAbilityKind for Protection {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::protection(self.from.clone()))
+    }
+
     fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
         -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
     {
@@ -471,6 +475,16 @@ fn all_magic_colors() -> crate::color::ColorSet {
 }
 
 impl StaticAbilityKind for HexproofFrom {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::hexproof_from(self.filter.clone()))
+    }
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let filter = crate::continuous::text_change_predicates::rewrite_filter_words(&self.filter, change)?;
+        Ok((filter != self.filter).then(|| super::StaticAbility::new(Self { filter })))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::HexproofFrom
     }

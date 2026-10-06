@@ -760,6 +760,11 @@ fn execute_resolution_program_inner(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
+    if !program.has_complete_definition() {
+        return Err(crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+    }
     crate::linked_exile::validate_program_owner(program.linked_exile_pair, ctx.linked_exile_owner.as_ref())?;
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
@@ -1396,7 +1401,7 @@ fn resolve_stack_entry_full_inner(
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
-        .with_announced_target_assignments(entry.target_assignments.clone())
+        .with_announced_target_assignments(super::targeting::current_stack_entry_target_assignments(game, &entry)?)
         .with_target_distributions(entry.target_distributions.clone());
 
     // Snapshot target objects for "last known information" before effects execute
@@ -1409,7 +1414,7 @@ fn resolve_stack_entry_full_inner(
     let program = if let Some(ref ability_effects) = entry.ability_effects {
         ability_effects.clone()
     } else if let Some(obj) = &obj {
-        get_effects_for_stack_entry(game, &entry, obj)
+        get_effects_for_stack_entry(game, &entry, obj)?
     } else {
         crate::resolution::ResolutionProgram::default()
     };
@@ -2316,28 +2321,15 @@ fn resolved_chapter_ability_event(
 
 /// Get effects for a stack entry.
 pub(super) fn get_effects_for_stack_entry(
-    _game: &GameState,
+    game: &GameState,
     entry: &StackEntry,
-    obj: &crate::object::Object,
-) -> crate::resolution::ResolutionProgram {
-    // If this is an ability with stored effects, use those directly
-    if let Some(ref effects) = entry.ability_effects {
-        return effects.clone();
+    _obj: &crate::object::Object,
+) -> Result<crate::resolution::ResolutionProgram, crate::effects::ExecutionError> {
+    if entry.is_ability {
+        return Ok(entry.ability_effects.clone().unwrap_or_default());
     }
-
-    // For spells, check the spell_effect field (instants/sorceries)
-    if let Some(effects) = obj.spell_effect.as_ref() {
-        return effects.to_owned_value();
-    }
-
-    // Permanent spells (creatures, artifacts, enchantments, etc.) don't have effects
-    // that execute on resolution - they just enter the battlefield.
-    // Don't fall back to looking at their abilities.
-    if obj.is_permanent() {
-        return crate::resolution::ResolutionProgram::default();
-    }
-
-    crate::resolution::ResolutionProgram::default()
+    game.current_spell_program(entry.object_id)
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
 }
 
 fn preserve_resolved_spell_ability_tags(

@@ -2127,7 +2127,16 @@ impl RestrictionExt for Restriction {
 ///
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
-pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>);
+pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>, Arc<TextChangeCache>);
+
+/// Immutable transformed executors are memoized by original executor and
+/// directed word change. Repeated layer reads retain the same program-node
+/// identities instead of manufacturing a new acquisition on each read.
+struct TextChangeCache {
+    executor: std::sync::Weak<dyn EffectExecutor>,
+    values: std::sync::Mutex<std::collections::HashMap<ironsmith_core::TextChange,
+        Result<Effect, crate::continuous::text_changes::TextChangeDomainError>>>,
+}
 
 /// The canonical executable model belongs to this exact immutable executor.
 /// A direct replacement of the public executor must invalidate its model.
@@ -2146,7 +2155,7 @@ impl std::fmt::Debug for Effect {
 
 impl Clone for Effect {
     fn clone(&self) -> Self {
-        Effect(Arc::clone(&self.0), self.1.clone())
+        Effect(Arc::clone(&self.0), self.1.clone(), Arc::clone(&self.2))
     }
 }
 
@@ -2162,7 +2171,33 @@ impl PartialEq for Effect {
 impl Effect {
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
-        Effect(Arc::new(executor), None)
+        let executor: Arc<dyn EffectExecutor> = Arc::new(executor);
+        let cache = TextChangeCache { executor: Arc::downgrade(&executor),
+            values: std::sync::Mutex::new(std::collections::HashMap::new()) };
+        Effect(executor, None, Arc::new(cache))
+    }
+
+    /// Rewrite this immutable definition through typed native owners. A
+    /// caller that already captured this Effect keeps its old executor.
+    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
+        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let valid_cache = self.2.executor.upgrade()
+            .is_some_and(|executor| Arc::ptr_eq(&executor, &self.0));
+        if valid_cache {
+            if let Some(value) = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner())
+                .get(&change).cloned() { return value; }
+        }
+        let value = match crate::continuous::text_change_programs::rewrite_effect_words(self, change) {
+            Ok(None) => return Ok(self.clone()),
+            Ok(Some(value)) => Ok(value),
+            Err(error) => Err(error),
+        };
+        if valid_cache {
+            // Do not hold this lock during recursion through child programs.
+            let mut cache = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner());
+            cache.entry(change).or_insert_with(|| value.clone()).clone()
+        } else { value }
     }
 
     /// Retain the canonical model encoded by the compiler/artifact service.

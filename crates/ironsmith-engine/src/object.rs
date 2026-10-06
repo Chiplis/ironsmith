@@ -2130,7 +2130,29 @@ impl Object {
         self.base_loyalty = values.loyalty;
         self.base_defense = values.defense;
         self.abilities = values.abilities.clone();
+        self.spell_effect = match &values.spell_effect {
+            crate::snapshot::SpellProgramState::Present(program) => Some(program.clone().into()),
+            crate::snapshot::SpellProgramState::Absent => None,
+            crate::snapshot::SpellProgramState::Unavailable => Some(
+                crate::resolution::ResolutionProgram::unavailable_copied_definition().into()),
+        };
         self.aura_attach_filter = values.aura_attach_filter.clone().map(Into::into);
+    }
+
+    /// Install a frozen stack envelope while keeping a Bestow overlay's
+    /// synthesized enchant occurrence in its metadata owner. Materializing
+    /// that exact occurrence into the raw ability list would outlive Bestow.
+    /// Independent printed/copied enchant occurrences remain untouched.
+    pub(crate) fn copy_spell_values_from_values(&mut self, values: &CopiableValues) {
+        let overlay_enchant = self.bestow_cast_state.as_ref().and_then(|_| {
+            self.aura_attach_filter.as_ref().map(|metadata| metadata.enchant_ability.instance_id())
+        });
+        let mut values = values.clone();
+        if let Some(overlay_enchant) = overlay_enchant {
+            Arc::make_mut(&mut values.abilities).retain(|ability| !matches!(&ability.kind,
+                crate::ability::AbilityKind::Static(ability) if ability.instance_id() == overlay_enchant));
+        }
+        self.copy_copiable_values_from_values(&values);
     }
 
     /// Apply the temporary "cast with bestow" Aura overlay.

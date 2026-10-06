@@ -84,7 +84,7 @@ mod stack_resolution;
 pub(crate) use targeting::{
     AssignmentLegalTargets, capture_completed_spell_cast, queue_triggers_from_event, queue_triggers_from_reported_events,
     specialize_iterated_player_choose_spec,
-    stack_entry_assignment_legal_targets,
+    stack_entry_assignment_legal_targets, current_stack_entry_target_assignments,
 };
 mod targeting;
 #[cfg(all(test, feature = "engine-integration-tests"))]

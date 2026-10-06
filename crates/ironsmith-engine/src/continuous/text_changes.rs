@@ -10,9 +10,14 @@ use ironsmith_core::{ObjectFilter, StaticAbilityPayload, TextChange};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextChangeDomainError {
     SpellProgram,
+    Value,
+    Condition,
+    Cost,
+    Effect,
     ActivatedAbility,
     TriggeredAbility,
     Attachment,
+    IntrinsicManaProvenance,
     StaticAbility(StaticAbilityId),
     ObjectFilter,
     ProtectionReference,
@@ -21,9 +26,14 @@ pub enum TextChangeDomainError {
 impl std::fmt::Display for TextChangeDomainError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::SpellProgram => f.write_str("spell program and stack-to-permanent transfer"),
+            Self::Value => f.write_str("unresolved or ambiguously authored value"),
+            Self::Condition => f.write_str("unmodeled condition"),
+            Self::Cost => f.write_str("unmodeled cost"),
+            Self::Effect => f.write_str("unmodeled effect program"),
+            Self::SpellProgram => f.write_str("missing retained spell-program evidence"),
             Self::ActivatedAbility => f.write_str("activated ability program/cost/choice model"),
             Self::TriggeredAbility => f.write_str("triggered ability program/trigger/condition model"),
+            Self::IntrinsicManaProvenance => f.write_str("basic-land mana has no authored-versus-intrinsic provenance"),
             Self::Attachment => f.write_str("attachment metadata"),
             Self::StaticAbility(id) => write!(f, "static ability {id:?}"),
             Self::ObjectFilter => f.write_str("object filter outside the typed word domain"),
@@ -37,41 +47,10 @@ impl std::error::Error for TextChangeDomainError {}
 /// this owner's admitted domain. The residual comparison is typed equality,
 /// not a test against display text or an assumption that unknown fields are
 /// harmless. New filter fields with nondefault contents remain held.
-pub(crate) fn rewrite_filter_words(
-    filter: &ObjectFilter,
-    change: TextChange,
-) -> Result<ObjectFilter, TextChangeDomainError> {
-    let mut residual = filter.clone();
-    let empty = ObjectFilter::default();
-    macro_rules! admit_fields {
-        ($($field:ident),* $(,)?) => { $(residual.$field = empty.$field.clone();)* };
-    }
-    admit_fields!(
-        zone, source, other, token, nontoken, tapped, untapped,
-        card_types, all_card_types, excluded_card_types, type_or_subtype_union,
-        subtypes, all_subtypes, excluded_subtypes, supertypes, excluded_supertypes,
-        colors, required_colors, excluded_colors, colorless, multicolored, monocolored,
-        chosen_color, chosen_land_type, chosen_creature_type, excluded_chosen_creature_type,
-        has_basic_land_type, has_nonbasic_land_type,
-        name, name_surface, excluded_name, excluded_name_surface,
-        exact_mana_cost, has_mana_cost, has_phyrexian_mana_symbol, no_x_in_cost, has_x_in_cost,
-        any_of, union_surface,
-    );
-    // The noun is presentation provenance, and may contain no behavioral
-    // substitute for one of the checked subtype predicates above.
-    residual.set_explicit_card_type_noun(None);
-    if residual != empty { return Err(TextChangeDomainError::ObjectFilter); }
-    let mut rewritten = filter.clone();
-    for words in [&mut rewritten.colors, &mut rewritten.required_colors] {
-        if let Some(words) = words { change.replace_color_words(words); }
-    }
-    change.replace_color_words(&mut rewritten.excluded_colors);
-    change.replace_subtype_words(&mut rewritten.subtypes);
-    change.replace_subtype_words(&mut rewritten.all_subtypes);
-    change.replace_subtype_words(&mut rewritten.excluded_subtypes);
-    rewritten.any_of = filter.any_of.iter()
-        .map(|inner| rewrite_filter_words(inner, change)).collect::<Result<_, _>>()?;
-    Ok(rewritten)
+pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange)
+    -> Result<ObjectFilter, TextChangeDomainError>
+{
+    super::text_change_predicates::rewrite_filter_words(filter, change)
 }
 
 pub(crate) fn rewrite_protection_words(
@@ -88,7 +67,8 @@ pub(crate) fn rewrite_protection_words(
             ProtectionFrom::Permanents(rewrite_filter_words(filter, change)?),
         ProtectionFrom::EachManaValueAmong(filter) =>
             ProtectionFrom::EachManaValueAmong(rewrite_filter_words(filter, change)?),
-        ProtectionFrom::ColorsOf(_) => return Err(TextChangeDomainError::ProtectionReference),
+        ProtectionFrom::ColorsOf(spec) => ProtectionFrom::ColorsOf(Box::new(
+            super::text_change_predicates::rewrite_choose_spec_words(spec, change)?)),
         // These are rules concepts or runtime choices, not authored color
         // words. In particular, "all colors" doesn't contain five words.
         ProtectionFrom::Colorless | ProtectionFrom::AllColors | ProtectionFrom::Creatures
@@ -106,6 +86,17 @@ pub(crate) fn rewrite_landwalk_words(kind: LandwalkKind, change: TextChange) -> 
         }
         LandwalkKind::AnyLand | LandwalkKind::NonbasicLand | LandwalkKind::ArtifactLand => kind,
     }
+}
+
+pub(crate) fn rewrite_attachment_words(filter: &ironsmith_core::AuraAttachmentFilter, change: TextChange)
+    -> Result<ironsmith_core::AuraAttachmentFilter, TextChangeDomainError>
+{
+    Ok(match filter {
+        ironsmith_core::AuraAttachmentFilter::Object(filter) =>
+            ironsmith_core::AuraAttachmentFilter::Object(rewrite_filter_words(filter, change)?),
+        ironsmith_core::AuraAttachmentFilter::Player(player) =>
+            ironsmith_core::AuraAttachmentFilter::Player(super::text_change_predicates::rewrite_player_filter_words(player, change)?),
+    })
 }
 
 fn wordless_keyword(id: Option<StaticAbilityId>) -> bool {
@@ -142,6 +133,12 @@ pub(crate) fn rewrite_static_model(
             *kind = rewrite_landwalk_words(*kind, change);
             if previous == *kind { return Ok(None); }
         }
+        StaticAbilityPayload::Enchant(filter) => {
+            *filter = rewrite_attachment_words(filter, change)?;
+            if let StaticAbilityPayload::Enchant(original) = &model.payload {
+                if filter == original { return Ok(None); }
+            }
+        }
         StaticAbilityPayload::HexproofFrom(filter) => {
             *filter = rewrite_filter_words(filter, change)?;
             if let StaticAbilityPayload::HexproofFrom(original) = &model.payload {
@@ -155,13 +152,7 @@ pub(crate) fn rewrite_static_model(
 }
 
 fn rewrite_ability(ability: &Ability, change: TextChange) -> Result<Ability, TextChangeDomainError> {
-    let mut rewritten = ability.clone();
-    match &ability.kind {
-        AbilityKind::Static(ability) => rewritten.kind = AbilityKind::Static(ability.with_text_change(change)?),
-        AbilityKind::Activated(_) => return Err(TextChangeDomainError::ActivatedAbility),
-        AbilityKind::Triggered(_) => return Err(TextChangeDomainError::TriggeredAbility),
-    }
-    Ok(rewritten)
+    super::text_change_programs::rewrite_ability_words(ability, change)
 }
 
 pub(crate) fn apply_text_change(
@@ -170,19 +161,35 @@ pub(crate) fn apply_text_change(
     object: &crate::object::Object,
 ) {
     let result = (|| {
-        // CalculatedCharacteristics doesn't yet own the current spell program.
-        // Never change its type line while leaving its instructions unchanged.
-        if object.zone == crate::zone::Zone::Stack {
-            return Err(TextChangeDomainError::SpellProgram);
+        // Older native/compiled basics sometimes materialize intrinsic mana
+        // as printed activations. Its role cannot be inferred from its mana
+        // symbols or rendered reminder text. Do not retain an obsolete mana
+        // ability while silently adding the newly implied one in layer 6.
+        if let ironsmith_core::TextWord::BasicLandType(from) = change.from() {
+            if chars.subtypes.contains(&from) && chars.abilities.iter().enumerate().any(|(index, ability)| {
+                chars.abilities.origin(index).is_some_and(|origin| origin.is_rules_text())
+                    && matches!(&ability.kind, AbilityKind::Activated(activated)
+                        if activated.mana_output.is_some() || activated.effects.all_effects().into_iter()
+                            .any(|effect| effect.mana_production().is_some()))
+            }) { return Err(TextChangeDomainError::IntrinsicManaProvenance); }
         }
-        if chars.aura_attach_filter.is_some() {
-            return Err(TextChangeDomainError::Attachment);
-        }
+        let attachment = chars.aura_attach_filter.as_ref()
+            .map(|filter| rewrite_attachment_words(filter, change)).transpose()?;
+        let program = match &chars.spell_effect {
+            crate::snapshot::SpellProgramState::Unavailable if object.zone == crate::zone::Zone::Stack =>
+                return Err(TextChangeDomainError::SpellProgram),
+            crate::snapshot::SpellProgramState::Present(program) => crate::snapshot::SpellProgramState::Present(
+                super::text_change_programs::rewrite_program_words(program, change)?),
+            other => other.clone(),
+        };
         let mut abilities = chars.abilities.clone();
         abilities.try_map_rules_text(|ability| rewrite_ability(ability, change))?;
         let mut subtypes = chars.subtypes.to_vec();
         change.replace_subtype_words(&mut subtypes);
         chars.abilities = abilities;
+        chars.aura_attach_filter = attachment;
+        chars.spell_effect = program;
+        chars.text_changes.push(change);
         chars.subtypes = subtypes.into();
         chars.static_abilities = crate::ability::extract_static_abilities(&chars.abilities).into();
         Ok::<_, TextChangeDomainError>(())
@@ -298,19 +305,26 @@ mod tests {
         assert_eq!(changed.excluded_colors, ColorSet::WHITE);
         assert_eq!(changed.name, filter.name);
         assert_eq!(changed.exact_mana_cost, filter.exact_mana_cost);
-        filter.controller_controls = Some(Box::new(ObjectFilter::default()));
+        filter.ability_markers.push("unmodeled native rule".into());
         assert_eq!(rewrite_filter_words(&filter, TextChange::color(Color::Black, Color::White).unwrap()),
             Err(TextChangeDomainError::ObjectFilter));
     }
 
     #[test]
     fn held_program_domain_publishes_neither_partial_types_nor_partial_abilities() {
+        #[derive(Debug, Clone)]
+        struct UnmodeledWords;
+        impl crate::effects::EffectExecutor for UnmodeledWords {
+            fn execute(&self, _: &mut GameState, _: &mut crate::effects::ExecutionContext)
+                -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
+            { Ok(crate::effect::EffectOutcome::resolved()) }
+        }
         let (game, id) = body(vec![Ability::static_ability(StaticAbility::protection(ProtectionFrom::Color(ColorSet::RED))),
-            Ability::activated(crate::cost::TotalCost::free(), vec![crate::effect::Effect::draw(1)])], vec![Subtype::Human]);
+            Ability::activated(crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords)])], vec![Subtype::Human]);
         let object = game.object(id).unwrap();
         let mut chars = super::super::initial_characteristics(object, game.turn.turn_number);
         apply_text_change(&mut chars, TextChange::creature_type(Subtype::Human, Subtype::Vampire).unwrap(), object);
-        assert_eq!(chars.text_change_error, Some(TextChangeDomainError::ActivatedAbility));
+        assert_eq!(chars.text_change_error, Some(TextChangeDomainError::Effect));
         assert_eq!(chars.subtypes.as_slice(), &[Subtype::Human]);
         assert!(matches!(chars.validate_numeric_range(), Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(_))));
     }

@@ -57,7 +57,46 @@ pub struct CopiableValues {
     /// Registered copy effects must use [`RetainedCopiableValues`] instead.
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
+    /// Frozen layer-1 program; text changes are never copied into this value.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub spell_effect: SpellProgramState<crate::effect::Effect>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
+}
+
+/// Whether a frozen copy value has exact evidence of its spell program.
+/// Historical payload omission is not evidence that there was no program.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub enum SpellProgramState<E> {
+    Unavailable,
+    Absent,
+    Present(ironsmith_core::ResolutionProgram<E>),
+}
+impl<E> Default for SpellProgramState<E> {
+    fn default() -> Self { Self::Unavailable }
+}
+impl<E> SpellProgramState<E> {
+    pub fn from_option(program: Option<ironsmith_core::ResolutionProgram<E>>) -> Self {
+        match program {
+            Some(program) if !program.has_complete_definition() => Self::Unavailable,
+            Some(program) => Self::Present(program), None => Self::Absent,
+        }
+    }
+    pub fn is_unavailable(&self) -> bool { matches!(self, Self::Unavailable) }
+    pub fn has_program(&self) -> bool { matches!(self, Self::Present(_)) }
+    pub fn has_complete_definition(&self) -> bool {
+        match self { Self::Unavailable => false, Self::Absent => true,
+            Self::Present(program) => program.has_complete_definition() }
+    }
+    pub fn try_map_effects<F: Clone, Error>(self, map: impl FnMut(E) -> Result<F, Error>)
+        -> Result<SpellProgramState<F>, Error>
+    {
+        Ok(match self {
+            Self::Unavailable => SpellProgramState::Unavailable,
+            Self::Absent => SpellProgramState::Absent,
+            Self::Present(program) => SpellProgramState::Present(program.try_map_effects(map)?),
+        })
+    }
 }
 
 /// Lossless copy-effect payload, separate from public claim snapshots.
@@ -67,7 +106,7 @@ pub struct CopiableValues {
     feature = "serialization",
     derive(serde::Serialize, serde::Deserialize)
 )]
-pub struct RetainedCopiableValues<A> {
+pub struct RetainedCopiableValues<A, E = ()> {
     pub name: String,
     #[cfg_attr(
         feature = "serialization",
@@ -101,6 +140,10 @@ pub struct RetainedCopiableValues<A> {
     )]
     pub defense: Option<u32>,
     pub abilities: Vec<A>,
+    /// Absent in earlier artifact6/checkpoint3/audit19 payloads, which did not
+    /// retain a spell program in a permanent's frozen copy-value envelope.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "SpellProgramState::is_unavailable"))]
+    pub spell_effect: SpellProgramState<E>,
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_optional")
@@ -119,11 +162,11 @@ where
     <Option<T> as serde::Deserialize<'de>>::deserialize(deserializer)
 }
 
-impl<A> RetainedCopiableValues<A> {
+impl<A, E> RetainedCopiableValues<A, E> {
     pub fn try_map_abilities<B, Error>(
         self,
         map: impl FnMut(A) -> Result<B, Error>,
-    ) -> Result<RetainedCopiableValues<B>, Error> {
+    ) -> Result<RetainedCopiableValues<B, E>, Error> {
         let Self {
             name,
             mana_cost,
@@ -138,6 +181,7 @@ impl<A> RetainedCopiableValues<A> {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = self;
         Ok(RetainedCopiableValues {
@@ -157,12 +201,27 @@ impl<A> RetainedCopiableValues<A> {
                 .into_iter()
                 .map(map)
                 .collect::<Result<Vec<_>, _>>()?,
+            spell_effect,
             aura_attach_filter,
         })
     }
 }
 
-impl From<CopiableValues> for RetainedCopiableValues<Ability> {
+impl<A, E> RetainedCopiableValues<A, E> {
+    pub fn try_map_effects<F: Clone, Error>(self, mut map: impl FnMut(E) -> Result<F, Error>)
+        -> Result<RetainedCopiableValues<A, F>, Error>
+    {
+        let Self { name, mana_cost, compiled_card_text, ability_labels, power, toughness,
+            card_types, subtypes, supertypes, colors, loyalty, defense, abilities,
+            spell_effect, aura_attach_filter } = self;
+        Ok(RetainedCopiableValues { name, mana_cost, compiled_card_text, ability_labels,
+            power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense,
+            abilities, spell_effect: spell_effect.try_map_effects(&mut map)?,
+            aura_attach_filter })
+    }
+}
+
+impl From<CopiableValues> for RetainedCopiableValues<Ability, crate::effect::Effect> {
     fn from(values: CopiableValues) -> Self {
         let CopiableValues {
             name,
@@ -178,6 +237,7 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability> {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = values;
         Self {
@@ -194,13 +254,14 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability> {
             loyalty,
             defense,
             abilities: abilities.iter().cloned().collect(),
+            spell_effect,
             aura_attach_filter,
         }
     }
 }
 
-impl From<RetainedCopiableValues<Ability>> for CopiableValues {
-    fn from(values: RetainedCopiableValues<Ability>) -> Self {
+impl From<RetainedCopiableValues<Ability, crate::effect::Effect>> for CopiableValues {
+    fn from(values: RetainedCopiableValues<Ability, crate::effect::Effect>) -> Self {
         let RetainedCopiableValues {
             name,
             mana_cost,
@@ -215,6 +276,7 @@ impl From<RetainedCopiableValues<Ability>> for CopiableValues {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = values;
         Self {
@@ -231,6 +293,7 @@ impl From<RetainedCopiableValues<Ability>> for CopiableValues {
             loyalty,
             defense,
             abilities: Arc::new(abilities),
+            spell_effect,
             aura_attach_filter,
         }
     }
@@ -270,6 +333,8 @@ impl CopiableValues {
             loyalty: obj.base_loyalty,
             defense: obj.base_defense,
             abilities: obj.materialized_copiable_abilities(),
+            spell_effect: SpellProgramState::from_option(bestow_restore.map(|restore| restore.spell_effect.clone())
+                .unwrap_or_else(|| obj.spell_effect.clone()).map(|program| program.to_owned_value())),
             aura_attach_filter: if let Some(restore) = bestow_restore {
                 restore
                     .aura_attach_filter
@@ -279,6 +344,20 @@ impl CopiableValues {
                 obj.aura_attach_filter_owned()
             },
         }
+    }
+
+    /// Copy a retained spell as it last existed on the stack. Unlike a
+    /// permanent-copy capture, Bestow's cast overlay is part of this envelope.
+    /// Live spell owners first freeze layer 1; this adapter then preserves
+    /// that frozen object without consulting its pre-cast restore payload.
+    pub(crate) fn from_spell_object(obj: &Object) -> Self {
+        let mut values = Self::from_object(obj);
+        values.card_types = obj.card_types.to_vec();
+        values.subtypes = obj.subtypes.to_vec();
+        values.abilities = obj.abilities.clone();
+        values.spell_effect = SpellProgramState::from_option(obj.spell_effect_owned());
+        values.aura_attach_filter = obj.aura_attach_filter_owned();
+        values
     }
 
     pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
@@ -296,6 +375,7 @@ impl CopiableValues {
             loyalty: chars.loyalty,
             defense: chars.defense,
             abilities: Arc::new(chars.abilities.to_vec()),
+            spell_effect: chars.spell_effect.clone(),
             aura_attach_filter: chars.aura_attach_filter.clone(),
         }
     }
@@ -587,6 +667,7 @@ impl ObjectSnapshot {
             && self.abilities.is_empty()
             && self.ability_origins.is_none()
             && self.copiable_values.abilities.is_empty()
+            && !self.copiable_values.spell_effect.has_program()
             && self.revealed_cast_definition.is_none()
             && self.secret_chosen_subtype.is_none()
             && self
@@ -612,6 +693,7 @@ impl ObjectSnapshot {
         self.abilities = Arc::new(Vec::new());
         self.ability_origins = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
+        self.copiable_values.spell_effect = SpellProgramState::Unavailable;
         self.revealed_cast_definition = None;
         self.secret_chosen_subtype = None;
     }

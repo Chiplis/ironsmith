@@ -1407,9 +1407,10 @@ fn stack_object_would_destroy_matching(
             let program = if entry.is_ability {
                 entry.ability_effects.clone()
             } else {
-                game.object(entry.object_id)
-                    .and_then(|object| object.spell_effect.as_ref())
-                    .map(|program| (**program).clone())
+                match checked_spell_program_for_filter(game, entry.object_id) {
+                    Ok(program) => Some(program),
+                    Err(_) => None, // Propagated through the checked-action latch.
+                }
             };
             let Some(program) = program else {
                 return false;
