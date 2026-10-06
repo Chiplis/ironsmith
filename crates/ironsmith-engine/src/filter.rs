@@ -2650,30 +2650,30 @@ fn creature_blocked_or_was_blocked_by_matching_this_turn(
     creature: ObjectId,
     partner_filter: &ObjectFilter,
 ) -> bool {
-    game.turn_store
-        .turn_history
-        .projected_records()
-        .filter_map(|record| {
-            record
-                .event
-                .downcast::<crate::events::combat::CreatureBlockedEvent>()
-        })
-        .any(|event| {
-            let (partner_id, partner_snapshot) = if event.blocker == creature {
-                (event.attacker, event.attacker_snapshot.as_ref())
-            } else if event.attacker == creature {
-                (event.blocker, event.blocker_snapshot.as_ref())
-            } else {
-                return false;
-            };
-
-            partner_snapshot
-                .is_some_and(|snapshot| partner_filter.matches_snapshot(snapshot, ctx, game))
-                || (partner_snapshot.is_none()
-                    && game
-                        .object(partner_id)
-                        .is_some_and(|partner| partner_filter.matches(partner, ctx, game)))
-        })
+    let mut missing_evidence = false;
+    for event in game.turn_store.turn_history.projected_records().filter_map(|record|
+        record.event.downcast::<crate::events::combat::CreatureBlockedEvent>())
+    {
+        let (partner_id, snapshot) = if event.blocker == creature {
+            (event.attacker, event.attacker_snapshot.as_ref())
+        } else if event.attacker == creature {
+            (event.blocker, event.blocker_snapshot.as_ref())
+        } else { continue; };
+        let Some(snapshot) = snapshot.filter(|snapshot| snapshot.object_id == partner_id) else {
+            missing_evidence = true;
+            continue;
+        };
+        if partner_filter.matches_snapshot(snapshot, ctx, game) { return true; }
+    }
+    // One complete matching occurrence proves the existential query even when
+    // a different historical occurrence is unavailable. Otherwise unknown is
+    // not a negative result and cannot be inverted or published as complete.
+    if missing_evidence {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+            "combat partner history requires exact declaration characteristics".into(),
+        ));
+    }
+    false
 }
 
 /// Legacy boolean filter adapters cannot return an execution error. Preserve

@@ -86,6 +86,14 @@ fn source_filtered_target_restriction(
             filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
             filter
         }
+        TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens } => {
+            let mut filter = parse_object_filter(&tokens[source_descriptor_tokens], false)?;
+            // The targeting matcher separates the kind of the targeting
+            // object from the current characteristics (or exact LKI) of its source.
+            filter.zone = Some(crate::zone::Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
+            filter
+        }
         TargetRestrictionEnvelope::PairedControlledSources {
             spell_tokens,
             spell_noun,

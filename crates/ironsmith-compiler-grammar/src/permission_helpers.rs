@@ -1223,6 +1223,7 @@ pub fn parse_permission_clause_spec_lexed(
             Zone::Exile,
         )
         .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            mana_rider: None,
             source: parsed.reference.surface,
             plural_spell_subject: true,
             generic_card_pool: true,

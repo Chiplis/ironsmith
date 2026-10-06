@@ -725,6 +725,7 @@ fn read_optional_result_exile_choice_play(
     input: &Bundle<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = &input.sentences;
+    if let Some(effects) = parse_exile_hand_draw_play_bundle(sentences)? { return Ok(Some(effects)); }
     if sentences.len() == 4
         && let Some(effects) = parse_optional_private_exile_play_bundle(sentences)?
     { return Ok(Some(effects)); }

@@ -206,7 +206,7 @@ pub use filter_model::{
 };
 pub use grant_model::{
     DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, GrantUsageLimit,
-    Grantable, SourceExiledGrantSurface,
+    Grantable, SourceExiledGrantSurface, SourceExiledManaRiderSurface,
 };
 pub use ids::{
     CardId, IdCountersSnapshot, ObjectId, PlayerId, StableId, reset_runtime_id_counters,

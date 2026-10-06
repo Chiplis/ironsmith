@@ -111,6 +111,7 @@ pub fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyClauseShap
             DestroyAllShape::DealtDamageThisTurn { .. }
                 | DestroyAllShape::DealtDamageToPlayerThisTurn { .. }
         ) || !has_combat_history_surface(core_tokens)
+            || has_complete_block_history_filter(all_tokens)
         {
             DestroyClauseKind::All(all_shape)
         } else {

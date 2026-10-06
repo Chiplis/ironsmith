@@ -46,6 +46,7 @@ pub enum GrantActionAst {
         max_plays: Option<u32>,
     },
     GrantPlayTaggedForAsLongAsExiled {
+        permission_bound_mana: bool,
         tag: TagRef,
         player: PlayerAst,
         allow_land: bool,

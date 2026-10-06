@@ -21,7 +21,7 @@ pub use damage_redirection::parse_scoped_damage_redirection_line;
 pub(crate) use damage_redirection::redirection_recipient_filters;
 mod life_change_replacements;
 mod prevention_follow_ups;
-pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line};
+pub use damage_prevention::{parse_filtered_damage_prevention_line, parse_permanent_self_damage_prevention_line, parse_persistent_filtered_damage_prevention_line};
 pub use life_change_replacements::parse_if_you_would_gain_life_replacement_line;
 pub use prevention_follow_ups::{
     parse_prevention_amount_follow_up_line, parse_prevention_proposed_amount_follow_up_line,
@@ -694,7 +694,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_opponents_must_target_flagbearers_line" => {
             vec![StaticAbilityLineHeadHint::Pair("while", "an")]
         }
-        "parse_prevent_all_damage_to_you_line" | "parse_permanent_self_damage_prevention_line" => {
+        "parse_prevent_all_damage_to_you_line" | "parse_permanent_self_damage_prevention_line"
+        | "parse_persistent_filtered_damage_prevention_line" => {
             vec![StaticAbilityLineHeadHint::Pair("prevent", "all")]
         }
         "parse_if_you_would_gain_life_replacement_line"
@@ -1465,6 +1466,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
         single_static_ability_ast_rule!(parse_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_permanent_self_damage_prevention_line),
+        single_static_ability_ast_rule!(parse_persistent_filtered_damage_prevention_line),
         single_static_ability_ast_rule!(parse_prevention_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_prevention_proposed_amount_follow_up_line),
         single_static_ability_ast_rule!(parse_damage_prevention_with_owner_shuffle_line),
@@ -5151,7 +5153,31 @@ fn damage_source_filter_from_shape(
     } else {
         None
     };
-    let mut filter = if let Some(union) = articled_union {
+    let source_words = parser_token_word_refs(shape.filter_tokens);
+    let trailing_words = parser_token_word_refs(shape.trailing_filter_tokens);
+    let mut filter = if !shape.source_noun && is_source_reference_words(&source_words) {
+        let mut source = ObjectFilter::source();
+        source.source_surface = source_reference_surface_for_words(&source_words);
+        source
+    } else if !shape.source_noun && matches!(source_words.as_slice(),
+        ["creatures", "it's", "blocking"] | ["creatures", "its", "blocking"])
+    {
+        let mut creatures = ObjectFilter::creature();
+        creatures.blocked_by_source = true;
+        creatures
+    } else if shape.source_noun && shape.filter_tokens.is_empty()
+        && trailing_words.as_slice() == ["of", "the", "chosen", "color"]
+    {
+        let mut sources = ObjectFilter::default();
+        sources.chosen_color = true;
+        sources
+    } else if shape.source_noun && shape.filter_tokens.is_empty()
+        && trailing_words.as_slice() == ["with", "the", "chosen", "name"]
+    {
+        let mut sources = ObjectFilter::default();
+        sources.name = Some("{chosen name}".into());
+        sources
+    } else if let Some(union) = articled_union {
         union
     } else if shape.filter_tokens.is_empty() && shape.trailing_filter_tokens.is_empty() {
         ObjectFilter::default()
@@ -5214,6 +5240,9 @@ fn damage_source_filter_from_shape(
     match shape.controller {
         keyword_static_lines::DamageSourceControllerKind::None => {}
         keyword_static_lines::DamageSourceControllerKind::You => filter = filter.you_control(),
+        keyword_static_lines::DamageSourceControllerKind::NotYou => {
+            filter = filter.controlled_by(PlayerFilter::NotYou);
+        }
         keyword_static_lines::DamageSourceControllerKind::Opponent => {
             filter = filter.controlled_by(PlayerFilter::Opponent);
         }

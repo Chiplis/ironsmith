@@ -103,7 +103,7 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
 }
 
 #[derive(Clone, Copy)]
-enum StaticExileProducer { FaceUpLibrary, FaceDownLibrary, FaceDownHandChoice }
+enum StaticExileProducer { FaceUpLibrary, FaceDownLibrary, FaceDownHandChoice, FaceUpHandUntilSourceLeaves }
 
 /// Inventory one complete typed producer, including the private selection's
 /// exact dataflow. No wrapper, extra action, label or tag spelling proves a pair.
@@ -114,6 +114,27 @@ fn static_exile_producer(program: &ResolutionProgram) -> Option<StaticExileProdu
         && let Some(exile) = effects[0].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
     {
         return Some(if exile.face_down { StaticExileProducer::FaceDownLibrary } else { StaticExileProducer::FaceUpLibrary });
+    }
+    if effects.len() == 1
+        && let Some(players) = crate::compile_support::effect_without_result_tags(effects[0])
+            .downcast_ref::<crate::effects::ForPlayersEffect<Effect>>()
+        && players.filter == crate::target::PlayerFilter::Opponent
+        && !players.starting_with_controller && !players.sequential && !players.stop_after_first_happened
+        && players.effects.len() == 1
+        && let Some(exile) = crate::compile_support::effect_without_result_tags(&players.effects[0])
+            .downcast_ref::<crate::effects::ExileUntilEffect>()
+        && exile.duration == ironsmith_core::ExileUntilDuration::SourceLeavesBattlefield
+        && exile.leave_watcher.is_none() && !exile.face_down && !exile.explicit_return_surface
+        && exile.return_zone == crate::zone::Zone::Battlefield
+        && !exile.spec.is_target() && exile.spec.count().is_single() && !exile.spec.count().is_random()
+        && exile.spec.count_value().is_none()
+        && let ChooseSpec::Object(filter) = exile.spec.base()
+    {
+        let mut plain = filter.clone();
+        if plain.zone.take() == Some(crate::zone::Zone::Hand)
+            && plain.owner.take() == Some(crate::target::PlayerFilter::IteratedPlayer)
+            && plain == crate::target::ObjectFilter::default()
+        { return Some(StaticExileProducer::FaceUpHandUntilSourceLeaves); }
     }
     if effects.len() != 2 { return None; }
     let choice = effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -194,7 +215,7 @@ pub(super) fn bind_static_linked_exile(definition: &mut CardDefinition) {
         }
     }
     let (Some((producer, producer_kind)), Some((consumer, may_look))) = (producer, consumer) else { return; };
-    if !matches!(producer_kind, StaticExileProducer::FaceUpLibrary) && !may_look { return; }
+    if matches!(producer_kind, StaticExileProducer::FaceDownLibrary | StaticExileProducer::FaceDownHandChoice) && !may_look { return; }
     if matches!(producer_kind, StaticExileProducer::FaceDownHandChoice)
         && let AbilityKind::Triggered(ability) = &mut definition.abilities[producer].kind
     {

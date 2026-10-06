@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-10-06T17:33:56Z",
+  "checked_at": "2026-10-06T18:04:25Z",
   "main": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
   "stack_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
-  "latest_published_head": "04339684964ca95fcb4a07d3c6ad706c8ae8e169",
-  "latest_published_pr": 858,
+  "latest_published_head": "0c14c99a0bf629208a6ec54a03e8fccf48a755eb",
+  "latest_published_pr": 859,
   "open_draft_prs": [
     821,
     822,
@@ -42,19 +42,20 @@
     855,
     856,
     857,
-    858
+    858,
+    859
   ],
   "workspace_replaced": true,
-  "published_source_proposals": 1191,
-  "published_source_entries": 1196,
+  "published_source_proposals": 1196,
+  "published_source_entries": 1201,
   "unpublished_pre_outage_source_not_assumed_retained": [
     "Suspend4",
     "mana consumer6",
     "permanent prevention6",
     "linked exile Bishop prerequisites"
   ],
-  "current_reconstructed_source_proposals": 1196,
-  "current_reconstructed_source_entries": 1201,
+  "current_reconstructed_source_proposals": 1209,
+  "current_reconstructed_source_entries": 1214,
   "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "verified_compile_recoveries": 40,
@@ -68,9 +69,7 @@
   },
   "bishop_status": "Fresh reconstructed full source and integrated union reviewed; proposed unvalidated.",
   "held_new_cards": [
-    "Intellect Devourer",
-    "Rogue Class",
-    "Elder Brain"
+    "Rogue Class"
   ],
   "second_workspace_recovery": {
     "shared_mount_absent": true,
@@ -84,5 +83,5 @@
     "bishop_reconstructed_head": "4c7076aa526c48def5922a985e809ebeb39b2e7b",
     "integrated_source_review_head": "2aa985aa6dc6463ed8794c20865cea711322d5a1"
   },
-  "new_post_recovery_family": "Stage93 integrates static color4, Wave Goodbye, exact selected permissions, intrinsic mana, and held typed text prerequisites under artifact7/public-digest3/audit20. Eisenhorn generated identity source correction is retained. Chosen-number5 and digest4 are excluded. All execution deferred."
+  "new_post_recovery_family": "Stage94 adds linked hand-exile2, persistent prevention9 and historical block destroy2; twelve text body scenarios are authored with zero coverage credit. Artifact7/public digest3/audit20 remains intact. All execution deferred."
 }

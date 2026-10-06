@@ -622,6 +622,9 @@ fn parse_exile_top_library_then_play_bundle(
 #[path = "effect_composition/private_exile_permission.rs"]
 mod private_exile_permission;
 use private_exile_permission::parse_optional_private_exile_play_bundle;
+#[path = "effect_composition/exile_hand_draw_play.rs"]
+mod exile_hand_draw_play;
+use exile_hand_draw_play::parse_exile_hand_draw_play_bundle;
 
 fn parse_optional_result_exile_choice_play_bundle(
     sentences: &[&[OwnedLexToken]],

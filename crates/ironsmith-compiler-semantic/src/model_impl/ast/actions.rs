@@ -1256,6 +1256,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("max_plays", max_plays)
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                permission_bound_mana,
                 tag,
                 player,
                 allow_land,
@@ -1268,6 +1269,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 surface,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
+                .field("permission_bound_mana", permission_bound_mana)
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)

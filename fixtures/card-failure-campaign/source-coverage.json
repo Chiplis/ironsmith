@@ -1,20 +1,20 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "06cd8b8def619bc2f7064a5af16b57036bb6ce01",
+  "source_implementation_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1196,
-    "additional_proposed_compile_entries": 1201,
+    "additional_proposed_unique_cards": 1209,
+    "additional_proposed_compile_entries": 1214,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1196,
+    "source_proposals_excluding_identified_runtime_gaps": 1209,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true
   },
@@ -5144,6 +5144,75 @@
       "remaining_blockers": [
         "Nested/token and native opaque domains remain explicitly held. Full behavior companions and all twelve complete bodies remain unvalidated and uncounted."
       ]
+    },
+    {
+      "id": "linked-hand-exile-complete-bodies",
+      "stage": 94,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Elder Brain",
+        "Intellect Devourer"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "55ec6150c07c16c35bb2e4fa80f3767c6ce9caca",
+      "integrated_source_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete-body/shared-owner inspection and corrective regression authoring; combined integration review.",
+      "report": "architecture/card-failure-linked-exile-intellect-devourer.md"
+    },
+    {
+      "id": "persistent-prevention-relations",
+      "stage": 94,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/persistent_prevention_relations.json.fixture",
+      "baseline_entries": [
+        "Artifact Ward",
+        "Energy Field",
+        "Energy Storm",
+        "Gideon's Intervention",
+        "Goblin Furrier",
+        "Indentured Oaf",
+        "Light of Sanction",
+        "Prismatic Ward",
+        "Wall of Vapor"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "90ebd34d0565e95017c94ada4d29d78de0234517",
+      "integrated_source_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete-body/shared-owner inspection and corrective regression authoring; combined integration review.",
+      "report": "architecture/card-failure-persistent-prevention-relations.md"
+    },
+    {
+      "id": "historical-block-role-destroy-bodies",
+      "stage": 94,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/combat_history_destroy.json.fixture",
+      "baseline_entries": [
+        "Heat Stroke",
+        "You Cannot Pass!"
+      ],
+      "partial_entries": [],
+      "implementation_commit": "c79864e475c647b7e22fa79d759e1c72f11da80c",
+      "integrated_source_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
+      "tests": "authored_not_run",
+      "source_review": "Independent complete-body/shared-owner inspection and corrective regression authoring; combined integration review.",
+      "report": "architecture/card-failure-combat-history-destroy.md"
+    },
+    {
+      "id": "typed-text-full-body-scenario-prerequisite",
+      "stage": 94,
+      "status": "authored_validation_only_no_card_coverage",
+      "baseline_entries": [],
+      "source_coverage_count": 0,
+      "implementation_commit": "ad40288741624c72a97f3f762f1f472eb8b889ee",
+      "integrated_source_commit": "aa952107aad447d36ffc9ace8c3c0208ac9da4c1",
+      "tests": "authored_not_run",
+      "report": "architecture/card-failure-typed-text-changes.md",
+      "remaining_blockers": [
+        "All twelve text bodies remain partial; authored scenarios do not close token-role, nested/opaque or native provenance domains."
+      ]
     }
   ],
   "cards": [
@@ -6570,8 +6639,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Artificial Evolution",
@@ -13624,8 +13695,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-hand-exile-complete-bodies"
+      ],
       "partial_source_families": [
         "linked-exile-static-play-permissions"
       ]
@@ -14022,8 +14095,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Energy Storm",
@@ -14032,8 +14107,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Energybending",
@@ -16853,8 +16930,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Gideon's Triumph",
@@ -17226,8 +17305,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Goblin Game",
@@ -18404,8 +18485,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "historical-block-role-destroy-bodies"
+      ]
     },
     {
       "card_name": "Heavenly Blademaster",
@@ -19636,8 +19719,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Indigo Faerie",
@@ -19975,8 +20060,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-hand-exile-complete-bodies"
+      ],
       "partial_source_families": [
         "linked-exile-static-play-permissions"
       ]
@@ -22481,8 +22568,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Light-Paws, Emperor's Voice",
@@ -27884,8 +27973,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Prisoner's Dilemma",
@@ -38896,8 +38987,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "persistent-prevention-relations"
+      ]
     },
     {
       "card_name": "Wall of Wonder",
@@ -40469,8 +40562,10 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "historical-block-role-destroy-bodies"
+      ]
     },
     {
       "card_name": "You Look Upon the Tarrasque",

@@ -49,6 +49,7 @@ pub enum TargetRestrictionEnvelope {
     ControlledSpellsOrAbilities { opponents: bool },
     SpellsOrAbilities,
     SourceAbility { full_source_tokens: Range<usize> },
+    AbilitiesFrom { source_descriptor_tokens: Range<usize> },
     /// Complete noun phrases on both sides, including their own controller tails.
     PairedControlledSources {
         spell_tokens: Range<usize>, spell_noun: usize,
@@ -240,6 +241,17 @@ pub fn parse_target_restriction_envelope_tokens(
                 &view,
                 source_first..source_end,
             )?,
+        });
+    }
+
+    // Only the ability is prohibited, while the descriptor belongs to its
+    // source. Keep this distinct from spells-or-abilities from that source.
+    if words.get(4..6) == Some(&["abilities", "from"][..])
+        && matches!(words.last().copied(), Some("source" | "sources"))
+        && words.len() > 7
+    {
+        return Some(TargetRestrictionEnvelope::AbilitiesFrom {
+            source_descriptor_tokens: token_range_for_words(tokens, &view, 6..words.len() - 1)?,
         });
     }
 

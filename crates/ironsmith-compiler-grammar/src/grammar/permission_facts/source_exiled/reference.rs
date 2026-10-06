@@ -138,3 +138,13 @@ pub fn parse_look_source_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<Sourc
     primitives::probe_all(tail, primitives::sentence_end(), "standalone paired exile inspection")?;
     Some(reference)
 }
+
+/// The conditional rider is part of the same static source-pool permission.
+pub fn parse_play_source_exiled_with_mana_tokens(tokens: &[OwnedLexToken])
+    -> Option<(SourceExiledReference, ironsmith_core::value_model::ManaSpendMode)> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [permission, rider] = sentences.as_slice() else { return None; };
+    let reference = parse_play_lands_and_spells_from_source_exiled_tokens(permission)?;
+    let mode = super::super::tagged_surface::parse_cast_this_way_mana_rider_tokens(rider)?;
+    Some((reference, mode))
+}

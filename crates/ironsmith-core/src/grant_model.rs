@@ -141,6 +141,13 @@ pub enum GrantUsageLimit {
     DuringYourTurns,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum SourceExiledManaRiderSurface {
+    ConditionalCast,
+    InlineCastSpells,
+}
+
 /// Oracle-facing surface for a persistent permission tied to cards exiled by
 /// the granting source. Runtime identity is carried by `SOURCE_EXILED_TAG`;
 /// this value only preserves the authored source noun and plural spell/pool
@@ -152,6 +159,10 @@ pub struct SourceExiledGrantSurface {
     pub plural_spell_subject: bool,
     pub generic_card_pool: bool,
     pub generic_cast_this_way_subject: bool,
+    /// Newly authored wording only. Absent on previously admitted carriers,
+    /// including non-Normal native/artifact grants whose old text is retained.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub mana_rider: Option<SourceExiledManaRiderSurface>,
 }
 
 impl<C: CostComponent> DerivedAlternativeCast<C> {
@@ -1510,7 +1521,7 @@ where
         {
             return format!("{may_prefix} play a card you own from outside the game");
         }
-        let cast_this_way_suffix = || {
+        let cast_this_way_ability_suffix = || {
             if self.cast_this_way_grants.is_empty() {
                 return String::new();
             }
@@ -1591,6 +1602,21 @@ where
                 return format!(". If you cast {spell_text} this way, it enters with {rest}");
             }
             format!(". Spells cast this way gain {}", grants.join(" and "))
+        };
+        let cast_this_way_suffix = || {
+            let mut suffix = cast_this_way_ability_suffix();
+            let Some(surface) = self.source_exiled_surface.as_ref().and_then(|surface| surface.mana_rider)
+                else { return suffix; };
+            let noun = match self.cast_mana_spend_mode {
+                crate::value_model::ManaSpendMode::Normal => return suffix,
+                crate::value_model::ManaSpendMode::AnyColor => "color",
+                crate::value_model::ManaSpendMode::AnyType => "type",
+            };
+            suffix.push_str(&match surface {
+                SourceExiledManaRiderSurface::ConditionalCast => format!(". If you cast a spell this way, you may spend mana as though it were mana of any {noun} to cast it"),
+                SourceExiledManaRiderSurface::InlineCastSpells => format!(", and you may spend mana as though it were mana of any {noun} to cast those spells"),
+            });
+            suffix
         };
 
         if matches!(self.grantable, Grantable::PlayFrom)

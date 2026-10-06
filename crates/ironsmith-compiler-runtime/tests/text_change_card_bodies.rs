@@ -7,6 +7,9 @@ use ironsmith::effects::ChangeTextEffect;
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_core::{TextChangeSelection, Until};
 
+#[path = "text_change_card_bodies/full_body_execution.rs"]
+mod full_body_execution;
+
 fn definitions(row: &serde_json::Value) -> [CardDefinition; 2] {
     let name = row["name"].as_str().unwrap();
     let mut text = format!("Mana cost: {}\nType: {}\n", row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap());

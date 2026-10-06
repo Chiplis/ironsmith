@@ -4432,6 +4432,7 @@ pub fn parse_source_exiled_play_life_cost_line(
     }
     let usage_limit = during_your_turn.then_some(crate::grant::GrantUsageLimit::DuringYourTurns);
     let surface = crate::grant::SourceExiledGrantSurface {
+            mana_rider: None,
         source: reference.surface,
         plural_spell_subject: false,
         generic_card_pool: true,
@@ -4480,7 +4481,9 @@ pub fn parse_you_may_static_grant_line(
     }
     let inspected = crate::grammar::permission_facts::source_exiled::parse_look_and_play_source_exiled_tokens(tokens);
     let may_look = inspected.is_some();
-    if let Some(reference) = inspected.or_else(|| crate::grammar::permission_facts::source_exiled::
+    let converted = crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_with_mana_tokens(tokens);
+    let mode = converted.as_ref().map_or(ironsmith_core::value_model::ManaSpendMode::Normal, |(_, mode)| *mode);
+    if let Some(reference) = converted.map(|(reference, _)| reference).or(inspected).or_else(|| crate::grammar::permission_facts::source_exiled::
         parse_play_lands_and_spells_from_source_exiled_tokens(tokens))
     {
         let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
@@ -4491,11 +4494,13 @@ pub fn parse_you_may_static_grant_line(
         let mut spec = crate::model::CompilerGrantSpecCore::new(
             crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
         ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            mana_rider: (!mode.is_normal()).then_some(ironsmith_core::SourceExiledManaRiderSurface::ConditionalCast),
             source: reference.surface, plural_spell_subject: true,
             generic_card_pool: true, generic_cast_this_way_subject: true,
         });
         spec.requires_linked_exile_pair = true;
         spec.may_look_at_linked_exile = may_look;
+        spec.cast_mana_spend_mode = mode;
         return Ok(Some(vec![StaticAbility::grants(spec)]));
     }
     // The dedicated land permission owns this exact surface. Its canonical

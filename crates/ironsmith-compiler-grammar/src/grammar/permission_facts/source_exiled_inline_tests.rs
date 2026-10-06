@@ -84,3 +84,15 @@ fn standalone_inspector_requires_its_own_complete_sentence() {
         "You may look at cards exiled with this creature, and you may play lands and cast spells from among those cards.",
     ] { assert!(parse_look_source_exiled_tokens(&lex_line(line, 0).unwrap()).is_none()); }
 }
+
+#[test]
+fn conditional_mana_rider_belongs_to_one_complete_source_pool_permission() {
+    let line = "You may play lands and cast spells from among cards exiled with this creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.";
+    let (_, mode) = parse_play_source_exiled_with_mana_tokens(&lex_line(line, 0).unwrap()).unwrap();
+    assert_eq!(mode, ironsmith_core::value_model::ManaSpendMode::AnyColor);
+    for line in [
+        "You may play lands and cast spells from among cards exiled with this creature. Each player may spend mana as though it were mana of any color to cast spells.",
+        "You may play lands and cast spells from among cards exiled with this creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it. Draw a card.",
+        "You may play lands and cast spells from among cards exiled with that creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
+    ] { assert!(parse_play_source_exiled_with_mana_tokens(&lex_line(line, 0).unwrap()).is_none()); }
+}

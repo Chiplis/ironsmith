@@ -968,55 +968,43 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> Result<bool, CardTextError> {
     let words = non_article_parser_word_refs(segment_tokens);
-    // `creatures that blocked or were blocked by it` is the plural form.
-    let Some(blocked_idx) = crate::word_primitives::parse_sequence_start(
-        &words,
-        &["blocked", "or", "was", "blocked", "by"],
-    )
-    .or_else(|| {
-        crate::word_primitives::parse_sequence_start(
-            &words,
-            &["blocked", "or", "were", "blocked", "by"],
-        )
-    }) else {
-        return Ok(false);
-    };
-    let partner_start = blocked_idx + 5;
+    let Some(blocked_idx) = words.windows(4).position(|part|
+        part == ["blocked", "or", "was", "blocked"]
+            || part == ["blocked", "or", "were", "blocked"])
+    else { return Ok(false); };
+    let tail_start = blocked_idx + 4;
     let Some(this_turn_idx) =
         crate::word_primitives::parse_last_sequence_start(&words, &["this", "turn"])
-    else {
-        return Ok(false);
-    };
-    if partner_start >= this_turn_idx || this_turn_idx + 2 != words.len() {
-        return Ok(false);
-    }
-
-    let clause_start = blocked_idx
-        .checked_sub(1)
+    else { return Ok(false); };
+    if this_turn_idx + 2 != words.len() { return Ok(false); }
+    let clause_start = blocked_idx.checked_sub(1)
         .filter(|idx| matches!(words[*idx], "that" | "which"))
         .unwrap_or(blocked_idx);
-    let Some(partner_token_start) =
-        token_boundary_for_non_article_word(segment_tokens, partner_start)
-    else {
-        return Ok(false);
-    };
-    let Some(this_turn_token_start) =
-        token_boundary_for_non_article_word(segment_tokens, this_turn_idx)
-    else {
-        return Ok(false);
-    };
-    let partner_tokens = trim_commas(&segment_tokens[partner_token_start..this_turn_token_start]);
-    if partner_tokens.is_empty() {
-        return Ok(false);
-    }
-    let combat_partner = parse_object_filter(&partner_tokens, false)?;
-    filter.blocked_or_was_blocked_by_this_turn = Some(Box::new(combat_partner));
 
+    if tail_start == this_turn_idx {
+        // Active and passive roles form a union, never two required roles.
+        // Keep an earlier union conjunctive with this independent qualification.
+        let previous = std::mem::take(&mut filter.any_of);
+        filter.any_of = vec![
+            ObjectFilter { blocked_this_turn: true, any_of: previous.clone(), ..Default::default() },
+            ObjectFilter { was_blocked_this_turn: true, any_of: previous, ..Default::default() },
+        ];
+    } else {
+        if words.get(tail_start) != Some(&"by") || tail_start + 1 >= this_turn_idx {
+            return Ok(false);
+        }
+        let Some(partner_start) = token_boundary_for_non_article_word(segment_tokens, tail_start + 1)
+        else { return Ok(false); };
+        let Some(turn_start) = token_boundary_for_non_article_word(segment_tokens, this_turn_idx)
+        else { return Ok(false); };
+        let partner = trim_commas(&segment_tokens[partner_start..turn_start]);
+        if partner.is_empty() { return Ok(false); }
+        filter.blocked_or_was_blocked_by_this_turn =
+            Some(Box::new(parse_object_filter(&partner, false)?));
+    }
     all_words.truncate(clause_start);
-    if let Some(clause_token_start) =
-        token_boundary_for_non_article_word(segment_tokens, clause_start)
-    {
-        segment_tokens.truncate(clause_token_start);
+    if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
+        segment_tokens.truncate(start);
     }
     Ok(true)
 }

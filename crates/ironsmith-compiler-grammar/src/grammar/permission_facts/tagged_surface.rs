@@ -255,6 +255,21 @@ pub fn parse_permission_duration_prefix_tokens(
     (parsed.lifetime == PermissionLifetimeFact::ForAsLongAsExiled).then_some(parsed)
 }
 
+/// A complete conditional rider belongs to the preceding play permission.
+pub fn parse_cast_this_way_mana_rider_tokens(tokens: &[OwnedLexToken])
+    -> Option<ironsmith_core::value_model::ManaSpendMode> {
+    primitives::probe_all(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"]).parse_next(input)?;
+        opt(primitives::comma()).parse_next(input)?;
+        primitives::phrase(&["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any"]).parse_next(input)?;
+        let mode = alt((primitives::kw("color").value(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+            primitives::kw("type").value(ironsmith_core::value_model::ManaSpendMode::AnyType))).parse_next(input)?;
+        primitives::phrase(&["to", "cast", "it"]).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(mode)
+    }, "cast-this-way-mana-rider")
+}
+
 pub fn parse_allow_any_color_for_cast_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AllowAnyColorForCastSuffixFact<'_>> {
@@ -464,6 +479,10 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        primitives::any_phrase(&[
+            &["lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards"],
+            &["lands", "and", "cast", "spells", "from", "among", "those", "cards"],
+        ]).value((TaggedPermissionReference::LastTagged, false, TaggedPermissionTargetSurface::Other, None)),
         (
             primitives::phrase(&["this", "card"]),
             // This cross-zone self reference is the durable exile permission,

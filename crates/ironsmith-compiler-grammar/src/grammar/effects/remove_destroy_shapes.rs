@@ -97,6 +97,9 @@ pub enum DestroyAllShape<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestroyCombatHistoryShape<'a> {
+    BlockHistoryFilter {
+        target_tokens: &'a [OwnedLexToken],
+    },
     DealerThisTurn {
         target_tokens: &'a [OwnedLexToken],
     },
@@ -429,6 +432,9 @@ fn has_combat_history_surface(tokens: &[OwnedLexToken]) -> bool {
 fn parse_target_combat_history_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyCombatHistoryShape<'_>> {
+    if has_complete_block_history_filter(tokens) {
+        return Some(DestroyCombatHistoryShape::BlockHistoryFilter { target_tokens: tokens });
+    }
     if let Some((target_tokens, ())) =
         primitives::split_lexed_once_before_suffix(tokens, 1, || {
             primitives::phrase(&["that", "dealt", "damage", "this", "turn"])
@@ -451,6 +457,20 @@ fn parse_target_combat_history_shape(
     let target_tokens = trim_lexed_commas(target_tokens);
     (!target_tokens.is_empty())
         .then_some(DestroyCombatHistoryShape::DealtDamageThisTurn { target_tokens })
+}
+
+/// The ordinary complete object-filter reader owns the historic relation.
+/// This shape gate only allows that reader to see the entire clause; it never
+/// discards a partner description or an unrecognized trailing qualification.
+fn has_complete_block_history_filter(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(at) = words.windows(4).position(|w|
+        w == ["blocked", "or", "was", "blocked"] || w == ["blocked", "or", "were", "blocked"])
+    else { return false; };
+    if at == 0 || !matches!(words[at - 1], "that" | "which") { return false; }
+    let tail = &words[at + 4..];
+    tail == ["this", "turn"]
+        || (tail.len() > 3 && tail[0] == "by" && tail.ends_with(&["this", "turn"]))
 }
 
 fn parse_dealt_damage_to_player_filter(

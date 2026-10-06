@@ -29,7 +29,7 @@ fn object_not_on_battlefield(game: &GameState, object_id: ObjectId) -> bool {
 /// The source permanent this "until this leaves the battlefield" duration
 /// watches. A zone-change trigger follows its recorded destination object;
 /// any other source that is no longer the same object has already left.
-fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
+pub(super) fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
     let source = if game.object(ctx.source).is_some() {
         ctx.source
     } else if ctx
@@ -45,6 +45,25 @@ fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<Ob
 }
 
 impl EffectExecutor for ExileUntilEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        if self.duration != ExileUntilDuration::SourceLeavesBattlefield || self.leave_watcher.is_some()
+            || self.face_down || self.explicit_return_surface || self.return_zone != Zone::Battlefield
+            || self.spec.is_target() || !self.spec.count().is_single() || self.spec.count().is_random()
+            || self.spec.count_value().is_some() { return false; }
+        let ChooseSpec::Object(filter) = self.spec.base() else { return false; };
+        let mut plain = filter.clone();
+        if plain.zone.take() != Some(Zone::Hand) || plain.owner.take() != Some(crate::target::PlayerFilter::IteratedPlayer) { return false; }
+        plain == crate::target::ObjectFilter::default()
+    }
+
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::IncompleteEvidence("unproved simultaneous exile-until scope".into()));
+        }
+        Ok(super::exile::prepare_hand_exile_until_source_leaves(self, game, ctx))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

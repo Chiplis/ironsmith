@@ -1690,6 +1690,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+            permission_bound_mana,
             tag,
             player,
             allow_land,
@@ -1723,6 +1724,13 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if *permission_bound_mana {
+                if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
+                    || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
+                    || *without_paying_mana_cost || during_turns_counter_put_on_source.is_some()
+                { return Err(CardTextError::ParseError("marked exile permission lost its exact producer".into())); }
+                grant_play.permission_bound_mana = true;
+            }
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {

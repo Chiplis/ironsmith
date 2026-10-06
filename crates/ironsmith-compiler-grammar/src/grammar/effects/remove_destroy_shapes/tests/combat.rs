@@ -70,3 +70,18 @@ pub(super) fn parses_combat_history_and_blocked_targets() {
     };
     assert_eq!(words(&target_tokens), vec!["target", "blocked", "creature"]);
 }
+
+#[test]
+pub(super) fn complete_block_history_filters_reach_the_shared_reader() {
+    let all = lex_line("each creature that blocked or was blocked this turn", 0).unwrap();
+    assert!(matches!(parse_destroy_clause_shape(&all).kind,
+        DestroyClauseKind::All(DestroyAllShape::Plain { .. })));
+    let target = lex_line("target creature that blocked or was blocked by a legendary creature this turn", 0).unwrap();
+    assert!(matches!(parse_destroy_clause_shape(&target).kind,
+        DestroyClauseKind::CombatHistory(DestroyCombatHistoryShape::BlockHistoryFilter { .. })));
+    for text in ["each creature that blocked or was blocked this turn while a puzzle was solved",
+        "target creature that blocked or was blocked by a legendary creature this turn while a puzzle was solved"] {
+        let bad = lex_line(text, 0).unwrap();
+        assert!(matches!(parse_destroy_clause_shape(&bad).kind, DestroyClauseKind::UnsupportedCombatHistory));
+    }
+}

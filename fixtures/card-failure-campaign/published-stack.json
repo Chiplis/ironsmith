@@ -1291,6 +1291,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/858"
+    },
+    {
+      "stage": 93,
+      "branch": "fix/card-failures-93-definition-and-permission-compatibility",
+      "base": "fix/card-failures-92-typed-current-spell-programs",
+      "source_integration_commit": "dd6c4eed4ddd0a0a5a3b1a659486b72c4e36f3f9",
+      "remote_commit": "0c14c99a0bf629208a6ec54a03e8fccf48a755eb",
+      "tree": "d0572f910fa2c78829a08ab50ecb76c373ca74b9",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 859,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/859"
     }
   ]
 }

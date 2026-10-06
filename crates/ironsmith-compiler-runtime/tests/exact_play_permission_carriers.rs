@@ -56,3 +56,45 @@ fn tagged_effect_omits_legacy_false_and_retains_explicit_selected_permission_mod
     assert!(decoded.permission_bound_mana);
     assert_eq!(decoded.mana_spend_mode, ManaSpendMode::AnyColor);
 }
+
+#[test]
+fn admitted_non_normal_grants_without_new_surface_keep_canonical_and_public_object_text() {
+    for source in [
+        "Type: Enchantment\nYou may play lands from your graveyard.",
+        "Mana cost: {U}{B}\nType: Creature\nPower/Toughness: 2/2\nWhenever this creature deals combat damage to a player, exile the top card of that player's library.\nYou may play cards exiled with this creature.",
+    ] {
+        let (baseline, _) = compile_to_artifact("Legacy typed mana surface", source, false).unwrap();
+        let parsed = ironsmith_compiler::CompilerFacade::new().compile_definition(
+            ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Legacy typed mana surface"),
+            source.into(), ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
+        let old_runtime = into_runtime_definition(parsed.clone()).unwrap();
+        let old_rendered = ironsmith_text::canonical_compiled_lines(&old_runtime);
+        let mut game = ironsmith::GameState::new(vec!["A".into(), "B".into()], 20);
+        let old_object = game.create_object_from_definition(&old_runtime, ironsmith::PlayerId::from_index(0), ironsmith::Zone::Battlefield);
+        let old_oracle = game.object(old_object).unwrap().compiled_card_text.clone();
+        for mode in [ManaSpendMode::AnyColor, ManaSpendMode::AnyType] {
+            let mut compiled = parsed.clone(); let mut count = 0;
+            for ability in &mut compiled.abilities {
+                if let AbilityKind::Static(ability) = &mut ability.kind
+                    && let StaticAbilityPayload::Grants(spec) = &mut ability.payload {
+                    spec.cast_mana_spend_mode = mode; count += 1;
+                    assert!(spec.source_exiled_surface.as_ref().is_none_or(|surface| surface.mana_rider.is_none()));
+                }
+            }
+            assert_eq!(count, 1);
+            let mut artifact = baseline.clone();
+            artifact.payload.definition = ironsmith_compiled_artifact::wire_definition_from_serializable(&compiled).unwrap();
+            artifact.refresh_checksum(); let bytes = artifact.to_json().unwrap();
+            assert!(!std::str::from_utf8(&bytes).unwrap().contains("mana_rider"));
+            let decoded = ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&bytes).unwrap();
+            decoded.validate().unwrap(); assert_eq!(decoded.to_json().unwrap(), bytes);
+            for runtime in [into_runtime_definition(compiled).unwrap(),
+                ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap()] {
+                assert_eq!(ironsmith_text::canonical_compiled_lines(&runtime), old_rendered);
+                let object = game.create_object_from_definition(&runtime, ironsmith::PlayerId::from_index(0), ironsmith::Zone::Battlefield);
+                assert_eq!(game.object(object).unwrap().compiled_card_text, old_oracle,
+                    "public audit oracle_text reads this exact stored carrier");
+            }
+        }
+    }
+}

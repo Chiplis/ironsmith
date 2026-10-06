@@ -147,7 +147,16 @@ outcome retains affected objects for subsequent “that enchantment” instructi
 
 Direct/artifact full-frozen-body source contracts are authored for all twelve,
 including the secondary mechanics below. They remain unrun and do not change
-any held coverage classification. Full body work must retain:
+any held coverage classification. A separate full-body execution module now
+announces actual spells and activations through the priority owner, pays costs,
+and resolves their complete programs on supported typed witness targets. Its
+contracts cover flashback exile, retrace land discard and missing-payment
+rejection, buyback return, entwined independent targets, Crystal Spray's draw
+and illegal-target outcome, New Blood's paid tap and creature recheck, Shaman's
+granted cumulative upkeep, and Cipher's combat-triggered free copy and duration.
+Word/menu choices use typed vocabulary indices and cardinalities. These source
+contracts do not admit the remaining unknown legal text-target domains. Full
+body work must retain:
 
 - Alter Reality: indefinite replacement and Flashback {1}{U}.
 - Artificial Evolution: any source creature type, another destination type
