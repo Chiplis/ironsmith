@@ -1365,6 +1365,8 @@ dependencies = [
 name = "ironsmith-compiler-lowering"
 version = "0.1.0"
 dependencies = [
+ "ironsmith-artifact-effect-decoder",
+ "ironsmith-compiled-artifact",
  "ironsmith-compiler",
  "ironsmith-compiler-api",
  "ironsmith-compiler-ast",

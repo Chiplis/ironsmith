@@ -136,7 +136,7 @@ pub use composition::{
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
-pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
+pub use continuous::{ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
     DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
     SharedTypeConstraint,

@@ -888,6 +888,10 @@ pub struct GrantPlayTaggedEffect<C> {
     pub allow_land: bool,
     /// Semantic mana conversion used while casting the granted cards.
     pub mana_spend_mode: crate::value_model::ManaSpendMode,
+    /// New exact-selection route. Legacy artifacts omit false and retain
+    /// their earlier independently tracked spending permission.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "legacy_tagged_play_mana"))]
+    pub permission_bound_mana: bool,
     /// Compatibility flag for older render-pattern predicates. This is true
     /// for both flexible modes; new code must inspect `mana_spend_mode` when
     /// the distinction between color and type matters.
@@ -921,6 +925,9 @@ pub struct GrantPlayTaggedEffect<C> {
     pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
+#[cfg(feature = "serde")]
+fn legacy_tagged_play_mana(bound: &bool) -> bool { !*bound }
+
 impl<C> GrantPlayTaggedEffect<C> {
     pub fn new(
         tag: crate::tag::TagKey,
@@ -937,6 +944,7 @@ impl<C> GrantPlayTaggedEffect<C> {
             surface: None,
             allow_land,
             mana_spend_mode,
+            permission_bound_mana: false,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,

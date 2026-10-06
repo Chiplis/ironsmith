@@ -6,8 +6,10 @@
 
 mod apply_continuous;
 mod exchange_text_boxes;
+mod change_text;
 
 pub use apply_continuous::{ApplyContinuousEffect, RuntimeModification};
 pub use exchange_text_boxes::ExchangeTextBoxesEffect;
+pub use change_text::ChangeTextEffect;
 
 pub(crate) use apply_continuous::materialize_duration_predicate;

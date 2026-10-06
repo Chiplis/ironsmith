@@ -375,7 +375,7 @@ fn mixed_typed_and_legacy_readers_keep_their_distinct_permission_identities() {
 fn legacy_static_grant_wire_shape_and_checksum_do_not_gain_default_binding_fields() {
     let (artifact, _) = compile_to_artifact("Legacy static permission",
         "Type: Enchantment\nYou may play lands from your graveyard.", false).unwrap();
-    assert_eq!(artifact.format_version, 6);
+    assert_eq!(artifact.format_version, ironsmith_compiled_artifact::FORMAT_VERSION);
     let bytes = artifact.to_json().unwrap();
     let text = std::str::from_utf8(&bytes).unwrap();
     assert!(!text.contains("\"requires_linked_exile_pair\""));

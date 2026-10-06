@@ -154,7 +154,7 @@ fn missing_historical_program_evidence_never_becomes_known_absence() {
 }
 
 #[test]
-fn known_type_line_intrinsic_mana_tracks_words_but_ambiguous_old_definitions_are_held() {
+fn type_line_mana_changes_while_authored_mana_symbols_and_occurrences_are_preserved() {
     let mut game = game();
     let card = CardBuilder::new(CardId::new(), "Typed land witness")
         .card_types(vec![CardType::Land]).subtypes(vec![Subtype::Forest]).build();
@@ -169,15 +169,20 @@ fn known_type_line_intrinsic_mana_tracks_words_but_ambiguous_old_definitions_are
         if let AbilityKind::Activated(ability) = &ability.kind { ability.mana_output.clone() } else { None }
     }).flatten().collect();
     assert_eq!(mana, vec![crate::mana::ManaSymbol::Blue]);
-    let mut ambiguous = GameState::new(vec!["A".into(), "B".into()], 20);
-    let land = ambiguous.create_object_from_card(&card, A, Zone::Battlefield);
-    ambiguous.object_mut(land).unwrap().abilities = Arc::new(vec![Ability::mana(
+    let mut authored = GameState::new(vec!["A".into(), "B".into()], 20);
+    let land = authored.create_object_from_card(&card, A, Zone::Battlefield);
+    authored.object_mut(land).unwrap().abilities = Arc::new(vec![Ability::mana(
         crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()), vec![crate::mana::ManaSymbol::Green])]);
-    ambiguous.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(land, A,
+    authored.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(land, A,
         vec![land], Modification::RewriteText(TextChange::basic_land_type(Subtype::Forest, Subtype::Island).unwrap())));
-    assert!(matches!(ambiguous.refresh_continuous_state(), Err(
-        crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
-            text_changes::TextChangeDomainError::IntrinsicManaProvenance))));
+    authored.refresh_continuous_state().unwrap();
+    let current = authored.calculated_characteristics(land).unwrap();
+    let mana: Vec<_> = current.abilities.iter().filter_map(|ability| {
+        if let AbilityKind::Activated(ability) = &ability.kind { ability.mana_output.clone() } else { None }
+    }).flatten().collect();
+    assert_eq!(mana, vec![crate::mana::ManaSymbol::Green, crate::mana::ManaSymbol::Blue]);
+    assert_eq!(current.abilities.origin(0), Some(&AbilityOrigin::Printed(0)));
+    assert_eq!(current.abilities.origin(1), Some(&AbilityOrigin::IntrinsicBasicLandMana(Subtype::Island)));
 }
 
 fn legacy_copy_fixture() -> (GameState, ObjectId, ContinuousEffectId, CopiableValues) {

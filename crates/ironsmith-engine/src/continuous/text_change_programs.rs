@@ -40,7 +40,7 @@ pub(crate) fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Re
     let mut rewritten = ability.clone();
     match &mut rewritten.kind {
         AbilityKind::Static(ability) => *ability = ability.with_text_change(change)?,
-        AbilityKind::Triggered(_) => return Err(Error::TriggeredAbility),
+        AbilityKind::Triggered(ability) => *ability = rewrite_triggered_ability_words(ability, change)?,
         AbilityKind::Activated(ability) => {
             // Legacy executable restrictions have no typed word provenance.
             if !ability.additional_restrictions.is_empty() { return Err(Error::ActivatedAbility); }
@@ -60,6 +60,24 @@ pub(crate) fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Re
     Ok(rewritten)
 }
 
+pub(crate) fn rewrite_triggered_ability_words(ability: &crate::ability::TriggeredAbility, change: TextChange)
+    -> Result<crate::ability::TriggeredAbility, Error>
+{
+    // This helper also visits quoted future grants, which have an authored
+    // occurrence but no acquisition yet. Active rules text proves acquisition
+    // separately at the Layer-3 entry point.
+    if ability.effects.retained_trigger_definition().is_none() {
+        return Err(Error::TriggeredAbility);
+    }
+    let mut rewritten = ability.clone();
+    rewritten.trigger = ability.trigger.with_text_change(change)?;
+    rewritten.effects = rewrite_program_words(&ability.effects, change)?;
+    rewritten.choices = rewrite_choices(&ability.choices, change)?;
+    rewritten.intervening_if = ability.intervening_if.as_ref()
+        .map(|condition| rewrite_condition_words(condition, change)).transpose()?;
+    Ok(rewritten)
+}
+
 fn rewrite_effects(effects: &[Effect], change: TextChange) -> Result<Vec<Effect>, Error> {
     effects.iter().map(|effect| effect.with_text_change(change)).collect()
 }
@@ -70,7 +88,7 @@ fn rewrite_choices(choices: &[crate::target::ChooseSpec], change: TextChange)
     choices.iter().map(|choice| rewrite_choose_spec_words(choice, change)).collect()
 }
 
-fn rewrite_total_cost_words(cost: &TotalCost, change: TextChange) -> Result<TotalCost, Error> {
+pub(crate) fn rewrite_total_cost_words(cost: &TotalCost, change: TextChange) -> Result<TotalCost, Error> {
     cost.clone().try_map(|component| rewrite_cost_words(&component, change))
 }
 
@@ -225,6 +243,20 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         ($ty:ty) => { visit!($ty, model, { model.effects = rewrite_effects(&model.effects, change)?; }); };
     }
 
+    if let Some(model) = effect.downcast_ref::<ApplyContinuousEffect>() {
+        let rewritten = super::text_change_modifications::rewrite_apply_continuous_words(model, change)?;
+        return Ok(Some(Effect::new(rewritten)));
+    }
+    visit!(ChangeTextEffect, model, {
+        model.duration = super::text_change_modifications::rewrite_until_words(&model.duration, change)?;
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        match &mut model.selection {
+            ironsmith_core::TextChangeSelection::CreatureTo(subtype) => change.replace_subtype_word(subtype),
+            ironsmith_core::TextChangeSelection::Creature { excluded_new } => change.replace_subtype_words(excluded_new),
+            ironsmith_core::TextChangeSelection::Color | ironsmith_core::TextChangeSelection::BasicLand
+            | ironsmith_core::TextChangeSelection::ColorOrBasicLand => {}
+        }
+    });
     value_player!(DrawCardsEffect, count);
     value_player!(MillEffect, count);
     visit!(DiscardHandEffect, model, {
@@ -484,7 +516,8 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
 
     // These complete native payloads consist solely of non-word identities,
     // counter kinds, source references or wordless rules operations.
-    if effect.downcast_ref::<NoteLifeTotalEffect>().is_some()
+    if effect.downcast_ref::<CipherEffect>().is_some()
+        || effect.downcast_ref::<NoteLifeTotalEffect>().is_some()
         || effect.downcast_ref::<RevealTaggedEffect>().is_some()
         || effect.downcast_ref::<RevealSourceFromHandEffect>().is_some()
         || effect.downcast_ref::<TagAttachedToSourceEffect>().is_some()

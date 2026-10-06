@@ -1379,6 +1379,9 @@ impl GrantRegistry {
     ) -> Option<Grant> {
         let grants = self.get_grants_for_card_view(game, card_id, card, zone, player).into_iter()
             .filter(|grant| grant.source.source_id() == source_id && matches!(grant.grantable, Grantable::PlayFrom))
+            // New permission-local mana readers need an exact selection.
+            // Source-only actions retain their existing unmarked alternatives.
+            .filter(|grant| grant.play_from_constraints.cast_mana_spend_mode.is_normal())
             .filter(|grant| grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit))
             .collect::<Vec<_>>();
         grants.iter().find(|grant| grant.shared_usage_id.is_none() && grant.usage_limit.is_none())
@@ -1399,6 +1402,7 @@ impl GrantRegistry {
             .find(|grant| {
                 grant.source.source_id() == source_id
                     && matches!(grant.grantable, Grantable::PlayFrom)
+                    && grant.play_from_constraints.cast_mana_spend_mode.is_normal()
             })
             .map(|grant| grant.play_from_constraints)
             .unwrap_or_default()
@@ -1726,7 +1730,7 @@ impl GrantRegistry {
                     if source_is_battlefield && ability.functions_in(&source.zone)
                         && let AbilityKind::Static(ability) = &ability.kind
                         && (ability.source_exiled_inspection_pair().is_some()
-                            || ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some()))
+                            || ability.grant_spec().is_some_and(|spec| spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || !spec.cast_mana_spend_mode.is_normal()))
                     {
                         game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
                             "linked static permission omitted its rules-text acquisition; native recovery or replay required".into()));
@@ -1754,6 +1758,11 @@ impl GrantRegistry {
                 let Some(spec) = s.grant_spec() else {
                     continue;
                 };
+                if !spec.cast_mana_spend_mode.is_normal() && !matches!(spec.grantable, Grantable::PlayFrom) {
+                    game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                        "permission-local mana requires a plain play permission".into()));
+                    continue;
+                }
                 if matches!(spec.grantable, Grantable::AlternativePrice { .. }) && !ability.functions_in(&source.zone) {
                     continue;
                 }
@@ -1769,7 +1778,7 @@ impl GrantRegistry {
                     continue;
                 }
 
-                if (spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some())
+                if (spec.requires_linked_exile_pair || spec.may_look_at_linked_exile || spec.linked_exile_pair.is_some() || !spec.cast_mana_spend_mode.is_normal())
                     && !ability.functions_in(&source.zone) { continue; }
                 let linked_targets = match static_linked_exile_targets(game, &spec, &permission_identity) {
                     Ok(targets) => targets,

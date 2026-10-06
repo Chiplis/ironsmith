@@ -3243,6 +3243,9 @@ pub struct ManaSpendEffectTracker {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActiveManaSpendPermission {
     pub permission: crate::effect::ManaSpendPermission,
+    /// A tagged play producer's exact grant occurrences. None is an
+    /// independently authored mana-spending rule, not inferred linkage.
+    pub play_permission_identities: Option<Vec<crate::grant_registry::GrantPermissionIdentity>>,
     pub controller: PlayerId,
     pub source: ManaSpendPermissionSource,
 }
@@ -6770,19 +6773,19 @@ impl GameState {
         ability_payload: Option<crate::static_abilities::StaticAbility>,
         expires_end_of_turn: u32,
     ) {
-        let Some(object) = self.object_mut(object_id) else {
-            return;
-        };
+        if self.object(object_id).is_none() { return; }
+        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+        let object = self.object_mut(object_id).expect("grant recipient exists");
         // Each call creates an independent ability grant. Equal payloads and
         // durations do not make two grants the same instance; callers retaining
         // an existing grant must do so before requesting a new one.
         object
             .temporary_static_ability_grants
-            .push(crate::object::TemporaryStaticAbilityGrant {
+            .push_at_timestamp(crate::object::TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload,
                 expires_end_of_turn: Some(expires_end_of_turn),
-            });
+            }, acquired_at);
     }
 
     /// A noncopiable granted ability survives only this object incarnation
@@ -6792,15 +6795,17 @@ impl GameState {
         object: ObjectId,
         ability: StaticAbility,
     ) {
-        if let Some(object) = self.object_mut(object) {
-            object.temporary_static_ability_grants.push(
-                crate::object::TemporaryStaticAbilityGrant {
-                    ability: ability.id(),
-                    ability_payload: Some(ability),
-                    expires_end_of_turn: None,
-                },
-            );
-        }
+        if self.object(object).is_none() { return; }
+        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+        let object = self.object_mut(object).expect("grant recipient exists");
+        object.temporary_static_ability_grants.push_at_timestamp(
+            crate::object::TemporaryStaticAbilityGrant {
+                ability: ability.id(),
+                ability_payload: Some(ability),
+                expires_end_of_turn: None,
+            },
+            acquired_at,
+        );
     }
 
     pub fn temporary_granted_spell_abilities(

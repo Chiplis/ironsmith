@@ -57,11 +57,11 @@ pub(super) fn priority_action_ref_for_game(
     let mut action_ref = priority_action_ref(action);
     if let PriorityActionRef::CastSpell {
         spell_id,
-        casting_method:
-            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
-            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
+        casting_method,
         ..
     } = &mut action_ref
+        && let (CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. }) = casting_method.origin_method_mut()
         && let Some(spell) = game.object(ObjectId::from_raw(*spell_id))
     {
         let kind = ironsmith::decision::face_down_cast_kind(game, spell);
@@ -78,16 +78,174 @@ pub(super) fn priority_action_ref_for_game(
 fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef {
     let mut normalized = action_ref.clone();
     if let PriorityActionRef::CastSpell {
-        casting_method:
-            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
-            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
+        casting_method,
         ..
     } = &mut normalized
+        && let (CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. }) = casting_method.origin_method_mut()
     {
         *face_down_kind = None;
         *face_down_permission_source = None;
     }
     normalized
+}
+
+#[cfg(test)]
+mod exact_permission_adapter_tests {
+    use super::*;
+    use ironsmith::alternative_cast::{CastingMethod, GrantSelection};
+    use ironsmith::game_state::FaceDownCastKind;
+    use ironsmith::grant_registry::{GrantPermissionIdentity, GrantSource, PlayFromConstraints};
+    use ironsmith_core::value_model::ManaSpendMode;
+
+    fn exact_action(spell: ObjectId, source: ObjectId, index: usize, identity: u64) -> LegalAction {
+        LegalAction::CastSpell {
+            spell_id: spell,
+            from_zone: Zone::Exile,
+            casting_method: CastingMethod::ExactPermission {
+                origin: Box::new(CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None }),
+                permission: GrantSelection { identity: GrantPermissionIdentity::Stored(identity), source, index },
+            },
+        }
+    }
+
+    #[test]
+    fn complete_menu_matching_keeps_the_selected_native_identity_and_ignores_a_stale_action_index() {
+        let _ids = crate::test_id_counter_guard();
+        let game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = ObjectId::from_raw(11);
+        let spell = ObjectId::from_raw(12);
+        let first = exact_action(spell, source, 0, 71);
+        let second = exact_action(spell, source, 1, 72);
+        let priority = ironsmith::decisions::context::PriorityContext::new(
+            &game, PlayerId(0), vec![second.clone(), first.clone()],
+        ).unwrap();
+        let reference = priority_action_ref(&first);
+        assert_eq!(resolve_priority_action(&game, &priority, Some(0), Some(&reference)).unwrap(), Some(first.clone()));
+        let other_menu = ironsmith::decisions::context::PriorityContext::new(
+            &game, PlayerId(0), vec![second],
+        ).unwrap();
+        assert!(resolve_priority_action(&game, &other_menu, Some(0), Some(&reference)).unwrap().is_none());
+        let mut forged = reference.clone();
+        if let PriorityActionRef::CastSpell { casting_method: CastingMethodRef::ExactPermission { permission, .. }, .. } = &mut forged {
+            permission.source = 99;
+        }
+        assert!(resolve_priority_action(&game, &priority, Some(1), Some(&forged)).unwrap().is_none());
+        // No ordinal-to-identity conversion takes place here. A stale cached
+        // identity must still be rejected by the engine before announcement.
+        assert_eq!(resolve_priority_action(&game, &priority, None, Some(&reference)).unwrap(), Some(first));
+    }
+
+    #[test]
+    fn wrapped_face_down_decoration_and_normalization_keep_all_permission_selectors() {
+        let _ids = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = PlayerId(0);
+        let spell = game.create_hidden_card_placeholder(player, Zone::Exile, 0, "exact-face-down".into());
+        game.set_hidden_face_down_cast_claim(spell, FaceDownCastKind::Disguise);
+        let source = ObjectId::from_raw(24);
+        let permission = GrantSelection { identity: GrantPermissionIdentity::Stored(71), source, index: 1 };
+        let origin = CastingMethod::FaceDownPlayFrom { source, zone: Zone::Exile };
+        for casting_method in [
+            CastingMethod::ExactPermission { origin: Box::new(origin.clone()), permission: permission.clone() },
+            CastingMethod::AlternativePrice { origin: Box::new(origin), origin_permission: Some(permission.clone()),
+                price: GrantSelection { identity: GrantPermissionIdentity::Stored(72), source, index: 2 }, prototype: None },
+        ] {
+            let action = LegalAction::CastSpell { spell_id: spell, from_zone: Zone::Exile, casting_method };
+            let decorated = priority_action_ref_for_game(&game, &action);
+            assert_eq!(face_down_cast_claim_for_action_ref(&decorated), Some((spell, FaceDownCastKind::Disguise)));
+            assert_eq!(action_ref_for_matching(&decorated), priority_action_ref(&action));
+            let json = serde_json::to_value(&decorated).unwrap();
+            assert_eq!(json["casting_method"]["origin"]["face_down_kind"], "disguise");
+            let selector = json["casting_method"].get("permission")
+                .or_else(|| json["casting_method"].get("origin_permission")).unwrap();
+            assert_eq!(*selector, serde_json::json!({ "source": 24, "index": 1 }));
+            assert_eq!(action_drag_decision_metadata(&game, player, &action), (false, false));
+        }
+        let permission_claim = PriorityActionRef::CastSpell {
+            spell_id: spell.0, from_zone: "exile".into(),
+            casting_method: CastingMethodRef::ExactPermission {
+                origin: Box::new(CastingMethodRef::FaceDownPlayFrom { source: source.0, zone: "exile".into(),
+                    face_down_kind: Some("permission".into()), face_down_permission_source: Some(25) }),
+                permission: GrantSelectionRef { source: source.0, index: 1 },
+            },
+        };
+        assert_eq!(face_down_cast_claim_for_action_ref(&permission_claim),
+            Some((spell, FaceDownCastKind::Permission { source: ObjectId::from_raw(25) })));
+    }
+
+    #[test]
+    fn hidden_placeholder_regeneration_compares_the_complete_exact_ref() {
+        let _ids = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = PlayerId(0);
+        game.turn.active_player = player;
+        game.turn.priority_player = Some(player);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.turn.step = None;
+        game.player_mut(player).unwrap().mana_pool.add(ManaSymbol::Colorless, 20);
+        let card = ironsmith::CardBuilder::new(CardId::new(), "Permission source")
+            .card_types(vec![CardType::Enchantment]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let spell = game.create_hidden_card_placeholder(player, Zone::Exile, 0, "exact-hidden-claim".into());
+        game.effect_store.grant_registry.grant_play_from_to_card(spell, Zone::Exile, player,
+            PlayFromConstraints { cast_mana_spend_mode: ManaSpendMode::AnyColor, ..Default::default() },
+            GrantSource::Effect { source_id: source, expires_end_of_turn: u32::MAX });
+        let stale = ironsmith::decisions::context::PriorityContext::new(&game, player, vec![]).unwrap();
+        let reference = PriorityActionRef::CastSpell { spell_id: spell.0, from_zone: "exile".into(),
+            casting_method: CastingMethodRef::ExactPermission {
+                origin: Box::new(CastingMethodRef::FaceDownPlayFrom { source: source.0, zone: "exile".into(),
+                    face_down_kind: Some("morph".into()), face_down_permission_source: None }),
+                permission: GrantSelectionRef { source: source.0, index: 0 },
+            } };
+        assert!(resolve_priority_action(&game, &stale, None, Some(&reference)).unwrap().is_none());
+        let (claimed_spell, kind) = face_down_cast_claim_for_action_ref(&reference).unwrap();
+        game.set_hidden_face_down_cast_claim(claimed_spell, kind);
+        let resolved = resolve_priority_action(&game, &stale, None, Some(&reference)).unwrap().unwrap();
+        assert_eq!(priority_action_ref_for_game(&game, &resolved), reference);
+        for (bad_source, bad_index) in [(source.0, 1), (spell.0, 0)] {
+            let mut forged = reference.clone();
+            if let PriorityActionRef::CastSpell { casting_method: CastingMethodRef::ExactPermission { permission, .. }, .. } = &mut forged {
+                permission.source = bad_source;
+                permission.index = bad_index;
+            }
+            assert!(resolve_priority_action(&game, &stale, Some(0), Some(&forged)).unwrap().is_none());
+        }
+        let mut deferred = stale.clone();
+        deferred.analysis_complete = false;
+        assert_eq!(resolve_priority_action(&game, &deferred, None, Some(&reference)).unwrap(), Some(resolved));
+    }
+
+    #[test]
+    fn exact_permissions_preserve_origin_labels_and_payment_context() {
+        let _ids = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = PlayerId(0);
+        let card = ironsmith::CardBuilder::new(CardId::new(), "Example spell").build();
+        let spell = game.create_object_from_card(&card, player, Zone::Exile);
+        let source = ObjectId::from_raw(24);
+        for origin in [
+            CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None },
+            CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: Some(0) },
+            CastingMethod::SplitOtherHalfPlayFrom { source, zone: Zone::Exile, use_alternative: None },
+            CastingMethod::FaceDownPlayFrom { source, zone: Zone::Exile },
+        ] {
+            let exact = CastingMethod::ExactPermission { origin: Box::new(origin.clone()),
+                permission: GrantSelection { identity: GrantPermissionIdentity::Stored(71), source, index: 0 } };
+            let action = |casting_method| LegalAction::CastSpell { spell_id: spell, from_zone: Zone::Exile, casting_method };
+            assert_eq!(describe_action_with_face_up_cost(&game, &action(exact.clone()), None),
+                describe_action_with_face_up_cost(&game, &action(origin.clone()), None));
+            let mut pending = ironsmith::game_loop::PendingCast::new(
+                spell, Zone::Exile, player, ironsmith::provenance::ProvNodeId::default(),
+                CastStage::PayingMana, Some(2), Vec::new(), origin,
+                ironsmith::cost::OptionalCostsPaid::new(0), None, spell,
+            );
+            pending.base_mana_cost_waived = true;
+            let old_context = cast_payment_cost_context(&game, &pending);
+            pending.casting_method = exact;
+            assert_eq!(cast_payment_cost_context(&game, &pending), old_context);
+        }
+    }
 }
 
 /// The hidden card and public cast kind of a face-down cast ref.
@@ -96,11 +254,14 @@ pub(super) fn face_down_cast_claim_for_action_ref(
 ) -> Option<(ObjectId, ironsmith::game_state::FaceDownCastKind)> {
     let PriorityActionRef::CastSpell {
         spell_id,
-        casting_method:
-            CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
-            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. },
+        casting_method,
         ..
     } = action_ref
+    else {
+        return None;
+    };
+    let (CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+        | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. }) = casting_method.origin_method()
     else {
         return None;
     };
@@ -180,7 +341,7 @@ fn activation_mana_payment_available(
                     mana,
                 )
                 .with_x(minimum_x)
-                .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
+                .with_spend_policy(game.mana_spend_policy_for_reason(payer, Some(source), reason));
                 request.allow_black_life = game.player_can_pay_black_with_life_for_reason(
                     payer,
                     Some(source),
@@ -283,7 +444,7 @@ fn action_drag_decision_metadata(
     let LegalAction::CastSpell { spell_id, casting_method, .. } = action else {
         return (false, false);
     };
-    if matches!(casting_method, ironsmith::alternative_cast::CastingMethod::FaceDown | ironsmith::alternative_cast::CastingMethod::FaceDownPlayFrom { .. }) {
+    if matches!(casting_method.origin_method(), ironsmith::alternative_cast::CastingMethod::FaceDown | ironsmith::alternative_cast::CastingMethod::FaceDownPlayFrom { .. }) {
         return (false, false);
     }
     let Some(spell) = game.object(*spell_id) else {
@@ -556,6 +717,13 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             let mut qualifiers = Vec::new();
 
             match casting_method {
+                ironsmith::alternative_cast::CastingMethod::ExactPermission { origin, .. } => {
+                    return describe_action_with_face_up_cost(game, &LegalAction::CastSpell {
+                        spell_id: *spell_id,
+                        from_zone: *from_zone,
+                        casting_method: origin.as_ref().clone(),
+                    }, face_up_cost);
+                }
                 ironsmith::alternative_cast::CastingMethod::AlternativePrice { price, origin, prototype, .. } => {
                     if matches!(origin.as_ref(), ironsmith::alternative_cast::CastingMethod::SplitOtherHalf | ironsmith::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { .. })
                         && let Some(object) = game.object(*spell_id)
@@ -1179,6 +1347,10 @@ pub(super) fn casting_method_ref(
     method: &ironsmith::alternative_cast::CastingMethod,
 ) -> CastingMethodRef {
     match method {
+        ironsmith::alternative_cast::CastingMethod::ExactPermission { origin, permission } => CastingMethodRef::ExactPermission {
+            origin: Box::new(casting_method_ref(origin)),
+            permission: GrantSelectionRef { source: permission.source.0, index: permission.index },
+        },
         ironsmith::alternative_cast::CastingMethod::AlternativePrice { origin, origin_permission, price, prototype } => CastingMethodRef::AlternativePrice {
             origin: Box::new(casting_method_ref(origin)),
             origin_permission: origin_permission.as_ref().map(|key| GrantSelectionRef {source: key.source.0, index: key.index}),
@@ -1265,9 +1437,9 @@ pub(super) fn resolve_priority_action(
         let face_down_claim_source = match action_ref {
             PriorityActionRef::CastSpell {
                 spell_id,
-                casting_method: CastingMethodRef::FaceDown { .. } | CastingMethodRef::FaceDownPlayFrom { .. },
+                casting_method,
                 ..
-            } => {
+            } if matches!(casting_method.origin_method(), CastingMethodRef::FaceDown { .. } | CastingMethodRef::FaceDownPlayFrom { .. }) => {
                 let spell = ObjectId::from_raw(*spell_id);
                 game.hidden_face_down_cast_claim(spell).map(|_| spell)
             }

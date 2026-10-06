@@ -390,6 +390,7 @@ fn parse_subject_color<'a>(input: &mut LexStream<'a>) -> WResult<SubjectColorFac
     is_or_are().parse_next(input)?;
     let color = alt((
         semantic_phrase(&["all", "colors"]).value(Color::ALL.into_iter().collect::<ColorSet>()),
+        semantic_kw("colorless").value(ColorSet::COLORLESS),
         color_token,
     ))
     .parse_next(input)?;

@@ -97,6 +97,7 @@ pub use counter_constraints::{
     preserve_filter_counter_constraint_surface_words,
 };
 pub use decorations::{
+    FilterTailDecoration,
     apply_filter_tail_decoration, apply_parity_filter_phrases, parse_filter_distinct_names_tokens,
     parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
     parse_filter_tail_decoration_tokens, parse_filter_word_envelope,

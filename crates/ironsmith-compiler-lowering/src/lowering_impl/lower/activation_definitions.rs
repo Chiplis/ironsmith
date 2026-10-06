@@ -31,18 +31,43 @@ fn ability_reads_activation_history(ability: &crate::ability::Ability) -> bool {
 /// authored occurrence. Local allocator CardIds are deliberately excluded.
 /// Card names are ordinary definition metadata here; they never select rules.
 pub(super) fn stamp_activation_definitions(definition: &mut CardDefinition) -> Result<(), CardTextError> {
+    stamp_activation_definitions_with_generated(definition, &[])
+}
+
+pub(super) fn stamp_activation_definitions_with_generated(
+    definition: &mut CardDefinition,
+    generated: &[ironsmith_core::LinkedExileDefinition],
+) -> Result<(), CardTextError> {
     let readers: Vec<_> = definition.abilities.iter().map(ability_reads_activation_history).collect();
     if !readers.iter().any(|reader| *reader) { return Ok(()); }
-    let mut face = definition.card.clone();
-    face.id = ironsmith_core::CardId::from_raw(0);
-    face.other_face = None;
-    face.first_printed_set_name = None;
-    let bytes = serde_json::to_vec(&(face, &definition.abilities)).map_err(|error|
-        CardTextError::InvariantViolation(format!("cannot retain activation definition identity: {error}")))?;
+    let (bytes, domain): (_, &[u8]) = match super::trigger_definitions::authored_root_namespace_with_generated(definition, generated)? {
+        Some(bytes) => (bytes, b"ironsmith-activated-definition-v2\0"),
+        None => {
+            // Activation history predates this text-identity increment. Keep
+            // that existing owner available when an older opaque link stamp
+            // prevents the stronger canonical graph proof. This fallback is
+            // not new text-domain clearance or allocator-independence proof.
+            let mut face = definition.card.clone();
+            face.id = ironsmith_core::CardId::from_raw(0);
+            face.other_face = None;
+            face.first_printed_set_name = None;
+            let mut abilities = definition.abilities.clone();
+            for ability in &mut abilities {
+                match &mut ability.kind {
+                    AbilityKind::Activated(activated) => activated.effects.activation_definition = None,
+                    AbilityKind::Triggered(triggered) => triggered.effects.trigger_definition = None,
+                    AbilityKind::Static(_) => {}
+                }
+            }
+            let bytes = serde_json::to_vec(&(face, abilities)).map_err(|error|
+                CardTextError::InvariantViolation(format!("cannot retain legacy activation definition identity: {error}")))?;
+            (bytes, b"ironsmith-activated-definition-v1\0")
+        }
+    };
     for (occurrence, ability) in definition.abilities.iter_mut().enumerate() {
         if readers[occurrence] && let AbilityKind::Activated(activated) = &mut ability.kind {
             let mut digest = Sha256::new();
-            digest.update(b"ironsmith-activated-definition-v1\0");
+            digest.update(domain);
             digest.update(&bytes);
             digest.update((occurrence as u64).to_le_bytes());
             activated.effects.activation_definition = Some(ironsmith_core::LinkedExileDefinition(digest.finalize().into()));

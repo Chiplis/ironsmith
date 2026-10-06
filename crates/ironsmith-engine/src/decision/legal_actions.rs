@@ -124,6 +124,53 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
     }
 }
 
+/// Enumerate authoritative spell faces before querying marked readers. A
+/// permission may match only Bestow/Prototype/the linked face; ordinary absence
+/// on another face is not missing evidence and must not poison the menu.
+fn append_exact_permission_actions_for_card(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId,
+    card: &crate::object::Object, zone: Zone, view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let mut origins = vec![CastingMethod::PlayFrom { source: card.id, zone, use_alternative: None }];
+    origins.extend(card.alternative_casts.iter().enumerate().filter(|(_, method)| method.cast_from_zone() == Zone::Hand)
+        .map(|(index, _)| CastingMethod::PlayFrom { source: card.id, zone, use_alternative: Some(index) }));
+    if spell_can_be_cast_face_down(game, card) {
+        origins.push(CastingMethod::FaceDownPlayFrom { source: card.id, zone });
+    }
+    if let Some(face) = spell_view_for_split_other_half_cast(game, card) {
+        origins.push(CastingMethod::SplitOtherHalfPlayFrom { source: card.id, zone, use_alternative: None });
+        origins.extend(face.alternative_casts.iter().enumerate().filter(|(_, method)| method.cast_from_zone() == Zone::Hand)
+            .map(|(index, _)| CastingMethod::SplitOtherHalfPlayFrom { source: card.id, zone, use_alternative: Some(index) }));
+    }
+    for origin in origins {
+        let (face, _, _) = crate::alternative_cast::play_permission::selected_face(game, card, &origin)?;
+        let query = crate::grant_registry::proposed_card_face_query(game, &face)?;
+        let grants = query.effect_store.grant_registry.get_grants_for_card(&query, card.id, zone, player);
+        if let Some(error) = query.token_resource_failure() { return Err(error); }
+        for (index, grant) in grants.iter().enumerate() {
+            if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+                || grant.play_from_constraints.cast_mana_spend_mode.is_normal()
+                || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
+            let identity = grant.permission_identity.clone().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+                "permission-local mana omitted its immutable acquisition identity".into()))?;
+            let source = grant.source.source_id();
+            let mut selected_origin = origin.clone();
+            match &mut selected_origin {
+                CastingMethod::PlayFrom { source: selected, .. }
+                | CastingMethod::SplitOtherHalfPlayFrom { source: selected, .. }
+                | CastingMethod::FaceDownPlayFrom { source: selected, .. } => *selected = source,
+                _ => unreachable!("enumerated ordinary origin"),
+            }
+            let method = CastingMethod::ExactPermission { origin: Box::new(selected_origin),
+                permission: crate::alternative_cast::GrantSelection { source, index, identity } };
+            if can_cast_spell_with_view(game, player, card, &method, view) {
+                actions.push(LegalAction::CastSpell { spell_id: card.id, from_zone: zone, casting_method: method });
+            }
+        }
+    }
+    Ok(())
+}
+
 fn append_granted_play_from_actions_for_card(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
@@ -133,8 +180,10 @@ fn append_granted_play_from_actions_for_card(
     source_zone: Zone,
     view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
+    append_exact_permission_actions_for_card(game, actions, player, card, source_zone, view)?;
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
         if !grant_usage_limit_allows(
             game,
             player,
@@ -260,6 +309,7 @@ fn append_granted_play_from_actions_for_card(
             .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
         let cost = face_down_cast_mana_cost();
         for grant in face_view.granted_play_from_for_card(card_id, source_zone, player) {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
             if !grant_usage_limit_allows(
                 game,
                 player,
@@ -309,6 +359,7 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(card_id, source_zone, player)
             .len();
     for grant in adventure_play_from_grants {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
         if !grant_usage_limit_allows(
             game,
             player,

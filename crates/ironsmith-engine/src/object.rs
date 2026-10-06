@@ -957,6 +957,8 @@ pub struct Object {
     pub cast_grant_usage_identity: Option<Box<crate::grant_registry::GrantPermissionIdentity>>,
     pub cast_price:
         Option<Box<CastPriceReceipt<TotalCost, crate::grant_registry::GrantPermissionIdentity>>>,
+    /// Exact native casting authority and payer captured before any cost is paid.
+    pub cast_play_permission: Option<Box<crate::alternative_cast::play_permission::PlayPermissionReceipt>>,
     /// True if this split card can be cast fused from hand.
     pub has_fuse: bool,
     /// Optional costs (kicker, buyback, etc.)
@@ -1012,6 +1014,16 @@ pub struct Object {
 pub struct TemporaryAbilityOrigin {
     source: ObjectId,
     serial: u64,
+    /// A live grant's acquisition time in the game's continuous-effect clock.
+    /// Pre-entry assembly grants use the entering object's timestamp instead.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "Option::is_none"))]
+    acquired_at: Option<u64>,
+}
+
+impl TemporaryAbilityOrigin {
+    pub(crate) fn acquired_at(&self) -> Option<u64> {
+        self.acquired_at
+    }
 }
 
 /// Temporary grants paired with stable origins. Read access cannot detach
@@ -1035,7 +1047,15 @@ impl TemporaryStaticAbilityGrants {
     pub fn origin(&self, index: usize) -> Option<&TemporaryAbilityOrigin> {
         self.origins.get(index)
     }
-    pub fn push(&mut self, mut grant: TemporaryStaticAbilityGrant) {
+    /// Register during object assembly, before the object receives its zone
+    /// timestamp. Live GameState grants must use `push_at_timestamp`.
+    pub fn push(&mut self, grant: TemporaryStaticAbilityGrant) {
+        self.register(grant, None);
+    }
+    pub(crate) fn push_at_timestamp(&mut self, grant: TemporaryStaticAbilityGrant, timestamp: u64) {
+        self.register(grant, Some(timestamp));
+    }
+    fn register(&mut self, mut grant: TemporaryStaticAbilityGrant, acquired_at: Option<u64>) {
         // A registered keyword is one runtime ability occurrence. Materialize
         // its payload at registration so layer/query reads clone that ability
         // rather than allocate a new instance on each calculation.
@@ -1050,6 +1070,7 @@ impl TemporaryStaticAbilityGrants {
         self.origins.push(TemporaryAbilityOrigin {
             source: self.source,
             serial,
+            acquired_at,
         });
     }
     pub fn clear(&mut self) {
@@ -1346,6 +1367,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1436,6 +1458,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1745,6 +1768,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -1827,6 +1851,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: source.has_fuse,
             // Optional costs are copiable
             optional_costs: source.optional_costs.clone(),
@@ -1904,6 +1929,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: source.has_fuse,
             optional_costs: source.optional_costs.clone(),
             optional_costs_paid: source.optional_costs_paid.clone(),
@@ -1913,13 +1939,11 @@ impl Object {
             caster_mana_spent_to_cast: None,
             mana_spent_on_x: Some(crate::mana::XManaAllocation::default()),
             snow_mana_spent_to_cast: ManaPool::default(),
-            temporary_static_ability_grants: {
-                let mut grants = source.temporary_static_ability_grants.clone();
-                // A permission's indefinite recipient rider is an applied
-                // continuous effect, not part of the spell's copiable values.
-                grants.retain(|grant| grant.expires_end_of_turn.is_some());
-                grants
-            },
+            // CR 707.2/707.10: copy the spell's layer-one definition and
+            // casting choices, not later ability-grant effects. Duration does
+            // not make a grant copiable. Dash/Blitz reconstruct their riders
+            // from the copied casting choice when the permanent resolves.
+            temporary_static_ability_grants: TemporaryStaticAbilityGrants::new(id),
             x_value: source.x_value,
             keyword_payment_contributions_to_cast: source
                 .keyword_payment_contributions_to_cast
@@ -1990,6 +2014,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -2066,6 +2091,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: Vec::new().into(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -3090,6 +3116,7 @@ impl Object {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: def.has_fuse,
             optional_costs: handles.optional_costs.clone(),
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -3859,11 +3886,66 @@ mod native_temporary_registration_tests {
         grants
     }
     #[test]
+    fn acquired_timestamps_survive_clone_retention_and_component_merge() {
+        let mut grants = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(9983));
+        let shared = StaticAbility::set_colors(crate::target::ObjectFilter::source(), ColorSet::BLUE);
+        for (expiry, timestamp) in [(1, 11), (2, 17)] {
+            grants.push_at_timestamp(TemporaryStaticAbilityGrant {
+                ability: shared.id(), ability_payload: Some(shared.clone()),
+                expires_end_of_turn: Some(expiry),
+            }, timestamp);
+        }
+        let kept = grants.origin(1).unwrap().clone();
+        let mut cloned = grants.clone();
+        cloned.retain(|grant| grant.expires_end_of_turn == Some(2));
+        assert_eq!(cloned.origin(0), Some(&kept));
+        assert_eq!(kept.acquired_at(), Some(17));
+        let mut merged = TemporaryStaticAbilityGrants::new(ObjectId::from_raw(9984));
+        merged.extend_existing(&cloned);
+        assert_eq!(merged.origin(0), Some(&kept));
+        assert_eq!(merged[0].materialize().unwrap().instance_id(), shared.instance_id());
+        assert_ne!(grants.origin(0), grants.origin(1));
+    }
+
+    #[test]
+    fn merged_color_grants_keep_acquisition_order_after_a_new_host_timestamp() {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let owner = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Native chronology host")
+            .card_types(vec![CardType::Creature]).color_indicator(ColorSet::WHITE)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let host = game.create_object_from_card(&card, owner, Zone::Battlefield);
+        let component = game.create_object_from_card(&card, owner, Zone::Battlefield);
+        for (id, colors) in [(host, ColorSet::BLUE), (component, ColorSet::GREEN)] {
+            game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(id,
+                StaticAbilityId::SetColors,
+                Some(StaticAbility::set_colors(crate::target::ObjectFilter::source(), colors)));
+        }
+        let early = game.object(host).unwrap().temporary_static_ability_grants.clone();
+        let late = game.object(component).unwrap().temporary_static_ability_grants.clone();
+        let mut merged = TemporaryStaticAbilityGrants::new(host);
+        // Component ordering must not become effect chronology after a merge.
+        merged.extend_existing(&late);
+        merged.extend_existing(&early);
+        game.object_mut(host).unwrap().temporary_static_ability_grants = merged;
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_colors(host), Some(ColorSet::GREEN));
+        assert!(game.set_face_down(host));
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.current_colors(host), Some(ColorSet::GREEN));
+        assert_eq!(game.object(host).unwrap().temporary_static_ability_grants.origin(0), late.origin(0));
+        assert_eq!(game.object(host).unwrap().temporary_static_ability_grants.origin(1), early.origin(0));
+        let cloned = game.clone();
+        assert_eq!(cloned.current_colors(host), Some(ColorSet::GREEN));
+    }
+
+    #[test]
     fn native_clone_temporary_registration_preserves_aliases_origins_expiry_and_allocator() {
         let original = fixture();
         let removed = TemporaryAbilityOrigin {
             source: original.source,
             serial: 0,
+            acquired_at: None,
         };
         assert!(!original.origins.contains(&removed));
         assert_ne!(

@@ -52,6 +52,33 @@ fn five_frozen_complete_bodies_reach_both_compilers_without_discarding_secondary
     }
 }
 
+#[test]
+fn five_first_draw_definition_pairs_and_trigger_occurrences_survive_unrelated_card_allocations() {
+    fn identities(definition: &CardDefinition) -> (Vec<ironsmith_core::LinkedExilePair>, Vec<Option<ironsmith_core::LinkedExileDefinition>>) {
+        let pairs = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(ability) => ability.reveal_drawn_card_spec().and_then(|spec| spec.linked_reveal_pair),
+            _ => None,
+        }).collect::<Vec<_>>();
+        let triggers = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(ability) => Some(ability.effects.retained_trigger_definition()),
+            _ => None,
+        }).collect::<Vec<_>>();
+        (pairs, triggers)
+    }
+    for row in rows() {
+        let name = row["name"].as_str().unwrap();
+        let [direct, artifact] = definitions(name);
+        let expected = identities(&direct);
+        assert_eq!(expected.0.len(), 1);
+        assert!(expected.1.iter().all(Option::is_some));
+        assert_eq!(identities(&artifact), expected, "direct and artifact construction use one authored namespace: {name}");
+        for _ in 0..17 { let _ = ironsmith::CardId::new(); }
+        for recompiled in definitions(name) {
+            assert_eq!(identities(&recompiled), expected, "including Eisenhorn's nested Cherubael definition: {name}");
+        }
+    }
+}
+
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
 use ironsmith::effects::{EffectExecutor, ExecutionContext};
 use ironsmith::game_loop::{put_triggers_on_stack_with_dm, resolve_stack_entry_with};
@@ -583,7 +610,7 @@ fn unmarked_artifact_defaults_preserve_legacy_json_shape_and_checksum() {
     let text = std::str::from_utf8(&json).unwrap();
     assert!(!text.contains("linked_reveal_pair"));
     assert!(!text.contains("first_draw_pair"));
-    assert_eq!(artifact.format_version, 6);
+    assert_eq!(artifact.format_version, ironsmith_compiled_artifact::FORMAT_VERSION);
     let restored = CompiledCardArtifact::from_json(&json).unwrap();
     restored.validate().unwrap();
     assert_eq!(restored.payload_checksum, artifact.payload_checksum);

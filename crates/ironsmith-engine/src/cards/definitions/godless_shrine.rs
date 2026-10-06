@@ -23,7 +23,6 @@ mod tests {
     use super::*;
     use crate::Zone;
     use crate::ability::AbilityKind;
-    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
 
@@ -62,10 +61,10 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn test_godless_shrine_has_two_abilities() {
+    fn test_godless_shrine_has_only_its_authored_entry_ability() {
         let def = godless_shrine();
-        // 1 static ability (pay life or enter tapped) + 1 mana ability with a color choice
-        assert_eq!(def.abilities.len(), 2);
+        assert_eq!(def.abilities.len(), 1);
+        assert!(!def.abilities.iter().any(|ability| ability.is_mana_ability()));
     }
 
     // ========================================
@@ -85,31 +84,14 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn test_second_ability_offers_white_and_black() {
-        let def = godless_shrine();
-        let mana_abilities: Vec<_> = def
-            .abilities
-            .iter()
-            .filter_map(|a| match &a.kind {
-                AbilityKind::Activated(mana) if mana.is_mana_ability() => Some(mana),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(mana_abilities.len(), 1, "Should have one mana ability");
-
-        let add_any = mana_abilities[0]
-            .effects
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
-            .expect("Should use restricted color-choice mana effect");
-        let colors = add_any
-            .available_colors
-            .as_ref()
-            .expect("Should expose restricted colors");
-        assert_eq!(colors.len(), 2);
-        assert!(colors.contains(&crate::color::Color::White));
-        assert!(colors.contains(&crate::color::Color::Black));
-        assert!(mana_abilities[0].has_tap_cost());
+    fn test_current_types_supply_white_and_black_mana() {
+        let mut game = setup_game();
+        let id = game.create_object_from_definition(&godless_shrine(), PlayerId::from_index(0), Zone::Battlefield);
+        let abilities = game.current_abilities(id).unwrap();
+        assert_eq!(abilities.iter().filter(|ability| ability.is_mana_ability()).count(), 2);
+        for subtype in [Subtype::Plains, Subtype::Swamp] {
+            assert!(abilities.contains(&crate::ability::Ability::basic_land_mana(subtype).unwrap()));
+        }
     }
 
     // ========================================
@@ -128,8 +110,8 @@ mod tests {
         assert!(game.battlefield.contains(&shrine_id));
 
         let obj = game.object(shrine_id).unwrap();
-        // 1 static ability + 1 mana ability with a color choice
-        assert_eq!(obj.abilities.len(), 2);
+        // Only the authored entry ability is stored; subtype mana is derived.
+        assert_eq!(obj.abilities.len(), 1);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

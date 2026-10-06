@@ -81,8 +81,9 @@ fn authored_rules_tokens(
     let tokens = lex_line(raw, line_index)?;
     match preprocess_grammar::parse_parenthetical_line_surface_tokens(&tokens) {
         Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
-            // Parenthesized standalone abilities (such as a land's mana
-            // ability) are rules, not an appended reminder.
+            // Preserve standalone activation tokens until the document owner
+            // can distinguish functional text from a typed CR 305.6 reminder.
+            // A reminder is never lowered as a printed ability.
             Ok(crate::util::strip_parenthetical_tokens(
                 &tokens[1..tokens.len() - 1],
             ))
@@ -1888,6 +1889,10 @@ pub fn preprocess_document_with_provenance(
             }
         }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
+        semantic_facts.intrinsic_basic_land_mana_reminder =
+            preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(
+                &lex_line(raw_line.trim(), line_index)?,
+            );
         if entry_instead_surface
             && let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
         {
@@ -1989,9 +1994,15 @@ pub fn preprocess_document_with_provenance(
                         )
                     )
                 })
-        }) {
+        }) && lex_line(raw_line.trim(), line_index).ok()
+            .and_then(|tokens| preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(&tokens))
+            .is_none()
+        {
             continue;
         }
+        // Keep a recognized intrinsic reminder through preprocessing so the
+        // document owner can validate its metadata and preserve source evidence.
+        // Generic reminder-only lines still follow the CST exclusion above.
         let line = raw_line.trim();
         if line.is_empty() {
             continue;
@@ -2153,6 +2164,8 @@ pub fn make_line_info(
     let raw_line = raw_line.into();
     let source_tokens = authored_rules_tokens(raw_line.as_str(), line_index).unwrap_or_default();
     let mut semantic_facts = crate::model::facts::LineSemanticFacts::default();
+    semantic_facts.intrinsic_basic_land_mana_reminder = lex_line(&raw_line, line_index)
+        .ok().and_then(|tokens| preprocess_grammar::parse_intrinsic_basic_land_mana_reminder_tokens(&tokens));
     semantic_facts.station_creature_threshold = station_reminder_threshold(&raw_line, line_index);
     semantic_facts.supported_sneak_form = supported_sneak_reminder(&raw_line, line_index);
     LineInfo {
@@ -2170,6 +2183,18 @@ mod tests {
     use super::*;
     use crate::ids::CardId;
     use ironsmith_core::card::CardBuilder;
+
+
+    #[test]
+    fn intrinsic_reminder_survives_cst_exclusion_as_typed_source_evidence() {
+        let document = preprocess_document(CardBuilder::new(CardId::new(), "Typed reminder"),
+            "({T}: Add {G}.)\nType: Land — Forest").unwrap();
+        let PreprocessedItem::Line(line) = &document.items[0] else { panic!("typed reminder line"); };
+        assert_eq!(line.info.semantic_facts.intrinsic_basic_land_mana_reminder,
+            Some(vec![crate::types::Subtype::Forest]));
+        assert_eq!(line.info.raw_line, "({T}: Add {G}.)");
+        assert!(document.card.oracle_text_ref().contains("({T}: Add {G}.)"));
+    }
 
     #[test]
     fn authored_rules_strip_reminders_before_keyword_recognition() {

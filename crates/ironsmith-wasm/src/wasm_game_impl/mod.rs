@@ -27,6 +27,8 @@ mod hidden_resolution_tests;
 
 #[cfg(test)]
 mod static_top_visibility_tests;
+#[cfg(test)]
+mod exact_permission_savepoint_tests;
 
 #[cfg(test)]
 mod face_down_zone_permission_tests;

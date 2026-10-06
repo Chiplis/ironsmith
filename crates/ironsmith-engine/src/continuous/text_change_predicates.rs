@@ -95,7 +95,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
     // This positive field inventory makes nondefault future fields fail closed.
     // String-valued names and surfaces are preserved verbatim, never interpreted.
     admit!(
-        zone, match_current_state, controller, cast_by, excluded_cast_origin_zone,
+        zone, match_current_state, has_cumulative_upkeep, controller, cast_by, excluded_cast_origin_zone,
         cast_this_turn, first_spell_cast_each_turn, spell_cast_ordinal_each_turn,
         spell_cast_minimum_each_turn, mana_from_source_spent_to_cast, owner,
         single_graveyard, targets_player, targets_object, targets_any_of, stack_kind,

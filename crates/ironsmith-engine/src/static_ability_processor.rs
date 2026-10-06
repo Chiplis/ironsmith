@@ -386,13 +386,29 @@ fn source_abilities(
                 .unwrap_or_else(|| object.abilities.clone().into())
         }).clone()
     } else { object.abilities.clone().into() };
-    for (index, grant) in object.temporary_static_ability_grants.iter().enumerate() {
+    // A later host timestamp makes its granted effects share that timestamp.
+    // Keep their prior acquisition order even when component merge storage is
+    // arranged differently (CR 613.7a). The registered slots/origins are intact.
+    let mut grants: Vec<_> = object.temporary_static_ability_grants.iter().enumerate().collect();
+    grants.sort_by_key(|(index, _)| object.temporary_static_ability_grants
+        .origin(*index).expect("temporary grant has a paired origin").acquired_at());
+    for (index, grant) in grants {
         if grant.is_expired(game.turn.turn_number) { continue; }
         let Some(ability) = grant.materialize() else { continue; };
         let origin = object.temporary_static_ability_grants.origin(index)
             .expect("temporary grant has a paired origin").clone();
-        abilities.push_with_origin(crate::ability::Ability::static_ability(ability),
-            crate::continuous::AbilityOrigin::Temporary(origin));
+        // A temporary grant is not printed/copied rules text. Color setters
+        // use the host's ordinary zone (CR 113.6), not a CDA's all-zone default.
+        // Other grant families keep their existing policy.
+        let is_color_definition = ability.characteristic_defining_colors().is_some();
+        let ability = crate::ability::Ability::static_ability(ability);
+        let ability = if is_color_definition {
+            let zone = if object.has_card_type(crate::types::CardType::Instant)
+                || object.has_card_type(crate::types::CardType::Sorcery)
+            { Zone::Stack } else { Zone::Battlefield };
+            ability.in_zones(vec![zone])
+        } else { ability };
+        abilities.push_with_origin(ability, crate::continuous::AbilityOrigin::Temporary(origin));
     }
     abilities
 }
@@ -415,22 +431,32 @@ fn generate_direct_static_effects(
             continue;
         }
         let mut ability_effects = static_ability.generate_effects(object_id, controller, game);
-        let object_timestamp = game
-            .effect_store
-            .continuous_effects
+        let origin = abilities.origin(slot).expect("static source has paired origins").clone();
+        let acquired_at = match &origin {
+            crate::continuous::AbilityOrigin::Temporary(origin) => origin.acquired_at(),
+            _ => None,
+        };
+        let object_timestamp = game.effect_store.continuous_effects
             .get_object_timestamp(object_id);
+        // CR 613.7a: a granted static effect uses the later of its object's
+        // timestamp and the timestamp of the effect that created the ability.
+        let timestamp = match (object_timestamp, acquired_at) {
+            (Some(object), Some(grant)) => Some(object.max(grant)),
+            (object, grant) => object.or(grant),
+        };
         for (branch, effect) in ability_effects.iter_mut().enumerate() {
-            if let Some(ts) = object_timestamp {
+            if let Some(ts) = timestamp {
                 effect.timestamp = ts;
             }
             effect.originating_static_ability = Some(static_ability.clone());
-            let origin = abilities.origin(slot).expect("static source has paired origins").clone();
             let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
                 .then_some(object.card).flatten();
             effect.originating_ability = Some(Box::new(crate::continuous::ContinuousAbilityOrigin {
-                host: object_id, ability: origin, printed_face: face, branch,
+                host: object_id, ability: origin.clone(), printed_face: face, branch,
             }));
-            if effect_is_characteristic_defining(effect, object_id) {
+            if effect.originating_ability.as_ref().is_some_and(|origin| origin.ability.is_rules_text())
+                && effect_is_characteristic_defining(effect, object_id)
+            {
                 effect.source_type = EffectSourceType::CharacteristicDefining;
             }
         }
@@ -455,13 +481,7 @@ fn effect_is_characteristic_defining(effect: &ContinuousEffect, source: ObjectId
         EffectTarget::Source => true,
         EffectTarget::Specific(id) => *id == source,
         // "~ is colorless" compiles to a filter that names only the source.
-        EffectTarget::Filter(filter) => {
-            filter.source && {
-                let mut source_only = crate::target::ObjectFilter::source();
-                source_only.source_surface = filter.source_surface.clone();
-                *filter == source_only
-            }
-        }
+        EffectTarget::Filter(filter) => filter.is_source_only(),
         _ => false,
     };
     if !applies_to_self {

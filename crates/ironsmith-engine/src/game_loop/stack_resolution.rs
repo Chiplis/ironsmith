@@ -1923,7 +1923,7 @@ fn resolve_stack_entry_full_inner(
                 .map_or_else(
                     || {
                         matches!(
-                            entry.casting_method,
+                            entry.casting_method.origin_method(),
                             CastingMethod::Normal
                                 | CastingMethod::PlayFrom {
                                     zone: Zone::Hand,
@@ -1946,7 +1946,7 @@ fn resolve_stack_entry_full_inner(
 
             // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match entry.casting_method.origin_method() {
-                CastingMethod::AlternativePrice { .. } => false,
+                CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. } => false,
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
                 CastingMethod::SplitOtherHalf

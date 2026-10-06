@@ -135,6 +135,69 @@ impl TextChange {
     }
 }
 
+/// Resolution-time choice vocabulary. The fixed destination is deliberately
+/// distinct from “another”: selecting that same source is a legal no-change
+/// outcome, whereas TextChange itself only stores nonidentity substitutions.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(try_from = "TextChangeSelectionModel"))]
+#[derive(Debug, Clone, PartialEq, Eq, crate::tag::TagKeyWalk)]
+pub enum TextChangeSelection {
+    Color,
+    BasicLand,
+    ColorOrBasicLand,
+    Creature { excluded_new: Vec<Subtype> },
+    CreatureTo(Subtype),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+enum TextChangeSelectionModel {
+    Color,
+    BasicLand,
+    ColorOrBasicLand,
+    Creature { excluded_new: Vec<Subtype> },
+    CreatureTo(Subtype),
+}
+
+impl TryFrom<TextChangeSelectionModel> for TextChangeSelection {
+    type Error = TextChangeError;
+    fn try_from(model: TextChangeSelectionModel) -> Result<Self, Self::Error> {
+        let selection = match model {
+            TextChangeSelectionModel::Color => Self::Color,
+            TextChangeSelectionModel::BasicLand => Self::BasicLand,
+            TextChangeSelectionModel::ColorOrBasicLand => Self::ColorOrBasicLand,
+            TextChangeSelectionModel::Creature { excluded_new } => Self::Creature { excluded_new },
+            TextChangeSelectionModel::CreatureTo(subtype) => Self::CreatureTo(subtype),
+        };
+        selection.validate()?;
+        Ok(selection)
+    }
+}
+
+impl TextChangeSelection {
+    pub fn validate(&self) -> Result<(), TextChangeError> {
+        match self {
+            Self::Creature { excluded_new } if excluded_new.iter().any(|subtype| !subtype.is_creature_type()) =>
+                Err(TextChangeError::InvalidCreatureType),
+            Self::CreatureTo(subtype) if !subtype.is_creature_type() => Err(TextChangeError::InvalidCreatureType),
+            _ => Ok(()),
+        }
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, crate::tag::TagKeyWalk)]
+pub struct ChangeTextEffect {
+    pub target: crate::ChooseSpec,
+    pub selection: TextChangeSelection,
+    pub duration: crate::Until,
+}
+
+impl ChangeTextEffect {
+    pub fn new(target: crate::ChooseSpec, selection: TextChangeSelection, duration: crate::Until) -> Self {
+        Self { target, selection, duration }
+    }
+}
+
 crate::tag_key_leaves!(TextWord, TextChange);
 
 #[cfg(test)]
@@ -179,4 +242,14 @@ mod tests {
         assert!(serde_json::from_str::<TextChange>(
             r#"{"from":{"CreatureType":"Equipment"},"to":{"CreatureType":"Wall"}}"#).is_err());
     }
+    #[cfg(feature = "serde")]
+    #[test]
+    fn selection_wire_rejects_noncreature_fixed_or_excluded_destinations() {
+        let fixed = TextChangeSelection::CreatureTo(Subtype::Vampire);
+        let wire = serde_json::to_value(&fixed).unwrap();
+        assert_eq!(serde_json::from_value::<TextChangeSelection>(wire).unwrap(), fixed);
+        assert!(serde_json::from_str::<TextChangeSelection>(r#"{"CreatureTo":"Equipment"}"#).is_err());
+        assert!(serde_json::from_str::<TextChangeSelection>(r#"{"Creature":{"excluded_new":["Forest"]}}"#).is_err());
+    }
+
 }

@@ -177,27 +177,6 @@ impl BattlefieldCharacteristicScope {
     }
 }
 
-/// Append an ability to a fast-path ability list unless it is already there,
-/// with the same identity rule the layer calculation uses (static abilities
-/// by instance id, everything else by value).
-fn push_fast_path_ability_once(abilities: &mut Vec<Ability>, candidate: Ability) {
-    let present = match &candidate.kind {
-        AbilityKind::Static(static_ability) => {
-            let instance_id = static_ability.instance_id();
-            abilities.iter().any(|existing| {
-                matches!(
-                    &existing.kind,
-                    AbilityKind::Static(existing) if existing.instance_id() == instance_id
-                )
-            })
-        }
-        _ => abilities.contains(&candidate),
-    };
-    if !present {
-        abilities.push(candidate);
-    }
-}
-
 fn battlefield_characteristic_scope(
     game: &GameState,
     effects: &[ContinuousEffect],
@@ -754,42 +733,16 @@ impl<'a> DerivedGameView<'a> {
             // Mirror the no-effect ability-layer input: intrinsic basic-land
             // mana precedes level grants, then inactive static abilities are
             // dropped, so advertised and dispatch index spaces agree.
-            let mut abilities = object.abilities_vec();
-            for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
-                &object.card_types,
-                &object.subtypes,
-            ) {
-                if !abilities.contains(&ability) {
-                    abilities.push(ability);
-                }
-            }
-            for (_, ability) in
-                crate::continuous::intrinsic_starting_counter_abilities(&object.card_types)
-            {
-                abilities.push(ability);
-            }
-            for level_ability in object.level_granted_abilities() {
-                for granted in level_ability.source_granted_inline_abilities() {
-                    let candidate = match &granted.kind {
-                        AbilityKind::Static(static_ability) => {
-                            crate::ability::Ability::static_ability(static_ability.clone())
-                        }
-                        _ => granted.clone(),
-                    };
-                    push_fast_path_ability_once(&mut abilities, candidate);
-                }
-                push_fast_path_ability_once(
-                    &mut abilities,
-                    crate::ability::Ability::static_ability(level_ability),
-                );
-            }
+            let mut abilities = crate::continuous::unmodified_ability_occurrences(
+                object, self.game.turn.turn_number,
+            );
             abilities.retain(|ability| match &ability.kind {
                 AbilityKind::Static(static_ability) => {
                     static_ability.is_active(self.game, object_id)
                 }
                 _ => true,
             });
-            Arc::new(abilities)
+            abilities.shared()
         } else {
             // The calculated abilities already live behind an `Arc`; sharing it
             // avoids deep-cloning every `Ability` (each carrying filters and

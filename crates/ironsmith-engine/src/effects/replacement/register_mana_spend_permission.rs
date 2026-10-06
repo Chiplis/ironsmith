@@ -11,6 +11,7 @@ impl EffectExecutor for RegisterManaSpendPermissionEffect {
             _ => return Err(ExecutionError::UnresolvableValue("unsupported mana-spend permission duration".into())),
         };
         game.effect_store.mana_spend_effects.permissions.push(ActiveManaSpendPermission {
+            play_permission_identities: None,
             permission: self.permission.clone(), controller: ctx.controller,
             source,
         });

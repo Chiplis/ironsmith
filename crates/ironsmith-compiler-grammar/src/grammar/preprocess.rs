@@ -20,3 +20,7 @@ pub use document_shapes::*;
 pub use line_shapes::*;
 pub use name_shapes::*;
 pub use vote_shapes::*;
+
+#[path = "preprocess/intrinsic_land_mana.rs"]
+mod intrinsic_land_mana;
+pub use intrinsic_land_mana::*;

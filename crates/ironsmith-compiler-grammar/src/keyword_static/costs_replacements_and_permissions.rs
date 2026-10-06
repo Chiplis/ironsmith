@@ -2470,7 +2470,14 @@ pub fn parse_all_creatures_are_color_line(
     let Some(fact) = type_and_color_facts::parse_subject_color_tokens(tokens) else {
         return Ok(None);
     };
-    let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+    let mut filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+    // CR 109.2: an unqualified type/subtype noun ("Slivers") means
+    // permanents. Preserve source references and explicit card/zone domains.
+    if !filter.source && filter.zone.is_none() && filter.any_of.is_empty()
+        && !filter.has_explicit_card_noun()
+    {
+        filter.zone = Some(Zone::Battlefield);
+    }
 
     Ok(Some(StaticAbility::set_colors(filter, fact.color)))
 }
@@ -8309,5 +8316,31 @@ mod foretell_special_action_modifier_tests {
             let tokens = crate::lexer::lex_line(line, 0).unwrap();
             assert!(parse_foretelling_cards_cost_modifier_line(&tokens).is_err(), "{line}");
         }
+    }
+}
+
+#[cfg(test)]
+mod static_color_subject_tests {
+    use super::*;
+
+    #[test]
+    fn nominal_slivers_mean_permanents_and_literal_source_colorless_is_not_devoid() {
+        let tokens = crate::lexer::lex_line("All Slivers are colorless.", 0).unwrap();
+        let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+            panic!("literal color statement must use SetColors");
+        };
+        assert_eq!(colors, crate::color::ColorSet::COLORLESS);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.subtypes, vec![Subtype::Sliver]);
+        assert!(filter.card_types.is_empty());
+        assert!(filter.controller.is_none() && !filter.source && !filter.other);
+        let tokens = crate::lexer::lex_line("This spell is colorless.", 0).unwrap();
+        let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+            panic!("literal colorless is not the Devoid keyword");
+        };
+        assert!(filter.is_source_only());
+        assert_eq!(colors, crate::color::ColorSet::COLORLESS);
     }
 }

@@ -29,6 +29,8 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 CharacteristicActionAst::BecomeBasicLandTypeChoice { .. }
             )
             | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::ChangeText { .. }
+            ) | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeColorChoice { .. }
             )
             | SubjectVerbActionAst::Characteristics(
@@ -3081,6 +3083,9 @@ pub(super) fn compile_subject_verb_middle(
                 excluded_subtypes.clone(),
             ))
         }),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
+            compile_tagged_effect_for_target(target, ctx, "text_changed", |spec|
+                Effect::new(crate::effects::ChangeTextEffect::new(spec, selection.clone(), duration.clone()))),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             target,
             duration,

@@ -2470,6 +2470,9 @@ pub struct ObjectFilter {
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
+    /// Literal presence/absence of the cumulative-upkeep keyword mechanic.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub has_cumulative_upkeep: Option<bool>,
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
     pub no_shared_creature_types_with: Vec<ObjectFilter>,
@@ -3176,6 +3179,7 @@ impl ObjectFilter {
             || self.alternative_cast.is_some()
             || !self.static_abilities.is_empty()
             || !self.excluded_static_abilities.is_empty()
+            || self.has_cumulative_upkeep.is_some()
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
             || !self.no_shared_creature_types_with.is_empty()
@@ -4011,6 +4015,14 @@ impl ObjectFilter {
             source: true,
             ..Default::default()
         }
+    }
+
+    /// A source reference with no characteristic restriction. Presentation of
+    /// "this spell"/"this creature" does not restrict what the source can become.
+    pub fn is_source_only(&self) -> bool {
+        let mut source = Self::source();
+        source.source_surface = self.source_surface.clone();
+        *self == source
     }
 
     pub fn source_with_surface(surface: SourceReferenceSurface) -> Self {
@@ -5897,6 +5909,9 @@ impl ObjectFilter {
                     parts.push(format!("without {}", label));
                 }
             }
+        }
+        if let Some(has) = self.has_cumulative_upkeep {
+            parts.push(if has { "with cumulative upkeep" } else { "that doesn't have cumulative upkeep" }.into());
         }
         for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));

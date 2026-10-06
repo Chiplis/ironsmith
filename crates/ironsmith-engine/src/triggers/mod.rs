@@ -43,6 +43,7 @@
 use crate::events::KeywordActionKind;
 
 pub mod check;
+pub(crate) mod acquisition;
 pub mod event;
 pub mod matcher_trait;
 mod model_interpreter;
@@ -224,7 +225,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
 ///
 /// This struct provides factory methods for creating common trigger types
 /// and implements the TriggerMatcher trait by delegating to the inner matcher.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TriggerIntroSurface {
     When,
     Whenever,
@@ -245,6 +246,10 @@ pub struct Trigger {
     matcher: Arc<dyn TriggerMatcher>,
     intro_surface: Option<TriggerIntroSurface>,
     retained_model: Option<Arc<ironsmith_core::trigger_model::Trigger>>,
+    acquisition: Option<acquisition::TriggerAcquisition>,
+    text_change_cache: Arc<std::sync::Mutex<std::collections::HashMap<
+        (ironsmith_core::TextChange, Option<TriggerIntroSurface>, Option<acquisition::TriggerAcquisition>),
+        Result<Trigger, crate::continuous::text_changes::TextChangeDomainError>>>>,
 }
 
 impl std::fmt::Debug for Trigger {
@@ -263,6 +268,8 @@ impl Clone for Trigger {
             matcher: Arc::clone(&self.matcher),
             intro_surface: self.intro_surface,
             retained_model: self.retained_model.clone(),
+            acquisition: self.acquisition.clone(),
+            text_change_cache: Arc::clone(&self.text_change_cache),
         }
     }
 }
@@ -303,7 +310,31 @@ impl Trigger {
             matcher: Arc::new(matcher),
             intro_surface,
             retained_model,
+            acquisition: None,
+            text_change_cache: Default::default(),
         }
+    }
+
+    /// Rewrite an immutable trigger definition once per directed change and
+    /// preserve the matcher captured by earlier stack entries. Presentation
+    /// is a cache dimension only, never an executable predicate.
+    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
+        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let key = (change, self.intro_surface, self.acquisition.clone());
+        if let Some(value) = self.text_change_cache.lock().unwrap_or_else(|poison| poison.into_inner())
+            .get(&key).cloned() { return value; }
+        let value = crate::continuous::text_change_triggers::rewrite_trigger_words(self, change)
+            .map(|mut rewritten| {
+                rewritten.acquisition = self.acquisition.clone();
+                rewritten
+            });
+        if value.as_ref().is_ok_and(|rewritten| Arc::ptr_eq(&self.matcher, &rewritten.matcher)) {
+            // Caching the original clone would create an Arc ownership cycle.
+            return value;
+        }
+        let mut cache = self.text_change_cache.lock().unwrap_or_else(|poison| poison.into_inner());
+        cache.entry(key).or_insert_with(|| value.clone()).clone()
     }
 
     pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
@@ -320,6 +351,17 @@ impl Trigger {
             });
         }
         self
+    }
+
+    /// A definition-only quoted ability may be transformed before it is
+    /// granted. Active rules text additionally needs this acquisition proof.
+    pub(crate) fn acquired_identity(
+        &self,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+    ) -> Option<TriggerIdentity> {
+        self.acquisition.as_ref()
+            .filter(|acquisition| Some(acquisition.definition) == definition)
+            .map(acquisition::TriggerAcquisition::identity)
     }
 
     /// The complete shared trigger vocabulary captured during model lowering.
@@ -375,6 +417,8 @@ impl Trigger {
         // Only successful mutable access invalidates the model. Failed type or
         // shared-ownership checks cannot discard otherwise valid transport data.
         self.retained_model = None;
+        self.acquisition = None;
+        self.text_change_cache = Default::default();
         Some(matcher)
     }
 

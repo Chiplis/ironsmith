@@ -1776,6 +1776,7 @@ fn filtered_activation_mana_spend_permissions_match_allowed_sources() {
         .mana_spend_effects
         .permissions
         .push(ActiveManaSpendPermission {
+            play_permission_identities: None,
             permission: ManaSpendPermission::any_color_for_activation(
                 crate::target::PlayerFilter::You,
                 crate::target::ObjectFilter::creature().you_control(),
@@ -1818,6 +1819,7 @@ fn source_filtered_mana_spend_permissions_match_mana_sources() {
         .mana_spend_effects
         .permissions
         .push(ActiveManaSpendPermission {
+            play_permission_identities: None,
             permission: ManaSpendPermission::any_color_for_activation(
                 crate::target::PlayerFilter::You,
                 crate::target::ObjectFilter::creature().you_control(),
@@ -1889,6 +1891,7 @@ fn source_filtered_casting_permission_matches_stack_spell_origin_snapshot() {
         .mana_spend_effects
         .permissions
         .push(ActiveManaSpendPermission {
+            play_permission_identities: None,
             permission: ManaSpendPermission::any_color_from_sources_for_casting_matching(
                 crate::target::PlayerFilter::You,
                 spell_filter,

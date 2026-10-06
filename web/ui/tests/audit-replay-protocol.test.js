@@ -40,18 +40,18 @@ const action = { command: { type: "priority_action", action_ref: { kind: "pass_p
 test("all engine replay entry points reject old, absent and mismatched protocol before reading engine state", async () => {
   const entries = [replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame,
     verifyEndOfMatchDisclosuresWithGame];
-  const invalid = [14, 16, 17, 18, null, "19"].map(version => transcript(version));
-  invalid.push({}, { match: {} }, transcript(19, 18), transcript(18, 19), transcript(19, null));
+  const invalid = [14, 16, 17, 18, 19, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
+  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 19), transcript(19, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
   for (const candidate of invalid) {
     for (const entry of entries) {
       const h = replayGame();
-      await assert.rejects(entry({ game: h.game, transcript: candidate, cryptoImpl: webcrypto }), /requires audit protocol 19/);
+      await assert.rejects(entry({ game: h.game, transcript: candidate, cryptoImpl: webcrypto }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
       assert.deepEqual(h.calls, []);
     }
     let callbacks = 0;
     await assert.rejects(verifyLiveAuditTranscript(candidate, webcrypto, {
       requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-    }), /requires audit protocol 19/);
+    }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
     assert.equal(callbacks, 0);
   }
 });
@@ -63,8 +63,8 @@ test("actions require successful initialization and recheck the session protocol
   const candidate = transcript();
   await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });
   h.calls.length = 0;
-  candidate.match.protocolVersion = 18;
-  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /requires audit protocol 19/);
+  candidate.match.protocolVersion = 19;
+  await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
   assert.deepEqual(h.calls, []);
 });
 

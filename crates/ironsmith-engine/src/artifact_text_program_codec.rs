@@ -24,6 +24,10 @@ fn unsupported(detail: &'static str) -> RuntimePayloadEncodingError {
 pub(super) fn encode_text_changed_native_effect(effect: &Effect)
     -> Result<Option<wire::WireEffect>, RuntimePayloadEncodingError>
 {
+    if let Some(model) = effect.downcast_ref::<ChangeTextEffect>() {
+        model.selection.validate().map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() })?;
+        return encoded("ChangeTextEffect", model);
+    }
     if let Some(model) = effect.downcast_ref::<DestroyEffect>() {
         return encoded("DestroyEffect", ironsmith_core::DestroyEffect::with_spec(model.spec.clone()));
     }

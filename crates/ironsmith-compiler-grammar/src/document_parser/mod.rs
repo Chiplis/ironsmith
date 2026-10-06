@@ -3790,6 +3790,21 @@ pub fn recognize_document_with_context(
                 idx += 1;
             }
             PreprocessedItem::Line(line) => {
+                if let Some(types) = &line.info.semantic_facts.intrinsic_basic_land_mana_reminder {
+                    // Use final typed metadata, even if its source line occurs
+                    // after the reminder. Keep the original line in the CST and
+                    // Oracle text, but never turn rule reminder text into an
+                    // authored activation or copied text-box ability.
+                    if !preprocessed.card.card_types_ref().contains(&CardType::Land)
+                        || types.iter().any(|subtype| !preprocessed.card.subtypes_ref().contains(subtype))
+                    {
+                        return Err(CardTextError::ParseError(
+                            "intrinsic basic-land mana reminder disagrees with land type metadata".into(),
+                        ));
+                    }
+                    idx += 1;
+                    continue;
+                }
                 // Every recognizer of this line, and the later phases that parse
                 // its effects, bind the keys they mint in the line's symbol scope.
                 let line_context = context.child(ParseScopeKind::Line {

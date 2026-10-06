@@ -8,6 +8,7 @@ use super::{ErasedPayload, decode_as};
 
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
+        "ChangeTextEffect" => decode_as::<ironsmith_core::ChangeTextEffect>(payload).map(Some),
         "AmassEffect" => decode_as::<ironsmith_core::AmassEffect>(payload).map(Some),
         "EmpowerJaceEffect" => decode_as::<ironsmith_core::EmpowerJaceEffect>(payload).map(Some),
         "ApplyContinuousEffect" => decode_as::<
@@ -193,6 +194,7 @@ pub(super) fn map_card_ids(
             ironsmith_core::ExchangeControlEffect,
         >(payload, context)
         .map(Some),
+        "ChangeTextEffect" => super::card_graph::map_payload_as::<ironsmith_core::ChangeTextEffect>(payload, context).map(Some),
         "ExchangeTextBoxesEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ExchangeTextBoxesEffect,
         >(payload, context)

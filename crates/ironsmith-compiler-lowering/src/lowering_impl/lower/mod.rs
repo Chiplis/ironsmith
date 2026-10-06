@@ -15,6 +15,7 @@ mod damage_and_cost_rewrites;
 mod finalization_support;
 mod linked_exile;
 mod first_draw_reveals;
+mod trigger_definitions;
 mod activation_definitions;
 mod line_ast_helpers;
 mod line_lowering;

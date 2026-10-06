@@ -364,7 +364,7 @@ fn ensure_prototype_choice_optional_cost(game: &mut GameState, pending: &mut Pen
     // This route already announced its exact characteristic set before
     // choosing both permissions. A late optional change would invalidate the
     // chosen filter/price and could bypass colored or mana-value constraints.
-    if matches!(pending.casting_method, CastingMethod::AlternativePrice { .. }) { return false; }
+    if matches!(pending.casting_method, CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. }) { return false; }
     let Some(spell) = game.object(pending.spell_id) else {
         return false;
     };
@@ -688,7 +688,7 @@ pub(super) fn non_mana_costs_for_casting_method(
     spell: &crate::object::Object,
     casting_method: &CastingMethod,
 ) -> Vec<crate::costs::Cost> {
-    match casting_method {
+    match casting_method.without_exact_permission() {
         CastingMethod::AlternativePrice { .. } => {
             let mut costs = crate::alternative_cast::price_routes::receipt_or_latch(game, caster, spell, casting_method)
                 .map(|receipt| receipt.total_cost.non_mana_costs().cloned().collect::<Vec<_>>()).unwrap_or_default();
@@ -892,7 +892,7 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
     let mut max_x = None;
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
-        let mana_spend_policy = game.mana_spend_policy(caster, Some(stack_id));
+        let mana_spend_policy = game.mana_spend_policy_for_cast(caster, Some(stack_id));
         let allow_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && game.player_can_pay_black_with_life_for_reason(
                 caster,
@@ -1674,7 +1674,7 @@ fn cast_spell_from_resolving_effect_with_captured_price(
     let selected_face = if alternative_cost.is_some() || miracle_price.is_some() {
         let spell = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("priced card disappeared".into()))?;
         let other = crate::decision::spell_view_for_split_other_half_cast(game, spell);
-        let method = match casting_method {
+        let method = match casting_method.without_exact_permission() {
             CastingMethod::Normal => Some(CastingMethod::SplitOtherHalf),
             CastingMethod::PlayFrom { source, zone, use_alternative: None } => Some(CastingMethod::SplitOtherHalfPlayFrom {
                 source: *source, zone: *zone, use_alternative: None,
@@ -3911,7 +3911,7 @@ fn assist_payment_request(
         .inherit_transaction_spending_restrictions(total);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         assistant, pending.spell_id, crate::costs::PaymentReason::CastSpell, cost,
-    ).with_spend_policy(game.mana_spend_policy(assistant, Some(pending.spell_id)));
+    ).with_spend_policy(game.mana_spend_policy_for_cast(assistant, Some(pending.spell_id)));
     if total.has_x_spending_restriction() || total.has_waterbend_obligation() {
         let mut caster_pending = pending.clone();
         caster_pending.assist_generic_contribution = amount;
@@ -4094,7 +4094,7 @@ pub(super) fn spell_mana_payment_request(
     ]).symbols();
     let locked_cost = cost.clone().bind_x_payment_if_unbound(pending.x_value.unwrap_or(0))
         .with_pips(payment_pips).with_prepaid_generic(assist_units);
-    let mut spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
+    let mut spend_policy = game.mana_spend_policy_for_cast(pending.caster, Some(pending.spell_id));
     spend_policy.allow_mode(pending.effect_mana_spend_mode);
     let mut request = crate::mana_payment::ManaPaymentRequest::new(
         pending.caster,
@@ -5623,7 +5623,11 @@ pub(super) fn collect_spell_cost_steps(
     };
 
     if let Some(obj) = game.object(spell_id) {
-        let alternative_additional_cost = match casting_method {
+        let alternative_additional_cost = match casting_method.without_exact_permission() {
+            CastingMethod::ExactPermission { .. } => {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence("nested exact permission has no casting costs".into()));
+                crate::cost::TotalCost::free()
+            },
             CastingMethod::AlternativePrice { .. } => {
                 crate::cost::TotalCost::from_costs(non_mana_costs_for_casting_method(game, caster, obj, casting_method))
             },
@@ -5665,8 +5669,8 @@ pub(super) fn collect_spell_cost_steps(
             .unwrap_or_else(crate::cost::TotalCost::free),
         };
 
-        let method_specific_additional_cost = match casting_method {
-            CastingMethod::AlternativePrice { .. } => crate::cost::TotalCost::free(),
+        let method_specific_additional_cost = match casting_method.without_exact_permission() {
+            CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. } => crate::cost::TotalCost::free(),
             CastingMethod::Normal => obj
                 .cast_alternative_method
                 .as_ref()

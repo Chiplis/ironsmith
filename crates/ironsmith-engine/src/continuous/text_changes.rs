@@ -5,7 +5,7 @@
 use super::CalculatedCharacteristics;
 use crate::ability::{Ability, AbilityKind, ProtectionFrom};
 use crate::static_abilities::{CompiledStaticAbility, LandwalkKind, StaticAbility, StaticAbilityId};
-use ironsmith_core::{ObjectFilter, StaticAbilityPayload, TextChange};
+use ironsmith_core::{ObjectFilter, TextChange};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TextChangeDomainError {
@@ -17,7 +17,6 @@ pub enum TextChangeDomainError {
     ActivatedAbility,
     TriggeredAbility,
     Attachment,
-    IntrinsicManaProvenance,
     StaticAbility(StaticAbilityId),
     ObjectFilter,
     ProtectionReference,
@@ -33,7 +32,6 @@ impl std::fmt::Display for TextChangeDomainError {
             Self::SpellProgram => f.write_str("missing retained spell-program evidence"),
             Self::ActivatedAbility => f.write_str("activated ability program/cost/choice model"),
             Self::TriggeredAbility => f.write_str("triggered ability program/trigger/condition model"),
-            Self::IntrinsicManaProvenance => f.write_str("basic-land mana has no authored-versus-intrinsic provenance"),
             Self::Attachment => f.write_str("attachment metadata"),
             Self::StaticAbility(id) => write!(f, "static ability {id:?}"),
             Self::ObjectFilter => f.write_str("object filter outside the typed word domain"),
@@ -99,59 +97,23 @@ pub(crate) fn rewrite_attachment_words(filter: &ironsmith_core::AuraAttachmentFi
     })
 }
 
-fn wordless_keyword(id: Option<StaticAbilityId>) -> bool {
-    matches!(id, Some(
-        StaticAbilityId::Flying | StaticAbilityId::FirstStrike | StaticAbilityId::DoubleStrike
-        | StaticAbilityId::Deathtouch | StaticAbilityId::Defender | StaticAbilityId::Flash
-        | StaticAbilityId::Haste | StaticAbilityId::Hexproof | StaticAbilityId::Indestructible
-        | StaticAbilityId::Intimidate | StaticAbilityId::Lifelink | StaticAbilityId::Menace
-        | StaticAbilityId::Banding | StaticAbilityId::Reach | StaticAbilityId::Shroud
-        | StaticAbilityId::Trample | StaticAbilityId::Vigilance | StaticAbilityId::Fear
-        | StaticAbilityId::Skulk | StaticAbilityId::Wither | StaticAbilityId::Infect
-        | StaticAbilityId::Changeling | StaticAbilityId::Phasing
-    ))
-}
-
 pub(crate) fn rewrite_static_model(
     model: &CompiledStaticAbility,
     change: TextChange,
 ) -> Result<Option<StaticAbility>, TextChangeDomainError> {
-    let mut rewritten = model.clone();
-    match &mut rewritten.payload {
-        StaticAbilityPayload::None | StaticAbilityPayload::SelfSubjectSurface { .. }
-            if wordless_keyword(model.id) => return Ok(None),
-        StaticAbilityPayload::SourceLineKeywordGroup { .. }
-        | StaticAbilityPayload::SourceLineStaticGroup { .. } => return Ok(None),
-        StaticAbilityPayload::Protection(from) => {
-            *from = rewrite_protection_words(from, change)?;
-            if let StaticAbilityPayload::Protection(original) = &model.payload {
-                if from == original { return Ok(None); }
-            }
-        }
-        StaticAbilityPayload::Landwalk(kind) => {
-            let previous = *kind;
-            *kind = rewrite_landwalk_words(*kind, change);
-            if previous == *kind { return Ok(None); }
-        }
-        StaticAbilityPayload::Enchant(filter) => {
-            *filter = rewrite_attachment_words(filter, change)?;
-            if let StaticAbilityPayload::Enchant(original) = &model.payload {
-                if filter == original { return Ok(None); }
-            }
-        }
-        StaticAbilityPayload::HexproofFrom(filter) => {
-            *filter = rewrite_filter_words(filter, change)?;
-            if let StaticAbilityPayload::HexproofFrom(original) = &model.payload {
-                if filter == original { return Ok(None); }
-            }
-        }
-        _ => return Err(TextChangeDomainError::StaticAbility(
-            model.id.unwrap_or(StaticAbilityId::RuleFallbackText))),
-    }
+    let rewritten = super::text_change_statics::rewrite_static_model_words(model, change)?;
+    // No whole-model equality: nested runtime costs and abilities have legacy
+    // presentation equality. The immutable static wrapper memoizes this full
+    // definition, including every newly materialized child occurrence.
     Ok(Some(StaticAbility::from_model(rewritten)))
 }
 
 fn rewrite_ability(ability: &Ability, change: TextChange) -> Result<Ability, TextChangeDomainError> {
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && triggered.trigger.acquired_identity(triggered.effects.retained_trigger_definition()).is_none()
+    {
+        return Err(TextChangeDomainError::TriggeredAbility);
+    }
     super::text_change_programs::rewrite_ability_words(ability, change)
 }
 
@@ -161,18 +123,8 @@ pub(crate) fn apply_text_change(
     object: &crate::object::Object,
 ) {
     let result = (|| {
-        // Older native/compiled basics sometimes materialize intrinsic mana
-        // as printed activations. Its role cannot be inferred from its mana
-        // symbols or rendered reminder text. Do not retain an obsolete mana
-        // ability while silently adding the newly implied one in layer 6.
-        if let ironsmith_core::TextWord::BasicLandType(from) = change.from() {
-            if chars.subtypes.contains(&from) && chars.abilities.iter().enumerate().any(|(index, ability)| {
-                chars.abilities.origin(index).is_some_and(|origin| origin.is_rules_text())
-                    && matches!(&ability.kind, AbilityKind::Activated(activated)
-                        if activated.mana_output.is_some() || activated.effects.all_effects().into_iter()
-                            .any(|effect| effect.mana_production().is_some()))
-            }) { return Err(TextChangeDomainError::IntrinsicManaProvenance); }
-        }
+        // Artifact 7 and current native definitions carry authored abilities
+        // only. Basic-land mana is supplied later by its own type-line origin.
         let attachment = chars.aura_attach_filter.as_ref()
             .map(|filter| rewrite_attachment_words(filter, change)).transpose()?;
         let program = match &chars.spell_effect {

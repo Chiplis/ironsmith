@@ -1045,7 +1045,9 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeCreatureTypeChoice { .. },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {

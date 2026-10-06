@@ -616,6 +616,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::RestartGameEffect>() {
             return payload.cards_left_in_exile.as_ref();
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::ChangeTextEffect>() {
+            return payload.target.is_target().then_some(&payload.target);
+        }
         if let Some(payload) = self.as_deal_damage() {
             return Some(&payload.target);
         }

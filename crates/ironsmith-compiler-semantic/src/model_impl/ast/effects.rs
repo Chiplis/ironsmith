@@ -2618,6 +2618,11 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_change_text(target: TargetAst, selection: ironsmith_core::TextChangeSelection, duration: Until) -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }))
+    }
+
     pub fn subject_verb_set_colors(target: TargetAst, colors: ColorSet, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,

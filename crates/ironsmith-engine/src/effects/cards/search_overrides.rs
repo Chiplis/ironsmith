@@ -122,6 +122,7 @@ fn grant_opposition_agent_play_permission(
             .mana_spend_effects
             .permissions
             .push(ActiveManaSpendPermission {
+                play_permission_identities: None,
                 permission: ManaSpendPermission::any_color_for_casting_stable_ids(
                     PlayerFilter::You,
                     vec![stable_id],

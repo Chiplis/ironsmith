@@ -717,6 +717,8 @@ impl ObjectSnapshot {
     /// Captures all relevant characteristics at the current moment.
     /// Game state is required to access battlefield state like tapped, flipped, etc.
     pub fn from_object(obj: &Object, game: &crate::game_state::GameState) -> Self {
+        let mut abilities = crate::continuous::CalculatedAbilities::from(obj.abilities.clone());
+        abilities.bind_host(obj.id);
         let was_enchanted = obj.attachments.iter().any(|&attachment_id| {
             !game.is_phased_out(attachment_id)
                 && game.object(attachment_id).is_some_and(|attachment| {
@@ -763,7 +765,7 @@ impl ObjectSnapshot {
             base_toughness: obj.base_toughness.as_ref().map(|t| t.base_value()),
             loyalty: obj.loyalty(),
             defense: obj.base_defense,
-            abilities: obj.abilities.clone(),
+            abilities: abilities.shared(),
             ability_origins: Some(Arc::new((0..obj.abilities.len())
                 .map(crate::continuous::AbilityOrigin::Printed).collect())),
             aura_attach_filter: obj.aura_attach_filter_owned(),

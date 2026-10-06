@@ -1277,6 +1277,20 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/857"
+    },
+    {
+      "stage": 92,
+      "branch": "fix/card-failures-92-typed-current-spell-programs",
+      "base": "fix/card-failures-91-activation-threshold-bodies",
+      "source_integration_commit": "f7fa2f76e4dad2939a78f80302fcb758d65022fc",
+      "remote_commit": "04339684964ca95fcb4a07d3c6ad706c8ae8e169",
+      "tree": "db1d6f2b38b046da1f7132eb512c5e4df166dd4f",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 858,
+      "draft": true,
+      "validation_status": "UNVALIDATED_deferred_full_corpus",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/858"
     }
   ]
 }

@@ -1,11 +1,14 @@
 //! Materialization of versioned compiled-card artifacts into engine values.
 
 use ironsmith_compiled_artifact as wire;
+#[path = "artifact_continuous_word_codec.rs"]
+mod continuous_word_codec;
 #[path = "artifact_text_program_codec.rs"]
 mod text_program_codec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtifactMaterializationError {
+    InvalidArtifact(wire::ArtifactValidationError),
     UnsupportedEffect { detail: String },
     UnsupportedStaticAbility { detail: String },
     UnsupportedTrigger { detail: String },
@@ -14,6 +17,7 @@ pub enum ArtifactMaterializationError {
 impl std::fmt::Display for ArtifactMaterializationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidArtifact(error) => error.fmt(formatter),
             Self::UnsupportedEffect { detail } => {
                 write!(formatter, "artifact effect is unsupported: {detail}")
             }
@@ -129,6 +133,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CastTaggedEffect" => decode_as::<T, ironsmith_core::CastTaggedEffect<wire::WireCost>>(effect),
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
+        "ChangeTextEffect" => decode_as::<T, ironsmith_core::ChangeTextEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
         "RevealChosenSubtypeEffect" => {
             decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect)
@@ -1682,6 +1687,7 @@ pub fn encode_runtime_effect(
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
     if let Some(model) = text_program_codec::encode_text_changed_native_effect(&effect)? { return Ok(model); }
+    if let Some(model) = continuous_word_codec::encode_continuous_native_effect(&effect)? { return Ok(model); }
     Err(RuntimePayloadEncodingError::MissingModel { component: "effect" })
 }
 
@@ -1839,6 +1845,10 @@ pub fn materialize_definition(
 pub fn materialize_artifact(
     artifact: &wire::CompiledCardArtifact,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
+    // Direct callers need the same version/schema/checksum gate as registry
+    // admission. In particular, pre-provenance definitions are not migratable
+    // merely because their executable abilities still decode structurally.
+    artifact.validate().map_err(ArtifactMaterializationError::InvalidArtifact)?;
     let mut definition = runtime_definition_from_core_model(artifact.payload.definition.clone())?;
     definition.canonical_text = artifact.payload.canonical_text.clone();
     definition.ability_labels = artifact.payload.ability_labels.clone();

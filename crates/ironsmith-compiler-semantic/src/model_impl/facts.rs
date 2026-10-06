@@ -22,6 +22,10 @@ pub enum MetadataLine {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LineSemanticFacts {
+    /// Exact standalone parenthesized CR 305.6 reminder, recognized from the
+    /// authored token stream. Its types must agree with the card metadata.
+    /// This supplies no printed ability; current types own intrinsic mana.
+    pub intrinsic_basic_land_mana_reminder: Option<Vec<crate::types::Subtype>>,
     /// Extracted before reminder text is removed from authored rules tokens.
     pub station_creature_threshold: Option<i32>,
     pub supported_sneak_form: bool,

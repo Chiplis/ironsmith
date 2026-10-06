@@ -952,28 +952,32 @@ fn cast_payment_cost_context(
 ) -> Vec<String> {
     use ironsmith::alternative_cast::CastingMethod;
     let object = game.object(pending.spell_id);
-    let method = match &pending.casting_method {
-        CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
-        CastingMethod::Normal => "Normal cast".to_string(),
-        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
-        CastingMethod::SplitOtherHalf => "Other half".to_string(),
-        CastingMethod::Fuse => "Fuse".to_string(),
-        CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
-        CastingMethod::GrantedFlashback => "Flashback".to_string(),
-        CastingMethod::Alternative(index)
-        | CastingMethod::PlayFrom {
-            use_alternative: Some(index),
-            ..
+    fn method_label(method: &CastingMethod, object: Option<&ironsmith::object::Object>) -> String {
+        match method {
+            CastingMethod::ExactPermission { origin, .. } => method_label(origin, object),
+            CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
+            CastingMethod::Normal => "Normal cast".to_string(),
+            CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
+            CastingMethod::SplitOtherHalf => "Other half".to_string(),
+            CastingMethod::Fuse => "Fuse".to_string(),
+            CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
+            CastingMethod::GrantedFlashback => "Flashback".to_string(),
+            CastingMethod::Alternative(index)
+            | CastingMethod::PlayFrom {
+                use_alternative: Some(index),
+                ..
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom {
+                use_alternative: Some(index),
+                ..
+            } => object
+                .and_then(|object| object.alternative_casts.get(*index))
+                .map(|method| method.name().to_string())
+                .unwrap_or_else(|| "Alternative cost".to_string()),
+            CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
         }
-        | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: Some(index),
-            ..
-        } => object
-            .and_then(|object| object.alternative_casts.get(*index))
-            .map(|method| method.name().to_string())
-            .unwrap_or_else(|| "Alternative cost".to_string()),
-        CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
-    };
+    }
+    let method = method_label(&pending.casting_method, object);
     let mut result = vec![method];
     if pending.base_mana_cost_waived {
         result.push("Base mana cost waived".to_string());
@@ -2822,6 +2826,32 @@ enum CastingMethodRef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         prototype: Option<usize>,
     },
+    /// Public menu selector only. Resolution selects the complete native
+    /// action from the checked menu; this never carries a private identity.
+    ExactPermission {
+        origin: Box<CastingMethodRef>,
+        permission: GrantSelectionRef,
+    },
+}
+
+impl CastingMethodRef {
+    fn origin_method(&self) -> &Self {
+        match self {
+            Self::AlternativePrice { origin, .. } | Self::ExactPermission { origin, .. } => {
+                origin.origin_method()
+            }
+            _ => self,
+        }
+    }
+
+    fn origin_method_mut(&mut self) -> &mut Self {
+        match self {
+            Self::AlternativePrice { origin, .. } | Self::ExactPermission { origin, .. } => {
+                origin.origin_method_mut()
+            }
+            _ => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -7184,5 +7214,59 @@ mod independent_price_action_reference_tests {
         assert_eq!(serde_json::to_value(prototype_ref).unwrap()["prototype"],0);
         let old=CastingMethodRef::PlayFrom{source:11,zone:"exile".into(),use_alternative:None};
         assert_eq!(serde_json::to_value(old).unwrap(),serde_json::json!({"kind":"play_from","source":11,"zone":"exile","use_alternative":null}));
+    }
+}
+
+#[cfg(test)]
+mod exact_permission_action_reference_tests {
+    use super::*;
+    use ironsmith::alternative_cast::{CastingMethod, GrantSelection};
+    use ironsmith::grant_registry::GrantPermissionIdentity;
+
+    #[test]
+    fn unmarked_play_from_variants_keep_their_old_json_bytes() {
+        let source = ObjectId::from_raw(11);
+        for (method, expected) in [
+            (CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None },
+                r#"{"kind":"play_from","source":11,"zone":"exile","use_alternative":null}"#),
+            (CastingMethod::SplitOtherHalfPlayFrom { source, zone: Zone::Exile, use_alternative: None },
+                r#"{"kind":"split_other_half_play_from","source":11,"zone":"exile","use_alternative":null}"#),
+            (CastingMethod::FaceDownPlayFrom { source, zone: Zone::Library },
+                r#"{"kind":"face_down_play_from","source":11,"zone":"library"}"#),
+        ] {
+            let reference = wasm_game_impl::casting_method_ref(&method);
+            assert_eq!(serde_json::to_string(&reference).unwrap(), expected);
+            assert_eq!(serde_json::from_str::<CastingMethodRef>(expected).unwrap(), reference);
+        }
+    }
+
+    #[test]
+    fn exact_refs_distinguish_same_source_choices_without_exposing_native_identity() {
+        let source = ObjectId::from_raw(11);
+        let first = CastingMethod::ExactPermission {
+            origin: Box::new(CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None }),
+            permission: GrantSelection { identity: GrantPermissionIdentity::Stored(71), source, index: 0 },
+        };
+        let reference = wasm_game_impl::casting_method_ref(&first);
+        let json = serde_json::to_value(&reference).unwrap();
+        assert_eq!(json, serde_json::json!({
+            "kind": "exact_permission",
+            "origin": { "kind": "play_from", "source": 11, "zone": "exile", "use_alternative": null },
+            "permission": { "source": 11, "index": 0 },
+        }));
+        assert_eq!(serde_json::from_value::<CastingMethodRef>(json).unwrap(), reference);
+        let mut second = first.clone();
+        if let CastingMethod::ExactPermission { permission, .. } = &mut second {
+            permission.index = 1;
+            permission.identity = GrantPermissionIdentity::Stored(72);
+        }
+        assert_ne!(wasm_game_impl::casting_method_ref(&second), reference);
+        // The selector addresses the signed menu/state, not an occurrence
+        // across unrelated states. Native identity is checked by admission.
+        if let CastingMethod::ExactPermission { permission, .. } = &mut second {
+            permission.index = 0;
+        }
+        assert_ne!(second, first);
+        assert_eq!(wasm_game_impl::casting_method_ref(&second), reference);
     }
 }

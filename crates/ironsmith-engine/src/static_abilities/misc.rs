@@ -2502,6 +2502,7 @@ impl StaticAbilityKind for ManaSpendPermissionAbility {
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
         game.effect_store.mana_spend_effects.permissions.push(
             crate::game_state::ActiveManaSpendPermission {
+                play_permission_identities: None,
                 permission: self.permission.clone(),
                 controller,
                 source: crate::game_state::ManaSpendPermissionSource::StaticAbility,

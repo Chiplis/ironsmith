@@ -314,7 +314,10 @@ pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration:
                     ..
                 },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                duration: effect_duration,
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 duration: effect_duration,
                 ..
             })
@@ -12878,7 +12881,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeCreatureTypeChoice { .. },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {

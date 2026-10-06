@@ -36,6 +36,9 @@ mod layer_resolution;
 pub mod text_changes;
 pub(crate) mod text_change_predicates;
 pub(crate) mod text_change_programs;
+pub(crate) mod text_change_modifications;
+pub(crate) mod text_change_statics;
+pub(crate) mod text_change_triggers;
 pub(crate) mod value_context;
 use layer_resolution::*;
 pub(crate) use layer_resolution::{bind_effect_controller_to_layer_frame, resolve_value_direct};
@@ -1797,8 +1800,9 @@ impl ContinuousEffectManager {
         self.revision
     }
 
-    /// Get the next timestamp.
-    fn next_timestamp(&mut self) -> u64 {
+    /// Allocate from the shared clock for effects, object entry and live
+    /// ability acquisitions. Native state clones preserve the next value.
+    pub(crate) fn next_timestamp(&mut self) -> u64 {
         self.current_timestamp += 1;
         self.current_timestamp
     }
@@ -2465,6 +2469,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
+    chars.abilities.bind_host(object.id);
     chars.record_base_pt();
     chars
 }
@@ -2546,8 +2551,7 @@ fn replace_rules_text_abilities(
     preserve_source_abilities: bool,
 ) {
     let previous = chars.abilities.clone();
-    chars.abilities = abilities.into();
-    chars.abilities.rebind_origin(origin);
+    chars.abilities.replace_with_origin(abilities, origin);
     for (index, ability) in previous.iter().enumerate() {
         let old_origin = previous.origin(index).expect("paired ability occurrence");
         let independent = old_origin.is_independent_early_grant();
@@ -2749,10 +2753,11 @@ fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics
         }
         let ability =
             Ability::basic_land_mana(subtype).expect("basic land type has intrinsic mana");
-        if !chars.abilities.contains(&ability) {
-            chars
-                .abilities
-                .push_with_origin(ability, AbilityOrigin::IntrinsicBasicLandMana(subtype));
+        let origin = AbilityOrigin::IntrinsicBasicLandMana(subtype);
+        // Equal printed or granted mana is a separate occurrence. Only an
+        // already supplied instance of this rule may suppress another one.
+        if !(0..chars.abilities.len()).any(|index| chars.abilities.origin(index) == Some(&origin)) {
+            chars.abilities.push_with_origin(ability, origin);
         }
     }
 }
@@ -4852,6 +4857,7 @@ fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
+        || filter.has_cumulative_upkeep.is_some()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
 }
@@ -6077,8 +6083,7 @@ fn apply_modification_to_chars(
             }
         }
         Modification::SetAbilities(abilities) => {
-            chars.abilities = abilities.clone().into();
-            chars.abilities.rebind(effect);
+            chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
             chars.static_abilities.clear();
             for ability in abilities {
                 if let AbilityKind::Static(ref sa) = ability.kind {
@@ -6711,3 +6716,7 @@ impl Modification {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "continuous/intrinsic_land_mana_tests.rs"]
+mod intrinsic_land_mana_tests;

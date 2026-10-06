@@ -2607,8 +2607,19 @@ impl CardDefinitionBuilder {
             .oracle_text_ref()
             .split(|character: char| !character.is_ascii_alphanumeric())
             .any(|word| word.eq_ignore_ascii_case("ante"));
+        let mut card = self.card_builder.build();
+        // CR 903.4: printed color CDAs contribute to Commander identity even
+        // when the mana cost has no colored symbols. Keep the indicator and
+        // mana-derived base color unchanged; gameplay applies the ability.
+        for ability in &self.abilities {
+            if let crate::ability::AbilityKind::Static(ability) = &ability.kind
+                && let Some(colors) = ability.characteristic_defining_colors()
+            {
+                card.rules_text_color_identity = card.rules_text_color_identity.union(colors);
+            }
+        }
         CardDefinition {
-            card: self.card_builder.build(),
+            card,
             canonical_text: String::new(),
             ability_labels: Vec::new(),
             abilities: self.abilities,

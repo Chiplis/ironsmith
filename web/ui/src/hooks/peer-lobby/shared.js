@@ -92,6 +92,7 @@ import { setPreferredCardPrints } from "@/lib/scryfall";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDisadvantageousActivePlayerClockAdvance } from "@/lib/match-clock";
 import {
+  castingMethodOrigin,
   isDecisionCommandCompatible,
   normalizeSelectObjectHiddenRef,
   selectObjectCandidateForId,
@@ -1731,12 +1732,12 @@ export function wasmObjectIdArg(objectId) {
 
 // Whether a command casts a spell face down. Such a command must never open
 // the cast card publicly: peers replay it on their hidden placeholder from the
-// public cast kind the command carries (casting_method.face_down_kind).
+// public cast kind carried by its casting method's origin.
 export function isFaceDownCastCommand(command) {
   if (command?.type !== "priority_action") return false;
   const actionRef = command.action_ref || command.actionRef || null;
   if (String(actionRef?.kind || "") !== "cast_spell") return false;
-  const method = actionRef.casting_method || actionRef.castingMethod || null;
+  const method = castingMethodOrigin(actionRef.casting_method || actionRef.castingMethod);
   return ["face_down", "face_down_play_from"].includes(String(method?.kind || ""));
 }
 

@@ -171,10 +171,35 @@ impl AbilityOrigin {
 pub struct CalculatedAbilities {
     definitions: SharedVec<Ability>,
     origins: Vec<AbilityOrigin>,
+    host: Option<ObjectId>,
     current_effect: Option<AbilityEffectOrigin>,
     next_effect_slot: usize,
 }
 impl CalculatedAbilities {
+    /// Bind definition stamps before the first trigger can read history. A
+    /// collection made without a host remains unproven for active text edits.
+    pub(crate) fn bind_host(&mut self, host: ObjectId) {
+        self.host = Some(host);
+        self.bind_trigger_acquisitions();
+    }
+    fn bind_trigger_acquisitions(&mut self) {
+        if self.definitions.iter().any(|ability| matches!(&ability.kind,
+            crate::ability::AbilityKind::Triggered(triggered)
+                if triggered.effects.retained_trigger_definition().is_some()))
+        {
+            for (ability, origin) in self.definitions.iter_mut().zip(&self.origins) {
+                crate::triggers::acquisition::bind_ability(ability, self.host, origin);
+            }
+        }
+    }
+    pub(super) fn replace_with_origin(
+        &mut self,
+        abilities: Vec<Ability>,
+        effect: Option<AbilityEffectOrigin>,
+    ) {
+        self.definitions = abilities.into();
+        self.rebind_origin(effect);
+    }
     pub fn origin(&self, index: usize) -> Option<&AbilityOrigin> {
         self.origins.get(index)
     }
@@ -197,6 +222,7 @@ impl CalculatedAbilities {
             .collect();
         self.next_effect_slot = self.len();
         self.current_effect = effect;
+        self.bind_trigger_acquisitions();
     }
     pub fn push(&mut self, ability: Ability) {
         let origin = match &self.current_effect {
@@ -212,7 +238,8 @@ impl CalculatedAbilities {
         };
         self.push_with_origin(ability, origin);
     }
-    pub fn push_with_origin(&mut self, ability: Ability, origin: AbilityOrigin) {
+    pub fn push_with_origin(&mut self, mut ability: Ability, origin: AbilityOrigin) {
+        crate::triggers::acquisition::bind_ability(&mut ability, self.host, &origin);
         self.definitions.push(ability);
         self.origins.push(origin);
     }
@@ -273,12 +300,15 @@ impl std::ops::Deref for CalculatedAbilities {
 impl From<SharedVec<Ability>> for CalculatedAbilities {
     fn from(definitions: SharedVec<Ability>) -> Self {
         let origins = (0..definitions.len()).map(AbilityOrigin::Printed).collect();
-        Self {
+        let mut abilities = Self {
             definitions,
             origins,
+            host: None,
             current_effect: None,
             next_effect_slot: 0,
-        }
+        };
+        abilities.bind_trigger_acquisitions();
+        abilities
     }
 }
 impl From<Vec<Ability>> for CalculatedAbilities {

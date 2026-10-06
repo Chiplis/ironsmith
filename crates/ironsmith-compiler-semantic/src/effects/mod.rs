@@ -8,7 +8,7 @@ pub use ironsmith_core::{
     BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect,
     BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect as CoreBidLifeEffect, BolsterEffect,
     CantEffect, CastSourceEffect, CastTaggedEffect as CoreCastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
-    ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
+    ChangeTextEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
     ChooseModeEffect as CoreChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
     RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClearGoadEffect, ClearSuspectedEffect,

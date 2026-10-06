@@ -557,8 +557,14 @@ impl TriggerQueue {
     }
 }
 
-/// Compute a structural identity for a trigger ability.
+/// Authored occurrences use immutable acquisition evidence. Historical
+/// unstamped definitions keep their old identity and execution semantics.
 pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerIdentity {
+    if let Some(identity) = trigger_ability.trigger
+        .acquired_identity(trigger_ability.effects.retained_trigger_definition())
+    {
+        return identity;
+    }
     let mut hasher = DefaultHasher::new();
     trigger_ability.trigger.display().hash(&mut hasher);
     trigger_ability
@@ -3625,12 +3631,14 @@ pub fn check_state_triggers(
     }
 
     for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
-        if let Some(obj) = game.object(obj_id) {
+        if let Some(obj) = game.object(obj_id)
+            && let Some(abilities) = view.abilities_rc(obj_id)
+        {
             collect_state_triggers_for_object(
                 game,
                 obj,
                 game.controller_of(obj),
-                &obj.abilities,
+                &abilities,
                 &mut triggered,
                 &mut active,
                 pending,
@@ -3639,12 +3647,14 @@ pub fn check_state_triggers(
     });
 
     for_each_hidden_trigger_object_id(game, |obj_id| {
-        if let Some(obj) = game.object(obj_id) {
+        if let Some(obj) = game.object(obj_id)
+            && let Some(abilities) = view.abilities_rc(obj_id)
+        {
             collect_state_triggers_for_object(
                 game,
                 obj,
                 game.controller_of(obj),
-                &obj.abilities,
+                &abilities,
                 &mut triggered,
                 &mut active,
                 pending,

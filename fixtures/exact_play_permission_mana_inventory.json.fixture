@@ -1,0 +1,1499 @@
+{
+  "status": "source-only inventory; no compilation or execution",
+  "coverage_commit": "96f0adead68d0f06603cc6f273e2765e86769f0c",
+  "coverage_sha256": "61270ba1f18ba3c942e145e07100a915b84af09f778a7684c26c768e6a711dba",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "counted_lexical_candidates": [
+    {
+      "card_name": "Berta, Wise Extrapolator",
+      "oracle_id": "715f0832-696c-4111-b418-d9b6da403159",
+      "oracle_text": "Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhenever one or more +1/+1 counters are put on Berta, add one mana of any color.\n{X}, {T}: Create a 0/0 green and blue Fractal creature token and put X +1/+1 counters on it.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Discreet Retreat",
+      "oracle_id": "0158634a-08a3-4eb8-8216-bf85161fd168",
+      "oracle_text": "Enchant land\nEnchanted land has \"{T}: Add two mana of any one color. Spend this mana only to cast outlaw spells or activate abilities of outlaw sources.\" (Assassins, Mercenaries, Pirates, Rogues, and Warlocks are outlaws.)\nWhenever you cast your first outlaw spell each turn, you draw a card and you lose 1 life.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Progenitor's Icon",
+      "oracle_id": "747f6d0f-3c10-4fef-b7ae-f578c8964ab5",
+      "oracle_text": "As this artifact enters, choose a creature type.\n{T}: Add one mana of any color.\n{T}: The next spell of the chosen type you cast this turn can be cast as though it had flash.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "next-play-timing-and-granted-flashback"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Ronin, Shadow Stalker",
+      "oracle_id": "8ceb1acf-5ff3-4f1a-af04-9f07ad454526",
+      "oracle_text": "Pay 2 life: Add two mana of any one color. Spend this mana only to cast Equipment spells or activate equip abilities. Activate only once each turn.\n{T}, Sacrifice an Equipment attached to Ronin: Target creature gets -4/-4 until end of turn. Activate only as a sorcery.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "exact-consumer-mana-methods-and-keywords"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    }
+  ],
+  "new_counted_holds": [],
+  "all_frozen_lexical_candidates": [
+    {
+      "card_name": "Abstruse Appropriation",
+      "oracle_id": "61a23402-3244-4b5e-9134-98e1f82eda65",
+      "oracle_text": "Devoid (This card has no color.)\nExile target nonland permanent. You may cast that card for as long as it remains exiled, and you may spend colorless mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Abundant Countryside",
+      "oracle_id": "e3eb6f90-ccfc-41e7-bff6-0b378226bc7e",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell.\n{6}, {T}: Create a 1/1 colorless Shapeshifter creature token with changeling. (It's every creature type.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Alchemist's Talent",
+      "oracle_id": "5a2dfff5-9dba-42f5-bcca-918c16f23807",
+      "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nWhen this Class enters, create two tapped Treasure tokens.\n{1}{R}: Level 2\nTreasures you control have \"{T}, Sacrifice this artifact: Add two mana of any one color.\"\n{4}{R}: Level 3\nWhenever you cast a spell, if mana from a Treasure was spent to cast it, this Class deals damage equal to that spell's mana value to each opponent.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ally Encampment",
+      "oracle_id": "9d293b69-12b7-4b50-a0a7-c4f493dee30b",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast an Ally spell.\n{1}, {T}, Sacrifice this land: Return target Ally you control to its owner's hand.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ancient Cornucopia",
+      "oracle_id": "f0950c95-a297-489d-b166-74bba6af5376",
+      "oracle_text": "Whenever you cast a spell that's one or more colors, you may gain 1 life for each of that spell's colors. Do this only once each turn.\n{T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ancient Ziggurat",
+      "oracle_id": "0baabe39-72ae-47bd-a095-cbf7eb8a6361",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast a creature spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Animal Attendant",
+      "oracle_id": "787e6cc6-d97a-4229-97d1-ec2377d138d3",
+      "oracle_text": "{T}: Add one mana of any color. If that mana is spent to cast a non-Human creature spell, that creature enters with an additional +1/+1 counter on it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Apex of Power",
+      "oracle_id": "d06eedb4-bd5a-4864-9505-a570a745d165",
+      "oracle_text": "Exile the top seven cards of your library. Until end of turn, you may cast spells from among them.\nIf this spell was cast from your hand, add ten mana of any one color.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Apple of Eden, Isu Relic",
+      "oracle_id": "7849426d-895d-4dfe-a94d-b8df634618a5",
+      "oracle_text": "{T}, Pay 4 life, Sacrifice Apple of Eden: Look at target opponent's hand and exile those cards face down. You may play those cards this turn, and mana of any type can be spent to cast them. Until end of turn, whenever you play a land or cast a spell this way, its owner draws a card. At the beginning of the next end step, return the exiled cards to their owner's hand. Activate only as a sorcery.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Arvinox, the Mind Flail",
+      "oracle_id": "9abecd23-a2d9-43c7-8d01-f8afdc53026e",
+      "oracle_text": "Arvinox isn't a creature unless you control three or more permanents you don't own.\nAt the beginning of your end step, exile the bottom card of each opponent's library face down. For as long as those cards remain exiled, you may look at them, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ashling, Rekindled // Ashling, Rimebound",
+      "oracle_id": "31fc5d8b-94bc-4688-8a84-f15800e717a8",
+      "oracle_text": "Whenever this creature enters or transforms into Ashling, Rekindled, you may discard a card. If you do, draw a card.\nAt the beginning of your first main phase, you may pay {U}. If you do, transform Ashling.\nWhenever this creature transforms into Ashling, Rimebound and at the beginning of your first main phase, add two mana of any one color. Spend this mana only to cast spells with mana value 4 or greater.\nAt the beginning of your first main phase, you may pay {R}. If you do, transform Ashling.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Author of Shadows",
+      "oracle_id": "8bad4e43-4375-4e7f-897e-d28be72308d7",
+      "oracle_text": "When this creature enters, exile all opponents' graveyards. Choose a nonland card exiled this way. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Avengers Tower",
+      "oracle_id": "c5fc8e7c-a87e-4586-a13c-d30e0a3aafbf",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Hero spell or to activate an ability of a Hero source.\n{4}, {T}: Look at the top three cards of your library. You may reveal a Hero card from among them and put it into your hand. Put the rest on the bottom of your library in any order.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Azula, Cunning Usurper",
+      "oracle_id": "7c9e351d-2e6c-4050-9c3d-b15bb9255a4d",
+      "oracle_text": "Firebending 2 (Whenever this creature attacks, add {R}{R}. This mana lasts until end of combat.)\nWhen Azula enters, target opponent exiles a nontoken creature they control, then they exile a nonland card from their graveyard.\nDuring your turn, you may cast cards exiled with Azula and you may cast them as though they had flash. Mana of any type can be spent to cast those spells.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Base Camp",
+      "oracle_id": "41fbf835-baee-4530-9155-e2c1b9045567",
+      "oracle_text": "This land enters tapped.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Cleric, Rogue, Warrior, or Wizard spell or to activate an ability of a Cleric, Rogue, Warrior, or Wizard.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Beastcaller Savant",
+      "oracle_id": "e28227eb-b3b5-42fa-b597-1fefd2a70186",
+      "oracle_text": "Haste\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Berta, Wise Extrapolator",
+      "oracle_id": "715f0832-696c-4111-b418-d9b6da403159",
+      "oracle_text": "Increment (Whenever you cast a spell, if the amount of mana you spent is greater than this creature's power or toughness, put a +1/+1 counter on this creature.)\nWhenever one or more +1/+1 counters are put on Berta, add one mana of any color.\n{X}, {T}: Create a 0/0 green and blue Fractal creature token and put X +1/+1 counters on it.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "increment-triggered-keyword"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Big Score",
+      "oracle_id": "a5cbd257-c836-493e-bb1a-76242619dea2",
+      "oracle_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards and create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Bigger on the Inside",
+      "oracle_id": "8f351961-69e3-4637-b010-d13f19daca39",
+      "oracle_text": "Enchant artifact or land\nEnchanted permanent has \"{T}: Target player adds two mana of any one color. The next spell they cast this turn has cascade.\" (When they cast their next spell, they exile cards from the top of their library until they exile a nonland card that costs less. They may cast it without paying its mana cost. They put the exiled cards on the bottom in a random order.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Bilbo's Gambit",
+      "oracle_id": "ef71ef07-8a35-41ec-a851-d95e9e3a221b",
+      "oracle_text": "Gift a Treasure (You may promise an opponent a gift as you cast this spell. If you do, they create a Treasure token before its other effects. It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nReturn target spell to its owner's hand. If the gift was promised, players can't cast spells this turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Biophagus",
+      "oracle_id": "7c06a368-3306-48e0-825e-a8fdc81fa343",
+      "oracle_text": "Genomic Enhancement — {T}: Add one mana of any color. If this mana is spent to cast a creature spell, that creature enters with an additional +1/+1 counter on it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Birchlore Rangers",
+      "oracle_id": "667c5676-7a18-4fa9-b965-b26797538e23",
+      "oracle_text": "Tap two untapped Elves you control: Add one mana of any color.\nMorph {G} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Black Cat, Cunning Thief",
+      "oracle_id": "f5cdb413-2b72-4dc6-b93d-2532ac2ae568",
+      "oracle_text": "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Black Widow, Super Spy",
+      "oracle_id": "579f9a86-a1af-4c2a-a7e5-8fea0bd0eb61",
+      "oracle_text": "Menace\nWhenever Black Widow deals combat damage to a player, that player exiles cards from the top of their library until they exile a nonland card. You may put a +1/+1 counter on Black Widow. If you don't, you may cast the exiled nonland card until end of turn and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Blightwing Bandit",
+      "oracle_id": "770894c0-01e7-4c1e-bcfb-989eee221dd2",
+      "oracle_text": "Flying, deathtouch\nWhenever you cast your first spell during each opponent's turn, look at the top card of that player's library, then exile it face down. You may play that card for as long as it remains exiled, and mana of any type can be spent to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Bloodsoaked Insight // Sanguine Morass",
+      "oracle_id": "c52fc8a1-43c6-41f8-b010-03be7c89ef1d",
+      "oracle_text": "This spell costs {1} less to cast for each 1 life your opponents have lost this turn.\nTarget opponent exiles the top three cards of their library. Until the end of your next turn, you may play those cards. If you cast a spell this way, mana of any type can be spent to cast it.\nThis land enters tapped.\n{T}: Add {B} or {R}.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Blooming Blast",
+      "oracle_id": "2e5b8973-4f6e-4abe-bbbe-81fdca784997",
+      "oracle_text": "Gift a Treasure (You may promise an opponent a gift as you cast this spell. If you do, they create a Treasure token before its other effects. It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nBlooming Blast deals 2 damage to target creature. If the gift was promised, Blooming Blast also deals 3 damage to that creature's controller.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Bottle-Cap Blast",
+      "oracle_id": "e9c78601-4bec-4d16-8fd9-88c6053bd9c4",
+      "oracle_text": "Improvise (Your artifacts can help cast this spell. Each artifact you tap after you're done activating mana abilities pays for {1}.)\nBottle-Cap Blast deals 5 damage to any target. If excess damage was dealt to a permanent this way, create that many tapped Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Brainstealer Dragon",
+      "oracle_id": "13cb958f-1e66-4219-901a-ff58275c8475",
+      "oracle_text": "Flying\nAt the beginning of your end step, exile the top card of each opponent's library. You may play those cards for as long as they remain exiled. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.\nWhenever a nonland permanent an opponent owns enters the battlefield under your control, they lose life equal to its mana value.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Branch of Vitu-Ghazi",
+      "oracle_id": "7a30316b-dcd5-4a4b-b959-eecde7ca92e7",
+      "oracle_text": "{T}: Add {C}.\nDisguise {3} (You may cast this card face down for {3} as a 2/2 creature with ward {2}. Turn it face up any time for its disguise cost.)\nWhen this land is turned face up, add two mana of any one color. Until end of turn, you don't lose this mana as steps and phases end.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Breeches, Brazen Plunderer",
+      "oracle_id": "eb77f7dc-e9e4-44ef-8616-9f4e737e8ca5",
+      "oracle_text": "Menace\nWhenever one or more Pirates you control deal damage to your opponents, exile the top card of each of those opponents' libraries. You may play those cards this turn, and you may spend mana as though it were mana of any color to cast those spells.\nPartner (You can have two commanders if both have partner.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Brotherhood Headquarters",
+      "oracle_id": "0d3a06d5-5bb9-4733-a55b-9e2c75de6b6e",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast an Assassin spell or a spell that has freerunning, or to activate an ability of an Assassin source.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Bucolic Ranch",
+      "oracle_id": "8f5902bf-4bc4-4d0c-84ea-a425307a4eb2",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Mount spell.\n{3}, {T}: Look at the top card of your library. If it's a Mount card, you may reveal it and put it into your hand. If you don't put it into your hand, you may put it on the bottom of your library.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Buried Treasure",
+      "oracle_id": "56f5ed8d-ef53-4766-9ef3-1e24a10e267b",
+      "oracle_text": "{T}, Sacrifice this artifact: Add one mana of any color.\n{5}, Exile this card from your graveyard: Discover 5. Activate only as a sorcery. (Exile cards from the top of your library until you exile a nonland card with mana value 5 or less. Cast it without paying its mana cost or put it into your hand. Put the rest on the bottom in a random order.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Case File Auditor",
+      "oracle_id": "8c612741-2b30-43b3-bd3f-7df19662d298",
+      "oracle_text": "When this creature enters and whenever you solve a Case, look at the top six cards of your library. You may reveal an enchantment card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.\nYou may spend mana as though it were mana of any color to cast Case spells.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Castle Doom",
+      "oracle_id": "9bd013df-ad75-4099-940b-1765c58faf26",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast an artifact spell.\n{3}, {T}, Sacrifice an artifact: Create a 3/3 colorless Robot Villain artifact creature token named Doombot. Activate only as a sorcery.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Cavern of Souls",
+      "oracle_id": "89ca686a-7c72-4d8f-9290-e89635624a83",
+      "oracle_text": "As this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type, and that spell can't be countered.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Coin of Mastery",
+      "oracle_id": "d78518ee-df79-48d1-b9d5-4f968b441899",
+      "oracle_text": "Each creature you control enters with an additional +1/+1 counter on it for each mana from an artifact source spent to cast it.\n{T}: Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Corrupted Crossroads",
+      "oracle_id": "6276a985-7630-476d-a94f-6c6adc88f6c4",
+      "oracle_text": "{T}: Add {C}. ({C} represents colorless mana.)\n{T}, Pay 1 life: Add one mana of any color. Spend this mana only to cast a spell with devoid.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Court of Locthwain",
+      "oracle_id": "6106ba65-f07b-41ec-8b59-e052bbde5529",
+      "oracle_text": "When this enchantment enters, you become the monarch.\nAt the beginning of your upkeep, exile the top card of target opponent's library. You may play that card for as long as it remains exiled, and mana of any type can be spent to cast it. If you're the monarch, until end of turn, you may cast a spell from among cards exiled with this enchantment without paying its mana cost.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Covetous Urge",
+      "oracle_id": "6f52008f-3365-4cf9-9cae-8e761d657902",
+      "oracle_text": "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Crossover Collaboration",
+      "oracle_id": "150cefd2-061d-43b2-8470-c17be0144021",
+      "oracle_text": "Teamwork 2 (As an additional cost to cast this spell, you may tap any number of creatures you control with total power 2 or more.)\nExile the top two cards of your library. Until the end of your next turn, you may play those cards. If this spell was cast using teamwork, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Cruelclaw's Heist",
+      "oracle_id": "7a0bc265-6b40-48d6-a588-c9624df7d1bc",
+      "oracle_text": "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)\nTarget opponent reveals their hand. You choose a nonland card from it. Exile that card. If the gift was promised, you may cast that card for as long as it remains exiled, and mana of any type can be spent to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Crystalline Crawler",
+      "oracle_id": "5ea3e672-ae14-49a4-badb-f713497dd126",
+      "oracle_text": "Converge — This creature enters with a +1/+1 counter on it for each color of mana spent to cast it.\nRemove a +1/+1 counter from this creature: Add one mana of any color.\n{T}: Put a +1/+1 counter on this creature.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Cunning Rhetoric",
+      "oracle_id": "e7eb7ac8-08ab-419b-8508-987afd0bb93b",
+      "oracle_text": "Whenever an opponent attacks you and/or one or more planeswalkers you control, exile the top card of that player's library. You may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Curse of Hospitality",
+      "oracle_id": "0fb70b94-0847-4155-8953-cb53fef82ef1",
+      "oracle_text": "Enchant player\nCreatures attacking enchanted player have trample.\nWhenever a creature deals combat damage to enchanted player, that player exiles the top card of their library. Until end of turn, that creature's controller may play that card and they may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Daxos of Meletis",
+      "oracle_id": "4cf10cb6-b082-4c0d-89e9-43cd39716201",
+      "oracle_text": "Daxos can't be blocked by creatures with power 3 or greater.\nWhenever Daxos deals combat damage to a player, exile the top card of that player's library. You gain life equal to that card's mana value. Until end of turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Dead Man's Chest",
+      "oracle_id": "e5fdd6fd-6492-47ec-8b74-9ff22ff9849a",
+      "oracle_text": "Enchant creature an opponent controls\nWhen enchanted creature dies, exile cards equal to its power from the top of its owner's library. You may cast spells from among those cards for as long as they remain exiled, and mana of any type can be spent to cast them.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Deadly Dispute",
+      "oracle_id": "457af74a-02b3-4659-846d-63e482667f34",
+      "oracle_text": "As an additional cost to cast this spell, sacrifice an artifact or creature.\nDraw two cards and create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Delighted Halfling",
+      "oracle_id": "f9d3b046-0b95-4103-a630-4b3fb88bb60b",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a legendary spell, and that spell can't be countered.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Dire Fleet Daredevil",
+      "oracle_id": "7a3e50a5-c163-4c41-b62d-d52c233c55b7",
+      "oracle_text": "First strike\nWhen this creature enters, exile target instant or sorcery card from an opponent's graveyard. You may cast it this turn, and mana of any type can be spent to cast that spell. If that spell would be put into a graveyard, exile it instead.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Discreet Retreat",
+      "oracle_id": "0158634a-08a3-4eb8-8216-bf85161fd168",
+      "oracle_text": "Enchant land\nEnchanted land has \"{T}: Add two mana of any one color. Spend this mana only to cast outlaw spells or activate abilities of outlaw sources.\" (Assassins, Mercenaries, Pirates, Rogues, and Warlocks are outlaws.)\nWhenever you cast your first outlaw spell each turn, you draw a card and you lose 1 life.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "disjoint-mana-payment-predicates"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Draugr Necromancer",
+      "oracle_id": "ccdf3399-b836-47ab-802d-af5a9c24d759",
+      "oracle_text": "If a nontoken creature an opponent controls would die, exile that card with an ice counter on it instead.\nYou may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Dream-Thief's Bandana",
+      "oracle_id": "3c958b5f-680b-45fc-8c3d-27b23677436e",
+      "oracle_text": "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and mana of any type can be spent to cast that spell.\nEquip {1}",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Eclipsed Realms",
+      "oracle_id": "5715ed43-395c-4877-99a7-8e28e7bf9dce",
+      "oracle_text": "As this land enters, choose Elemental, Elf, Faerie, Giant, Goblin, Kithkin, Merfolk, or Treefolk.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a spell of the chosen type or activate an ability of a source of the chosen type.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Elder Brain",
+      "oracle_id": "e537bd23-7368-459b-badf-b7b7c112c88a",
+      "oracle_text": "Menace\nWhenever this creature attacks a player, exile all cards from that player's hand, then they draw that many cards. You may play lands and cast spells from among the exiled cards for as long as they remain exiled. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": "partial_not_counted",
+      "source_families": []
+    },
+    {
+      "card_name": "Elementalist's Palette",
+      "oracle_id": "6d588e25-7b4d-43c0-b45b-1b0ffb277a78",
+      "oracle_text": "Whenever you cast a spell with {X} in its mana cost, put two charge counters on this artifact.\n{T}: Add one mana of any color.\n{T}: Add {C} for each charge counter on this artifact. Spend this mana only on costs that contain {X}.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Elven Chorus",
+      "oracle_id": "4d5df2d9-06bf-4bec-9be0-dabe75a858fb",
+      "oracle_text": "You may look at the top card of your library any time.\nYou may cast creature spells from the top of your library.\nCreatures you control have \"{T}: Add one mana of any color.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Evelyn, the Covetous",
+      "oracle_id": "4ab6f615-1f04-4ed2-88b2-49faa8356dd0",
+      "oracle_text": "Flash\nWhenever Evelyn or another Vampire you control enters, exile the top card of each player's library with a collection counter on it.\nOnce each turn, you may play a card from exile with a collection counter on it if it was exiled by an ability you controlled, and you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Eye of Ojer Taq // Apex Observatory",
+      "oracle_id": "0b1557e8-3dd6-4276-8b8e-505e7ea944ec",
+      "oracle_text": "{T}: Add one mana of any color.\nCraft with two that share a card type {6} ({6}, Exile this artifact, Exile the two from among other permanents you control and/or cards from your graveyard: Return this card transformed under its owner's control. Craft only as a sorcery.)\nThis artifact enters tapped. As it enters, choose a card type shared among two exiled cards used to craft it.\n{T}: The next spell you cast this turn of the chosen type can be cast without paying its mana cost.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Food Chain",
+      "oracle_id": "5c8e5092-962e-49ef-ab82-8434e475e4e7",
+      "oracle_text": "Exile a creature you control: Add X mana of any one color, where X is 1 plus the exiled creature's mana value. Spend this mana only to cast creature spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Galazeth Prismari",
+      "oracle_id": "f9217532-f7cf-4436-b476-72d97a3147dc",
+      "oracle_text": "Flying\nWhen Galazeth Prismari enters, create a Treasure token.\nArtifacts you control have \"{T}: Add one mana of any color. Spend this mana only to cast an instant or sorcery spell.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Gale's Redirection",
+      "oracle_id": "8676f007-bf5f-4312-968c-59f4549f7d51",
+      "oracle_text": "Exile target spell, then roll a d20 and add that spell's mana value.\n1—14 | You may cast the exiled card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.\n15+ | You may cast the exiled card without paying its mana cost for as long as it remains exiled.",
+      "source_coverage_status": "partial_not_counted",
+      "source_families": [
+        "complete-die-result-programs"
+      ]
+    },
+    {
+      "card_name": "Gallifrey Council Chamber",
+      "oracle_id": "26e4b49e-77e7-41d9-94c5-924669a82591",
+      "oracle_text": "When Gallifrey Council Chamber enters, surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Time Lord or Alien spell or activate an ability of a Time Lord or Alien.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Gideon's Memorial",
+      "oracle_id": "c8f08704-7330-4fa9-b456-2e96aa252a2c",
+      "oracle_text": "Creature tokens you control get +1/+0 and have vigilance.\n{T}: Add one mana of any color. Spend this mana only to cast a planeswalker spell.\n{1}{W}, Discard this card: It deals 4 damage to target attacking or blocking creature.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Goblin Glasswright // Craft with Pride",
+      "oracle_id": "23c3de07-8aa2-48e9-848c-50b5a40bd133",
+      "oracle_text": "This creature enters prepared. (While it's prepared, you may cast a copy of its spell. Doing so unprepares it.)\nCreate a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Gonti, Canny Acquisitor",
+      "oracle_id": "7923ef4a-b1be-4f6a-b17b-4eab101390de",
+      "oracle_text": "Spells you cast but don't own cost {1} less to cast.\nWhenever one or more creatures you control deal combat damage to a player, look at the top card of that player's library, then exile it face down. You may play that card for as long as it remains exiled, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Gonti, Lord of Luxury",
+      "oracle_id": "d5be0ff6-39d9-4f9f-a028-e62dc38463f2",
+      "oracle_text": "Deathtouch\nWhen Gonti enters, look at the top four cards of target opponent's library, exile one of them face down, then put the rest on the bottom of that library in a random order. You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Gonti, Night Minister",
+      "oracle_id": "e16f79c1-ffbb-4893-b62a-d4e9d15e2b16",
+      "oracle_text": "Whenever a player casts a spell they don't own, that player creates a Treasure token.\nWhenever a creature deals combat damage to one of your opponents, its controller looks at the top card of that opponent's library and exiles it face down. They may play that card for as long as it remains exiled. Mana of any type can be spent to cast a spell this way.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Great Hall of the Biblioplex",
+      "oracle_id": "a8c70dab-1e27-4a9c-bd2d-910d5720d02d",
+      "oracle_text": "{T}: Add {C}.\n{T}, Pay 1 life: Add one mana of any color. Spend this mana only to cast an instant or sorcery spell.\n{5}: If this land isn't a creature, it becomes a 2/4 Wizard creature with \"Whenever you cast an instant or sorcery spell, this creature gets +1/+0 until end of turn.\" It's still a land.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Greenhouse // Rickety Gazebo",
+      "oracle_id": "a341eb75-e6a0-468b-8c83-61102249c648",
+      "oracle_text": "Lands you control have \"{T}: Add one mana of any color.\"\n(You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)\nWhen you unlock this door, mill four cards, then return up to two permanent cards from among them to your hand.\n(You may cast either half. That door unlocks on the battlefield. As a sorcery, you may pay the mana cost of a locked door to unlock it.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Grenzo, Havoc Raiser",
+      "oracle_id": "80788290-1569-4c7f-b263-b4da7b31a9d1",
+      "oracle_text": "Whenever a creature you control deals combat damage to a player, choose one —\n• Goad target creature that player controls.\n• Exile the top card of that player's library. Until end of turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "H.E.R.B.I.E., Lovable Robot",
+      "oracle_id": "064a2f4a-ff3f-4622-8727-24b22965416d",
+      "oracle_text": "Flying\nAt the beginning of combat on your turn, if you've cast a noncreature spell this turn, surveil 1.\n{T}: Add {C}.\n{1}, {T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Haldan, Avid Arcanist",
+      "oracle_id": "6a0b78fb-3838-47d9-8d1a-b6b0c0e8927d",
+      "oracle_text": "Partner with Pako, Arcane Retriever (When this creature enters, target player may put Pako into their hand from their library, then shuffle.)\nYou may play lands and cast noncreature spells from among cards you exiled that have fetch counters on them, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hall of Oracles",
+      "oracle_id": "0bb896ba-e15e-43a9-9120-e674d7ba003c",
+      "oracle_text": "{T}: Add {C}.\n{1}, {T}: Add one mana of any color.\n{T}: Put a +1/+1 counter on target creature. Activate only as a sorcery and only if you've cast an instant or sorcery spell this turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hall of Tagsin",
+      "oracle_id": "fd809587-773c-47ec-8676-cefef6d1e38f",
+      "oracle_text": "{T}: Add {C}.\n{1}, {T}: Add one mana of any color.\n{4}, {T}: Create a tapped Powerstone token. (It's an artifact with \"{T}: Add {C}. This mana can't be spent to cast a nonartifact spell.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Haven of the Spirit Dragon",
+      "oracle_id": "acc9c16a-5e72-43bd-87e1-56a16aa892f5",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Dragon creature spell.\n{2}, {T}, Sacrifice this land: Return target Dragon creature card or Ugin planeswalker card from your graveyard to your hand.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Heartless Conscription",
+      "oracle_id": "cb9b317b-bb31-4c19-8b78-0fb9a61324b3",
+      "oracle_text": "Exile all creatures. For each card exiled this way, you may play that card for as long as it remains exiled, and mana of any type can be spent to cast that spell. Exile Heartless Conscription.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Helga, Skittish Seer",
+      "oracle_id": "0a0d25a8-4f28-453b-9270-4d449fe0ca65",
+      "oracle_text": "Whenever you cast a creature spell with mana value 4 or greater, you draw a card, gain 1 life, and put a +1/+1 counter on Helga.\n{T}: Add X mana of any one color, where X is Helga's power. Spend this mana only to cast creature spells with mana value 4 or greater or creature spells with {X} in their mana costs.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Herd Heirloom",
+      "oracle_id": "78b6dd40-c182-4037-a4d3-9fd012b2c584",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast a creature spell.\n{T}: Until end of turn, target creature you control with power 4 or greater gains trample and \"Whenever this creature deals combat damage to a player, draw a card.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hermitic Herbalist",
+      "oracle_id": "9928773d-3f35-4b0e-965d-4233e04398fb",
+      "oracle_text": "{T}: Add one mana of any color.\n{T}: Add two mana in any combination of colors. Spend this mana only to cast Lesson spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hostage Taker",
+      "oracle_id": "c5c2d209-e3ef-4b0d-85f5-e7402dcf09eb",
+      "oracle_text": "When this creature enters, exile another target creature or artifact until this creature leaves the battlefield. You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Humble Naturalist",
+      "oracle_id": "ff3a69a7-a244-4958-9e8b-d153942c1ba6",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast a creature spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hurl Through Hell",
+      "oracle_id": "4254c048-7207-4ca0-bd20-ebb418d9ed1a",
+      "oracle_text": "Exile target creature. Until the end of your next turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Hydro-Channeler",
+      "oracle_id": "95630a83-3699-4340-b3e5-17e81db1b82f",
+      "oracle_text": "{T}: Add {U}. Spend this mana only to cast an instant or sorcery spell.\n{1}, {T}: Add one mana of any color. Spend this mana only to cast an instant or sorcery spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ian Malcolm, Chaotician",
+      "oracle_id": "57ff1665-0a7b-4d98-bd8f-cc07cf04f701",
+      "oracle_text": "Whenever a player draws their second card each turn, that player exiles the top card of their library.\nDuring each player's turn, that player may cast a spell from among the cards they don't own exiled with Ian Malcolm, and mana of any type can be spent to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Inga and Esika",
+      "oracle_id": "3431ee42-c34a-4972-9488-41b83ba5f943",
+      "oracle_text": "Creatures you control have vigilance and \"{T}: Add one mana of any color. Spend this mana only to cast a creature spell.\"\nWhenever you cast a creature spell, if three or more mana from creatures was spent to cast it, draw a card.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Intellect Devourer",
+      "oracle_id": "a06fa827-900b-46d4-8f48-b4e15964951a",
+      "oracle_text": "Devour Intellect — When this creature enters, each opponent exiles a card from their hand until this creature leaves the battlefield.\nBody Thief — You may play lands and cast spells from among cards exiled with this creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": "partial_not_counted",
+      "source_families": []
+    },
+    {
+      "card_name": "Intrepid Paleontologist",
+      "oracle_id": "d6026309-aae9-43e7-938b-69db7af7139c",
+      "oracle_text": "{T}: Add one mana of any color.\n{2}: Exile target card from a graveyard.\nYou may cast Dinosaur creature spells from among cards you own exiled with this creature. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Intrepid Stablemaster",
+      "oracle_id": "a825bdea-3ea2-46b2-93b9-21586643aab0",
+      "oracle_text": "Reach\n{T}: Add {G}.\n{T}: Add two mana of any one color. Spend this mana only to cast Mount or Vehicle spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Invasion of Zendikar // Awakened Skyclave",
+      "oracle_id": "4b1874af-4ea5-4e22-a4d4-e718d75fe95e",
+      "oracle_text": "(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.)\nWhen this Siege enters, search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.\nVigilance, haste\nAs long as this creature is on the battlefield, it's a land in addition to its other types.\n{T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ixalli's Lorekeeper",
+      "oracle_id": "a3ce0fa9-8742-4e2c-a8a0-00fc009f998a",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast a Dinosaur spell or activate an ability of a Dinosaur source.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Ixhel, Scion of Atraxa",
+      "oracle_id": "9fb7982f-fe35-4dea-a515-a0039ddbbaec",
+      "oracle_text": "Flying, vigilance, toxic 2\nCorrupted — At the beginning of your end step, each opponent who has three or more poison counters exiles the top card of their library face down. You may look at and play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Jasmine Dragon Tea Shop",
+      "oracle_id": "d9a24444-289f-473f-9985-8df275257555",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast an Ally spell or activate an ability of an Ally source.\n{5}, {T}: Create a 1/1 white Ally creature token.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Jeweled Lotus",
+      "oracle_id": "23216e59-f147-4bb7-a698-12777c2f8584",
+      "oracle_text": "{T}, Sacrifice this artifact: Add three mana of any one color. Spend this mana only to cast your commander.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Kalain, Reclusive Painter",
+      "oracle_id": "4fca09ac-8134-43d9-a84b-686db5e2bf69",
+      "oracle_text": "When Kalain enters, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nOther creatures you control enter with an additional +1/+1 counter on them for each mana from a Treasure spent to cast them.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "King Narfi's Betrayal",
+      "oracle_id": "35c416c6-f522-4b4c-93db-75c4e01843d1",
+      "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Each player mills four cards. Then you may exile a creature or planeswalker card from each graveyard.\nII, III — Until end of turn, you may cast spells from among cards exiled with this Saga, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Klaw, Master of Sound",
+      "oracle_id": "8eaa8833-ab9e-4bd8-92de-63e195b8d912",
+      "oracle_text": "Deathtouch\nWhenever you play a card from exile, Klaw gains indestructible until end of turn.\nWhenever Klaw deals combat damage to a player, look at the top card of that player's library, then exile it face down. You may play it for as long as it remains exiled. Mana of any type can be spent to cast a spell this way.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Kotose, the Silent Spider",
+      "oracle_id": "bfef4daa-b950-46ce-8c08-11f9983741cf",
+      "oracle_text": "When Kotose enters, exile target card other than a basic land card from an opponent's graveyard. Search that player's graveyard, hand, and library for any number of cards with the same name as that card and exile them. Then that player shuffles. For as long as you control Kotose, you may play one of the exiled cards, and you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Laughing Jasper Flint",
+      "oracle_id": "bd7c5a8b-cf62-41e1-a664-b16e3e5d142b",
+      "oracle_text": "Creatures you control but don't own are Mercenaries in addition to their other types.\nAt the beginning of your upkeep, exile the top X cards of target opponent's library, where X is the number of outlaws you control. Until end of turn, you may cast spells from among those cards, and mana of any type can be spent to cast those spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Lidless Gaze",
+      "oracle_id": "287aae84-b098-456e-b9cb-8eac51c36360",
+      "oracle_text": "Exile the top card of each player's library. Until the end of your next turn, you may play those cards, and mana of any type can be spent to cast those spells.\nFlashback {2}{B}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Lotho, Corrupt Shirriff",
+      "oracle_id": "135cc078-1c45-465e-b0b9-7168c89f56f4",
+      "oracle_text": "Whenever a player casts their second spell each turn, you lose 1 life and create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Lotus Bloom",
+      "oracle_id": "04cf02dc-f053-414e-87d8-1537f25bcbf4",
+      "oracle_text": "Suspend 3—{0} (Rather than cast this card from your hand, pay {0} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n{T}, Sacrifice this artifact: Add three mana of any one color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Maelstrom of the Spirit Dragon",
+      "oracle_id": "49e9fba7-8465-4bbb-95db-73a7e149f494",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Dragon spell or an Omen spell.\n{4}, {T}, Sacrifice this land: Search your library for a Dragon card, reveal it, put it into your hand, then shuffle.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Marut",
+      "oracle_id": "4ba37a9e-6b80-4099-bd79-736123d0554b",
+      "oracle_text": "Trample\nWhen this creature enters, if mana from a Treasure was spent to cast it, create a Treasure token for each mana from a Treasure spent to cast it. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Mastermind Plum",
+      "oracle_id": "4605d8b3-b714-4717-8ff3-155fabfc1999",
+      "oracle_text": "Whenever Mastermind Plum attacks, exile up to one target card from a graveyard. If an artifact card was exiled this way, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nWhenever you cast a spell, if mana from a Treasure was spent to cast it, you draw a card and you lose 1 life.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Mech Hangar",
+      "oracle_id": "abc04775-171d-41f3-83ea-4b4eb72723d5",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Pilot or Vehicle spell.\n{3}, {T}: Target Vehicle becomes an artifact creature until end of turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Metamorphosis",
+      "oracle_id": "7140d726-0136-43af-84b5-85005a66a186",
+      "oracle_text": "As an additional cost to cast this spell, sacrifice a creature.\nAdd X mana of any one color, where X is 1 plus the sacrificed creature's mana value. Spend this mana only to cast creature spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Meticulous Artisan",
+      "oracle_id": "2b2b3b16-389c-4581-b889-b8a2e76f83a2",
+      "oracle_text": "Prowess (Whenever you cast a noncreature spell, this creature gets +1/+1 until end of turn.)\nWhen this creature enters, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Mezzio Mugger",
+      "oracle_id": "068699a9-dd5c-428b-96eb-fd085dda71e9",
+      "oracle_text": "Whenever this creature attacks, exile the top card of each player's library. You may play those cards this turn, and you may spend mana as though it were mana of any color to cast those spells.\nBlitz {2}{R} (If you cast this spell for its blitz cost, it gains haste and \"When this creature dies, draw a card.\" Sacrifice it at the beginning of the next end step.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Mnemonic Betrayal",
+      "oracle_id": "aa41e0e6-d04e-48d6-8450-02b972dd0bb1",
+      "oracle_text": "Exile all opponents' graveyards. You may cast spells from among those cards this turn, and mana of any type can be spent to cast them. At the beginning of the next end step, if any of those cards remain exiled, return them to their owners' graveyards.\nExile Mnemonic Betrayal.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Mox Tantalite",
+      "oracle_id": "cc319819-68f9-4c1e-8d60-25a5e3e50669",
+      "oracle_text": "Suspend 3—{0} (Rather than cast this card from your hand, pay {0} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)\n{T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Nathan Drake, Treasure Hunter",
+      "oracle_id": "ed69b907-272c-4a87-a943-06aaad976fb1",
+      "oracle_text": "First strike\nYou may spend mana as though it were mana of any color to cast spells you don't own or to activate abilities of permanents you control but don't own.\nWhenever Nathan Drake attacks, exile the top card of each player's library. You may cast a spell from among those cards.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Nikya of the Old Ways",
+      "oracle_id": "ebf3fd80-9574-489b-9428-f4251834bdc4",
+      "oracle_text": "You can't cast noncreature spells.\nWhenever you tap a land for mana, add one mana of any type that land produced.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Nita, Forum Conciliator",
+      "oracle_id": "f589e5ee-399c-4613-b7a2-9ab2866cc830",
+      "oracle_text": "Whenever you cast a spell you don't own, put a +1/+1 counter on each creature you control.\n{2}, Sacrifice another creature: Exile target instant or sorcery card from an opponent's graveyard. You may cast it this turn, and mana of any type can be spent to cast that spell. If that spell would be put into a graveyard, exile it instead. Activate only as a sorcery.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Null Summoner",
+      "oracle_id": "56c412be-daab-4461-931f-1e2ea8ecd75d",
+      "oracle_text": "When this creature enters, if you cast it, target opponent reveals their hand. You choose a nonland card from it. Exile that card.\nThreshold — As long as there are seven or more cards in your graveyard, you may cast the exiled card, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Oath of Nissa",
+      "oracle_id": "c4efdbab-711d-4269-9b24-b05d36f7e5c7",
+      "oracle_text": "When Oath of Nissa enters, look at the top three cards of your library. You may reveal a creature, land, or planeswalker card from among them and put it into your hand. Put the rest on the bottom of your library in any order.\nYou may spend mana as though it were mana of any color to cast planeswalker spells.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Obsidian Obelisk",
+      "oracle_id": "92a5e50d-8477-4654-9c1b-219e4fe3c5ab",
+      "oracle_text": "This artifact enters tapped.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a multicolored spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Opal Palace",
+      "oracle_id": "aa6723a2-75da-49f5-a1ba-cbfa82c55301",
+      "oracle_text": "{T}: Add {C}.\n{1}, {T}: Add one mana of any color in your commander's color identity. If you spend this mana to cast your commander, it enters with a number of additional +1/+1 counters on it equal to the number of times it's been cast from the command zone this game.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Open the Omenpaths",
+      "oracle_id": "9ac01998-6e26-4ba5-b66c-614ec831caef",
+      "oracle_text": "Choose one —\n• Add two mana of any one color and two mana of any other color. Spend this mana only to cast creature or enchantment spells.\n• Creatures you control get +1/+0 until end of turn.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Opposition Agent",
+      "oracle_id": "1f438b8f-fe23-4f3b-ab2e-f6c33676c462",
+      "oracle_text": "Flash\nYou control your opponents while they're searching their libraries.\nWhile an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Outcaster Trailblazer",
+      "oracle_id": "3b5ff623-c44e-4f2d-8ab7-ee6b11f1deee",
+      "oracle_text": "When this creature enters, add one mana of any color.\nWhenever another creature you control with power 4 or greater enters, draw a card.\nPlot {2}{G} (You may pay {2}{G} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Outrageous Robbery",
+      "oracle_id": "5b194438-6946-45dd-8d77-c9de8c115d09",
+      "oracle_text": "Target opponent exiles the top X cards of their library face down. You may look at and play those cards for as long as they remain exiled. If you cast a spell this way, you may spend mana as though it were mana of any type to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Path of Ancestry",
+      "oracle_id": "b473e293-59e3-4e04-acf2-622604aeb25f",
+      "oracle_text": "This land enters tapped.\n{T}: Add one mana of any color in your commander's color identity. When that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1. (Look at the top card of your library. You may put that card on the bottom.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Path of Annihilation",
+      "oracle_id": "eca6ffeb-463c-40b0-90b4-7e09e5579c10",
+      "oracle_text": "Devoid (This card has no color.)\nWhen this enchantment enters, create two 0/1 colorless Eldrazi Spawn creature tokens with \"Sacrifice this token: Add {C}.\"\nEldrazi you control have \"{T}: Add one mana of any color.\"\nWhenever you cast a creature spell with mana value 7 or greater, you gain 4 life.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Pelargir Survivor",
+      "oracle_id": "ce0b3c22-3f77-4a6c-a126-9ed3c06b4482",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast an instant or sorcery spell.\n{5}{U}, {T}: Target player mills three cards. (They put the top three cards of their library into their graveyard.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Pentad Prism",
+      "oracle_id": "72e8d67a-41e6-4074-bcbd-b54ead995237",
+      "oracle_text": "Sunburst (This artifact enters with a charge counter on it for each color of mana spent to cast it.)\nRemove a charge counter from this artifact: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Perception Bobblehead",
+      "oracle_id": "f0bcdc43-c43d-4ce7-a283-b8dcab4fc497",
+      "oracle_text": "{T}: Add one mana of any color.\n{3}, {T}: Look at the top X cards of your library, where X is the number of Bobbleheads you control. You may cast a spell with mana value 3 or less from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Petalmane Baku",
+      "oracle_id": "f73f8eca-55fe-418f-a244-29ef82cfc47c",
+      "oracle_text": "Whenever you cast a Spirit or Arcane spell, you may put a ki counter on this creature.\n{1}, Remove X ki counters from this creature: Add X mana of any one color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Petty Larceny",
+      "oracle_id": "5513a221-dfff-4e02-8037-dcff3d0381d7",
+      "oracle_text": "Freerunning {1}{B} (You may cast this spell for its freerunning cost if you dealt combat damage to a player this turn with an Assassin or commander.)\nLook at the top two cards of target opponent's library and exile those cards face down. You may play those cards for as long as they remain exiled, and mana of any type can be spent to cast them. Create a Treasure token.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Pillar of Origins",
+      "oracle_id": "9e62f30d-3130-416e-b459-48b5f71f8be9",
+      "oracle_text": "As this artifact enters, choose a creature type.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Pillar of the Paruns",
+      "oracle_id": "677b8ce7-f922-4ee3-b311-f199da9b352b",
+      "oracle_text": "{T}: Add one mana of any color. Spend this mana only to cast a multicolored spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Pirate's Pillage",
+      "oracle_id": "7a2e866b-9642-495e-b47f-5b13a24373cc",
+      "oracle_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards and create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Plaza of Heroes",
+      "oracle_id": "9c58d241-4d9f-4b46-b8ee-f4587f9acfd6",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a legendary spell.\n{T}: Add one mana of any color among legendary permanents you control.\n{3}, {T}, Exile this land: Target legendary creature gains hexproof and indestructible until end of turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Potioner's Trove",
+      "oracle_id": "d604c75e-9d81-49de-80bc-08f4ef3ee975",
+      "oracle_text": "{T}: Add one mana of any color.\n{T}: You gain 2 life. Activate only if you've cast an instant or sorcery spell this turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Power Depot",
+      "oracle_id": "64687880-03f9-4f38-985b-1027c797e33f",
+      "oracle_text": "This land enters tapped.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast artifact spells or activate abilities of artifacts.\nModular 1",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Predators' Hour",
+      "oracle_id": "4d504d5f-02a4-4104-89b7-88884483f53a",
+      "oracle_text": "Until end of turn, creatures you control gain menace and \"Whenever this creature deals combat damage to a player, exile the top card of that player's library face down. You may look at and play that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Primal Amulet // Primal Wellspring",
+      "oracle_id": "8e4d0da0-c7d8-4a20-9bfd-02c1331a7a49",
+      "oracle_text": "Instant and sorcery spells you cast cost {1} less to cast.\nWhenever you cast an instant or sorcery spell, put a charge counter on this artifact. Then if there are four or more charge counters on it, you may remove those counters and transform it.\n(Transforms from Primal Amulet.)\n{T}: Add one mana of any color. When that mana is spent to cast an instant or sorcery spell, copy that spell and you may choose new targets for the copy.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Primal Beyond",
+      "oracle_id": "541744d9-449d-420a-a5a1-2fffba18450f",
+      "oracle_text": "As this land enters, you may reveal an Elemental card from your hand. If you don't, this land enters tapped.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast an Elemental spell or activate an ability of an Elemental.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Progenitor's Icon",
+      "oracle_id": "747f6d0f-3c10-4fef-b7ae-f578c8964ab5",
+      "oracle_text": "As this artifact enters, choose a creature type.\n{T}: Add one mana of any color.\n{T}: The next spell of the chosen type you cast this turn can be cast as though it had flash.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "next-play-timing-and-granted-flashback"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Psychic Intrusion",
+      "oracle_id": "fdb10291-b5e0-4da8-a103-8e7ac7f8177b",
+      "oracle_text": "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Quistis Trepe",
+      "oracle_id": "821e8648-222c-4b33-a8bd-e8bfff7dcd9e",
+      "oracle_text": "Blue Magic — When Quistis Trepe enters, you may cast target instant or sorcery card from a graveyard, and mana of any type can be spent to cast that spell. If that spell would be put into a graveyard, exile it instead.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Rakdos, the Muscle",
+      "oracle_id": "e2c141af-925e-42bd-8d83-e1a71f4c9794",
+      "oracle_text": "Flying, trample\nWhenever you sacrifice another creature, exile cards equal to its mana value from the top of target player's library. Until your next end step, you may play those cards, and mana of any type can be spent to cast those spells.\nSacrifice another creature: Rakdos gains indestructible until end of turn. Tap it. Activate only once each turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Reno and Rude",
+      "oracle_id": "f749a6d6-2c55-439f-bb02-e95fa54c2ef3",
+      "oracle_text": "Menace\nWhenever Reno and Rude deals combat damage to a player, exile the top card of that player's library. Then you may sacrifice another creature or artifact. If you do, you may play the exiled card this turn, and mana of any type can be spent to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Resonating Lute",
+      "oracle_id": "9263287d-f782-4318-9ab8-e2e5f8107f5e",
+      "oracle_text": "Lands you control have \"{T}: Add two mana of any one color. Spend this mana only to cast instant and sorcery spells.\"\n{T}: Draw a card. Activate only if you have seven or more cards in your hand.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Rev, Tithe Extractor",
+      "oracle_id": "8345eb05-c04e-4c1d-9776-5ab7d91a7842",
+      "oracle_text": "Whenever you attack, target creature gains deathtouch until end of turn.\nWhenever one or more creatures you control deal combat damage to a player, create a Treasure token, then look at the top card of that player's library and exile it face down. You may cast that card for as long as it remains exiled. (A Treasure token is an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Rift Sower",
+      "oracle_id": "f9deeea1-bf80-4832-aac3-373fc1f4b41d",
+      "oracle_text": "{T}: Add one mana of any color.\nSuspend 2—{G} (Rather than cast this card from your hand, you may pay {G} and exile it with two time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Riveteers Requisitioner",
+      "oracle_id": "469f25de-c180-47e9-9b1b-e23269139bbd",
+      "oracle_text": "When this creature dies, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nBlitz {2}{R} (If you cast this spell for its blitz cost, it gains haste and \"When this creature dies, draw a card.\" Sacrifice it at the beginning of the next end step.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Robber of the Rich",
+      "oracle_id": "4df0d381-fc05-4d30-9307-48963aa2ecfd",
+      "oracle_text": "Reach, haste\nWhenever this creature attacks, if defending player has more cards in hand than you, exile the top card of their library. During any turn you attacked with a Rogue, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Rogue Class",
+      "oracle_id": "76f0f39a-ce1b-4935-a6b8-5c4e1a27ab24",
+      "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nWhenever a creature you control deals combat damage to a player, exile the top card of that player's library face down. You may look at it for as long as it remains exiled.\n{1}{U}{B}: Level 2\nCreatures you control have menace.\n{2}{U}{B}: Level 3\nYou may play cards exiled with this Class, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": "partial_not_counted",
+      "source_families": []
+    },
+    {
+      "card_name": "Ronin, Shadow Stalker",
+      "oracle_id": "8ceb1acf-5ff3-4f1a-af04-9f07ad454526",
+      "oracle_text": "Pay 2 life: Add two mana of any one color. Spend this mana only to cast Equipment spells or activate equip abilities. Activate only once each turn.\n{T}, Sacrifice an Equipment attached to Ronin: Target creature gets -4/-4 until end of turn. Activate only as a sorcery.",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "exact-consumer-mana-methods-and-keywords"
+      ],
+      "owner_disposition": "Mana production, not GrantPlayTagged conversion; no hold from this issue."
+    },
+    {
+      "card_name": "Rootcoil Creeper",
+      "oracle_id": "101f06f8-7980-41d1-98fa-3cb959380737",
+      "oracle_text": "{T}: Add one mana of any color.\n{T}: Add two mana of any one color. Spend this mana only to cast spells from your graveyard.\n{G}{U}, {T}, Exile this creature: Return target card with flashback you own from exile to your hand.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Rosethorn Acolyte // Seasonal Ritual",
+      "oracle_id": "639a8804-8513-4ba4-8683-ea1e2e5a9530",
+      "oracle_text": "{T}: Add one mana of any color.\nAdd one mana of any color. (Then exile this card. You may cast the creature later from exile.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Secluded Courtyard",
+      "oracle_id": "79ba18fd-f184-43c1-86df-56ee18ce806c",
+      "oracle_text": "As this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type or activate an ability of a creature source of the chosen type.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Seize the Spoils",
+      "oracle_id": "58f83528-9110-4895-b5ea-51b90af30a8d",
+      "oracle_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards and create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Shadow of the Enemy",
+      "oracle_id": "4f0c72ff-cd93-46a6-8649-2cd9ce8b8625",
+      "oracle_text": "Exile all creature cards from target player's graveyard. You may cast spells from among those cards for as long as they remain exiled, and mana of any type can be spent to cast them.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Share the Spoils",
+      "oracle_id": "d39af66c-4997-48b8-a704-f21d93247d7d",
+      "oracle_text": "When this enchantment enters and whenever an opponent loses the game, exile the top card of each player's library.\nDuring each player's turn, that player may play a land or cast a spell from among cards exiled with this enchantment, and they may spend mana as though it were mana of any color to cast that spell. When they do, exile the top card of their library.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Siphon Insight",
+      "oracle_id": "aee82122-d13e-4175-b499-9dde718e4da9",
+      "oracle_text": "Look at the top two cards of target opponent's library. Exile one of them face down and put the other on the bottom of that library. You may play the exiled card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.\nFlashback {1}{U}{B}",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Sliver Hive",
+      "oracle_id": "e7286688-ffbe-4d25-ad55-27990f005368",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Sliver spell.\n{5}, {T}: Create a 1/1 colorless Sliver creature token. Activate only if you control a Sliver.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Solar Array",
+      "oracle_id": "e8e2f273-5e74-4f16-8d49-2e86e9c9f2dc",
+      "oracle_text": "{T}: Add one mana of any color. When you next cast an artifact spell this turn, that spell gains sunburst. (If it's a creature, it enters with a +1/+1 counter on it for each color of mana spent to cast it. Otherwise, it enters with that many charge counters on it.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Somberwald Sage",
+      "oracle_id": "f249db15-09fa-4a1c-9461-9ae803c219b6",
+      "oracle_text": "{T}: Add three mana of any one color. Spend this mana only to cast creature spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Stolen Strategy",
+      "oracle_id": "6807167a-e290-4259-940e-3cbbfa75d0a1",
+      "oracle_text": "At the beginning of your upkeep, exile the top card of each opponent's library. Until end of turn, you may cast spells from among those exiled cards, and you may spend mana as though it were mana of any color to cast those spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Storm-Kiln Artist",
+      "oracle_id": "a145ff8c-5812-4bcb-bd16-9839dc25121d",
+      "oracle_text": "This creature gets +1/+0 for each artifact you control.\nMagecraft — Whenever you cast or copy an instant or sorcery spell, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Strike It Rich",
+      "oracle_id": "c34c17c7-3827-49a2-be25-67f44fdfe150",
+      "oracle_text": "Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nFlashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Study Hall",
+      "oracle_id": "eb735501-19e7-4910-aa6a-6667fff6f4e5",
+      "oracle_text": "{T}: Add {C}.\n{1}, {T}: Add one mana of any color. When you spend this mana to cast your commander, scry X, where X is the number of times it's been cast from the command zone this game.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Summon: Esper Valigarmanda",
+      "oracle_id": "cecd2f49-8ccb-472d-9cf1-fd0f4d93546d",
+      "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after IV.)\nI — Exile an instant or sorcery card from each graveyard.\nII, III, IV — Add {R} for each lore counter on this Saga. You may cast an instant or sorcery card exiled with this Saga, and mana of any type can be spent to cast that spell.\nFlying, haste",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Svella, Ice Shaper",
+      "oracle_id": "7fd8a508-335c-4d5a-9916-23bf26dfff38",
+      "oracle_text": "{3}, {T}: Create a colorless snow artifact token named Icy Manalith with \"{T}: Add one mana of any color.\"\n{6}{R}{G}, {T}: Look at the top four cards of your library. You may cast a spell from among them without paying its mana cost. Put the rest on the bottom of your library in a random order.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Séance Board",
+      "oracle_id": "8331d2ff-3729-4014-8dcb-278644d2632a",
+      "oracle_text": "Morbid — At the beginning of each end step, if a creature died this turn, put a soul counter on this artifact.\n{T}: Add X mana of any one color, where X is the number of soul counters on this artifact. Spend this mana only to cast instant, sorcery, Demon, and Spirit spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Taster of Wares",
+      "oracle_id": "020aae46-cdba-4c37-9c54-283727c09994",
+      "oracle_text": "When this creature enters, target opponent reveals X cards from their hand, where X is the number of Goblins you control. You choose one of those cards. That player exiles it. If an instant or sorcery card is exiled this way, you may cast it for as long as you control this creature, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Tectonic Split",
+      "oracle_id": "b71c3c1e-f927-4192-ac3a-cf6a442ffd00",
+      "oracle_text": "As an additional cost to cast this spell, sacrifice half the lands you control, rounded up.\nHexproof\nLands you control have \"{T}: Add three mana of any one color.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Tender Wildguide",
+      "oracle_id": "74868bc0-6081-4f46-a2c6-9521cd5465aa",
+      "oracle_text": "Offspring {2} (You may pay an additional {2} as you cast this spell. If you do, when this creature enters, create a 1/1 token copy of it.)\n{T}: Add one mana of any color.\n{T}: Put a +1/+1 counter on this creature.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "The Cabbage Merchant",
+      "oracle_id": "e31808bb-fb6e-487b-a973-db44961c84ee",
+      "oracle_text": "Whenever an opponent casts a noncreature spell, create a Food token. (It's an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")\nWhenever a creature deals combat damage to you, sacrifice a Food token.\nTap two untapped Foods you control: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "The Ruinous Powers",
+      "oracle_id": "283054ed-5fbd-4202-bc02-294079aaff03",
+      "oracle_text": "At the beginning of your upkeep, choose an opponent at random. Exile the top card of that player's library. Until end of turn, you may play that card and you may spend mana as though it were mana of any color to cast it. When you cast a spell this way, its owner loses life equal to its mana value.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "The Seedcore",
+      "oracle_id": "249fdd3e-376c-4ec2-a612-4353e0e61ee2",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast Phyrexian creature spells.\nCorrupted — {T}: Target 1/1 creature gets +2/+1 until end of turn. Activate only if an opponent has three or more poison counters.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Thief of Sanity",
+      "oracle_id": "68b51d58-7566-4a26-8c31-8da32799bea7",
+      "oracle_text": "Flying\nWhenever this creature deals combat damage to a player, look at the top three cards of that player's library, exile one of them face down, then put the rest into their graveyard. You may cast that card for as long as it remains exiled, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Thieving Varmint",
+      "oracle_id": "b9f3cf9f-24c7-43ed-9ba1-f4570df3d09e",
+      "oracle_text": "Deathtouch, lifelink\n{T}, Pay 1 life: Add two mana of any one color. Spend this mana only to cast spells you don't own.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Throne of Makindi",
+      "oracle_id": "7e8198e9-0f3b-420b-ab09-74f13f4fd548",
+      "oracle_text": "{T}: Add {C}.\n{1}, {T}: Put a charge counter on this land.\n{T}, Remove a charge counter from this land: Add two mana of any one color. Spend this mana only to cast kicked spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Tinybones, Bauble Burglar",
+      "oracle_id": "fd335b2f-e6a2-45ac-949e-a67278b21cb6",
+      "oracle_text": "Whenever an opponent discards a card, exile it from their graveyard with a stash counter on it.\nDuring your turn, you may play cards you don't own with stash counters on them from exile, and mana of any type can be spent to cast those spells.\n{3}{B}, {T}: Each opponent discards a card. Activate only as a sorcery.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Tinybones, the Pickpocket",
+      "oracle_id": "7bc4c7e2-6758-4a85-84e7-03ab93981106",
+      "oracle_text": "Deathtouch\nWhenever Tinybones deals combat damage to a player, you may cast target nonland permanent card from that player's graveyard, and mana of any type can be spent to cast that spell.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Tome of the Guildpact",
+      "oracle_id": "3c7dd86d-25eb-4b24-9358-98b951248e04",
+      "oracle_text": "Whenever you cast a multicolored spell, draw a card.\n{T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Torgal, A Fine Hound",
+      "oracle_id": "9d6ab594-aea9-4f13-8802-f3794ee45425",
+      "oracle_text": "Whenever you cast your first Human creature spell each turn, that creature enters with an additional +1/+1 counter on it for each Dog and/or Wolf you control.\n{T}: Add one mana of any color.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Trailtracker Scout",
+      "oracle_id": "d38646dc-d1ea-473c-aaf1-df8ba327459f",
+      "oracle_text": "{T}: Add one mana of any color.\nWhenever you expend 8, return up to one target permanent card from your graveyard to your hand. (You expend 8 as you spend your eighth total mana to cast spells during a turn.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Turtle Lair",
+      "oracle_id": "eb002bbc-08df-4bf0-bea3-46494ad261b6",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Ninja or Turtle spell.\n{3}, {T}: Target Ninja or Turtle can't be blocked this turn.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Unclaimed Territory",
+      "oracle_id": "584b15f2-6ae9-413a-8b8d-9244dbea4878",
+      "oracle_text": "As this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Unexpected Windfall",
+      "oracle_id": "498c10c9-253d-4b15-b48c-1509381b17e8",
+      "oracle_text": "As an additional cost to cast this spell, discard a card.\nDraw two cards and create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Uvilda, Dean of Perfection // Nassari, Dean of Expression",
+      "oracle_id": "63c4915f-5ad9-468f-95c5-d44f1b71631e",
+      "oracle_text": "{T}: You may exile an instant or sorcery card from your hand and put three refine counters on it. It gains \"At the beginning of your upkeep, if this card is exiled, remove a refine counter from it\" and \"When the last refine counter is removed from this card, if it's exiled, you may cast it. It costs {4} less to cast this way.\"\nAt the beginning of your upkeep, exile the top card of each opponent's library. Until end of turn, you may cast spells from among those exiled cards, and you may spend mana as though it were mana of any color to cast those spells.\nWhenever you cast a spell from exile, put a +1/+1 counter on Nassari.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "Valki, God of Lies // Tibalt, Cosmic Impostor",
+      "oracle_id": "907ae517-22d5-4ac7-bc3a-3f4d5eaeeb57",
+      "oracle_text": "When Valki enters, each opponent reveals their hand. For each opponent, exile a creature card they revealed this way until Valki leaves the battlefield.\n{X}: Choose a creature card exiled with Valki with mana value X. Valki becomes a copy of that card.\nAs Tibalt enters, you get an emblem with \"You may play cards exiled with Tibalt, Cosmic Impostor, and you may spend mana as though it were mana of any color to cast those spells.\"\n+2: Exile the top card of each player's library.\n−3: Exile target artifact or creature.\n−8: Exile all graveyards. Add {R}{R}{R}.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Vedalken Engineer",
+      "oracle_id": "b36accb4-cde6-4b1d-b549-8c975cfa999d",
+      "oracle_text": "{T}: Add two mana of any one color. Spend this mana only to cast artifact spells or activate abilities of artifacts.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Verdant Eidolon",
+      "oracle_id": "a3acc388-4015-42e4-88ff-b35a91134d12",
+      "oracle_text": "{G}, Sacrifice this creature: Add three mana of any one color.\nWhenever you cast a multicolored spell, you may return this card from your graveyard to your hand.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Villainous Hideout",
+      "oracle_id": "cd2888aa-71f3-47ee-ba33-7bb95d5bc836",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Villain spell or to activate an ability of a Villain source.\n{3}, {T}: Target Villain you control connives. Activate only as a sorcery. (Draw a card, then discard a card. If you discarded a nonland card, put a +1/+1 counter on that creature.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Vizier of the Menagerie",
+      "oracle_id": "4f890d42-e4f1-4eed-aa6c-718865de8927",
+      "oracle_text": "You may look at the top card of your library any time.\nYou may cast creature spells from the top of your library.\nYou can spend mana of any type to cast creature spells.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Voldaren Estate",
+      "oracle_id": "fb0c0426-f1a6-4e52-9242-627786d3119a",
+      "oracle_text": "{T}: Add {C}.\n{T}, Pay 1 life: Add one mana of any color. Spend this mana only to cast a Vampire spell.\n{5}, {T}: Create a Blood token. This ability costs {1} less to activate for each Vampire you control. (It's an artifact with \"{1}, {T}, Discard a card, Sacrifice this token: Draw a card.\")",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Vraska, Soul of Stone",
+      "oracle_id": "cad63b31-667b-4518-bc49-be4ffb82bc63",
+      "oracle_text": "Artifact creatures you control have vigilance.\nWhenever you cast a noncreature spell, create a 1/1 colorless Sculpture Treasure artifact creature token with \"{T}, Sacrifice this token: Add one mana of any color.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Weaver of Blossoms // Blossom-Clad Werewolf",
+      "oracle_id": "a64ecae7-0b09-48e1-8108-89442547ffda",
+      "oracle_text": "{T}: Add one mana of any color.\nDaybound (If a player casts no spells during their own turn, it becomes night next turn.)\n{T}: Add two mana of any one color.\nNightbound (If a player casts at least two spells during their own turn, it becomes day next turn.)",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Whispersteel Dagger",
+      "oracle_id": "ca59fbf4-c774-49d3-8630-108c053e01fb",
+      "oracle_text": "Equipped creature gets +2/+0.\nWhenever equipped creature deals combat damage to a player, you may cast a creature spell from that player's graveyard this turn, and you may spend mana as though it were mana of any color to cast that spell.\nEquip {3}",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "White Lotus Hideout",
+      "oracle_id": "2cdbfda3-98fc-4108-b551-c7049168924e",
+      "oracle_text": "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a Lesson or Shrine spell.\n{1}, {T}: Add one mana of any color.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Woodland Weavemaster",
+      "oracle_id": "28ffddca-a3c4-467d-a2dc-2c5e62393e11",
+      "oracle_text": "Vigilance\nWhenever another Elf you control enters, this creature gets +1/+1 until end of turn.\n{T}: Add X mana of any one color, where X is this creature's power. Spend this mana only to cast Elf spells and activate abilities of Elf sources.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Wrenn and Realmbreaker",
+      "oracle_id": "4566fb92-448e-4b3f-9045-9d74323c35d1",
+      "oracle_text": "Lands you control have \"{T}: Add one mana of any color.\"\n+1: Up to one target land you control becomes a 3/3 Elemental creature with vigilance, hexproof, and haste until your next turn. It's still a land.\n−2: Mill three cards. You may put a permanent card from among the milled cards into your hand.\n−7: You get an emblem with \"You may play lands and cast permanent spells from your graveyard.\"",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Xanathar, Guild Kingpin",
+      "oracle_id": "1a168ba5-8e11-41dd-8f8a-8cb23bbde056",
+      "oracle_text": "At the beginning of your upkeep, choose target opponent. Until end of turn, that player can't cast spells, you may look at the top card of their library any time, you may play the top card of their library, and you may spend mana as though it were mana of any color to cast spells this way.",
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    {
+      "card_name": "You Find Some Prisoners",
+      "oracle_id": "467c526a-02a7-405d-98de-c632ea83519b",
+      "oracle_text": "Choose one —\n• Break Their Chains — Destroy target artifact.\n• Interrogate Them — Exile the top three cards of target opponent's library. Choose one of them. Until the end of your next turn, you may play that card, and you may spend mana as though it were mana of any color to cast it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Yuna, Grand Summoner",
+      "oracle_id": "ba72d4a9-6f36-4796-bd71-2342fa9b4a30",
+      "oracle_text": "Grand Summon — {T}: Add one mana of any color. When you next cast a creature spell this turn, that creature enters with two additional +1/+1 counters on it.\nWhenever another permanent you control is put into a graveyard from the battlefield, if it had one or more counters on it, you may put that number of +1/+1 counters on target creature.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Zaxara, the Exemplary",
+      "oracle_id": "a9946ea0-bf0e-4c9c-a3c6-21337a5029ab",
+      "oracle_text": "Deathtouch\n{T}: Add two mana of any one color.\nWhenever you cast a spell with {X} in its mana cost, create a 0/0 green Hydra creature token, then put X +1/+1 counters on it.",
+      "source_coverage_status": null,
+      "source_families": []
+    },
+    {
+      "card_name": "Zendikar Resurgent",
+      "oracle_id": "a0af158b-f42a-4022-a438-e0a2e1fd6d9e",
+      "oracle_text": "Whenever you tap a land for mana, add one mana of any type that land produced. (The types of mana are white, blue, black, red, green, and colorless.)\nWhenever you cast a creature spell, draw a card.",
+      "source_coverage_status": null,
+      "source_families": []
+    }
+  ],
+  "source_trace": {
+    "producer": "crates/ironsmith-engine/src/effects/player/grant_play_tagged.rs: tagged card StableIds populate an independent ActiveManaSpendPermission",
+    "consumer": "crates/ironsmith-engine/src/game_state.rs: CastingSpellsWithStableIds requires exile or a cast from exile, but checks neither the selected GrantPermissionIdentity nor the exact exile incarnation",
+    "duration": "ForAsLongAsExiled and ForAsLongAsYouControlSource map the independent mana permission expiry to u32::MAX",
+    "source_cases": [
+      "Stolen Strategy",
+      "Gonti, Lord of Luxury",
+      "Covetous Urge",
+      "Psychic Intrusion",
+      "Taster of Wares"
+    ],
+    "case_disposition": "These five source-traced frozen identities are absent from this failed-card ledger; they are baseline-supported regression risks, not new card proposals."
+  }
+}

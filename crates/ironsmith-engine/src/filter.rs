@@ -241,7 +241,7 @@ fn stack_spell_cast_origin_zone(
         return None;
     }
     Some(match entry.casting_method.origin_method() {
-        crate::alternative_cast::CastingMethod::AlternativePrice { .. } => return None,
+        crate::alternative_cast::CastingMethod::AlternativePrice { .. } | crate::alternative_cast::CastingMethod::ExactPermission { .. } => return None,
         crate::alternative_cast::CastingMethod::Normal
         | crate::alternative_cast::CastingMethod::FaceDown
         | crate::alternative_cast::CastingMethod::SplitOtherHalf
@@ -431,6 +431,7 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
+    fn tail_has_complete_abilities(&self) -> bool { true }
     /// Frozen attached objects for a historical subject, including an empty set.
     fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
         None
@@ -774,6 +775,10 @@ impl TailMatchSubject for ObjectSnapshot {
     ) -> bool {
         game.object(self.object_id)
             .is_some_and(|obj| object_has_alternative_cast_kind(obj, kind, game, ctx))
+    }
+
+    fn tail_has_complete_abilities(&self) -> bool {
+        self.ability_origins.as_ref().is_some_and(|origins| origins.len() == self.abilities.len())
     }
 
     fn tail_has_static_ability_id(&self, ability_id: StaticAbilityId) -> bool {
@@ -3487,6 +3492,26 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(required) = self.has_cumulative_upkeep {
+            if !subject.tail_has_complete_abilities() {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "cumulative-upkeep predicate has no exact captured ability definition".into()));
+                return false;
+            }
+            let has = subject.tail_abilities().iter().any(|ability| {
+                let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else { return false; };
+                triggered.effects.all_effects().into_iter().any(|effect| {
+                    // Result/tag wrappers retain this instruction's mechanic;
+                    // quoted grant definitions are separate abilities.
+                    let mut instruction = effect;
+                    while let Some(inner) = instruction.transparent_child_effect() { instruction = inner; }
+                    instruction.downcast_ref::<crate::effects::CumulativeUpkeepEffect>()
+                        .is_some_and(|upkeep| upkeep.kind == ironsmith_core::effect::UpkeepPaymentKind::Cumulative)
+                })
+            });
+            if has != required { return false; }
+        }
+
         // Required/excluded ability markers
         if self.ability_markers.iter().any(|marker| {
             !subject.tail_has_ability_marker(marker)
@@ -5660,6 +5685,9 @@ impl ObjectFilterExt for ObjectFilter {
                     parts.push(format!("without {}", label));
                 }
             }
+        }
+        if let Some(has) = self.has_cumulative_upkeep {
+            parts.push(if has { "with cumulative upkeep" } else { "that doesn't have cumulative upkeep" }.into());
         }
         for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));

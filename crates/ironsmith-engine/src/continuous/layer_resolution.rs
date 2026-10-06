@@ -468,8 +468,7 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::SetAbilities(abilities) => {
-                    chars.abilities = abilities.clone().into();
-                    chars.abilities.rebind(effect);
+                    chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
                     chars.static_abilities = extract_static_abilities(abilities).into();
                 }
                 Modification::CopyActivatedAbilities {

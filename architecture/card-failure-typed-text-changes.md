@@ -12,8 +12,9 @@ increment claims no complete card.** No parser body is routed to the old
 `ironsmith_core::TextChange` checks same-family, distinct color/basic-land/
 creature-type words, including during deserialization. A source word need not
 occur. `RewriteText` is appended to the runtime and compiler continuous schemas;
-the existing artifact 6/checkpoint 3/audit 19 boundaries keep their versions and
-earlier modification ordinals. Retained copy values add an omitted-by-default
+earlier modification ordinals are preserved. The integrated intrinsic-mana and
+immutable-definition prerequisites require artifact 7 / audit 20 admission;
+checkpoint 3 remains unchanged. Retained copy values add an omitted-by-default
 spell-program field with explicit unavailable, known-absent and present states. The core conversion and payload codecs
 preserve the typed replacement. Existing string ChangeText values keep their
 legacy interpretation; no existing body is admitted through the new primitive.
@@ -69,28 +70,84 @@ retained spell-copy payloads; ordinary old permanent-copy characteristics are
 unchanged when executable spell evidence is not required. Public claim snapshots
 strip the executable program just as they strip executable abilities.
 
-The native program visitor currently admits 67 complete elementary/composition
-models, activated costs, choices and restrictions. Twenty-seven added native
-codec conversions retain changed programs; every admitted effect has a typed
-codec path. Memoized immutable transformations preserve repeated effect-node
-identity and old captures. Triggered owners and the rest of the static/effect
-model families are still held. Fresh native ApplyContinuousEffect serialization
-is a separate pre-existing codec boundary; native application and independently
-constructed wire application are tested separately, not misreported as a native
-round trip.
+The native program visitor admits complete elementary/composition models,
+activated costs, choices and restrictions. Native codecs retain changed
+programs; immutable caches preserve repeated effect/static/trigger definitions,
+including nested static grant occurrences, without comparing rendered equality.
+The exhaustive static payload visitor follows recursive costs, grants, scopes,
+prevention and entry programs. Exact lossy native materializer combinations,
+opaque predicates, ambiguous all-color outputs and keyword-derived subtype
+programs remain holds.
 
-Basic-land intrinsic-mana provenance is a further explicit hold. Some historical
-native/compiler definitions store rules-granted mana as an ordinary printed
-activation. Changing its type line must not leave that obsolete activation and
-also add the new intrinsic mana ability. An affected basic land with ambiguous
-raw mana activations is held until the definition owner records the distinction;
-no mana symbol or label is used to infer an authored word. Token creation and
-type-derived names, inferred keyword payloads, and remaining semantic owners
-also need complete provenance. Linked-exile/reveal identities are preserved,
-never recalculated from transformed programs.
+Triggered traversal follows the typed matcher, body, choices and intervening
+condition. Its separate immutable compiler definition stamp and runtime
+host/acquisition origin preserve distinct identical printed slots, independent
+grants, once-per-turn history and old captures. Root definitions are stamped
+before runtime word edits. Unknown native or nested quoted definition proof
+remains a checked hold. See `trigger-definition-acquisition.md`; the new full
+definition hashes require the coordinated artifact 7 / audit 20 gate while
+checkpoint 3 remains unchanged. That reviewed gate is integrated in this branch.
 
-No card-choice parser or resolution selector is admitted yet. Full body work
-must include the following, beyond complete target/model traversal:
+Fresh native ChangeTextEffect and the complete representable
+ApplyContinuousEffect subset have encode/materialize/rewrite contracts. The
+continuous-instruction visitor preserves ordering and all native fields,
+rewrites authored predicates and quoted grants, and leaves already captured
+copy/text-box values and resolved word choices intact. Native-only target,
+source/acquisition, frozen copy, attachment and restriction metadata without an
+exact wire counterpart remain explicit encoding holds. No narrower successful
+round trip is described as covering those fields.
+
+The reviewed intrinsic-mana prerequisite is integrated with artifact 7 / audit
+20 admission. Native basic definitions and Scrubland no longer store intrinsic
+mana as printed text. The frontend validates exact parenthesized reminders
+against typed final card metadata; the old document route already discarded
+many standalone reminders, so this is not a claim that every older compiled
+land duplicated mana. Actual printed mana remains a distinct printed occurrence
+and its symbols do not change. The derived owner supplies intrinsic mana from
+the current basic land types. Native/direct/artifact contracts now cover a
+printed green Forest becoming an Island with printed green plus intrinsic blue.
+Old artifact 6 is rejected at direct materialization and registry admission;
+missing old provenance is not silently migrated.
+
+Token creation/type-derived names, inferred keyword payloads and remaining
+semantic owners still need complete provenance. Linked-exile/reveal identities
+are preserved, never recalculated from transformed programs. The activation
+and trigger definition finalizers share a normalized authored namespace, so
+newly generated stamps do not feed back into either owner on repeated passes.
+Their version-two namespace retains the complete typed definition graph and
+uses the existing artifact graph walker to canonicalize actual CardId values,
+including nested definitions and references. Graph aliases and ordinary numeric
+values retain their meaning. Compiler first-draw pair construction now uses the
+same typed graph owner with a separate version-two domain. Its explicit producer/
+consumer groups supply ephemeral construction proof; only those generated inputs
+are normalized before hashing. This closes Eisenhorn's nested-token allocation
+dependence and makes repeated finalization stable. All five frozen first-draw
+definitions migrate their construction hashes under the staged gate. Existing
+runtime pair IDs, acquisitions and captures never undergo this normalization.
+Independent native/opaque pair identities remain intact and hold the new trigger
+stamp instead of becoming false canonical proof. The prior activation-history
+namespace remains available under its explicit version-one fallback for these
+otherwise supported definitions.
+
+The typed ChangeTextEffect resolution selector and named frontend rule are
+implemented for the full frozen instruction family. The semantic AST records
+target, word-choice contract and duration. A genuine following-sentence rule
+attaches Artificial Evolution's excluded destination. Balduvian Shaman's target
+uses a typed cumulative-upkeep predicate, read from the current dedicated
+UpkeepPaymentKind mechanic, with incomplete captured-ability evidence kept as
+an error. Names and presentation labels do not identify that keyword.
+
+Word/family choices happen during resolution. Every vocabulary entry is typed;
+option labels are presentation. No game mutation occurs until the required
+choices are complete. Fixed destination differs from “another”: New Blood can
+choose Vampire as its source and succeed without registering an identity
+substitution. A nonidentity substitution stays registered even if its source
+word is absent, because later layer-one copies can make it relevant. The
+outcome retains affected objects for subsequent “that enchantment” instructions.
+
+Direct/artifact full-frozen-body source contracts are authored for all twelve,
+including the secondary mechanics below. They remain unrun and do not change
+any held coverage classification. Full body work must retain:
 
 - Alter Reality: indefinite replacement and Flashback {1}{U}.
 - Artificial Evolution: any source creature type, another destination type
@@ -121,10 +178,13 @@ rejected domain is not a successful body, scenario, or coverage claim.
 
 Primary rules: Wizards' Comprehensive Rules dated 2026-06-19,
 https://media.wizards.com/2026/downloads/MagicCompRules%2020260619.pdf,
-rules 612.1–612.4, 613.1c and 613.2c: typed word role, names excluded, ordinary
+rules 205.3m, 608.2d, 612.1–612.4, 613.1c and 613.2c: typed word role, names excluded, ordinary
 grants excluded, token characteristics eligible, text layer and copiable layer
 boundary. The exact frozen reminder text supplies each duration and secondary
-body; no later Oracle substitution was used.
+body; no later Oracle substitution was used. New Blood's fixed-destination
+identity case follows the existing-creature-type choice rule and its frozen
+wording; the attempted primary Gatherer/2017 release-note retrieval did not
+return card-specific rulings, so no such retrieval is claimed.
 
 Authored native tests cover role boundaries, immutable captures and occurrence
 identity, copy/source copies, independent grants, expiration, filter negation,

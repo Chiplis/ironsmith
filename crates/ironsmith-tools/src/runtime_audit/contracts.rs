@@ -1449,6 +1449,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "ChooseNumberEffect"
             | "ChooseNumberAtRandomEffect"
             | "ChooseCardNameEffect"
+            | "ChangeTextEffect"
             | "ChooseColorEffect"
             | "DrawForEachTaggedMatchingEffect"
             | "FlipCoinEffect"

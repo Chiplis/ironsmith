@@ -1,5 +1,6 @@
 mod ability_loss_templates;
 mod bounded_number_choice;
+mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;
 mod duration_source_prevention;

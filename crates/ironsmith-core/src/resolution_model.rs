@@ -28,6 +28,15 @@ pub struct ResolutionProgram<E> {
     /// Absence does not authorize reading another ability's source-wide links.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub linked_exile_pair: Option<LinkedExilePair>,
+    /// Immutable authored trigger occurrence. Runtime acquisitions additionally
+    /// bind the exact host incarnation and AbilityOrigin; neither matcher text
+    /// nor a later source definition is evidence of this identity.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub trigger_definition: Option<LinkedExileDefinition>,
+    /// Composition erased an owner. Even an empty composite cannot later be
+    /// mistaken for an unowned accumulator and adopt another trigger's stamp.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false"))]
+    unavailable_trigger_definition: bool,
     /// Immutable authored activation occurrence, including its face and costs.
     /// Kept separately from runtime acquisition and from an activation ordinal.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
@@ -78,6 +87,10 @@ impl<E> ResolutionProgram<E> {
         program
     }
     pub fn has_complete_definition(&self) -> bool { !self.unavailable_copied_definition }
+    pub fn retained_trigger_definition(&self) -> Option<LinkedExileDefinition> {
+        (!self.unavailable_trigger_definition && self.has_complete_definition())
+            .then_some(self.trigger_definition).flatten()
+    }
 }
 
 impl<E> Default for ResolutionProgram<E> {
@@ -85,6 +98,8 @@ impl<E> Default for ResolutionProgram<E> {
         Self {
             segments: Vec::new(),
             linked_exile_pair: None,
+            trigger_definition: None,
+            unavailable_trigger_definition: false,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -97,6 +112,8 @@ impl<E: Clone> ResolutionProgram<E> {
         let mut program = Self {
             segments,
             linked_exile_pair: None,
+            trigger_definition: None,
+            unavailable_trigger_definition: false,
             activation_definition: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
@@ -115,6 +132,15 @@ impl<E: Clone> ResolutionProgram<E> {
 
     pub fn with_linked_exile_pair(mut self, pair: LinkedExilePair) -> Self {
         self.linked_exile_pair = Some(pair);
+        self
+    }
+
+    /// Native authors must explicitly identify the complete authored trigger
+    /// occurrence, including its matcher, choices and condition. This is not a
+    /// request to derive an identity from the host or the program's wording.
+    pub fn with_trigger_definition(mut self, definition: LinkedExileDefinition) -> Self {
+        self.trigger_definition = Some(definition);
+        self.unavailable_trigger_definition = false;
         self
     }
 
@@ -181,6 +207,7 @@ impl<E: Clone> ResolutionProgram<E> {
     }
 
     pub fn extend(&mut self, other: Self) {
+        self.unavailable_trigger_definition |= other.unavailable_trigger_definition;
         self.unavailable_copied_definition |= other.unavailable_copied_definition;
         if self.segments.is_empty() {
             self.linked_exile_pair = other.linked_exile_pair;
@@ -192,6 +219,23 @@ impl<E: Clone> ResolutionProgram<E> {
             // records belong to this pair. Such a composite needs explicit
             // per-owner instructions before it can read linked quantities.
             self.linked_exile_pair = None;
+        }
+        // An empty but stamped program can still be a complete trigger. Only
+        // an unowned, complete empty accumulator adopts another definition.
+        if self.segments.is_empty() && self.trigger_definition.is_none()
+            && !self.unavailable_copied_definition && !self.unavailable_trigger_definition
+        {
+            self.trigger_definition = other.trigger_definition;
+        } else if self.trigger_definition != other.trigger_definition
+            && (!other.segments.is_empty() || other.trigger_definition.is_some()
+                || other.unavailable_copied_definition)
+        {
+            self.trigger_definition = None;
+            self.unavailable_trigger_definition = true;
+        }
+        if self.unavailable_copied_definition || self.unavailable_trigger_definition {
+            self.trigger_definition = None;
+            self.unavailable_trigger_definition = true;
         }
         if !self.segments.is_empty() && !other.segments.is_empty()
             && self.activation_definition != other.activation_definition
@@ -250,6 +294,8 @@ impl<E> ResolutionProgram<E> {
         }
         let mut mapped = ResolutionProgram::new(segments);
         mapped.linked_exile_pair = self.linked_exile_pair;
+        mapped.trigger_definition = self.trigger_definition;
+        mapped.unavailable_trigger_definition = self.unavailable_trigger_definition;
         mapped.activation_definition = self.activation_definition;
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
@@ -375,12 +421,15 @@ impl<E> IntoIterator for ResolutionProgram<E> {
 
 impl<E: std::fmt::Debug> std::fmt::Debug for ResolutionProgram<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ResolutionProgram")
-            .field("segments", &self.segments)
+        let mut debug = f.debug_struct("ResolutionProgram");
+        debug.field("segments", &self.segments)
             .field("linked_exile_pair", &self.linked_exile_pair)
-            .field("activation_definition", &self.activation_definition)
-            .field("unavailable_copied_definition", &self.unavailable_copied_definition)
-            .finish()
+            .field("activation_definition", &self.activation_definition);
+        // Historical runtime trigger identities still use Debug for unstamped
+        // definitions. Omitted identity metadata must not change their input.
+        if self.trigger_definition.is_some() { debug.field("trigger_definition", &self.trigger_definition); }
+        if self.unavailable_trigger_definition { debug.field("unavailable_trigger_definition", &true); }
+        debug.field("unavailable_copied_definition", &self.unavailable_copied_definition).finish()
     }
 }
 
@@ -500,5 +549,66 @@ mod copied_program_completeness_tests {
         let decoded: ResolutionProgram<u8> = serde_json::from_value(wire.clone()).unwrap();
         assert!(!decoded.has_complete_definition());
         assert_eq!(serde_json::to_value(decoded).unwrap(), wire);
+    }
+}
+
+#[cfg(test)]
+mod trigger_definition_tests {
+    use super::*;
+    fn stamp(value: u8) -> LinkedExileDefinition { LinkedExileDefinition([value; 32]) }
+
+    #[test]
+    fn mapping_replacement_and_compatible_append_keep_authored_occurrence() {
+        let source = ResolutionProgram::from_effects(vec![1u8]).with_trigger_definition(stamp(1));
+        let mut changed = source.clone().try_map_effects(|value| Ok::<_, ()>(u16::from(value))).unwrap();
+        changed.replace_segments(vec![ResolutionSegment::from_effects(vec![2])]);
+        changed.extend(ResolutionProgram::from_effects(vec![3]).with_trigger_definition(stamp(1)));
+        assert_eq!(changed.retained_trigger_definition(), Some(stamp(1)));
+        assert_eq!(source.flattened_default_effects(), &[1]);
+        let mut accumulator = ResolutionProgram::default();
+        accumulator.extend(source);
+        assert_eq!(accumulator.retained_trigger_definition(), Some(stamp(1)));
+    }
+
+    #[test]
+    fn incompatible_and_missing_owners_cannot_be_recovered_by_later_append() {
+        let mut empty = ResolutionProgram::<u8>::default().with_trigger_definition(stamp(1));
+        empty.extend(ResolutionProgram::default().with_trigger_definition(stamp(2)));
+        assert_eq!(empty.retained_trigger_definition(), None);
+        empty.extend(ResolutionProgram::from_effects(vec![1]).with_trigger_definition(stamp(3)));
+        assert_eq!(empty.retained_trigger_definition(), None);
+        let mut unknown = ResolutionProgram::<u8>::unavailable_copied_definition();
+        unknown.extend(ResolutionProgram::from_effects(vec![1]).with_trigger_definition(stamp(1)));
+        assert_eq!(unknown.retained_trigger_definition(), None);
+        let mut changed = ResolutionProgram::from_effects(vec![1u8]).with_trigger_definition(stamp(1));
+        changed.extend(ResolutionProgram::from_effects(vec![2]));
+        assert_eq!(changed.retained_trigger_definition(), None);
+        changed.replace_segments(Vec::new());
+        changed.extend(ResolutionProgram::from_effects(vec![3]).with_trigger_definition(stamp(1)));
+        assert_eq!(changed.retained_trigger_definition(), None);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn legacy_omission_and_explicit_identity_or_composition_hold_round_trip() {
+        let legacy = ResolutionProgram::from_effects(vec![1u8]);
+        let old = serde_json::to_value(&legacy).unwrap();
+        assert!(old.get("trigger_definition").is_none());
+        assert!(old.get("unavailable_trigger_definition").is_none());
+        let restored: ResolutionProgram<u8> = serde_json::from_value(old).unwrap();
+        assert!(restored.has_complete_definition());
+        assert_eq!(restored.retained_trigger_definition(), None);
+        let retained = legacy.with_trigger_definition(stamp(4));
+        let wire = serde_json::to_value(&retained).unwrap();
+        let restored: ResolutionProgram<u8> = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(restored.retained_trigger_definition(), Some(stamp(4)));
+        assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
+        let mut incompatible = retained;
+        incompatible.extend(ResolutionProgram::from_effects(vec![2]).with_trigger_definition(stamp(5)));
+        let wire = serde_json::to_value(&incompatible).unwrap();
+        assert_eq!(wire["unavailable_trigger_definition"], true);
+        let restored: ResolutionProgram<u8> = serde_json::from_value(wire).unwrap();
+        assert_eq!(restored.retained_trigger_definition(), None);
+        assert!(restored.has_complete_definition(), "legacy execution is independent of identity completeness");
     }
 }

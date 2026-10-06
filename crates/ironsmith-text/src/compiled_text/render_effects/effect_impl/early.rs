@@ -1,4 +1,25 @@
 {
+    if let Some(change) = effect.downcast_ref::<crate::effects::ChangeTextEffect>() {
+        use ironsmith_core::TextChangeSelection;
+        let replacement = match &change.selection {
+            TextChangeSelection::Color => "one color word with another".to_string(),
+            TextChangeSelection::BasicLand => "one basic land type with another".to_string(),
+            TextChangeSelection::ColorOrBasicLand => "one color word with another or one basic land type with another".to_string(),
+            TextChangeSelection::Creature { .. } => "one creature type with another".to_string(),
+            TextChangeSelection::CreatureTo(subtype) => format!("one creature type with {subtype}"),
+        };
+        let duration = if change.duration == Until::Forever { String::new() }
+            else { format!(" {}", describe_until(&change.duration)) };
+        let mut text = format!("Change the text of {} by replacing all instances of {replacement}{duration}",
+            describe_choose_spec(&change.target));
+        if let TextChangeSelection::Creature { excluded_new } = &change.selection {
+            if !excluded_new.is_empty() {
+                text.push_str(&format!(". The new creature type can't be {}",
+                    excluded_new.iter().map(ToString::to_string).collect::<Vec<_>>().join(" or ")));
+            }
+        }
+        return text;
+    }
     if let Some(payments) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
         let body = payments.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
         return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));

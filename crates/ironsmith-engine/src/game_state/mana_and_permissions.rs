@@ -562,8 +562,17 @@ impl GameState {
         payer: PlayerId,
         source: Option<ObjectId>,
     ) -> crate::player::ManaSpendPolicy {
+        self.mana_spend_policy_for_selection(payer, source, false, None)
+    }
+
+    pub(crate) fn mana_spend_policy_for_selection(
+        &self, payer: PlayerId, source: Option<ObjectId>, exact: bool,
+        selection: Option<&crate::grant_registry::GrantPermissionIdentity>,
+    ) -> crate::player::ManaSpendPolicy {
         let mut policy = crate::player::ManaSpendPolicy::default();
         for permission in &self.effect_store.mana_spend_effects.permissions {
+            if exact && permission.play_permission_identities.as_ref().is_some_and(|identities|
+                selection.is_none_or(|selection| !identities.contains(selection))) { continue; }
             if !permission.allows(self, payer, source) {
                 continue;
             }
@@ -576,6 +585,67 @@ impl GameState {
                 permission.permission.other_mana_only_as_colorless;
         }
         policy
+    }
+
+    /// Casting-only conversion belongs to the frozen selected permission,
+    /// never to an unrelated payment made by the same spell/source object.
+    pub fn mana_spend_policy_for_cast(
+        &self, payer: PlayerId, source: Option<ObjectId>,
+    ) -> crate::player::ManaSpendPolicy {
+        match self.try_mana_spend_policy_for_cast(payer, source) {
+            Ok(policy) => policy,
+            Err(error) => {
+                self.record_token_resource_failure(&error);
+                self.mana_spend_policy_for_selection(payer, source, true, None)
+            }
+        }
+    }
+
+    pub fn try_mana_spend_policy_for_cast(
+        &self, payer: PlayerId, source: Option<ObjectId>,
+    ) -> Result<crate::player::ManaSpendPolicy, crate::effects::ExecutionError> {
+        let Some(object) = source.and_then(|source| self.object(source)).filter(|object| object.zone == Zone::Stack)
+            else { return Ok(self.mana_spend_policy(payer, source)); };
+        let mut policy = if let Some(receipt) = object.cast_play_permission.as_deref() {
+            self.mana_spend_policy_for_selection(payer, source, true, (receipt.player == payer).then_some(&receipt.identity))
+        } else { self.mana_spend_policy(payer, source) };
+        if let Some(receipt) = object.cast_play_permission.as_deref() {
+            let complete = receipt.origin_method.as_deref().is_some_and(|origin| match origin {
+                    crate::alternative_cast::CastingMethod::PlayFrom { source, zone, .. }
+                    | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
+                    | crate::alternative_cast::CastingMethod::FaceDownPlayFrom { source, zone } => *source == receipt.source && *zone == receipt.zone,
+                    _ => false,
+                })
+                && object.cast_grant_usage_identity.as_deref() == Some(&receipt.identity)
+                && object.cast_play_from_constraints.as_deref().is_some_and(|(source, zone, constraints)|
+                    *source == receipt.source && *zone == receipt.zone && *constraints == receipt.constraints)
+                && self.cast_origin_snapshot(object.id).is_some_and(|snapshot|
+                    snapshot.object_id == receipt.origin && snapshot.zone == receipt.zone);
+            if !complete {
+                return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                    "permission-local casting mana lost its frozen authority".into()));
+            }
+            if receipt.player == payer { policy.allow_mode(receipt.constraints.cast_mana_spend_mode); }
+        } else if object.cast_play_from_constraints.as_deref().is_some_and(|(_, _, constraints)|
+            !constraints.cast_mana_spend_mode.is_normal()) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "permission-local casting mana has no selected-permission receipt".into()));
+        }
+        Ok(policy)
+    }
+
+    pub fn try_mana_spend_policy_for_reason(
+        &self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+    ) -> Result<crate::player::ManaSpendPolicy, crate::effects::ExecutionError> {
+        if reason == crate::costs::PaymentReason::CastSpell { self.try_mana_spend_policy_for_cast(payer, source) }
+        else { Ok(self.mana_spend_policy(payer, source)) }
+    }
+
+    pub fn mana_spend_policy_for_reason(
+        &self, payer: PlayerId, source: Option<ObjectId>, reason: crate::costs::PaymentReason,
+    ) -> crate::player::ManaSpendPolicy {
+        if reason == crate::costs::PaymentReason::CastSpell { self.mana_spend_policy_for_cast(payer, source) }
+        else { self.mana_spend_policy(payer, source) }
     }
 
     pub fn can_spend_mana_as_any_color_from_mana_source(
@@ -2253,7 +2323,10 @@ impl GameState {
         life_options: Option<(bool, bool, bool)>,
         accept: &mut dyn FnMut(&[PayableManaUnit], &ManaPaymentPlan) -> bool,
     ) -> Option<(Vec<PayableManaUnit>, ManaPaymentPlan)> {
-        let default_policy = self.mana_spend_policy(payer, source);
+        let default_policy = match self.try_mana_spend_policy_for_reason(payer, source, reason) {
+            Ok(policy) => policy,
+            Err(error) => { self.record_token_resource_failure(&error); return None; }
+        };
         let policy = policy_override.unwrap_or(&default_policy);
         let engine_allows_black_life = crate::decision::mana_cost_has_black_symbol(cost)
             && self.player_can_pay_black_with_life_for_reason(payer, source, reason);
@@ -2524,7 +2597,7 @@ impl GameState {
         let checked = self
             .continuous_query_snapshot()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-        let policy = checked.mana_spend_policy(payer, source);
+        let policy = checked.try_mana_spend_policy_for_reason(payer, source, reason)?;
         self.try_pay_mana_cost_with_policy(payer, source, cost, x_value, reason, &policy)
     }
 
@@ -2540,7 +2613,7 @@ impl GameState {
         let checked = self
             .continuous_query_snapshot()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-        let policy = checked.mana_spend_policy(payer, source);
+        let policy = checked.try_mana_spend_policy_for_reason(payer, source, reason)?;
         self.try_pay_mana_cost_with_payment_options_and_dm(
             payer,
             source,
@@ -2640,6 +2713,8 @@ impl GameState {
         decision_maker: &mut dyn crate::decision::DecisionMaker,
         execution: Option<&crate::effects::ExecutionContextCheckpoint>,
     ) -> Result<bool, crate::effects::ExecutionError> {
+        self.try_mana_spend_policy_for_reason(payer, source, reason)?;
+
         let checkpoint = self.clone();
         let result = (|| {
             self.refresh_continuous_state()

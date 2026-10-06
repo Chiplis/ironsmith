@@ -4873,6 +4873,10 @@ impl PartialEq for SetColorsForFilter {
 }
 
 impl StaticAbilityKind for SetColorsForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        (self.condition.is_none() && self.filter.is_source_only()).then_some(self.colors)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SetColors
     }
@@ -4909,7 +4913,11 @@ impl StaticAbilityKind for SetColorsForFilter {
             }
             return text;
         }
-        let colors = join_with_and(&color_list(self.colors));
+        let colors = if self.colors.is_empty() {
+            "colorless".to_string()
+        } else {
+            join_with_and(&color_list(self.colors))
+        };
         let mut text = format!("{subject} {verb} {colors}");
         if let Some(condition) = &self.condition {
             if static_condition_is_during_your_turn(condition) {
@@ -5006,6 +5014,10 @@ impl PartialEq for AddColorsForFilter {
 }
 
 impl StaticAbilityKind for AddColorsForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        self.filter.is_source_only().then_some(self.colors)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AddColors
     }
@@ -5891,6 +5903,10 @@ impl PartialEq for MakeColorlessForFilter {
 }
 
 impl StaticAbilityKind for MakeColorlessForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        self.filter.is_source_only().then_some(crate::color::ColorSet::COLORLESS)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::MakeColorless
     }

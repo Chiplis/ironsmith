@@ -389,7 +389,11 @@ fn continuous_effect_scope_and_duration(
                 target, duration, ..
             },
         )
-        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+            target,
+            duration,
+            ..
+        }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             target,
             duration,
             ..

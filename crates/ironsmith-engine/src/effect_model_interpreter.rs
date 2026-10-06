@@ -842,6 +842,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChangeTextEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ExchangeTextBoxesEffect>(&effect)
     {
@@ -1511,6 +1514,7 @@ where
             grant = grant.with_filter(filter);
         }
         grant.spell_filter = payload.spell_filter.clone();
+        grant.permission_bound_mana = payload.permission_bound_mana;
         grant.alternative_cost = payload
             .alternative_cost
             .clone()

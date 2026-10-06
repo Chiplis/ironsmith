@@ -1367,6 +1367,7 @@ impl GameState {
         new_object.cast_alternative_method = None;
         new_object.cast_play_from_constraints = None;
         new_object.cast_price = None;
+        new_object.cast_play_permission = None;
         // A card cast through a granted "it gains suspend" trigger carries a
         // synthetic "Suspend 0—{0}" permission only for that cast; it isn't a
         // printed ability and must not follow the card (CR 400.7, 702.62a).

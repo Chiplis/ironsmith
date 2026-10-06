@@ -859,6 +859,7 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // Guildpact) and the older "All creatures are ..." lines share one
         // color-identity grammar whose subject can start with any object noun.
         "parse_all_creatures_are_color_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Single("all"),
             StaticAbilityLineHeadHint::Single("each"),
             StaticAbilityLineHeadHint::Single("creatures"),

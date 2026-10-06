@@ -187,7 +187,7 @@ pub(crate) fn resolve_announcement_with_effect_authority(
     else {
         return Ok(None);
     };
-    if matches!(origin.as_ref(), CastingMethod::AlternativePrice { .. })
+    if matches!(origin.as_ref(), CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. })
         || spell.zone == Zone::Stack
     {
         return Ok(None);

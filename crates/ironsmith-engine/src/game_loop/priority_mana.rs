@@ -3326,7 +3326,12 @@ fn propose_spell_cast_with_origin(
     casting_method: &CastingMethod,
     effect_authorized: bool,
 ) -> Result<ObjectId, GameLoopError> {
-    let price_route = if matches!(casting_method, CastingMethod::AlternativePrice { .. }) {
+    let has_exact_permission = matches!(casting_method, CastingMethod::ExactPermission { .. });
+    let exact_grant = if has_exact_permission {
+        let object = game.object(spell_id).ok_or_else(|| GameLoopError::InvalidState("selected-permission spell does not exist".into()))?;
+        crate::alternative_cast::play_permission::resolve_method(game, caster, object, casting_method)?
+    } else { None };
+    let price_route = if matches!(casting_method.without_exact_permission(), CastingMethod::AlternativePrice { .. }) {
         let object = game.object(spell_id).ok_or_else(|| {
             GameLoopError::InvalidState("Price-route spell does not exist".into())
         })?;
@@ -3353,6 +3358,9 @@ fn propose_spell_cast_with_origin(
     } else {
         None
     };
+    let exact_alternative = if has_exact_permission {
+        crate::alternative_cast::play_permission::selected_alternative(game, game.object(spell_id).expect("validated exact origin"), casting_method)?
+    } else { None };
     let casting_method = casting_method.origin_method();
     let visibility_boundary = game.capture_library_top_visibility_boundary();
     let cast_during_main_phase = game.is_active_player(caster)
@@ -3365,11 +3373,11 @@ fn propose_spell_cast_with_origin(
     // a nonempty stack means a sorcery still could not have been cast.
     let cast_at_sorcery_timing =
         game.is_active_player(caster) && crate::turn::is_sorcery_timing(game);
-    let selected_method = price_route
+    let selected_method = exact_alternative.or_else(|| price_route
         .as_ref()
-        .and_then(|route| route.origin_alternative.clone())
+        .and_then(|route| route.origin_alternative.clone()))
         .or_else(|| {
-            game.object(spell_id).and_then(|obj| match casting_method {
+            game.object(spell_id).and_then(|obj| match casting_method.without_exact_permission() {
                 CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
@@ -3393,7 +3401,7 @@ fn propose_spell_cast_with_origin(
                 _ => None,
             })
         });
-    let selected_grant = price_route
+    let selected_grant = if has_exact_permission { None } else { price_route
         .as_ref()
         .and_then(|route| route.origin.as_ref())
         .filter(|grant| !matches!(grant.grantable, crate::grant::Grantable::PlayFrom))
@@ -3412,7 +3420,7 @@ fn propose_spell_cast_with_origin(
             on_use_effects: grant.on_use_effects.clone(),
         })
         .or_else(|| {
-            game.object(spell_id).and_then(|obj| match casting_method {
+            game.object(spell_id).and_then(|obj| match casting_method.without_exact_permission() {
                 CastingMethod::PlayFrom {
                     use_alternative: Some(idx),
                     zone,
@@ -3427,9 +3435,10 @@ fn propose_spell_cast_with_origin(
                 ),
                 _ => None,
             })
-        });
+        })
+    };
     if let Some(grant) = &selected_grant {
-        let source = match casting_method {
+        let source = match casting_method.without_exact_permission() {
             CastingMethod::PlayFrom { source, .. }
             | CastingMethod::SplitOtherHalfPlayFrom { source, .. } => *source,
             _ => unreachable!(),
@@ -3444,7 +3453,7 @@ fn propose_spell_cast_with_origin(
     // The public face-down cast kind, read before the card moves: in peer
     // matches it comes from the cast command, so peers holding only a
     // placeholder derive the same ward (see `decision::face_down_cast_kind`).
-    let face_down_kind = match casting_method {
+    let face_down_kind = match casting_method.without_exact_permission() {
         CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => game
             .object(spell_id)
             .and_then(|obj| crate::decision::face_down_cast_kind(game, obj)),
@@ -3485,7 +3494,9 @@ fn propose_spell_cast_with_origin(
         .map(|face| crate::grant_registry::proposed_card_face_query(game, face))
         .transpose()?;
     let permission_game = proposed_query.as_ref().unwrap_or(game);
-    let selected_plain_grant = if let Some(origin) = price_route
+    let selected_plain_grant = if exact_grant.is_some() {
+        exact_grant
+    } else if let Some(origin) = price_route
         .as_ref()
         .and_then(|route| route.origin.as_ref())
         .filter(|grant| matches!(grant.grantable, crate::grant::Grantable::PlayFrom))
@@ -3494,7 +3505,7 @@ fn propose_spell_cast_with_origin(
     } else if price_route.is_some() && effect_authorized {
         None
     } else if selected_grant.is_none() {
-        match casting_method {
+        match casting_method.without_exact_permission() {
             CastingMethod::PlayFrom { source, zone, .. }
             | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
             | CastingMethod::FaceDownPlayFrom { source, zone } => permission_game
@@ -3512,16 +3523,16 @@ fn propose_spell_cast_with_origin(
     } else {
         None
     };
-    if matches!(casting_method,
-        CastingMethod::PlayFrom { use_alternative: None, .. }
-            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. }
+    if matches!(casting_method.without_exact_permission(),
+        CastingMethod::PlayFrom { .. }
+            | CastingMethod::SplitOtherHalfPlayFrom { .. }
             | CastingMethod::FaceDownPlayFrom { .. })
-        && selected_plain_grant.is_none() && !effect_authorized
+        && selected_plain_grant.is_none() && selected_grant.is_none() && !effect_authorized
         // A priced additional-cost origin projects to PlayFrom(None), but
         // its exact derived permission has already been validated and frozen.
         && !price_route.as_ref().is_some_and(|route| route.origin.is_some())
     {
-        let native_search_permission = matches!(casting_method,
+        let native_search_permission = matches!(casting_method.without_exact_permission(),
             CastingMethod::PlayFrom { source, zone: Zone::Library, use_alternative: None }
             if *source == spell_id)
             && game.current_has_static_ability_id(
@@ -3544,7 +3555,7 @@ fn propose_spell_cast_with_origin(
                 .as_ref()
                 .and_then(|grant| grant.permission_identity.clone())
         });
-    let play_from_constraints = match casting_method {
+    let play_from_constraints = match casting_method.without_exact_permission() {
         CastingMethod::PlayFrom { source, zone, .. }
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
         | CastingMethod::FaceDownPlayFrom { source, zone } => {
@@ -3582,7 +3593,7 @@ fn propose_spell_cast_with_origin(
                         .find(|grant| grant.permission_identity.as_ref() == Some(identity))
                 })
                 .and_then(|grant| grant.shared_usage_id)
-                .or_else(|| match casting_method {
+                .or_else(|| match casting_method.without_exact_permission() {
                     CastingMethod::PlayFrom { source, zone, .. }
                     | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
                     | CastingMethod::FaceDownPlayFrom { source, zone } => game
@@ -3660,6 +3671,10 @@ fn propose_spell_cast_with_origin(
     let price_receipt = price_route
         .as_ref()
         .and_then(|route| crate::alternative_cast::price_routes::receipt_from_route(route));
+    let exact_receipt = selected_plain_grant.as_ref().filter(|grant|
+        has_exact_permission || !grant.play_from_constraints.cast_mana_spend_mode.is_normal())
+        .map(|grant| crate::alternative_cast::play_permission::PlayPermissionReceipt::from_resolved_grant(
+            grant, caster, spell_id, _from_zone, casting_method)).transpose()?;
     let new_id = game
         .move_object_by_effect(spell_id, Zone::Stack)
         .ok_or_else(|| {
@@ -3679,6 +3694,7 @@ fn propose_spell_cast_with_origin(
         spell.cast_play_from_constraints = play_from_constraints;
         spell.cast_grant_usage_identity = usage_identity.map(Box::new);
         spell.cast_price = price_receipt.map(Box::new);
+        spell.cast_play_permission = exact_receipt.map(Box::new);
         if let Some(snapshot) = price_provider_snapshot {
             spell
                 .cast_tagged_objects
@@ -3754,7 +3770,7 @@ fn propose_spell_cast_with_origin(
     } else {
         None
     };
-    let split_other_def = match casting_method {
+    let split_other_def = match casting_method.without_exact_permission() {
         CastingMethod::SplitOtherHalf
         | CastingMethod::SplitOtherHalfPlayFrom { .. }
         | CastingMethod::Fuse => {
@@ -3770,7 +3786,7 @@ fn propose_spell_cast_with_origin(
                 )
                 .ok_or_else(|| {
                     GameLoopError::InvalidState(
-                        match casting_method {
+                        match casting_method.without_exact_permission() {
                             CastingMethod::SplitOtherHalf
                             | CastingMethod::SplitOtherHalfPlayFrom { .. } => {
                                 "Split back face definition could not be resolved"
@@ -3869,7 +3885,7 @@ fn propose_spell_cast_with_origin(
             }
         }
 
-        match casting_method {
+        match casting_method.without_exact_permission() {
             CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => {
                 let disguise_ward =
                     face_down_kind == Some(crate::game_state::FaceDownCastKind::Disguise);
@@ -3884,6 +3900,11 @@ fn propose_spell_cast_with_origin(
                 if let CastingMethod::SplitOtherHalfPlayFrom { .. } = casting_method
                     && let Some(method) = selected_method_for_overlay.clone()
                 {
+                    if has_exact_permission {
+                        if method.is_bestow() { obj.apply_bestow_cast_overlay(); }
+                        if let Some(power_toughness) = method.prototype_power_toughness()
+                            && let Some(cost) = method.mana_cost() { obj.apply_prototype_cast_overlay(cost.clone(), power_toughness); }
+                    }
                     obj.cast_alternative_method = Some(Box::new(method));
                 }
             }
@@ -3987,7 +4008,7 @@ fn apply_play_from_cast_this_way_grants(
     selected_grant: Option<crate::grant_registry::GrantedAlternativeCast>,
     selected_plain_grant: Option<crate::grant_registry::Grant>,
 ) {
-    let (source_id, zone) = match casting_method {
+    let (source_id, zone) = match casting_method.without_exact_permission() {
         CastingMethod::PlayFrom { source, zone, .. }
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. }
         | CastingMethod::FaceDownPlayFrom { source, zone } => (*source, *zone),
@@ -4074,7 +4095,7 @@ fn casting_method_matches_alternative_name(
     casting_method: &CastingMethod,
     expected_name: &str,
 ) -> bool {
-    let method = match casting_method {
+    let method = match casting_method.without_exact_permission() {
         CastingMethod::AlternativePrice { .. } => {
             crate::alternative_cast::price_routes::origin_alternative(
                 game,
@@ -4101,7 +4122,7 @@ fn alternative_cast_label(
     casting_method: &CastingMethod,
 ) -> Option<String> {
     let obj = game.object(obj_id)?;
-    let method = match casting_method {
+    let method = match casting_method.without_exact_permission() {
         CastingMethod::AlternativePrice { .. } => {
             crate::alternative_cast::price_routes::origin_alternative(
                 game,
@@ -4135,7 +4156,7 @@ fn selected_alternative_cost_reference(
     casting_method: &CastingMethod,
 ) -> Option<crate::cost::OptionalCostRef> {
     let obj = game.object(obj_id)?;
-    let method = match casting_method {
+    let method = match casting_method.without_exact_permission() {
         CastingMethod::AlternativePrice { .. } => {
             crate::alternative_cast::price_routes::origin_alternative(
                 game,
@@ -5175,6 +5196,8 @@ pub(super) fn get_priority_player_from_ctx(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod exact_play_permission_tests;
 
 #[cfg(test)]
 mod replacement_owner_tests {

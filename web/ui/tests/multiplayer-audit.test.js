@@ -443,8 +443,8 @@ test("canonicalJson sorts object keys recursively", () => {
 });
 
 test("historical signed audits remain signature-only evidence with their original checkpoint bytes", async () => {
-  for (const protocolVersion of [14, 16, 17, 18]) {
-    const checkpoint = { version: 2, players: [], stack: [],
+  for (const protocolVersion of [14, 16, 17, 18, 19]) {
+    const checkpoint = { version: protocolVersion === 19 ? 3 : 2, players: [], stack: [],
       objects: [{ id: 7, stableId: 7, manifested: true }] };
     const checkpointHash = await publicCheckpointHash(checkpoint, webcrypto);
     const transcript = await buildCurrentProtocolTranscript({
@@ -463,9 +463,9 @@ test("historical signed audits remain signature-only evidence with their origina
     await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
       requireEngineReplay: false,
       replayTranscript: async () => { replayCalls++; },
-    }), /requires audit protocol 19/);
+    }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
     assert.equal(replayCalls, 0);
-    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), /requires audit protocol 19/);
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
     const tampered = cloneTestPayload(transcript);
     tampered.finalPublicCheckpoint.objects[0].manifested = false;
     await assert.rejects(verifyLiveAuditTranscript(tampered, webcrypto, { requireEngineReplay: false }),

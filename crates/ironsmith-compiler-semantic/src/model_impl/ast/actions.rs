@@ -1729,6 +1729,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("excluded_subtypes", excluded_subtypes)
                 .finish(),
+            Self::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
+                f.debug_struct("ChangeText").field("target", target).field("selection", selection).field("duration", duration).finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 target,
                 duration,

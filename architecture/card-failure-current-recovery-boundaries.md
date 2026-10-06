@@ -1,6 +1,6 @@
 # Current campaign recovery and validation boundaries
 
-Source checkpoint: `e50a901445329890b7992c69973534602b37cacb`.
+Source checkpoint: `06cd8b8def619bc2f7064a5af16b57036bb6ce01`.
 This is a source inspection, not executed recovery validation.
 
 Commit `2511818a28ddb00d7ec96e85bf345eb170b88fdb` removed serialized gameplay
@@ -10,19 +10,22 @@ Do not reintroduce a lossy gameplay serializer to implement a new card family.
 
 ## Three distinct compatibility surfaces
 
-- **Compiled artifact format 6** represents card definitions and programs.
+- **Compiled artifact format 7** represents card definitions and programs.
   Required regeneration and exact default/ordinal compatibility remain part of
   the deferred artifact validation gate.
 - **Public audit checkpoint version 3** is a redacted digest input exported by
   `wasm_game_impl/public_audit.rs`. It is not an executable gameplay snapshot
   and cannot restore continuations, history, replacement managers or private
   state. Changes to this encoding require explicit compatibility analysis.
-- **Signed audit protocol 19** governs current action/replay compatibility.
+- **Signed audit protocol 20** governs current action/replay compatibility.
   Verifying an older transcript's signatures does not establish that replaying
   it in the current engine reproduces its former semantics or public hashes.
 
-The shorthand “artifact 6 / checkpoint 3 / audit 19” refers to these separate
-surfaces. In particular, “checkpoint 3” does not promise serialized gameplay
+The prior shorthand “artifact 6 / checkpoint 3 / audit 19” described the earlier
+contract. Stage93 moves the artifact and signed-action boundaries together to
+7 and 20; see `card-failure-stage93-compatibility.md` for required regeneration
+and historical signature-only admission. Public digest3 keeps its shape. These
+are separate surfaces. In particular, “checkpoint 3” does not promise serialized gameplay
 recovery. Existing runtime identity tests explicitly require the former
 `exportSyncCheckpoint`, `exportRedactedSyncCheckpoint`, `importSyncCheckpoint`,
 `importForeignSyncCheckpoint` and `isReplayCheckpointBoundary` APIs to be absent.

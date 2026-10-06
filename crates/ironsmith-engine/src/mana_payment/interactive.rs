@@ -145,7 +145,7 @@ fn pay_mana_interactively_inner(
         return Ok(());
     }
     let mut request = ManaPaymentRequest::new(payer, source, reason, cost)
-        .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
+        .with_spend_policy(game.mana_spend_policy_for_reason(payer, Some(source), reason));
     request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
         && game.player_can_pay_black_with_life_for_reason(payer, Some(source), request.reason);
     request.activation_excluded_sources.extend(exclusions);

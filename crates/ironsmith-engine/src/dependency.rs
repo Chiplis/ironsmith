@@ -235,6 +235,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
+        && filter.has_cumulative_upkeep.is_none()
         && !filter.uses_power_or_toughness_characteristics()
         && filter.attached_to_object.is_none()
         && filter.blocked_or_was_blocked_by_this_turn.is_none()
@@ -2766,6 +2767,7 @@ fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
+        || filter.has_cumulative_upkeep.is_some()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
         || filter.sticker.is_some()

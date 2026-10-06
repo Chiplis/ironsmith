@@ -1950,6 +1950,8 @@ fn compile_compiler_control_flow(
                             CharacteristicActionAst::BecomeCreatureTypeChoice { duration, .. },
                         )
                         | SubjectVerbActionAst::Characteristics(
+                            CharacteristicActionAst::ChangeText { duration, .. },
+                        ) | SubjectVerbActionAst::Characteristics(
                             CharacteristicActionAst::BecomeColorChoice { duration, .. },
                         )
                         | SubjectVerbActionAst::Characteristics(

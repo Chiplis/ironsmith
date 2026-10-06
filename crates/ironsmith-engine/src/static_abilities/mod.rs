@@ -346,9 +346,9 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
         -> Result<Option<StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
     {
-        let model = self.compiled_model().ok_or(
+        let model = self.canonical_model().ok_or(
             crate::continuous::text_changes::TextChangeDomainError::StaticAbility(self.id()))?;
-        crate::continuous::text_changes::rewrite_static_model(model, change)
+        crate::continuous::text_changes::rewrite_static_model(&model, change)
     }
 
     fn canonical_model(&self) -> Option<CompiledStaticAbility> {
@@ -1050,6 +1050,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// The unconditional colors this ability defines for its source, when
+    /// printed or copied onto that object (CR 604.3).
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        None
+    }
+
     /// Returns true if this grants abilities to other permanents.
     fn grants_abilities(&self) -> bool {
         false
@@ -1540,8 +1546,20 @@ impl StaticAbilityInstanceId {
 ///
 /// This provides a convenient way to work with static abilities as values
 /// while maintaining the flexibility of trait objects.
-#[derive(Debug, Clone)]
-pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>, StaticAbilityInstanceId);
+#[derive(Clone)]
+pub struct StaticAbility(pub Arc<dyn StaticAbilityKind>, StaticAbilityInstanceId, Arc<StaticTextChangeCache>);
+
+struct StaticTextChangeCache {
+    definition: std::sync::Weak<dyn StaticAbilityKind>,
+    values: std::sync::Mutex<std::collections::HashMap<ironsmith_core::TextChange,
+        Result<StaticAbility, crate::continuous::text_changes::TextChangeDomainError>>>,
+}
+
+impl std::fmt::Debug for StaticAbility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("StaticAbility").field(&self.0).field(&self.1).finish()
+    }
+}
 
 impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAbility {
     fn default_functional_zones(&self) -> Vec<crate::zone::Zone> {
@@ -1550,7 +1568,8 @@ impl ironsmith_core::functional_zones::StaticAbilityFunctionalZones for StaticAb
         }
         ironsmith_core::functional_zones::static_ability_zone_defaults(
             Some(self.id()),
-            self.is_source_only_graveyard_replacement(),
+            self.is_source_only_graveyard_replacement()
+                || self.characteristic_defining_colors().is_some(),
             self.grant_spec()
                 .filter(|spec| spec.filter.source)
                 .map(|spec| spec.zone),
@@ -1584,7 +1603,10 @@ impl PartialEq for StaticAbility {
 impl StaticAbility {
     /// Create a new StaticAbility from any StaticAbilityKind implementation.
     pub fn new<K: StaticAbilityKind + 'static>(kind: K) -> Self {
-        StaticAbility(Arc::new(kind), StaticAbilityInstanceId::next())
+        let definition: Arc<dyn StaticAbilityKind> = Arc::new(kind);
+        let cache = StaticTextChangeCache { definition: Arc::downgrade(&definition),
+            values: Default::default() };
+        StaticAbility(definition, StaticAbilityInstanceId::next(), Arc::new(cache))
     }
 
     /// Return the identity of this constructed ability instance.
@@ -1594,10 +1616,23 @@ impl StaticAbility {
     pub fn with_text_change(&self, change: ironsmith_core::TextChange)
         -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
     {
-        match self.0.rewrite_text_words(change)? {
-            None => Ok(self.clone()),
-            Some(mut rewritten) => { rewritten.1 = self.1; Ok(rewritten) },
+        let valid_cache = self.2.definition.upgrade()
+            .is_some_and(|definition| Arc::ptr_eq(&definition, &self.0));
+        if valid_cache {
+            if let Some(value) = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner())
+                .get(&change).cloned() { return value; }
         }
+        let value = match self.0.rewrite_text_words(change) {
+            Ok(None) => return Ok(self.clone()),
+            Ok(Some(mut rewritten)) => { rewritten.1 = self.1; Ok(rewritten) },
+            Err(error) => Err(error),
+        };
+        if valid_cache {
+            // Recursive child definitions are transformed outside the lock.
+            // Retaining this complete result keeps nested grant identities.
+            let mut cache = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner());
+            cache.entry(change).or_insert_with(|| value.clone()).clone()
+        } else { value }
     }
 
     pub fn instance_id(&self) -> StaticAbilityInstanceId {
@@ -2320,6 +2355,14 @@ impl StaticAbility {
 
     pub fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
         self.0.anthem_payload()
+    }
+
+    pub fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        if let Some(model) = self.compiled_model() {
+            model.characteristic_defining_colors()
+        } else {
+            self.0.characteristic_defining_colors()
+        }
     }
 
     pub fn structural_effect_filter(&self) -> Option<&crate::target::ObjectFilter> {

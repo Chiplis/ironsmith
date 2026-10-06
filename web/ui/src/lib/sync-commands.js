@@ -6,6 +6,15 @@ export function sameActionRef(left, right) {
   return canonicalWireJson(left) === canonicalWireJson(right);
 }
 
+// Inspect the public origin without removing any selectors from the actual
+// command. The engine still validates the complete reference and route shape.
+export function castingMethodOrigin(method) {
+  while (["exact_permission", "alternative_price"].includes(String(method?.kind || ""))) {
+    method = method.origin;
+  }
+  return method;
+}
+
 // Forfeits that may target any seat, not only the one owing the decision.
 // A witness forfeit is checked against its witness certificate instead.
 const DISCONNECT_TIMEOUT_POLICY_REASONS = new Set([
@@ -23,12 +32,12 @@ export function findPriorityActionForCommand(decision, command) {
   if (command.action_ref) {
     const matched = actions.find((action) => sameActionRef(action?.action_ref, command.action_ref));
     if (matched) return matched;
-    // A face-down cast (morph, megamorph, disguise) of a hidden hand card is
+    // A face-down cast (morph, megamorph, disguise) of a hidden card is
     // replayed on peers that hold only a placeholder: the card is never
     // opened, so their priority menu cannot list it. The command's public
     // cast kind lets the engine re-derive and validate the action itself.
     const ref = command.action_ref;
-    const method = ref?.casting_method || null;
+    const method = castingMethodOrigin(ref?.casting_method);
     if (
       String(ref?.kind || "") === "cast_spell"
       && ["face_down", "face_down_play_from"].includes(String(method?.kind || ""))
