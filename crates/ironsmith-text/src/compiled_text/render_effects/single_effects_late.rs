@@ -5967,6 +5967,10 @@ fn describe_payment_action_predicate(
         P::ActivatedAbilityKeyword(keyword) => Some(match keyword {
             ironsmith_core::ActivatedAbilityKeyword::Equip => "activate an equip ability",
             ironsmith_core::ActivatedAbilityKeyword::PowerUp => "activate power-up abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Cycling => "activate cycling abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "activate ninjutsu abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Boast => "activate boast abilities",
+            ironsmith_core::ActivatedAbilityKeyword::Exhaust => "activate exhaust abilities",
         }.to_string()),
         P::DisturbCost => Some("pay a disturb cost".to_string()),
         P::Purpose(Purpose::Foretell) => Some("foretell cards".to_string()),

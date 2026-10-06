@@ -1035,10 +1035,13 @@ pub fn parse_enters_tapped_line(
 
 #[path = "activated_line_core/typed_cost_modifiers.rs"]
 mod typed_cost_modifiers;
+#[path = "activated_line_core/activation_kind_costs.rs"]
+mod activation_kind_costs;
 
 pub fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = activation_kind_costs::parse(tokens)? { return Ok(Some(ability)); }
     if let Some(ability) = typed_cost_modifiers::parse(tokens)? { return Ok(Some(ability)); }
     let this_ability = matches!(
         activated_line_grammar::parse_cost_reduction_line_head_tokens(tokens),

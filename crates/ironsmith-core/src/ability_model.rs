@@ -659,6 +659,11 @@ pub struct TriggeredAbility<T, E, C = Condition> {
 pub enum ActivatedAbilityKeyword {
     Equip,
     PowerUp,
+    // Appended identities: cost selectors read the selected ability, never its text.
+    Cycling,
+    Ninjutsu,
+    Boast,
+    Exhaust,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

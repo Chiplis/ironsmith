@@ -299,6 +299,9 @@ fn maximum_emerge_reduction(
 pub struct ActivationCostAbility {
     pub mana_ability: bool,
     pub equip: bool,
+    pub keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
+    pub loyalty_ability: bool,
+    pub activator: Option<PlayerId>,
     /// Index of the ability among its source's abilities, for "This ability
     /// costs ... less" (CR 602.2b), when known.
     pub ability_index: Option<usize>,
@@ -339,6 +342,9 @@ impl ActivationCostAbility {
         Self {
             mana_ability: activated.is_runtime_mana_ability(game, source, activator),
             equip: super::legal_actions::is_equip_ability(game, source, activated),
+            keyword: activated.keyword,
+            loyalty_ability: activated.is_loyalty_ability(),
+            activator: Some(activator),
             ability_index,
         }
     }

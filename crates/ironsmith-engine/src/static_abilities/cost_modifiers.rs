@@ -1972,6 +1972,12 @@ pub enum ActivatedAbilityCostCondition {
     /// `ability_index` of the source (CR 602.2b); unbound applies to all.
     ThisAbility { ability_index: Option<usize> },
     All(Vec<ActivatedAbilityCostCondition>),
+    /// The actual selected activation carries this gameplay keyword.
+    Keyword(ironsmith_core::ActivatedAbilityKeyword),
+    NonManaAbility,
+    LoyaltyAbility,
+    /// The activator, relative to the modifier's controller; not source ownership.
+    Activator(PlayerFilter),
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -2004,6 +2010,22 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
     }
 
     match condition {
+        ActivatedAbilityCostCondition::Keyword(keyword) => {
+            let keyword = match keyword {
+                ironsmith_core::ActivatedAbilityKeyword::Equip => "equip",
+                ironsmith_core::ActivatedAbilityKeyword::PowerUp => "power-up",
+                ironsmith_core::ActivatedAbilityKeyword::Cycling => "cycling",
+                ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
+                ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
+                ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+            };
+            format!("if it's a {keyword} ability")
+        }
+        ActivatedAbilityCostCondition::NonManaAbility => "unless it's a mana ability".into(),
+        ActivatedAbilityCostCondition::LoyaltyAbility => "if it's a loyalty ability".into(),
+        ActivatedAbilityCostCondition::Activator(player) => {
+            format!("if {} activates it", player.description())
+        }
         ActivatedAbilityCostCondition::TargetsExactly { count, filter } => {
             if *count == 1 {
                 format!("if it targets {}", filter.description())
@@ -2045,6 +2067,25 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        // Kind-scoped prices require facts from the selected activation. An
+        // absent context must not grant another ability's discount or tax.
+        ActivatedAbilityCostCondition::Keyword(keyword) => {
+            ability.is_some_and(|ability| ability.keyword == Some(*keyword))
+        }
+        ActivatedAbilityCostCondition::NonManaAbility => {
+            ability.is_some_and(|ability| !ability.mana_ability)
+        }
+        ActivatedAbilityCostCondition::LoyaltyAbility => {
+            ability.is_some_and(|ability| ability.loyalty_ability)
+        }
+        ActivatedAbilityCostCondition::Activator(player) => {
+            let Some(activator) = ability.and_then(|ability| ability.activator) else {
+                return false;
+            };
+            let Some(modifier) = game.object(modifier_source) else { return false; };
+            let context = game.filter_context_for(game.controller_of(modifier), Some(modifier_source));
+            crate::filter::player_filter_matches_game(player, activator, game, &context)
+        }
         ActivatedAbilityCostCondition::All(conditions) => conditions.iter().all(|condition| {
             activated_ability_cost_condition_is_active_for_activation(
                 game, source, modifier_source, condition, chosen_targets, ability,

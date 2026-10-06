@@ -133,6 +133,8 @@ impl ActivatedPresentationKind {
     pub fn keyword(self) -> Option<ironsmith_core::ActivatedAbilityKeyword> {
         match self {
             Self::PowerUp => Some(ironsmith_core::ActivatedAbilityKeyword::PowerUp),
+            Self::Boast => Some(ironsmith_core::ActivatedAbilityKeyword::Boast),
+            Self::Exhaust => Some(ironsmith_core::ActivatedAbilityKeyword::Exhaust),
             _ => None,
         }
     }

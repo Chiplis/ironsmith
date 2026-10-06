@@ -26,6 +26,10 @@ pub fn parse_cycling_line_lexed(
     else {
         return Ok(None);
     };
+    // A keyword-scoped cost modifier is a static line, not a cycling price.
+    if word_refs.get(1).is_some_and(|word| matches!(*word, "abilities" | "costs")) {
+        return Ok(None);
+    }
     if cycling_head.context == ActivatedCyclingContext::Granted {
         return Ok(None);
     }
@@ -103,7 +107,7 @@ pub fn parse_cycling_line_lexed(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
-                keyword: None,
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Cycling),
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),

@@ -870,9 +870,18 @@ pub(crate) fn append_activation_cost_steps_from_cost(
     }
 }
 
+/// Original activation retained for CR 602.2b cost determination. A current
+/// display slot may change during announcement and is not a replacement owner.
+#[derive(Debug, Clone)]
+pub struct AnnouncedActivationCost {
+    pub ability: crate::ability::ActivatedAbility,
+    pub facts: crate::decision::ActivationCostAbility,
+}
+
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {
+    pub announced_cost: Option<AnnouncedActivationCost>,
     /// Identity reserved before target matching; the finalized ability keeps
     /// this exact ID even if its physical source leaves while paying costs.
     pub announced_stack_ability: Option<ObjectId>,
@@ -1012,6 +1021,7 @@ impl PendingActivation {
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     ) -> Self {
         Self {
+            announced_cost: None,
             announced_stack_ability: None,
             cost_reference_base: None,
             cost_reference_choices: Vec::new(),

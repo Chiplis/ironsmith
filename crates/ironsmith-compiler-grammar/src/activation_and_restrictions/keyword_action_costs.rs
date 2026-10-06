@@ -1295,6 +1295,14 @@ pub fn parse_suspend_keyword_action(tokens: &[OwnedLexToken]) -> Option<KeywordA
 }
 
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    // A keyword-qualified activation modifier is not a grant of that keyword.
+    // The complete static-cost reader owns its amount, actor and exclusions.
+    let activation_words = crate::lexer::parser_token_word_refs(tokens);
+    if activation_words.get(1) == Some(&"abilities")
+        && activation_words.first().is_some_and(|word| matches!(*word,
+            "cycling" | "ninjutsu" | "boast" | "exhaust" | "power-up"))
+    { return None; }
+
     if let Some(action) = parse_dynamic_keyword_amount(tokens) { return Some(action); }
     // A failed complete amount reading must not become a marker or a literal
     // prefix that drops the local definition or an unrecognized trailing clause.

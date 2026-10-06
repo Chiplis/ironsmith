@@ -121,11 +121,6 @@ const RULES: &[UnsupportedRule] = &[
         kind: UnsupportedRewriteLineKind::TrailingPreventNextDamage,
     },
     UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Prefix,
-        phrase: &["ninjutsu", "abilities", "you", "activate", "cost"],
-        kind: UnsupportedRewriteLineKind::MarkerKeywordWithTail,
-    },
-    UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Exact,
         phrase: &[
             "creatures",

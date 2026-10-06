@@ -612,6 +612,10 @@ impl StaticAbilityModelInterpreter {
             Model::ThisAbility { ability_index } => Runtime::ThisAbility {
                 ability_index: *ability_index,
             },
+            Model::Keyword(keyword) => Runtime::Keyword(*keyword),
+            Model::NonManaAbility => Runtime::NonManaAbility,
+            Model::LoyaltyAbility => Runtime::LoyaltyAbility,
+            Model::Activator(player) => Runtime::Activator(player.clone()),
             Model::All(conditions) => Runtime::All(
                 conditions
                     .iter()

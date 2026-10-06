@@ -932,6 +932,19 @@ fn apply_priority_response_with_dm_inner(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+            let announced_ability = game.current_ability(*source, *ability_index)
+                .and_then(|ability| match &ability.kind {
+                    AbilityKind::Activated(activated) => Some(activated.clone()),
+                    _ => None,
+                }).ok_or_else(|| GameLoopError::ExecutionFailed(
+                    crate::effects::ExecutionError::IncompleteEvidence(
+                        "announced activation has no original ability".into(),
+                    ),
+                ))?;
+            let mut announced_facts = crate::decision::ActivationCostAbility::of(
+                game, player, *source, &announced_ability,
+            );
+            announced_facts.ability_index = Some(*ability_index);
             let needs_cost_references =
                 crate::cost::prospective_references::needs_activation_reference_context(
                     &base_cost,
@@ -943,7 +956,7 @@ fn apply_priority_response_with_dm_inner(
                 *source,
                 &base_cost,
                 &[],
-                crate::decision::ActivationCostAbility::at(game, player, *source, *ability_index),
+                Some(announced_facts),
             );
             let activation_cost_has_tap = total_cost_contains_tap(&cost);
             let alternative_cost_branches = cost
@@ -1092,6 +1105,10 @@ fn apply_priority_response_with_dm_inner(
                     pips_to_announce,
                 );
 
+                pending.announced_cost = Some(super::priority_state::AnnouncedActivationCost {
+                    ability: announced_ability,
+                    facts: announced_facts,
+                });
                 if needs_cost_references {
                     pending.cost_reference_base = Some(base_cost.clone());
                     pending.cost_references_ready = false;
@@ -1348,9 +1365,10 @@ pub(super) fn apply_targets_response(
         pending.remaining_requirements.drain(..requirements.len());
         pending.active_target_requirement_count = 0;
 
-        if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
-            && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
         {
+            let announced = super::priority_cast::announced_activation_cost(&pending)?;
+            let activated = &announced.ability;
+            let facts = announced.facts;
             // X was announced before targets (CR 602.2b, 601.2b); price the
             // cost with it locked so reductions apply to the X part too.
             let base_cost = if let Some(captured) = super::priority_cast::pending_counter_declaration_cost(&pending)? { captured }
@@ -1400,12 +1418,7 @@ pub(super) fn apply_targets_response(
                 pending.source,
                 &base_cost,
                 &pending.chosen_targets,
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    pending.activator,
-                    pending.source,
-                    activated,
-                )),
+                Some(facts),
             );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => repriced.clone(),
@@ -1434,7 +1447,9 @@ pub(super) fn apply_targets_response(
 
         continue_activation(game, trigger_queue, state, pending, decision_maker)
         })();
-        if result.is_err() && declaration.is_some() { state.rollback_action(game); }
+        if result.is_err() && (declaration.is_some() || matches!(&result,
+            Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(_)))))
+        { state.rollback_action(game); }
         return result;
     }
 
@@ -1598,15 +1613,13 @@ pub(super) fn apply_x_value_response(
             if result.is_err() { state.rollback_action(game); }
             return result;
         }
-        let min_x = game
-            .current_ability(pending.source, pending.ability_index)
-            .and_then(|ability| match &ability.kind {
-                crate::ability::AbilityKind::Activated(activated) => {
-                    Some(activated.activation_x_minimum())
-                }
-                _ => None,
-            })
-            .unwrap_or(0);
+        let announced = match super::priority_cast::announced_activation_cost(&pending) {
+            Ok(announced) => announced,
+            Err(error) => { state.rollback_action(game); return Err(error); }
+        };
+        let min_x = announced.ability.activation_x_minimum();
+        let original = announced.ability.clone();
+        let facts = announced.facts;
         if x_value < min_x {
             state.pending_activation = Some(pending);
             return Err(GameLoopError::InvalidState(format!(
@@ -1622,9 +1635,8 @@ pub(super) fn apply_x_value_response(
         // CR 602.2b / 601.2f: with X announced, the total cost is determined
         // with X as generic mana, so generic reductions (Training Grounds,
         // Heartstone) and the one-mana floor apply to it.
-        if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
-            && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
-            && activated.mana_cost.as_all().is_none_or(|components| {
+        let activated = &original;
+        if activated.mana_cost.as_all().is_none_or(|components| {
                 components
                     .iter()
                     .any(|component| component.mana_cost_ref().is_some_and(|mana| mana.has_x()))
@@ -1638,12 +1650,7 @@ pub(super) fn apply_x_value_response(
                 pending.source,
                 &locked,
                 &pending.chosen_targets,
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    pending.activator,
-                    pending.source,
-                    activated,
-                )),
+                Some(facts),
             );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => Some(repriced.clone()),

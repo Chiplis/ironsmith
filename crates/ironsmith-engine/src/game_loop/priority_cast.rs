@@ -1970,17 +1970,23 @@ fn activation_cost_mana_value(cost: &crate::cost::TotalCost) -> u32 {
     })
 }
 
+pub(super) fn announced_activation_cost(
+    pending: &PendingActivation,
+) -> Result<&super::priority_state::AnnouncedActivationCost, GameLoopError> {
+    pending.announced_cost.as_ref().ok_or_else(|| GameLoopError::ExecutionFailed(
+        crate::effects::ExecutionError::IncompleteEvidence(
+            "pending activation lost its original ability and cost facts".into(),
+        ),
+    ))
+}
+
 /// Generic reductions that the symbolic `{X}` activation cost could not
 /// absorb but will apply once X is announced (CR 602.2b, 601.2f). The X
 /// prompt adds this to the affordable maximum.
-fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation) -> u32 {
+fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation) -> Result<u32, GameLoopError> {
     const REDUCTION_PROBE_X: u32 = 1_000;
-    let Some(ability) = game.current_ability(pending.source, pending.ability_index) else {
-        return 0;
-    };
-    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
-        return 0;
-    };
+    let announced = announced_activation_cost(pending)?;
+    let activated = &announced.ability;
     let reduction = |base: &crate::cost::TotalCost| {
         let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
             game,
@@ -1988,12 +1994,7 @@ fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation
             pending.source,
             base,
             &pending.chosen_targets,
-            Some(crate::decision::ActivationCostAbility::of(
-                game,
-                pending.activator,
-                pending.source,
-                activated,
-            )),
+            Some(announced.facts),
         );
         let base = selected_activation_cost_branch(base, pending.selected_alternative_cost);
         let priced = selected_activation_cost_branch(&priced, pending.selected_alternative_cost);
@@ -2002,7 +2003,7 @@ fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation
         })
     };
     let locked = activation_cost_with_locked_x(&activated.mana_cost, REDUCTION_PROBE_X);
-    reduction(&locked).saturating_sub(reduction(&activated.mana_cost))
+    Ok(reduction(&locked).saturating_sub(reduction(&activated.mana_cost)))
 }
 
 pub(super) fn assign_pending_activation_cost(
@@ -6858,7 +6859,7 @@ pub(super) fn continue_activation(
                 } else { base };
                 let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                     game, pending.activator, pending.source, &base, &pending.chosen_targets,
-                    crate::decision::ActivationCostAbility::at(game, pending.activator, pending.source, pending.ability_index),
+                    Some(announced_activation_cost(&pending)?.facts),
                 );
                 pending.cost_references_ready = true;
                 assign_pending_activation_cost(game, &mut pending, &cost, decision_maker)?;
@@ -6967,7 +6968,7 @@ pub(super) fn continue_activation(
                         .count()
                         .max(1) as u32;
                     *mana_max = mana_max
-                        .saturating_add(activation_x_reduction_headroom(game, &pending) / x_pips);
+                        .saturating_add(activation_x_reduction_headroom(game, &pending)? / x_pips);
                 }
                 if let Some(cost_max_x) = max_x_from_activation_cost_steps(
                     game,
@@ -6978,15 +6979,7 @@ pub(super) fn continue_activation(
                     max_x = Some(max_x.map_or(cost_max_x, |mana_max| mana_max.min(cost_max_x)));
                 }
                 let max_x = max_x.unwrap_or(0);
-                let min_x = game
-                    .current_ability(pending.source, pending.ability_index)
-                    .and_then(|ability| match &ability.kind {
-                        crate::ability::AbilityKind::Activated(activated) => {
-                            Some(activated.activation_x_minimum())
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or(0);
+                let min_x = announced_activation_cost(&pending)?.ability.activation_x_minimum();
                 if min_x > max_x {
                     return Err(GameLoopError::InvalidState(format!(
                         "No legal X value between {min_x} and {max_x} for this activation"
