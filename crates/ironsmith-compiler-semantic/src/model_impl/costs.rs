@@ -90,7 +90,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
 
     fn display(&self) -> String {
         match self {
-            Self::Mana(cost) => cost.to_oracle(),
+            Self::Mana(cost) => cost.payment_surface(),
             Self::DynamicMana(cost) => cost.base.to_oracle(),
             Self::VariableMana { generic } => format!("{{{generic}}}"),
             Self::Tap => "{T}".to_string(),
@@ -510,3 +510,27 @@ pub type CompilerAlternativeCastingMethod = ironsmith_core::AlternativeCastingMe
     CompilerCost,
     crate::static_abilities::ThisSpellCostCondition,
 >;
+
+/// Ambiguous branches and opaque effects cannot identify one counter payment.
+pub fn unique_counter_removal_cost(cost: &ironsmith_core::TotalCost<CompilerCost>)
+    -> Option<super::reference_state::CounterRemovalCostReference>
+{
+    let components = cost.as_all()?;
+    let mut producer = None;
+    for component in components {
+        match component {
+            CompilerCost::RemoveCounters { counter_type, filter, dynamic, display_x, remove_all, single_object, .. } => {
+                if producer.is_some() { return None; }
+                producer = Some(super::reference_state::CounterRemovalCostReference {
+                    effect_id: ironsmith_core::EffectId::ACTIVATION_COUNTER_COST,
+                    counter_type: *counter_type,
+                    can_announce_quantity: counter_type.is_some() && *dynamic && !*display_x && !*remove_all && *single_object
+                        && filter.as_ref().is_none_or(|filter| *filter == ObjectFilter::source()),
+                });
+            }
+            CompilerCost::Effect(_) | CompilerCost::ValidatedEffect(_) => return None,
+            _ => {}
+        }
+    }
+    producer
+}

@@ -19,6 +19,7 @@ fn payment_disclosure_track_hand(wasm: &mut WasmGame, card: ObjectId, slot: u16)
     wasm.game.set_hidden_card_info(
         card,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: PlayerId(0),
             zone: Zone::Hand,
             slot,

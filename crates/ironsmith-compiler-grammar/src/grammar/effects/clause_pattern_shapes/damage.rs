@@ -51,6 +51,8 @@ pub enum DamageSourceShape<'a> {
 pub enum RedirectDamageDestinationShape<'a> {
     SourceObject,
     Controller,
+    SourceController,
+    DamageSource,
     Target(&'a [OwnedLexToken]),
     TargetOfChoice(&'a [OwnedLexToken]),
 }
@@ -78,6 +80,7 @@ pub enum RedirectNextDamageShape<'a> {
     },
     NextTime {
         source: DamageSourceShape<'a>,
+        combat_only: bool,
         target_tokens: &'a [OwnedLexToken],
         destination: RedirectDamageDestinationShape<'a>,
     },
@@ -223,6 +226,10 @@ fn damage_source_filter_from_descriptor(descriptor: &[OwnedLexToken]) -> ObjectF
         let Some(word) = token.as_word() else {
             continue;
         };
+        if matches!(word, "spell" | "spells") {
+            filter.zone = Some(crate::zone::Zone::Stack);
+            continue;
+        }
         if word.eq_ignore_ascii_case("chosen") {
             saw_chosen = true;
             continue;

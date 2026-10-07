@@ -373,8 +373,8 @@ pub(crate) fn describe_effect_count_backref(value: &Value) -> Option<String> {
                 Some(format!("that many minus {}", -offset))
             }
         }
-        Value::EventValue(EventValueSpec::Amount) => Some("that many".to_string()),
-        Value::EventValueOffset(EventValueSpec::Amount, offset) => {
+        Value::EventValue(EventValueSpec::Amount | EventValueSpec::CastSpell(_)) => Some("that many".to_string()),
+        Value::EventValueOffset(EventValueSpec::Amount | EventValueSpec::CastSpell(_), offset) => {
             if *offset == 0 {
                 Some("that many".to_string())
             } else if *offset > 0 {
@@ -4578,6 +4578,11 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::NameStickerUniqueVowels => {
             "the number of unique vowels on that sticker".to_string()
         }
+        crate::effect::EffectMetric::CoinFlipsTotal => "the number of flips".into(),
+        crate::effect::EffectMetric::CoinFlipsWon => "the number of flips you won".into(),
+        crate::effect::EffectMetric::CoinFlipsLost => "the number of flips you lost".into(),
+        crate::effect::EffectMetric::CoinHeads => "the number of coins that came up heads".into(),
+        crate::effect::EffectMetric::CoinTails => "the number of coins that came up tails".into(),
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
@@ -4594,10 +4599,12 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "chosen",
         crate::effect::PriorEffectAction::ChosenNumber => "chosen",
+        crate::effect::PriorEffectAction::Flipped => "flipped",
         crate::effect::PriorEffectAction::Rolled => "rolled",
         crate::effect::PriorEffectAction::Connived => "connived",
         crate::effect::PriorEffectAction::Countered => "countered",
         crate::effect::PriorEffectAction::CountersPut => "had counters put on them",
+        crate::effect::PriorEffectAction::CountersMoved(_) => "had counters moved",
         crate::effect::PriorEffectAction::DealtDamage => "dealt damage",
         crate::effect::PriorEffectAction::Died => "died",
         crate::effect::PriorEffectAction::Destroyed => "destroyed",
@@ -6655,6 +6662,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the highest number you noted for cards named {}",
             title_case_card_name_fragment(card_name)
         ),
+        Value::SourceChosenNumber { .. } => "the last chosen number".to_string(),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
         Value::PlayerCounters(PlayerFilter::Any, counter_type) => format!(
             "the total number of {} counters among players",
@@ -6703,6 +6711,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
         Value::EventValueOffset(EventValueSpec::DieBatchTotal, offset) => format!("the total result of those dice plus {offset}"),
         Value::EventValueOffset(EventValueSpec::DieResultsAtLeast(minimum), offset) => format!("the number of those die results of {minimum} or higher plus {offset}"),
+        Value::EventValue(EventValueSpec::CastSpell(_)) => "that much".to_string(),
+        Value::EventValueOffset(EventValueSpec::CastSpell(_), offset) => format!("that much plus {offset}"),
         Value::EventValue(EventValueSpec::DieResult) => "the result of that roll".to_string(),
         Value::EventValueOffset(EventValueSpec::DieResult, offset) => {
             if *offset == 0 {

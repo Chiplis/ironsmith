@@ -48,6 +48,7 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
         if zone.to == Zone::Hand {
             let mut players = std::collections::BTreeMap::<PlayerId, Vec<ObjectSnapshot>>::new();
             for snapshot in &zone.destination_snapshots {
+                if snapshot.kind != crate::object::ObjectKind::Card { continue; }
                 players
                     .entry(snapshot.owner)
                     .or_default()
@@ -55,9 +56,10 @@ pub(crate) fn event_facts(game: &GameState, event: &TriggerEvent) -> Vec<Executi
             }
             // Arrival snapshots can be absent on non-battlefield moves. These
             // identities are still read at queue time, before any added program.
-            if players.is_empty() {
+            if zone.destination_snapshots.is_empty() {
                 for id in &zone.result_objects {
-                    if let Some(snapshot) = ObjectSnapshot::from_object_id(game, *id) {
+                    if let Some(snapshot) = ObjectSnapshot::from_object_id(game, *id)
+                        && snapshot.kind == crate::object::ObjectKind::Card {
                         players.entry(snapshot.owner).or_default().push(snapshot);
                     }
                 }
@@ -451,6 +453,14 @@ impl crate::effects::SimultaneousEffectProposal for RecordedProposal {
         self.inner.declared_life_payments()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        self.inner.prepare_selection(game, ctx)
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -555,6 +565,19 @@ struct RecordedCompletion {
     actor: PlayerId,
 }
 impl crate::effects::SimultaneousEffectCompletion for RecordedCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let mut original = original;
+        complete_outcome(game, self.action, Some(self.actor), &mut original, Vec::new());
+        let mut receipt = self.inner.prepare_draw_boundary_with_outputs(game, ctx, original)?;
+        receipt.completion = receipt.completion.map(|inner| Box::new(Self {
+            inner, action: self.action, actor: self.actor,
+        }) as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,

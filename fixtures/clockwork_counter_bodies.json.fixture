@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Clockwork Avian",
+    "oracle_id": "3d5b71d4-ed5e-4c6d-be70-bebbb1475257",
+    "mana_cost": "{5}",
+    "type_line": "Artifact Creature — Bird",
+    "oracle_text": "Flying\nThis creature enters with four +1/+0 counters on it.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "power": "0",
+    "toughness": "4",
+    "text": "Mana cost: {5}\nType: Artifact Creature — Bird\nPower/Toughness: 0/4\nFlying\nThis creature enters with four +1/+0 counters on it.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "ceiling": 4
+  },
+  {
+    "name": "Clockwork Beast",
+    "oracle_id": "eb97c8db-ac6c-476c-b14d-87785e9c82f0",
+    "mana_cost": "{6}",
+    "type_line": "Artifact Creature — Beast",
+    "oracle_text": "This creature enters with seven +1/+0 counters on it.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than seven. Activate only during your upkeep.",
+    "power": "0",
+    "toughness": "4",
+    "text": "Mana cost: {6}\nType: Artifact Creature — Beast\nPower/Toughness: 0/4\nThis creature enters with seven +1/+0 counters on it.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than seven. Activate only during your upkeep.",
+    "ceiling": 7
+  },
+  {
+    "name": "Clockwork Steed",
+    "oracle_id": "1d6a1dab-8724-4b07-b109-c6ba2a7ea1ad",
+    "mana_cost": "{4}",
+    "type_line": "Artifact Creature — Horse",
+    "oracle_text": "This creature enters with four +1/+0 counters on it.\nThis creature can't be blocked by artifact creatures.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "power": "0",
+    "toughness": "3",
+    "text": "Mana cost: {4}\nType: Artifact Creature — Horse\nPower/Toughness: 0/3\nThis creature enters with four +1/+0 counters on it.\nThis creature can't be blocked by artifact creatures.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "ceiling": 4
+  },
+  {
+    "name": "Clockwork Swarm",
+    "oracle_id": "a6091c3e-b227-4e84-b75d-69512a0bddfb",
+    "mana_cost": "{4}",
+    "type_line": "Artifact Creature — Insect",
+    "oracle_text": "This creature enters with four +1/+0 counters on it.\nThis creature can't be blocked by Walls.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "power": "0",
+    "toughness": "3",
+    "text": "Mana cost: {4}\nType: Artifact Creature — Insect\nPower/Toughness: 0/3\nThis creature enters with four +1/+0 counters on it.\nThis creature can't be blocked by Walls.\nAt end of combat, if this creature attacked or blocked this combat, remove a +1/+0 counter from it.\n{X}, {T}: Put up to X +1/+0 counters on this creature. This ability can't cause the total number of +1/+0 counters on this creature to be greater than four. Activate only during your upkeep.",
+    "ceiling": 4
+  }
+]

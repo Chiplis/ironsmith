@@ -31,6 +31,7 @@ pub(crate) mod choose_objects_runtime;
 mod choose_spell_cast_history;
 pub(crate) mod collect_evidence;
 mod compound;
+mod collect_mana_payments;
 mod conditional;
 mod cumulative_upkeep;
 mod emit_gift_given;
@@ -40,6 +41,7 @@ mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
 mod for_players;
+mod object_iteration;
 mod grant_repeatable_mana_payment_action;
 mod if_effect;
 mod iteration_program;
@@ -92,6 +94,7 @@ mod vote;
 mod vote_runtime;
 mod with_id;
 
+pub use collect_mana_payments::CollectManaPaymentsEffect;
 pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
 pub use bid_life::{BidLifeEffect, LifeBidStart};
@@ -191,5 +194,11 @@ mod keyword_programs;
 
 pub(crate) use simultaneous::{
     complete_committed_original_with_outputs, complete_standalone_original_with_outputs,
-    observe_original_completion,
+    observe_original_completion, prepare_simultaneous_originals_with_participants,
 };
+
+#[cfg(test)]
+mod resolution_stop_tests;
+
+#[cfg(test)]
+mod prepared_port_regressions;

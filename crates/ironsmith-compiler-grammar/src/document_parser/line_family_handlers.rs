@@ -1310,10 +1310,12 @@ pub(super) fn run_keyword_line_family(
         return ParseOutcome::NoMatch;
     }
 
-    if let Some(action) = crate::keyword_static::parse_dynamic_firebending_with_source(
+    if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(
+        &ctx.line.tokens,
+    ).or_else(|| crate::keyword_static::parse_dynamic_firebending_with_source(
         &ctx.line.tokens,
         Some(ctx.parse.source().card_name.as_str()),
-    ) {
+    )) {
         return line_family_match(
             ctx,
             LineDispatchResult::single(
@@ -1328,10 +1330,11 @@ pub(super) fn run_keyword_line_family(
         );
     }
 
-    if matches!(
-        parse_ability_line_lexed(&ctx.line.tokens).as_deref(),
-        Some([crate::cards::builders::KeywordAction::CumulativeUpkeep { .. }])
-    ) {
+    if let Some(actions) = parse_ability_line_lexed(&ctx.line.tokens)
+        && matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::CumulativeUpkeep { .. } | crate::cards::builders::KeywordAction::Suspend { .. }])
+    {
+        let parsed = matches!(actions.as_slice(), [crate::cards::builders::KeywordAction::Suspend { .. }])
+            .then(|| Box::new(LineAst::Abilities(actions)));
         return line_family_match(
             ctx,
             LineDispatchResult::single(
@@ -1339,7 +1342,7 @@ pub(super) fn run_keyword_line_family(
                     info: ctx.line.info.clone(),
                     parse_tokens: ctx.line.tokens.clone(),
                     chosen_option: None,
-                    parsed: None,
+                    parsed,
                 }),
                 ctx.idx + 1,
             ),

@@ -16,11 +16,12 @@ use crate::tag::TagKey;
 /// the supplied query without exposing the engine's internal derived view.
 pub struct PotentialManaQuery<'view, 'game> {
     pub(crate) view: &'view crate::derived_view::DerivedGameView<'game>,
+    pub(crate) payment: Option<&'view crate::mana_payment::ManaPaymentRequest>,
 }
 
 impl<'view, 'game> PotentialManaQuery<'view, 'game> {
     pub(crate) fn new(view: &'view crate::derived_view::DerivedGameView<'game>) -> Self {
-        Self { view }
+        Self { view, payment: None }
     }
 }
 
@@ -48,13 +49,34 @@ pub enum PaymentReason {
     /// Paying another special-action or generic engine cost.
     #[default]
     Other,
+    /// The special action from hand, not the later spell cast.
+    Foretell,
+    /// Exact announcement. Legacy TurnFaceUp does not assert a method.
+    TurnFaceUpWithMethod(ironsmith_core::ManaTurnFaceUpMethod),
+    /// Frozen at announcement; source changes do not change the paid ability.
+    ActivateAbilityWithKeyword { keyword: ironsmith_core::ActivatedAbilityKeyword, mana_ability: bool },
 }
 
 impl PaymentReason {
+    pub fn activation(keyword: Option<ironsmith_core::ActivatedAbilityKeyword>, mana_ability: bool) -> Self {
+        match keyword {
+            Some(keyword) => Self::ActivateAbilityWithKeyword { keyword, mana_ability },
+            None if mana_ability => Self::ActivateManaAbility,
+            None => Self::ActivateAbility,
+        }
+    }
+    pub fn is_mana_ability(self) -> bool {
+        matches!(self, Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { mana_ability: true, .. })
+    }
+    pub fn is_non_mana_ability(self) -> bool {
+        matches!(self, Self::ActivateAbility | Self::ActivateAbilityWithKeyword { mana_ability: false, .. })
+    }
+    pub fn is_ability(self) -> bool { self.is_mana_ability() || self.is_non_mana_ability() }
+
     pub fn is_cast_or_ability_payment(self) -> bool {
         matches!(
             self,
-            Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility
+            Self::CastSpell | Self::ActivateAbility | Self::ActivateManaAbility | Self::ActivateAbilityWithKeyword { .. }
         )
     }
 
@@ -63,8 +85,11 @@ impl PaymentReason {
             Self::CastSpell => crate::ability::ManaPaymentPurpose::CastSpell,
             Self::ActivateAbility => crate::ability::ManaPaymentPurpose::ActivateAbility,
             Self::ActivateManaAbility => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
+            Self::ActivateAbilityWithKeyword { mana_ability: true, .. } => crate::ability::ManaPaymentPurpose::ActivateManaAbility,
+            Self::ActivateAbilityWithKeyword { mana_ability: false, .. } => crate::ability::ManaPaymentPurpose::ActivateAbility,
             Self::UnlockDoor => crate::ability::ManaPaymentPurpose::UnlockDoor,
-            Self::TurnFaceUp => crate::ability::ManaPaymentPurpose::TurnFaceUp,
+            Self::TurnFaceUp | Self::TurnFaceUpWithMethod(_) => crate::ability::ManaPaymentPurpose::TurnFaceUp,
+            Self::Foretell => crate::ability::ManaPaymentPurpose::Foretell,
             Self::CumulativeUpkeep => crate::ability::ManaPaymentPurpose::CumulativeUpkeep,
             Self::Effect => crate::ability::ManaPaymentPurpose::Effect,
             Self::Other => crate::ability::ManaPaymentPurpose::Other,
@@ -122,7 +147,10 @@ pub(crate) fn check_effect_cost_program(
         reason,
         execution,
     )
-    .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))
+    .map_err(|error| match error {
+        CostPaymentError::ExecutionFailed(error) => crate::effects::CostValidationError::ExecutionFailed(error),
+        error => crate::effects::CostValidationError::Other(error.to_string()),
+    })
 }
 
 /// Captured inputs shared by cost preflight and live effect execution.
@@ -134,6 +162,7 @@ pub(crate) struct CostExecutionBindings {
     cause: crate::events::cause::EventCause,
     reason: PaymentReason,
     source_snapshot: Option<ObjectSnapshot>,
+    prospective_cost_payment: bool,
     replacement: crate::effects::ReplacementExecutionContext,
     x_value: Option<u32>,
     chosen: Vec<crate::effects::ResolvedTarget>,
@@ -159,6 +188,7 @@ impl CostExecutionBindings {
             inputs.restore_ref(&mut execution);
         }
         execution.source_snapshot = self.source_snapshot;
+        execution.prospective_cost_payment = self.prospective_cost_payment;
         execution.replacement = self.replacement;
         execution.x_value = self.x_value;
         execution.effect_outcomes = self.outcomes;
@@ -216,6 +246,8 @@ pub struct CostContext<'dm> {
     /// Pre-chosen cards for costs that require card selection (e.g., ExileFromHand).
     /// When present, costs should use these instead of prompting for choice.
     pub pre_chosen_cards: Vec<ObjectId>,
+    /// True only inside a cloned admission owner, never in actual payment.
+    pub(crate) prospective_cost_payment: bool,
     pub announced_targets: Vec<crate::game_state::Target>,
     /// Tagged objects that persist across cost effects.
     ///
@@ -232,6 +264,10 @@ pub struct CostContext<'dm> {
     pub interactive_mana_exclusions: Option<Vec<ObjectId>>,
     /// Value inputs inherited by nested payments; instruction control remains local.
     pub(crate) execution_inputs: Option<Box<crate::effects::PaymentExecutionInputs>>,
+    /// Exact resources reserved by other unpaid components.
+    pub reserved_tap_sources: Vec<ObjectId>,
+    /// Original sacrifice receipts, including a known empty result.
+    pub completed_sacrifice: Option<Vec<ObjectSnapshot>>,
 }
 
 // Cost rollback owns every binding except the decision maker's prompt/answers.
@@ -259,6 +295,9 @@ cost_context_checkpoint! {
     reason: PaymentReason,
     requesting_effect_cause: Option<crate::events::cause::EventCause>,
     pre_chosen_cards: Vec<ObjectId>,
+    prospective_cost_payment: bool,
+    reserved_tap_sources: Vec<ObjectId>,
+    completed_sacrifice: Option<Vec<ObjectSnapshot>>,
     announced_targets: Vec<crate::game_state::Target>,
     tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     effect_outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
@@ -309,12 +348,15 @@ impl<'dm> CostContext<'dm> {
             requesting_effect_cause: None,
             decision_maker,
             pre_chosen_cards: Vec::new(),
+            prospective_cost_payment: false,
             announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
             execution_inputs: None,
+            reserved_tap_sources: Vec::new(),
+            completed_sacrifice: None,
         }
     }
 
@@ -358,6 +400,9 @@ impl<'dm> CostContext<'dm> {
             payer,
             reason,
             source_snapshot: execution.source_snapshot.clone(),
+            prospective_cost_payment: execution.prospective_cost_payment,
+            reserved_tap_sources: Vec::new(),
+            completed_sacrifice: None,
             replacement: execution.replacement.clone(),
             x_value: execution.x_value,
             requesting_effect_cause: Some(execution.cause.clone()),
@@ -381,6 +426,7 @@ impl<'dm> CostContext<'dm> {
             cause: self.event_cause(),
             reason: self.reason,
             source_snapshot: self.source_snapshot.clone(),
+            prospective_cost_payment: self.prospective_cost_payment,
             replacement: self.replacement.clone(),
             x_value: self.x_value,
             chosen: self
@@ -520,12 +566,15 @@ impl CostCheckContext {
             requesting_effect_cause: None,
             decision_maker: dm,
             pre_chosen_cards: self.pre_chosen_cards.clone(),
+            prospective_cost_payment: false,
             announced_targets: Vec::new(),
             tagged_objects: HashMap::new(),
             effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
             interactive_mana_exclusions: None,
             execution_inputs: None,
+            reserved_tap_sources: Vec::new(),
+            completed_sacrifice: None,
         }
     }
 }

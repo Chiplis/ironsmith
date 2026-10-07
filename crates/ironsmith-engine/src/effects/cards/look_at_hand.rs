@@ -90,10 +90,11 @@ impl EffectExecutor for LookAtHandEffect {
                     "Reveal that player's hand",
                     None,
                 )?;
-                outcome = EffectOutcome::aggregate([outcome, reveal]);
-                for snapshot in snapshots {
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                for snapshot in reveal.chosen_object_memory().unwrap_or_default().iter().cloned() {
                     ctx.tag_object(crate::effects::REVEALED_THIS_WAY_TAG, snapshot);
                 }
+                outcome = EffectOutcome::aggregate([outcome, reveal]);
             } else {
                 // Record exactly the looked-at cards so a following "exile
                 // those cards" acts on this set. The set lives only in this

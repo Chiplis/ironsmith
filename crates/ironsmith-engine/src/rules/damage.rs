@@ -550,6 +550,7 @@ mod tests {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),

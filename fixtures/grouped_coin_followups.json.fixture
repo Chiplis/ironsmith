@@ -1,0 +1,35 @@
+[
+  {
+    "name": "Mirror March",
+    "oracle_id": "945eaa8b-0ba5-45a6-a02a-763e5bfe3af8",
+    "oracle_text": "Whenever a nontoken creature you control enters, flip a coin until you lose a flip. For each flip you won, create a token that's a copy of that creature. Those tokens gain haste. Exile them at the beginning of the next end step.",
+    "text": "Mana cost: {5}{R}\nType: Enchantment\nWhenever a nontoken creature you control enters, flip a coin until you lose a flip. For each flip you won, create a token that's a copy of that creature. Those tokens gain haste. Exile them at the beginning of the next end step.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported target phrase (clause: 'coin') [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "ebc85c5b39cd90b268d6cb6b9b8e7b05567f5a3aa22eadb7c5d91834002a552d",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Mutalith Vortex Beast",
+    "oracle_id": "7e6ca948-a66d-46a9-9174-ac7b75d7b348",
+    "oracle_text": "Trample\nWarp Vortex — When this creature enters, flip a coin for each opponent you have. For each flip you win, draw a card. For each flip you lose, this creature deals 3 damage to that player.",
+    "text": "Mana cost: {4}{U}{R}\nType: Creature — Mutant Beast\nPower/Toughness: 6/6\nTrample\nWarp Vortex — When this creature enters, flip a coin for each opponent you have. For each flip you win, draw a card. For each flip you lose, this creature deals 3 damage to that player.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "warp keyword missing mana cost [rule-path=parse_warp > registry::parse_warp] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: warp keyword missing mana cost [rule-path=parse_warp > registry::parse_warp] [rule-path=statement-line > keyword-line]",
+    "baseline_content_hash": "a95d63bebc0750de4a0ab952fdcb51f3e9b6245ca1cc4a470c684f1684d49c7f",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Yusri, Fortune's Flame",
+    "oracle_id": "2c0a0a7d-b12f-47c8-a6a6-d046f999ec6b",
+    "oracle_text": "Flying\nWhenever Yusri attacks, choose a number between 1 and 5. Flip that many coins. For each flip you win, draw a card. For each flip you lose, Yusri deals 2 damage to you. If you won five flips this way, you may cast spells from your hand this turn without paying their mana costs.",
+    "text": "Mana cost: {1}{U}{R}\nType: Legendary Creature — Efreet\nPower/Toughness: 2/3\nFlying\nWhenever Yusri attacks, choose a number between 1 and 5. Flip that many coins. For each flip you win, draw a card. For each flip you lose, Yusri deals 2 damage to you. If you won five flips this way, you may cast spells from your hand this turn without paying their mana costs.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported chosen object filter in choose clause (clause: 'choose a number between 1 and 5') [rule-path=you-choose-objects-with-count > clause-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported chosen object filter in choose clause (clause: 'choose a number between 1 and 5') [rule-path=you-choose-objects-with-count > clause-reading] [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "8a5d8ee5cceb6c3f686ce24c2e7c2b37bab98a8e96d19bcbf9b06e000ee7386a",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  }
+]

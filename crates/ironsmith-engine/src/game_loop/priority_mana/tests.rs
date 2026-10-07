@@ -544,6 +544,7 @@ fn opponent_owned_exile_cost_candidates_exclude_the_activating_players_cards() {
 fn arena_style_land_definition() -> crate::cards::CardDefinition {
     let ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Red])),
                 crate::costs::Cost::tap(),
@@ -1960,6 +1961,10 @@ fn canceling_nested_mana_removes_only_the_child_visibility_boundary() {
         },
     );
     let pending = |provenance| PendingManaAbility {
+        activation_origin: None,
+        linked_exile_owner: None,
+        source_number_owner: None,
+        payment_reason: crate::costs::PaymentReason::ActivateManaAbility,
         source,
         ability_index: 0,
         activator: alice,
@@ -2084,4 +2089,84 @@ fn completed_deferred_mana_root_is_not_rewound_by_canceling_the_next_root() {
     assert_eq!(game.player(alice).unwrap().life, 19);
     assert_eq!(game.player(alice).unwrap().mana_pool, mana_after_first);
     assert!(!game.has_library_top_announcement());
+}
+
+
+#[test]
+fn native_linked_mana_keeps_pair_ownership_in_immediate_pending_and_special_action_paths() {
+    // Explicit native pairing. The complete two-ability artifact enters,
+    // exiles a creature, then asks for that paired creature's live power.
+    for route in 0..4 {
+        let mut game = setup_game(); let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice; game.turn.priority_player = Some(alice);
+        game.turn.phase = Phase::FirstMain; game.turn.step = None;
+        let victim_def = CardDefinitionBuilder::new(CardId::new(), "Native linked victim")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(7, 8)).build();
+        let victim = game.create_object_from_definition(&victim_def, alice, Zone::Battlefield);
+        let pair = ironsmith_core::LinkedExilePair {
+            definition: ironsmith_core::LinkedExileDefinition([53; 32]), pair: 0,
+        };
+        let producer = ResolutionProgram::from_effects(vec![crate::effect::Effect::new(
+            crate::effects::ExileUntilEffect::new(crate::target::ChooseSpec::SpecificObject(victim),
+                crate::effects::ExileUntilDuration::SourceLeavesBattlefield))]).with_linked_exile_pair(pair);
+        let number = crate::effect::Value::PowerOf(Box::new(
+            crate::target::ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
+        let consumer = ResolutionProgram::from_effects(vec![if route == 3 {
+            crate::effect::Effect::gain_life(number)
+        } else { crate::effect::Effect::add_colorless_mana(number) }]).with_linked_exile_pair(pair);
+        let cost = if route == 1 { TotalCost::mana(ManaCost::new().add_generic(1)) } else { TotalCost::free() };
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Native linked mana artifact")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(Ability::triggered(crate::triggers::Trigger::this_enters_battlefield(), producer))
+            .with_ability(if route == 3 { Ability::activated(cost, consumer.clone()) }
+                else { Ability::mana_with_effects(cost, consumer.clone()) }).build();
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::EnterBattlefieldEvent::new(source, Zone::Hand), Default::default());
+        let mut queue = TriggerQueue::new();
+        for entry in crate::triggers::check_triggers(&game, &event) { queue.add(entry); }
+        assert_eq!(queue.entries.len(), 1);
+        let mut dm = SelectFirstDecisionMaker;
+        crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let owner = crate::linked_exile::LinkedExileOwner::capture(source, Some(pair),
+            Some(&crate::continuous::AbilityOrigin::Printed(1))).unwrap();
+        assert_eq!(game.linked_exile_pair_members(&owner).unwrap().len(), 1);
+        match route {
+            0 => {
+                crate::special_actions::perform_mana_ability_with_payment_mode(&mut game, alice,
+                    source, 1, None, None, Vec::new(), &mut dm).unwrap();
+            }
+            1 => {
+                game.create_object_from_definition(&basic_mountain(), alice, Zone::Battlefield);
+                let mut state = PriorityLoopState::new(2);
+                super::super::priority_apply::begin_mana_ability_activation(
+                    &mut game, &mut queue, &mut state, &source, &1, alice, &mut dm).unwrap();
+                let state = state.clone(); game = game.clone();
+                let pending = state.pending_mana_ability.as_ref().expect("mana payment remains pending");
+                assert_eq!(pending.linked_exile_owner.as_ref(), Some(&owner));
+                game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 1);
+                execute_pending_mana_ability(&mut game, &mut queue, pending, &mut dm).unwrap();
+            }
+            2 => {
+                let mut entry = crate::game_state::StackEntry::ability(source, alice, consumer);
+                entry.linked_exile_owner = Some(owner);
+                super::super::sba_triggers::resolve_triggered_stack_entry_immediately(
+                    &mut game, &mut queue, &mut dm, entry).unwrap();
+            }
+            _ => {
+                let mut state = PriorityLoopState::new(2);
+                apply_priority_response_with_dm(&mut game, &mut queue, &mut state,
+                    &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+                        source, ability_index: 1,
+                    }), &mut dm).unwrap();
+                assert_eq!(game.stack.last().unwrap().linked_exile_owner.as_ref(), Some(&owner));
+                assert_eq!(game.stack.last().unwrap().ability_effects.as_ref().unwrap().linked_exile_pair, Some(pair));
+                crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            }
+        }
+        if route == 3 { assert_eq!(game.player(alice).unwrap().life, 27); }
+        else { assert_eq!(game.player(alice).unwrap().mana_pool.colorless, 7); }
+    }
 }

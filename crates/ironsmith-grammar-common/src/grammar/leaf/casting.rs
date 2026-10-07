@@ -37,6 +37,7 @@ fn parse_leaf_alternative_cast_kind(
         primitives::word_slice_exact("jumpstart").value(AlternativeCastKind::JumpStart),
         primitives::word_slice_exact("flashback").value(AlternativeCastKind::Flashback),
         primitives::word_slice_exact("suspend").value(AlternativeCastKind::Suspend),
+        primitives::word_slice_exact("foretell").value(AlternativeCastKind::Foretell),
         primitives::word_slice_exact("madness").value(AlternativeCastKind::Madness),
         primitives::word_slice_exact("miracle").value(AlternativeCastKind::Miracle),
         primitives::word_slice_exact("escape").value(AlternativeCastKind::Escape),

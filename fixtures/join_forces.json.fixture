@@ -1,0 +1,30 @@
+[
+  {
+    "oracle_id": "be2a4595-4378-4af8-8368-e3b2bb3cb5bb",
+    "name": "Alliance of Arms",
+    "mana_cost": "{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Join forces — Starting with you, each player may pay any amount of mana. Each player creates X 1/1 white Soldier creature tokens, where X is the total amount of mana paid this way."
+  },
+  {
+    "oracle_id": "00f82f84-81a5-45e5-9c35-9d627a180950",
+    "name": "Collective Voyage",
+    "mana_cost": "{G}",
+    "type_line": "Sorcery",
+    "oracle_text": "Join forces — Starting with you, each player may pay any amount of mana. Each player searches their library for up to X basic land cards, where X is the total amount of mana paid this way, puts them onto the battlefield tapped, then shuffles."
+  },
+  {
+    "oracle_id": "b259f4e4-04a9-40e0-85e9-34b4b74ee388",
+    "name": "Minds Aglow",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Join forces — Starting with you, each player may pay any amount of mana. Each player draws X cards, where X is the total amount of mana paid this way."
+  },
+  {
+    "oracle_id": "ef9b7588-9bf0-4632-ae5d-1dfebc4d88eb",
+    "name": "Shared Trauma",
+    "mana_cost": "{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Join forces — Starting with you, each player may pay any amount of mana. Each player mills X cards, where X is the total amount of mana paid this way."
+  }
+]

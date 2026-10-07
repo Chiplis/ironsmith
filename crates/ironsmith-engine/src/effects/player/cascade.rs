@@ -315,7 +315,7 @@ impl EffectExecutor for CascadeEffect {
                                 ctx.controller,
                                 result.from_zone,
                                 ctx.provenance,
-                            ));
+                            )?);
                         }
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(CompletedEffectOutputs::aggregate_only(

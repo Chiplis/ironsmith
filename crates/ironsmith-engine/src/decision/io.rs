@@ -2511,6 +2511,8 @@ fn zone_label(zone: Zone) -> &'static str {
 pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass".to_string(),
+        LegalAction::CastExiledCardFaceDown { .. } => "Cast exiled card face down".to_string(),
+        LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
         LegalAction::TakeMulligan => "Mulligan".to_string(),
         LegalAction::ContinuePregame | LegalAction::BeginGame => "Pregame".to_string(),
@@ -2549,7 +2551,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
             ..
         } => {
             if let Some(obj) = game.object(*spell_id) {
-                match casting_method {
+                match casting_method.without_exact_permission() {
+                    crate::alternative_cast::CastingMethod::ExactPermission { .. } => "Invalid nested permission".into(),
                     crate::alternative_cast::CastingMethod::AlternativePrice { price, prototype, .. } => {
                         let provider = game.object(price.source).map(|source| source.name.to_string()).unwrap_or_else(|| "alternative price".into());
                         format!("{} [using {}{}]", obj.name, provider, if prototype.is_some() { ", prototyped" } else { "" })

@@ -139,6 +139,7 @@ enum MaterializationCost {
         display_x: bool,
         dynamic: bool,
         single_object: bool,
+        remove_all: bool,
     },
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,
@@ -172,20 +173,6 @@ pub fn materialize_compiler_total_cost(
 ) -> Result<TotalCost, CardTextError> {
     let mut materialized = Vec::with_capacity(cost.branches.len());
     for branch in &cost.branches {
-        if let [CompilerCost::VariableMana { generic }] = branch.as_slice() {
-            materialized.push(crate::compile_support::waterbend_optional_total_cost(
-                *generic,
-            ));
-            continue;
-        }
-        if branch
-            .iter()
-            .any(|cost| matches!(cost, CompilerCost::VariableMana { .. }))
-        {
-            return Err(CardTextError::ParseError(
-                "variable waterbend cost cannot be combined with another cost".to_string(),
-            ));
-        }
         let segments = branch.iter().map(materialization_cost).collect::<Vec<_>>();
         materialized.push(lower_materialization_costs(&segments)?);
     }
@@ -218,7 +205,7 @@ fn bind_cost_attachment_reference_to_source(
     filter
 }
 
-fn tap_state_cost_scope(filter: &ObjectFilter) -> ObjectFilter {
+fn identity_aware_activation_cost_scope(filter: &ObjectFilter) -> ObjectFilter {
     let mut filter = bind_cost_attachment_reference_to_source(filter);
     // An explicit attachment/source identity does not imply control by the
     // payer. The action is a written tap/untap instruction, not {T}/{Q}.
@@ -255,9 +242,9 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
     match cost {
         CompilerCost::Mana(cost) => MaterializationCost::Mana(cost.clone()),
         CompilerCost::DynamicMana(cost) => MaterializationCost::DynamicMana(cost.clone()),
-        CompilerCost::VariableMana { .. } => {
-            unreachable!("variable mana is handled at the total-cost boundary")
-        }
+        CompilerCost::VariableMana { generic } => MaterializationCost::Mana(
+            ManaCost::new().add_generic(*generic).with_waterbend(),
+        ),
         CompilerCost::Tap => MaterializationCost::Tap,
         CompilerCost::TapChosen { count, filter } => MaterializationCost::TapChosen {
             count: *count,
@@ -466,7 +453,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             display_x,
             dynamic,
             single_object,
-            ..
+            remove_all,
         } => MaterializationCost::RemoveCountersAmong {
             counter_type: *counter_type,
             count: *count,
@@ -474,6 +461,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             display_x: *display_x,
             dynamic: *dynamic,
             single_object: *single_object,
+            remove_all: *remove_all,
         },
         CompilerCost::RemoveCounters {
             counter_type,
@@ -541,7 +529,7 @@ fn lower_materialization_costs(
             }
             MaterializationCost::TapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = tap_state_cost_scope(filter);
+                let mut filter = identity_aware_activation_cost_scope(filter);
                 filter.untapped = true;
                 let tag = ironsmith_compiler_semantic::tag::declared_key(format!(
                     "tap_cost_{tap_tag_id}"
@@ -559,7 +547,7 @@ fn lower_materialization_costs(
             }
             MaterializationCost::UntapChosen { count, filter } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = tap_state_cost_scope(filter);
+                let mut filter = identity_aware_activation_cost_scope(filter);
                 filter.tapped = true;
                 let tag = ironsmith_compiler_semantic::tag::CompilerCostObjectTag::Untap.key(untap_tag_id);
                 untap_tag_id += 1;
@@ -1035,11 +1023,11 @@ fn lower_materialization_costs(
                     PlayerFilter::You,
                     tag.clone(),
                 )));
-                costs.push(Cost::validated_effect(Effect::move_to_zone(
+                costs.push(Cost::validated_effect(Effect::new(crate::effects::MoveToZoneEffect::new(
                     crate::target::ChooseSpec::tagged(tag),
                     crate::zone::Zone::Library,
                     false,
-                )));
+                ).with_library_order(ironsmith_core::LibraryPlacementOrder::Owners))));
             }
             MaterializationCost::MoveSelfToLibraryBottom { surface } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -1153,14 +1141,25 @@ fn lower_materialization_costs(
                 display_x,
                 dynamic,
                 single_object,
+                remove_all,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                let mut filter = filter.clone();
-                apply_activation_cost_default_battlefield_scope(&mut filter);
+                let filter = identity_aware_activation_cost_scope(filter);
+                if *remove_all {
+                    let kind = counter_type.ok_or_else(|| CardTextError::ParseError("scoped all-counter cost requires a named counter kind".into()))?;
+                    let grantor = crate::tag::CompilerReferenceTag::GrantingSource.key();
+                    if filter != ObjectFilter::tagged(grantor.clone()).in_zone(crate::zone::Zone::Battlefield) {
+                        return Err(CardTextError::ParseError("scoped all-counter cost requires an exact granting object".into()));
+                    }
+                    let target = crate::target::ChooseSpec::Tagged(grantor);
+                    let count = crate::effect::Value::CountersOn(Box::new(target.clone()), Some(kind));
+                    costs.push(Cost::validated_effect(Effect::remove_counters(kind, count, target)));
+                    continue;
+                }
                 let mut remove = if *dynamic {
                     crate::effects::RemoveAnyCountersAmongEffect::dynamic(
                         *count,
-                        u32::MAX / 4,
+                        u32::MAX,
                         filter,
                         *display_x,
                     )
@@ -1220,4 +1219,32 @@ mod tests {
             );
         }
     }
+}
+
+/// Only activation costs publish this producer; optional/body costs keep their
+/// original ownership and cannot overwrite the activation's retained result.
+pub fn materialize_compiler_activation_total_cost(cost: &ironsmith_core::TotalCost<CompilerCost>)
+    -> Result<TotalCost, CardTextError>
+{
+    let lowered = materialize_compiler_core_total_cost(cost)?;
+    let Some(producer) = crate::model::costs::unique_counter_removal_cost(cost) else { return Ok(lowered); };
+    let components = lowered.as_all().ok_or_else(|| CardTextError::InvariantViolation("counter producer lost ordinary cost branch".into()))?;
+    let mut count = 0;
+    let components = components.iter().map(|component| {
+        let effect = match component {
+            Cost::RemoveCounters { counter_type, count } => Some(Effect::remove_counters(*counter_type, *count, crate::target::ChooseSpec::Source)),
+            Cost::RemoveAnyCountersFromSource { counter_type, display_x, remove_all } => Some(Effect::new(
+                crate::effects::RemoveAnyCountersFromSourceEffect { counter_type: *counter_type, display_x: *display_x, remove_all: *remove_all })),
+            Cost::Effect(effect) if effect.downcast_ref::<crate::effects::RemoveCountersEffect>().is_some()
+                || effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>().is_some()
+                || effect.downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>().is_some() => Some(effect.clone()),
+            _ => None,
+        };
+        if let Some(effect) = effect {
+            count += 1;
+            Cost::validated_effect(Effect::with_id(producer.effect_id.0, effect))
+        } else { component.clone() }
+    }).collect();
+    if count != 1 { return Err(CardTextError::InvariantViolation("counter producer must materialize exactly once".into())); }
+    Ok(TotalCost::from_costs(components))
 }

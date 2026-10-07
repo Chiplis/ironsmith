@@ -498,6 +498,7 @@ pub(super) fn reveal_hidden_position_uses_position_commitment_over_private_slot_
     wasm.game.set_hidden_card_info(
         correct_position,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Library,
             slot: 36,
@@ -556,6 +557,7 @@ pub(super) fn reveal_hidden_position_preserves_existing_public_identity_for_priv
     wasm.game.set_hidden_card_info(
         hand_id,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Hand,
             slot: 10,
@@ -623,6 +625,7 @@ pub(super) fn reveal_hidden_positions_reveals_multiple_ziffle_positions_in_one_b
     wasm.game.set_hidden_card_info(
         first,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Library,
             slot: 10,
@@ -636,6 +639,7 @@ pub(super) fn reveal_hidden_positions_reveals_multiple_ziffle_positions_in_one_b
     wasm.game.set_hidden_card_info(
         second,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Library,
             slot: 20,
@@ -704,6 +708,7 @@ pub(super) fn reveal_hidden_positions_rejects_batch_without_partial_reveals() {
     wasm.game.set_hidden_card_info(
         first,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Library,
             slot: 10,
@@ -717,6 +722,7 @@ pub(super) fn reveal_hidden_positions_rejects_batch_without_partial_reveals() {
     wasm.game.set_hidden_card_info(
         second,
         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice,
             zone: Zone::Library,
             slot: 20,

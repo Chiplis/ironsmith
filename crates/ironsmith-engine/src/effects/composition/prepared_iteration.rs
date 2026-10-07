@@ -150,6 +150,17 @@ struct ScopedIterationCompletion {
 }
 
 impl SimultaneousEffectCompletion for ScopedIterationCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let Self { bindings, inner } = *self;
+        let mut receipt = bindings.run(ctx, |ctx| inner.prepare_draw_boundary_with_outputs(game, ctx, original))?;
+        receipt.completion = receipt.completion.map(|inner| Box::new(Self { bindings, inner })
+            as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -217,6 +228,15 @@ impl SimultaneousEffectProposal for ScopedIterationProposal {
 
     fn declared_life_payments(&self) -> Vec<(PlayerId, u32)> {
         self.inner.declared_life_payments()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.bindings
+            .run(ctx, |ctx| self.inner.prepare_selection(game, ctx))
     }
 
     fn prepare_original(

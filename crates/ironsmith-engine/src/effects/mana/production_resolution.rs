@@ -226,9 +226,9 @@ impl ManaProduction<'_> {
             Self::ColorsAmong {
                 filter, choose_one, ..
             } => {
-                let available = super::add_mana_of_colors_among::colors_among_filter(
-                    game, filter, ctx.source, recipient,
-                );
+                let available = super::add_mana_of_colors_among::colors_among_for_execution(
+                    game, filter, ctx, recipient,
+                )?;
                 if choose_one && !available.is_empty() {
                     Choice {
                         available,
@@ -277,7 +277,7 @@ impl ManaProduction<'_> {
                         collect_available_mana_symbols(game, ctx, filter)
                     }
                     super::ManaTypeSource::TriggeringEventProduced => {
-                        collect_triggering_event_mana_symbols(game, ctx, filter)
+                        collect_triggering_event_mana_symbols(game, ctx, filter)?
                     }
                 }
                 .into_iter()

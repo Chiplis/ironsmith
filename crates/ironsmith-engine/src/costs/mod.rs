@@ -803,6 +803,10 @@ mod tests {
 
     #[test]
     fn try_effect_accepts_cost_executable_effects() {
+        let draw = Cost::try_effect(crate::effect::Effect::draw(1))
+            .expect("draw action payments are used by cumulative upkeep");
+        assert!(draw.effect_ref().is_some());
+
         let cost = Cost::try_effect(crate::effect::Effect::lose_life(2))
             .expect("lose-life effect should be usable as a cost");
         assert_eq!(cost.life_amount(), Some(2));
@@ -826,10 +830,6 @@ mod tests {
 
     #[test]
     fn try_effect_rejects_non_cost_effects() {
-        let err = Cost::try_effect(crate::effect::Effect::draw(1))
-            .expect_err("draw effect should not be usable as a cost");
-        assert!(err.contains("effect is not marked as cost-executable"));
-
         let err = Cost::try_effect(crate::effect::Effect::destroy(
             crate::target::ChooseSpec::Source,
         ))
@@ -856,7 +856,7 @@ mod tests {
 
         let err = Cost::try_effects(vec![
             crate::effect::Effect::lose_life(2),
-            crate::effect::Effect::draw(1),
+            crate::effect::Effect::destroy(crate::target::ChooseSpec::Source),
         ])
         .expect_err("one non-cost effect should reject the whole total cost");
         assert!(err.contains("effect is not marked as cost-executable"));

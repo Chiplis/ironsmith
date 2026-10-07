@@ -70,3 +70,17 @@ fn extra_die_replacement_owns_the_complete_lowest_ignore_instruction() {
         assert!(!is_extra_die_ignore_lowest(&lex_line(text, 0).unwrap()));
     }
 }
+
+#[test]
+fn coin_modifier_shapes_consume_every_symbol_and_separator() {
+    let thumb = "If you would flip a coin, instead flip two coins and ignore one.";
+    let edgar = "The first time you flip one or more coins each turn, those coins come up heads and you win those flips.";
+    assert!(is_extra_coin_ignore_one(&crate::lexer::lex_line(thumb, 0).unwrap()));
+    assert!(is_first_coin_batch_heads_win(&crate::lexer::lex_line(edgar, 0).unwrap()));
+    for malformed in [thumb.replace("coin,", "coin {R},"), thumb.replace("two coins", "two: coins"), format!("{thumb} {{R}}") ] {
+        assert!(!is_extra_coin_ignore_one(&crate::lexer::lex_line(&malformed, 0).unwrap()));
+    }
+    for malformed in [edgar.replace("heads", "heads {R}"), edgar.replace("win those", "win: those"), format!("{edgar} {{R}}") ] {
+        assert!(!is_first_coin_batch_heads_win(&crate::lexer::lex_line(&malformed, 0).unwrap()));
+    }
+}

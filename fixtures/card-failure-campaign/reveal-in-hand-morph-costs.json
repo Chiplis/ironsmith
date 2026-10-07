@@ -1,0 +1,76 @@
+{
+  "source": "cards-20261003.json.xz, frozen remaining-families-stage68-evidence.json",
+  "family": "reveal-in-hand-morph-costs",
+  "cards": [
+    {
+      "name": "Dragon's Eye Savants",
+      "oracle_id": "ca588f4e-4d2f-4aae-84de-be9862e13f1c",
+      "mana_cost": "{1}{U}",
+      "type_line": "Creature — Human Wizard",
+      "power": "0",
+      "toughness": "6",
+      "oracle_text": "Morph—Reveal a blue card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, look at target opponent's hand.",
+      "colors": [
+        "U"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/6\nMorph—Reveal a blue card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, look at target opponent's hand."
+    },
+    {
+      "name": "Horde Ambusher",
+      "oracle_id": "fb7f45eb-c134-4493-af05-e3b14d80e48c",
+      "mana_cost": "{1}{R}",
+      "type_line": "Creature — Human Berserker",
+      "power": "2",
+      "toughness": "2",
+      "oracle_text": "Whenever this creature blocks, it deals 1 damage to you.\nMorph—Reveal a red card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target creature can't block this turn.",
+      "colors": [
+        "R"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{R}\nType: Creature — Human Berserker\nPower/Toughness: 2/2\nWhenever this creature blocks, it deals 1 damage to you.\nMorph—Reveal a red card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target creature can't block this turn."
+    },
+    {
+      "name": "Ruthless Ripper",
+      "oracle_id": "cfbcd70b-d3a9-47e9-a8b3-b8134d00dff8",
+      "mana_cost": "{B}",
+      "type_line": "Creature — Human Assassin",
+      "power": "1",
+      "toughness": "1",
+      "oracle_text": "Deathtouch\nMorph—Reveal a black card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target player loses 2 life.",
+      "colors": [
+        "B"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {B}\nType: Creature — Human Assassin\nPower/Toughness: 1/1\nDeathtouch\nMorph—Reveal a black card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target player loses 2 life."
+    },
+    {
+      "name": "Temur Charger",
+      "oracle_id": "a0665c10-e652-4608-920b-66206c0e5905",
+      "mana_cost": "{1}{G}",
+      "type_line": "Creature — Horse",
+      "power": "3",
+      "toughness": "1",
+      "oracle_text": "Morph—Reveal a green card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target creature gains trample until end of turn.",
+      "colors": [
+        "G"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {1}{G}\nType: Creature — Horse\nPower/Toughness: 3/1\nMorph—Reveal a green card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, target creature gains trample until end of turn."
+    },
+    {
+      "name": "Watcher of the Roost",
+      "oracle_id": "92cf18ab-dd7b-4bc8-8b85-a81b8cb5192c",
+      "mana_cost": "{2}{W}",
+      "type_line": "Creature — Bird Soldier",
+      "power": "2",
+      "toughness": "1",
+      "oracle_text": "Flying\nMorph—Reveal a white card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, you gain 2 life.",
+      "colors": [
+        "W"
+      ],
+      "layout": "normal",
+      "text": "Mana cost: {2}{W}\nType: Creature — Bird Soldier\nPower/Toughness: 2/1\nFlying\nMorph—Reveal a white card in your hand. (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, you gain 2 life."
+    }
+  ]
+}

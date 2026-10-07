@@ -44,9 +44,19 @@ pub(super) fn classify_target(
         )),
     ) {
         let raw_filter_tokens = trim_lexed_commas(rest).to_vec();
-        let unsupported_qualifier = marker_anywhere(rest, primitives::kw("dealt"))
+        let complete_dealer_tail = primitives::split_lexed_once_before_suffix(rest, 1, || {
+            primitives::phrase(&["that", "dealt", "damage", "this", "turn"])
+        }).is_some();
+        let complete_counter_exclusion =
+            crate::grammar::filters::parse_filter_tail_decoration_split_words(
+                &crate::lexer::parser_token_word_refs(rest),
+            ).is_some_and(|tail| matches!(tail.decoration,
+                crate::grammar::filters::FilterTailDecoration::WithoutCounter(_)));
+        let unsupported_qualifier = (marker_anywhere(rest, primitives::kw("dealt"))
+                && !complete_dealer_tail)
             || (marker_anywhere(rest, primitives::kw("without"))
-                && marker_anywhere(rest, primitives::kw("counter")));
+                && marker_anywhere(rest, primitives::kw("counter"))
+                && !complete_counter_exclusion);
         // `split_suffix` takes the first matching alternative, so a longer
         // phrase must come before any phrase that is its suffix ("that were
         // not chosen this way" before "not chosen this way").

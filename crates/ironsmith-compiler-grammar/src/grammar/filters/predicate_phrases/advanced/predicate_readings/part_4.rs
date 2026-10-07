@@ -672,7 +672,41 @@ pub(super) fn read_same_name_as_filter_predicate(
     }))
 }
 
+/// An implicit name antecedent in an existence condition is the action's
+/// referenced object. "Another" excludes that exact object, not the source.
+fn read_another_same_name_object_exists(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    use winnow::prelude::*;
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.predicate_tokens);
+    let Some(((), body)) = crate::grammar::primitives::parse_prefix(
+        tokens, crate::grammar::primitives::kw("another"),
+    ) else { return Ok(None); };
+    let Some((end, (), rest)) = crate::grammar::primitives::find_prefix(body, || {
+        crate::grammar::primitives::phrase(&["with", "the", "same", "name", "is", "on", "the", "battlefield"])
+            .void()
+    }) else { return Ok(None); };
+    if !rest.is_empty() || end == 0 { return Ok(None); }
+    let mut comparison = parse_object_filter(&body[..end], false)?;
+    comparison.zone = Some(Zone::Battlefield);
+    let mut relation = crate::target::ObjectCharacteristicRelation::shares(
+        vec![crate::target::ObjectCharacteristic::Name], comparison,
+    );
+    relation.exclude_candidate = true;
+    // The trailing-condition owner binds ItMatches to the declared action
+    // target before lowering; no ambient source or stale result tag is used.
+    let mut filter = ObjectFilter::default();
+    filter.characteristic_relations.push(relation);
+    Ok(Some(PredicateAst::ItMatches(filter)))
+}
+
 pub(super) const READINGS: &[Reading] = &[
+    Reading {
+        id: RuleId::new("another-same-name-object-exists"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_another_same_name_object_exists(input)),
+    },
     Reading {
         id: RuleId::new("same-name-as-filter-predicate"),
         head: HeadDiscriminator::Any,

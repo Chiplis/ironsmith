@@ -139,19 +139,22 @@ impl TokenReminderFacts {
         self.definition.creature_rules.combat_restriction.as_ref()
     }
 
-    /// Drop keyword facts read from inside a quoted triggered or activated
-    /// rule. "Whenever this token attacks, target attacking creature gains
-    /// flying" mentions flying as part of its effect; the keyword is neither
-    /// the token's own ability nor evidence that the rule was captured by the
-    /// compact token blueprint.
+    /// Drop broad keyword guesses from a quoted rule. The complete keyword or
+    /// grant parser owns quoted keywords; a reference or filtered grant never
+    /// makes that keyword an intrinsic ability of the enclosing token.
     pub fn without_rule_effect_keywords(mut self) -> Self {
         self.definition.keywords.clear();
         self.definition.vehicle_flying = false;
+        self.definition.vehicle_crew_amount = None;
         let rules = &mut self.definition.creature_rules;
         rules.hexproof = false;
         rules.indestructible = false;
         rules.first_strike = false;
         rules.double_strike = false;
+        rules.banding = false;
+        rules.changeling = false;
+        rules.toxic_amount = None;
+        rules.cumulative_upkeep_mana_symbols = None;
         self.has_haste = false;
         self
     }
@@ -196,7 +199,7 @@ pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenRemin
     .flatten();
     let definition = TokenDefinitionReminderFacts {
         keywords: surface::token_keywords(&words),
-        creature_rules: surface::creature_rules(tokens, &words, None),
+        creature_rules: surface::creature_rules(tokens, &words, &words, None),
         equipment_rules: equipment::parse_equipment_rules_tokens(tokens),
         artifact_leaves_damage_any_target,
         vehicle_flying: common::word_present(&words, "flying"),

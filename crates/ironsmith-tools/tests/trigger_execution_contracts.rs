@@ -117,6 +117,8 @@ fn compiled_coin_flip_triggers_bind_the_event_player() {
         assert_mill_trigger(&definition, player, 1, true, |source| {
             TriggerEvent::new_with_provenance(
                 CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player,
                     source,
                     face: ironsmith_core::CoinFace::Heads,

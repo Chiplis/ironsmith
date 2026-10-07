@@ -1,0 +1,77 @@
+[
+  {
+    "oracle_id": "88522a0f-5377-4522-97f4-4148bef954af",
+    "name": "Bolg of the North",
+    "mana_cost": "{3}{B}{R}",
+    "type_line": "Legendary Creature \u2014 Goblin Soldier",
+    "oracle_text": "When Bolg enters, you may sacrifice another creature. When you do, Bolg deals damage equal to that creature's power to another target creature. If excess damage was dealt this way, amass Goblins X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also a Goblin. If you don't control an Army, create a 0/0 black Goblin Army creature token first.)",
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "oracle_id": "c78d4cec-6764-4cce-96d2-a2d85a57b218",
+    "name": "Eliminate the Impossible",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")"
+  },
+  {
+    "oracle_id": "a3468804-26ad-4919-b030-a1906a7029e8",
+    "name": "Evidence Examiner",
+    "mana_cost": "{G}{U}",
+    "type_line": "Creature \u2014 Merfolk Detective",
+    "oracle_text": "At the beginning of combat on your turn, you may collect evidence 4. (Exile cards with total mana value 4 or greater from your graveyard.)\nWhenever you collect evidence, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "power": "2",
+    "toughness": "2"
+  },
+  {
+    "oracle_id": "33c0a8c0-d1d9-4b03-869d-65dab8ace3df",
+    "name": "Fall of Cair Andros",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever a creature an opponent controls is dealt excess noncombat damage, amass Orcs X, where X is that excess damage. (Put X +1/+1 counters on an Army you control. It's also an Orc. If you don't control an Army, create a 0/0 black Orc Army creature token first.)\n{7}{R}: This enchantment deals 7 damage to target creature."
+  },
+  {
+    "oracle_id": "c293f1c0-93de-4a73-aaf6-4e9f01e557ec",
+    "name": "Innocent Bystander",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature \u2014 Goblin Citizen",
+    "oracle_text": "Whenever this creature is dealt 3 or more damage, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "power": "2",
+    "toughness": "1"
+  },
+  {
+    "oracle_id": "db07a3f9-c6d1-4cae-a899-12b3e8d94018",
+    "name": "Inquisitor Eisenhorn",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Creature \u2014 Human Inquisitor",
+    "oracle_text": "You may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, create Cherubael, a legendary 4/4 black Demon creature token with flying.\nWhenever Inquisitor Eisenhorn deals combat damage to a player, investigate that many times. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "oracle_id": "ec8a4b26-633a-4e88-aa8a-82e9704b3439",
+    "name": "Resonance Technician",
+    "mana_cost": "{3}{U/R}{U/R}",
+    "type_line": "Creature \u2014 Weird Detective",
+    "oracle_text": "Flying\nWhen this creature enters, you may discard a card. If you do, investigate twice.\n{T}, Tap X untapped artifacts you control: Copy target instant or sorcery spell you control with mana value X. You may choose new targets for the copy.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "oracle_id": "b3a03768-7676-4b33-a813-cc69dea77c4d",
+    "name": "The Fugitive Doctor",
+    "mana_cost": "{3}{R}{G}",
+    "type_line": "Legendary Creature \u2014 Time Lord Doctor",
+    "oracle_text": "When The Fugitive Doctor enters, investigate.\nWhenever The Fugitive Doctor attacks, you may sacrifice a Clue. When you do, target instant or sorcery card in your graveyard gains flashback {2}{R}{G} until end of turn. (You may cast that card from your graveyard for its flashback cost. Then exile it.)",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "oracle_id": "e7504407-bb72-4baf-be4a-8152e4198e2b",
+    "name": "Thorough Investigation",
+    "mana_cost": "{2}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Whenever you attack, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")\nWhenever you sacrifice a Clue, venture into the dungeon. (Enter the first room or advance to the next room.)"
+  }
+]

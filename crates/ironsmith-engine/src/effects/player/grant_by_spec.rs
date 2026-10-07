@@ -53,6 +53,12 @@ impl EffectExecutor for GrantBySpecEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if !self.spec.cast_mana_spend_mode.is_normal() && !matches!(self.spec.grantable, Grantable::PlayFrom) {
+            return Err(ExecutionError::IncompleteEvidence("permission-local mana requires a plain play permission".into()));
+        }
+        if self.spec.linked_exile_class_level.is_some() {
+            return Err(ExecutionError::IncompleteEvidence("Class-linked permission requires its live static acquisition".into()));
+        }
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         if self.spec.zone == Zone::Battlefield
             && let Grantable::Ability(ability) = &self.spec.grantable
@@ -112,6 +118,7 @@ impl EffectExecutor for GrantBySpecEffect {
                 grant.play_from_constraints.top_card_only = spec.top_card_only;
                 grant.play_from_constraints.instant_timing = spec.instant_timing;
                 grant.play_from_constraints.may_look_at_top = spec.may_look_at_top;
+                grant.play_from_constraints.cast_mana_spend_mode = spec.cast_mana_spend_mode;
             }
         }
 

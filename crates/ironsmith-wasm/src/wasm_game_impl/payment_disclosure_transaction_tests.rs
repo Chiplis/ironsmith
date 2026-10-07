@@ -348,7 +348,7 @@ fn payment_disclosure_transaction_savepoints_remove_only_speculative_commitments
         matches!(action, LegalAction::ActivateAbility { source: id, .. } if *id == source)).unwrap().clone(), _ => unreachable!() };
     let saved = RuntimeSavepoint::capture(&wasm);
     let public_before = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-    wasm.commit_payment_command_disclosure(&context, &ReplayDecisionAnswer::Priority(action));
+    wasm.commit_payment_command_disclosure(&context, &ReplayDecisionAnswer::Priority(action)).unwrap();
     assert!(wasm.payment_disclosure.is_some());
     assert_eq!(
         serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap(),
@@ -368,7 +368,7 @@ fn payment_disclosure_transaction_native_savepoint_keeps_live_commitment() {
     let (mut wasm, _) = manual_payment_fixture();
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source: ObjectId::from_raw(1), payer: PlayerId(0),
-        hand_objects: Default::default(), required_retry: None,
+        disclosed_objects: Default::default(), required_retry: None,
     });
     let saved = RuntimeSavepoint::capture(&wasm);
     wasm.payment_disclosure = None;
@@ -384,7 +384,7 @@ fn payment_disclosure_transaction_finished_replay_cannot_undo_but_later_safe_act
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source: ObjectId::from_raw(1),
         payer: PlayerId(0),
-        hand_objects: Default::default(),
+        disclosed_objects: Default::default(),
         required_retry: None,
     });
     wasm.finish_payment_disclosure();
@@ -585,7 +585,7 @@ fn payment_disclosure_rules_rollback_keeps_opened_identity_and_commitment_on_pee
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source,
         payer: alice,
-        hand_objects: [card].into_iter().collect(),
+        disclosed_objects: [card].into_iter().collect(),
         required_retry: None,
     });
     let disclosed = wasm.game.clone();
@@ -607,4 +607,77 @@ fn payment_disclosure_rules_rollback_keeps_opened_identity_and_commitment_on_pee
         !wasm.is_cancelable(),
         "there is no completed action to undo across this disclosure"
     );
+}
+
+// Authored for the reconciliation; deliberately unrun while validation is deferred.
+#[test]
+fn foreign_owned_disclosure_survives_move_and_native_checkpoint_rollback() {
+    let _guard = crate::test_id_counter_guard();
+    let (mut wasm, _) = manual_payment_fixture();
+    let payer = PlayerId(0);
+    let owner = PlayerId(1);
+    let definition = ironsmith_registry_test::cards::definitions::ornithopter();
+    let source = wasm.game.create_hidden_card_placeholder(
+        owner, Zone::Battlefield, 4, "foreign-source-position".into(),
+    );
+    wasm.game.set_face_down(source);
+    wasm.game.set_current_controller(source, payer);
+    let mut checkpoint = wasm.capture_replay_checkpoint();
+    let stable = checkpoint.game.object(source).unwrap().stable_id;
+    wasm.game.reveal_hidden_card_with_definition(source, &definition).unwrap();
+    wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
+        source, payer, disclosed_objects: [source].into_iter().collect(), required_retry: None,
+    });
+    let moved = wasm.game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+    assert_ne!(moved, source);
+    assert_eq!(wasm.game.object(moved).unwrap().stable_id, stable);
+    let disclosed = wasm.game.clone();
+    wasm.retain_payment_disclosure_in_checkpoint(&mut checkpoint, &disclosed);
+    let restored = checkpoint.game.object(source).unwrap();
+    assert_eq!(restored.owner, owner);
+    assert_eq!(restored.zone, Zone::Battlefield);
+    assert_eq!(restored.stable_id, stable);
+    assert!(restored.card.is_some(), "the foreign owner's learned definition survives rollback");
+    assert!(checkpoint.game.is_face_down(source));
+    assert!(checkpoint.game.is_publicly_revealed_hidden_card(source));
+    let mut identity = restored.clone();
+    identity.end_face_down_cast_overlay();
+    assert_eq!(identity.name.as_str(), "Ornithopter");
+}
+
+fn foreign_disclosed_source_snapshot_fixture() -> (WasmGame, ObjectId) {
+    let (mut wasm, _) = manual_payment_fixture();
+    let owner = PlayerId(1);
+    let definition = ironsmith_registry_test::cards::definitions::ornithopter();
+    let source = wasm.game.create_object_from_definition(&definition, owner, Zone::Battlefield);
+    wasm.game.set_face_down(source);
+    wasm.game.set_current_controller(source, PlayerId(0));
+    wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
+        source, payer: PlayerId(0), disclosed_objects: [source].into_iter().collect(), required_retry: None,
+    });
+    (wasm, source)
+}
+
+#[test]
+fn shared_snapshot_projection_keeps_foreign_disclosed_source_face_down() {
+    let _guard = crate::test_id_counter_guard();
+    let (mut wasm, source) = foreign_disclosed_source_snapshot_fixture();
+    let snapshot: serde_json::Value = serde_json::from_str(&wasm.snapshot_json_for_host().unwrap()).unwrap();
+    assert!(snapshot["players"][1]["persistent_look_cards"].as_array().unwrap().iter()
+        .any(|card| card["id"] == source.0 && card["name"] == "Ornithopter"));
+    assert!(wasm.game.is_face_down(source));
+    assert_eq!(wasm.game.calculated_power(source), Some(2));
+}
+
+// Exercises the actual JS route when the wasm test target is enabled.
+#[cfg(target_arch = "wasm32")]
+#[test]
+fn browser_and_json_snapshots_project_the_same_disclosed_foreign_source() {
+    let (mut wasm, source) = foreign_disclosed_source_snapshot_fixture();
+    let native: serde_json::Value = serde_json::from_str(&wasm.snapshot_json_for_host().unwrap()).unwrap();
+    let browser: serde_json::Value = serde_wasm_bindgen::from_value(wasm.snapshot().unwrap()).unwrap();
+    assert_eq!(browser["players"][1]["persistent_look_cards"], native["players"][1]["persistent_look_cards"]);
+    assert!(browser["players"][1]["persistent_look_cards"].as_array().unwrap().iter()
+        .any(|card| card["id"] == source.0 && card["name"] == "Ornithopter"));
+    assert!(wasm.game.is_face_down(source));
 }

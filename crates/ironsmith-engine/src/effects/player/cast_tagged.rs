@@ -44,8 +44,31 @@ impl EffectExecutor for CastTaggedEffect {
                     return Ok(EffectOutcome::target_invalid());
                 };
 
+                let first_draw_reference = ctx.triggering_event.as_ref()
+                    .and_then(|event| event.downcast::<crate::events::CardRevealedEvent>())
+                    .and_then(|event| event.first_draw.as_ref())
+                    .is_some_and(|draw| draw.owner.is_some() && draw.drawn_card == snapshot.object_id
+                        && draw.drawn_stable_id == snapshot.stable_id);
+                // This exact draw-time link requires retained LKI. Other tagged
+                // copy owners keep their existing reference-following policy.
+                let retained_copy = if self.as_copy && game.object(snapshot.object_id).is_none()
+                    && (first_draw_reference || snapshot.revealed_cast_definition.is_some())
+                {
+                    let definition = snapshot.revealed_cast_definition.as_ref().ok_or_else(||
+                        ExecutionError::IncompleteEvidence("copy of a departed revealed card requires its complete native cast definition".into()))?;
+                    let mut object = crate::object::Object::from_card_definition(
+                        snapshot.object_id, definition, snapshot.owner, snapshot.zone,
+                    );
+                    if !snapshot.copiable_values.spell_effect.has_complete_definition() {
+                        return Err(ExecutionError::ContinuousDiscovery(
+                            crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                                crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+                    }
+                    object.copy_copiable_values_from_values(&snapshot.copiable_values);
+                    Some(object)
+                } else { None };
                 let mut object_id = snapshot.object_id;
-                if game.object(object_id).is_none() {
+                if game.object(object_id).is_none() && retained_copy.is_none() {
                     // A priced instruction refers to this exact result incarnation;
                     // a blink/re-exile cannot revive its authorization.
                     if self.alternative_cost.is_some() || self.alternative_payment.is_some() {
@@ -83,7 +106,7 @@ impl EffectExecutor for CastTaggedEffect {
                 }
 
                 let (is_land, from_zone) = {
-                    let Some(obj) = game.object(object_id) else {
+                    let Some(obj) = retained_copy.as_ref().or_else(|| game.object(object_id)) else {
                         return Ok(EffectOutcome::target_invalid());
                     };
                     (obj.is_land(), obj.zone)
@@ -117,7 +140,7 @@ impl EffectExecutor for CastTaggedEffect {
                 if self.as_copy {
                     let copy_id = game.new_object_id();
 
-                    let source_obj = match game.object(object_id) {
+                    let source_obj = match retained_copy.as_ref().or_else(|| game.object(object_id)) {
                         Some(obj) => obj.clone(),
                         None => return Ok(EffectOutcome::target_invalid()),
                     };
@@ -178,7 +201,7 @@ impl EffectExecutor for CastTaggedEffect {
                         caster,
                         from_zone,
                         ctx.provenance,
-                    );
+                    )?;
                     return Ok(outcome);
                 }
 
@@ -233,7 +256,7 @@ impl EffectExecutor for CastTaggedEffect {
                     caster,
                     from_zone,
                     ctx.provenance,
-                );
+                )?;
                 Ok(outcome)
             },
         );
@@ -910,6 +933,14 @@ mod replacement_cast_tagged_land_owner_contract_tests {
                     .event_kind_count(crate::events::EventKind::LandPlayed),
                 1
             );
+            let played = game.turn_store.turn_history.projected_records()
+                .find_map(|record| record.event.downcast::<crate::events::LandPlayedEvent>())
+                .expect("original completed land-play notice");
+            assert_eq!(played.completed_destination, Some(Zone::Battlefield));
+            let snapshot = played.snapshot.as_ref().expect("checked original play snapshot");
+            assert_eq!(snapshot.object_id, arrival);
+            assert_eq!(snapshot.counters.get(&CounterType::PlusOnePlusOne).copied().unwrap_or(0), 0,
+                "original play evidence precedes the replacement's additional counter instruction");
             assert_eq!(
                 game.objects_in_deterministic_order().len(),
                 before_objects + usize::from(as_copy)

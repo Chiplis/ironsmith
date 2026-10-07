@@ -226,8 +226,10 @@ pub struct NumberContext {
     pub description: String,
     /// Minimum value (inclusive).
     pub min: u32,
-    /// Maximum value (inclusive).
+    /// Maximum representable response (inclusive).
     pub max: u32,
+    /// The authored limit, absent when the rules let a player choose any number.
+    pub authored_max: Option<u32>,
     /// Whether this is an X value decision (affects response type).
     pub is_x_value: bool,
     /// Optional richer UI hints for contextual rendering.
@@ -248,6 +250,7 @@ impl NumberContext {
             source,
             min,
             max,
+            authored_max: Some(max),
             description: description.into(),
             is_x_value: false,
             ui_hints: DecisionUiHints::default(),
@@ -266,6 +269,7 @@ impl NumberContext {
             source: Some(source),
             min,
             max,
+            authored_max: Some(max),
             description: "Choose value for X".to_string(),
             is_x_value: true,
             ui_hints: DecisionUiHints::default(),
@@ -482,15 +486,22 @@ impl SelectableObject {
     }
 }
 
-/// Context for object selection decisions.
-///
-/// Used for: sacrifice, discard, search library, exile, choose legend, etc.
+/// Original native payment responsible for a surfaced selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CostPaymentIdentity {
+    pub source: ObjectId,
+    pub payer: PlayerId,
+}
+
 #[derive(Debug, Clone)]
+/// Context for sacrifice, discard, search, exile, and other object choices.
 pub struct SelectObjectsContext {
     /// The player making the decision.
     pub player: PlayerId,
     /// The source of the effect.
     pub source: Option<ObjectId>,
+    /// Exact native payment requesting this selection, including resolution costs.
+    pub cost_payment: Option<CostPaymentIdentity>,
     /// Description of what kind of objects to select.
     pub description: String,
     /// Objects that can be selected.
@@ -532,6 +543,7 @@ impl SelectObjectsContext {
         Self {
             player,
             source,
+            cost_payment: None,
             description: description.into(),
             candidates,
             min,
@@ -742,6 +754,11 @@ pub struct SelectOptionsContext {
     pub max: usize,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
+    /// Native continuation owner for the choice immediately after an exile
+    /// opening. Nested replacement/options prompts leave this false.
+    pub exile_play_choice: bool,
+    /// Public kind declaration for the opaque, no-reveal exile cast owner.
+    pub exile_face_down_choice: bool,
 }
 
 impl SelectOptionsContext {
@@ -762,6 +779,8 @@ impl SelectOptionsContext {
             min,
             max,
             ui_hints: DecisionUiHints::default(),
+            exile_play_choice: false,
+            exile_face_down_choice: false,
         }
     }
 

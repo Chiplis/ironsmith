@@ -283,7 +283,8 @@ fn restriction_references_identity(
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }
-        Restriction::BeTargetedPlayerFrom(player, source) => {
+        Restriction::BeTargetedPlayerFrom(player, source)
+        | Restriction::PlayerHexproofFrom(player, source) => {
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(source, identity)
         }
@@ -309,12 +310,15 @@ fn restriction_references_identity(
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::MustAttack(filter)
+        | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
+        | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

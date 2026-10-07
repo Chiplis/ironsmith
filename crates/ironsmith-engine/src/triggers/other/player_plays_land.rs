@@ -50,14 +50,13 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         if filter.zone.take().is_some_and(|zone| zone != e.from_zone) {
             return false;
         }
-        if let Some(snapshot) = &e.snapshot {
-            return super::permanent_lifecycle::matches_completed(&filter, snapshot, ctx);
+        match e.required_completed_snapshot() {
+            Ok(snapshot) => super::permanent_lifecycle::matches_completed(&filter, snapshot, ctx),
+            Err(error) => {
+                ctx.game.record_token_resource_failure(&error);
+                false
+            }
         }
-        // Legacy, externally authored observations can still omit a snapshot.
-        // The production land action owner requires a frozen subject.
-        ctx.game
-            .object(e.land)
-            .is_some_and(|obj| filter.matches(obj, &ctx.filter_ctx, ctx.game))
     }
 
     fn display(&self) -> String {
@@ -116,7 +115,8 @@ mod tests {
             (bob, Zone::Exile, false),
         ] {
             let event = TriggerEvent::new_with_provenance(
-                LandPlayedEvent::new(land, player, origin),
+                LandPlayedEvent::with_current_snapshot(land, player, origin, Zone::Battlefield, &game)
+                    .expect("completed land-play receipt"),
                 crate::provenance::ProvNodeId::default(),
             );
             assert_eq!(trigger.matches(&event, &ctx), expected);

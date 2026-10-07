@@ -6,6 +6,26 @@ use crate::cards::builders::SourcePredicateAst;
 use crate::recognition::RuleId;
 use crate::registry::HeadDiscriminator;
 
+fn read_exact_revealed_color_count(input: &Predicate<'_>) -> Result<Option<PredicateAst>, CardTextError> {
+    let words = crate::lexer::token_word_refs(input.predicate_tokens);
+    if words != ["that", "opponent", "reveals", "exactly", "the", "chosen", "number", "of", "cards", "of", "the", "chosen", "color"] {
+        return Ok(None);
+    }
+    let mut revealed = ironsmith_core::PriorEffectMetricQuery::new(
+        ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::Count,
+    ).with_action(ironsmith_core::PriorEffectAction::Revealed)
+        .with_filter(ObjectFilter::default().of_chosen_color());
+    revealed.color_choice = Some(ironsmith_core::ColorChoiceReference::Pending);
+    let number = ironsmith_core::PriorEffectMetricQuery::new(
+        ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count,
+    ).with_action(ironsmith_core::PriorEffectAction::ChosenNumber);
+    Ok(Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(revealed),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::PendingPriorEffectMetric(number),
+    }))
+}
+
 pub(super) fn read_saddled(input: &Predicate<'_>) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
     // Trigger structure owns the subject in "attacks while saddled" and may
@@ -202,10 +222,16 @@ pub(super) fn read_source_suspected(
     {
         let simple_words = non_article_token_word_refs(predicate_tokens);
         if [
+            &["it", "is", "suspected"][..], &["its", "suspected"],
+            &["any", "of", "them", "are", "suspected"],
+            &["they", "are", "suspected"], &["theyre", "suspected"],
+        ].iter().any(|expected| surface::exact_words(&simple_words, expected)) {
+            return Ok(Some(PredicateAst::ItMatches(ObjectFilter::default().suspected())));
+        }
+        if [
             &["this", "creature", "is", "suspected"][..],
             &["this", "permanent", "is", "suspected"][..],
-            &["it", "is", "suspected"][..],
-            &["its", "suspected"][..],
+
         ]
         .iter()
         .any(|expected| surface::exact_words(&simple_words, expected))
@@ -376,6 +402,12 @@ pub(super) fn read_stack_object_would_destroy_predicate(
 }
 
 pub(super) const READINGS: &[Reading] = &[
+    Reading {
+        id: RuleId::new("exact-revealed-color-count"),
+        head: HeadDiscriminator::Words(&["if", "that"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_exact_revealed_color_count(input)),
+    },
     Reading {
         id: RuleId::new("stack-object-would-destroy-predicate"),
         head: HeadDiscriminator::Any,
@@ -723,6 +755,12 @@ pub(super) const READINGS: &[Reading] = &[
             }))
         },
         read: |input| input.outcome(read_passive_this_way_battlefield_predicate(input)),
+    },
+    Reading {
+        id: RuleId::new("this-ability-activation-count-predicate"),
+        head: HeadDiscriminator::Words(&["this"]),
+        admits: |input| input.predicate_tokens.first().is_some_and(|token| token.is_word("this")),
+        read: |input| input.outcome(Ok(parse_this_ability_activation_count_predicate(input.predicate_tokens))),
     },
     Reading {
         id: RuleId::new("this-ability-resolution-count-predicate"),

@@ -1,0 +1,1597 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "planning_source_commit": "a7cde15414b6fcb716754be16880be5d1e0caffb",
+  "updated_source_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
+  "status": "Read-only planning estimates; no coverage credit or executed validation. Stage69 separately source-clears the six untap candidates.",
+  "next_priority_order": [
+    "static-combat-obligations-and-flying-block-filters",
+    "binary-pile-programs",
+    "reveal-in-hand-morph-costs"
+  ],
+  "families": [
+    {
+      "id": "static-combat-obligations-and-flying-block-filters",
+      "priority": 1,
+      "scope": "General self/attached/filtered static attack and block requirements, including conjunction with keyword grants; never substitute a per-creature requirement for an at-least-one-player requirement.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/abilities.rs",
+          "symbol": "is_can_block_only_flying_line_lexed",
+          "gap": "Only self/bare subjects; needs attached and filtered subject grammar."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs",
+          "symbol": "parse_attack_each_combat_if_able_line / parse_can_block_only_flying_line",
+          "gap": "Reusable parallel block requirement and attack-or-block composition; whole-line routing must preserve all grants."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/keyword_static/anthem_grant_lines.rs",
+          "symbol": "parse anthem grant / grants_must_attack",
+          "gap": "Share obligation suffix recognition across keyword and stat grant subjects."
+        },
+        {
+          "path": "crates/ironsmith-core/src/static_ability_model.rs",
+          "symbol": "must_attack / must_block / can_block_only_flying",
+          "gap": "Existing semantic/runtime primitives; review combat declaration consumption rather than add text markers."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Disjoint from completed multiblock capacity repairs. Watchdog also needs its existing untapped-condition anthem body retained. Avatar/Hellraiser may be current-source routing review rather than new runtime implementation."
+      ],
+      "candidates": [
+        {
+          "card_name": "Air Bladder",
+          "oracle_ids": [
+            "25c8a3b0-c393-4fc6-a373-808cd8e9850c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Stratus Walk",
+          "oracle_ids": [
+            "eda37caa-d676-460a-804b-3ba9d8a8d044"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Chaosphere",
+          "oracle_ids": [
+            "ed01d5d7-8f34-47b3-9ca8-d82c242d38b4"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Dense Canopy",
+          "oracle_ids": [
+            "d182ab7d-77bd-49d1-9001-9b4016350181"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Razorgrass Screen",
+          "oracle_ids": [
+            "1818324c-2738-42e2-a78b-63abf325d8e9"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Grand Melee",
+          "oracle_ids": [
+            "1accf98a-0905-4a9d-9ab3-72e9f853f4ab"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Iron Golem",
+          "oracle_ids": [
+            "43990801-ed4a-49ff-a96e-03faa302214f"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Relentless Raptor",
+          "oracle_ids": [
+            "4727db28-98e9-453d-90c3-2d51365d32fc"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Spirespine",
+          "oracle_ids": [
+            "de0edcc8-1595-4dbb-ac8a-46dcd96299cb"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Watchdog",
+          "oracle_ids": [
+            "6a951d2d-fc5a-4f41-bd77-3e301b76cf47"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Avatar of Slaughter",
+          "oracle_ids": [
+            "2fc6305e-e75e-478a-826b-49f655ed832c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Hellraiser Goblin",
+          "oracle_ids": [
+            "c30e89fa-8993-468d-b2ee-093c3950f520"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Invasion Plans",
+          "oracle_ids": [
+            "db9c0d94-9fa5-4f07-be48-23e19d2f3d68"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "The attacking player must actually choose blocker assignments; MustBlock alone is insufficient."
+        },
+        {
+          "card_name": "Fumiko the Lowblood",
+          "oracle_ids": [
+            "cba58942-b98c-45aa-8651-7dc666e31c93"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Dynamic bushido X must remain executable."
+        },
+        {
+          "card_name": "Seeker of Slaanesh",
+          "oracle_ids": [
+            "47af21d3-b43f-4101-81cf-ca44db1a2706"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Each opponent must attack with at least one creature; different cardinality from every creature."
+        },
+        {
+          "card_name": "Trove of Temptation",
+          "oracle_ids": [
+            "f624c0f1-1c09-4b7a-b140-11329f27e3c7"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "At-least-one attacker plus specific defending player/planeswalker requirement."
+        },
+        {
+          "card_name": "Fealty to the Realm",
+          "oracle_ids": [
+            "c0128941-240a-4ca1-9816-b32f47523fdb"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Continuous controller follows the live monarch."
+        },
+        {
+          "card_name": "Khârn the Betrayer",
+          "oracle_ids": [
+            "3246eff5-8739-469f-a401-e5de927dd6bb"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Damage-prevention continuation chooses an opponent to receive control; not only combat obligations."
+        },
+        {
+          "card_name": "Alexios, Deimos of Kosmos",
+          "oracle_ids": [
+            "81c6c4f0-81ad-463c-a42b-60a73e6d70f3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Compound owner attack prohibition, sacrifice prohibition and rotating-controller upkeep body."
+        },
+        {
+          "card_name": "Xantcha, Sleeper Agent",
+          "oracle_ids": [
+            "0f0f3712-8d13-41a5-b332-2ab34e48d79d"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Opponent-choice entry control and owner-or-owned-planeswalker attack restriction must remain intact."
+        },
+        {
+          "card_name": "Cogwork Tracker",
+          "oracle_ids": [
+            "c60ba5e9-dbfa-441b-a96f-9cc7fdfd2d76"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Draft provenance and noted player identity are independent runtime requirements."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 12
+    },
+    {
+      "id": "binary-pile-programs",
+      "priority": 2,
+      "scope": "Composable finite card-set producer, partitioner, chooser, visibility, chosen/complement destinations and continuations. No card-name programs or prefix-only acceptance.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/divvy_shapes.rs",
+          "symbol": "DivvySequenceShape / parse_chosen_opponent_face_down_piles / RevealTopPiles",
+          "gap": "Current variants hard-code sentence orientation and whole tails; generalize typed producer/partitioner/chooser/destinations."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/divvy.rs",
+          "symbol": "try_parse_divvy_sentence_sequence",
+          "gap": "Existing ChooseObjectsAcrossZones, tagged pools, complementary movement and look/reveal primitives can lower generalized programs; consume every sentence."
+        },
+        {
+          "path": "crates/ironsmith-text/src/compiled_text/render_effects/costs_and_triggers.rs",
+          "symbol": "pile program renderings",
+          "gap": "Keep semantic pile references without internal tagged-object-reference output."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Intrude on the Mind needs actual cards moved into the graveyard, not original pile size, for counters. Truth or Tale needs one selected card and the remainder of the entire revealed pool. Preserve target opponent versus untargeted opponent choice. Do not reuse paused random-target protocol for pile randomness."
+      ],
+      "candidates": [
+        {
+          "card_name": "Atris, Oracle of Half-Truths",
+          "oracle_ids": [
+            "8b2b00ab-f1c5-4057-9957-d7daac95a847"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Curator of Destinies",
+          "oracle_ids": [
+            "9938d178-0ce6-45c0-b317-fd5c54231579"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Epiphany at the Drownyard",
+          "oracle_ids": [
+            "33befbd6-56ac-45a7-a4d0-448167162707"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Fortune's Favor",
+          "oracle_ids": [
+            "9baff93e-4ef9-404d-884b-f651a11f3742"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Hostile Negotiations",
+          "oracle_ids": [
+            "c5cbd852-c42f-4592-a0bb-a8bffa2dd2f4"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Intrude on the Mind",
+          "oracle_ids": [
+            "eedb1527-548a-435a-a3e1-8ad7d9d6d8a9"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Riddles in the Dark",
+          "oracle_ids": [
+            "78bed291-0ec7-466f-bc7a-9dae7d0b56ae"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Steam Augury",
+          "oracle_ids": [
+            "0aa556a6-66aa-42f1-ba41-0001e10c20a4"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Truth or Tale",
+          "oracle_ids": [
+            "10674c2f-7920-4505-b8d5-e96f3da1cda3"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Brilliant Ultimatum",
+          "oracle_ids": [
+            "a9d58cad-c1c2-4bd2-80f2-da9ce60801df"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Cast multiple spells/play lands from a selected pile during resolution with free-cast semantics."
+        },
+        {
+          "card_name": "Jace, Architect of Thought",
+          "oracle_ids": [
+            "2274c7ae-5a40-4fd4-a4ac-6f56b23034e4"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Other loyalty bodies include delayed attack restriction and per-player library search/cast; pile fix alone is not complete."
+        },
+        {
+          "card_name": "Phyrexian Portal",
+          "oracle_ids": [
+            "1a3ce329-ee48-4abc-b820-b43e9e68eae9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Search only a hidden selected pile, then shuffle its remainder into the library."
+        },
+        {
+          "card_name": "Camouflage",
+          "oracle_ids": [
+            "9cf44db4-627a-4197-9588-6da72e41f03d"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Replaces blocker declaration and randomizes assignment of combat piles."
+        },
+        {
+          "card_name": "Raging River",
+          "oracle_ids": [
+            "a2310312-6e1e-4e34-a351-9aef499a810f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Per-attacker left/right choices and persistent combat restrictions keyed to pile membership."
+        },
+        {
+          "card_name": "Whims of the Fates",
+          "oracle_ids": [
+            "7d359434-eb1b-478e-a745-10e2c564d89f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Three-way permanent partition and random pile choice, not binary card partition."
+        },
+        {
+          "card_name": "The Celestial Toymaker",
+          "oracle_ids": [
+            "388fe92a-0bc0-4c0a-a7c6-910c5e71e342"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Historical count of spells/abilities causing guesses or grouping, beyond the pile trigger."
+        },
+        {
+          "card_name": "Mangara's Tome",
+          "oracle_ids": [
+            "f515c691-07be-47ea-8bc0-46221eab8b46"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Persistent ordered exiled pile consumed by a draw replacement."
+        },
+        {
+          "card_name": "Parallel Thoughts",
+          "oracle_ids": [
+            "2daee7cb-6736-4aa6-9921-0371c1abe69f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Persistent ordered exiled pile plus optional draw replacement."
+        },
+        {
+          "card_name": "Expose the Culprit",
+          "oracle_ids": [
+            "4f7e4aff-ef68-44fe-a0dc-b9ab0ecd7146"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Shuffled hidden identity and cloak sequence, not choice of complementary piles."
+        },
+        {
+          "card_name": "Ghastly Conscription",
+          "oracle_ids": [
+            "3bf20e68-0e19-4242-bfba-a8a1bb244685"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Shuffled hidden identity and manifest sequence."
+        },
+        {
+          "card_name": "Jeskai Infiltrator",
+          "oracle_ids": [
+            "39b359c1-48b8-43a7-b972-54764eadd2c7"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Mixed self/library group, hidden shuffle and manifest."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [
+        {
+          "card_name": "Abstract Performance",
+          "oracle_ids": [
+            "3e0e3676-e634-4e64-bdfd-4aaa5885461f"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Death or Glory",
+          "oracle_ids": [
+            "b2ae0968-28ed-4ebb-a4e8-69ff6e6a6f1d"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "estimated_complete_body_candidates": 9
+    },
+    {
+      "id": "die-result-arithmetic-and-table-envelopes",
+      "priority": 3,
+      "scope": "Keep a roll and its result rows in one activated/triggered/spell program; bind natural/modified result and typed arithmetic instead of interpreting add as mana.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/document_parser/mod.rs",
+          "symbol": "numeric-result rows / try_push_complete_typed_statement",
+          "gap": "Preserve surrounding roll/table envelope; existing row guard is newer than baseline, so re-review Druid before implementing."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/misc_action_shapes/die.rs",
+          "symbol": "RollDieShape / parse_roll_die_tokens",
+          "gap": "Only die sides/surface; no typed add/subtract expression or consumed-token contract."
+        },
+        {
+          "path": "crates/ironsmith-core/src/effect/mana_damage_and_control.rs",
+          "symbol": "RollDieEffect",
+          "gap": "Current payload only player/sides/die_text; arithmetic needs a typed result program or explicit modifier field."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/player/roll_die.rs",
+          "symbol": "EffectExecutor::execute",
+          "gap": "Produces natural and modified die event, outcome Count and ChosenNumber; extend without a second RNG draw or losing rollback/event provenance."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Uses existing die receipt/event and quantity primitives. Danse and Revivify need pre-roll graveyard/sacrifice references preserved. Independent from coin-loop/random-target active lanes but may touch shared reference resolution."
+      ],
+      "candidates": [
+        {
+          "card_name": "Arcane Investigator",
+          "oracle_ids": [
+            "19b229c4-1c21-4c7c-a25e-4e8c1cd4ed4b"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Herald of Hadar",
+          "oracle_ids": [
+            "25ab42a5-ec1a-4510-b957-1d4f14fa10b0"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Bag of Tricks",
+          "oracle_ids": [
+            "f14ce7d7-6cfa-4f88-a381-d6e912c18b5d"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Danse Macabre",
+          "oracle_ids": [
+            "a9c58cfe-9630-48fa-84ad-50268eb725ed"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Diviner's Portent",
+          "oracle_ids": [
+            "119585c7-ddfa-47ed-b2f8-488ebc156222"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Gale's Redirection",
+          "oracle_ids": [
+            "8676f007-bf5f-4312-968c-59f4549f7d51"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Revivify",
+          "oracle_ids": [
+            "55eb3c21-6834-4c62-8ab9-54b901531fed"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Song of Inspiration",
+          "oracle_ids": [
+            "bdb80d7b-672c-4e2a-b93b-9b96721b93f2"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Wyll's Reversal",
+          "oracle_ids": [
+            "8d35cef8-a52d-45fb-8f5f-cccea26826d0"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Berserker's Frenzy",
+          "oracle_ids": [
+            "5cd51d39-aebc-4367-9157-da70b8d9b1a3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Casting-time combat window plus blocker assignment control."
+        },
+        {
+          "card_name": "Clay Golem",
+          "oracle_ids": [
+            "8773c2ea-ef41-4403-bb52-07f0d70d9bbe"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Die roll is an activation cost with a result consumed by monstrosity."
+        },
+        {
+          "card_name": "Delina, Wild Mage",
+          "oracle_ids": [
+            "8d57dadb-c689-4691-b331-aba15daf46ff"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Optional repeat loop and copy-template continuation."
+        },
+        {
+          "card_name": "Iron Mastiff",
+          "oracle_ids": [
+            "6d00e24f-c89f-49fa-869e-d788021aa084"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Number of dice depends on players attacked; ignore all but highest and bind defending player."
+        },
+        {
+          "card_name": "Journey to the Lost City",
+          "oracle_ids": [
+            "a5f5e662-b32c-44f1-848d-0228f0fe1eb6"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Persistent source-exiled collection across prior turns and all-permanent return tail."
+        },
+        {
+          "card_name": "Sword of Hours",
+          "oracle_ids": [
+            "abaddcce-9039-4b4e-baf8-fdab304b5c52"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Compare die result with triggering damage receipt and OR exact-result predicate."
+        },
+        {
+          "card_name": "The Deck of Many Things",
+          "oracle_ids": [
+            "91df4cf5-d7ec-4fcd-87ed-e075ef6ceba9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Signed/subtracted results including zero-or-less plus delayed owner-loses-game trigger."
+        },
+        {
+          "card_name": "Wand of Wonder",
+          "oracle_ids": [
+            "8f1123dd-19b7-402b-8ecd-ab62494c9fd5"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Table determines a later casting budget across per-opponent exile-until collections."
+        },
+        {
+          "card_name": "Xenosquirrels",
+          "oracle_ids": [
+            "d5c54df9-437e-46e1-94cf-91d9f1d343b6"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Paid post-roll adjustment cost, not result-row arithmetic."
+        },
+        {
+          "card_name": "Cone of Cold",
+          "oracle_ids": [
+            "56fd0752-9fb0-4c05-90e5-c3b268b57c6f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Active untap lane owns plural-controller duration semantics; avoid duplicate count."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [
+        {
+          "card_name": "Druid of the Emerald Grove",
+          "oracle_ids": [
+            "acf54a85-0e9e-43fb-99d9-c223c02f13c4"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "estimated_complete_body_candidates": 9
+    },
+    {
+      "id": "linked-exile-visibility-and-play-permissions",
+      "priority": 4,
+      "scope": "Source-linked exile sets and per-incarnation look/play permissions; generic combined look, land play, spell cast, lifetime and mana-as-any-color clauses.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/permission_helpers.rs",
+          "symbol": "permission clause assembly",
+          "gap": "Compose separate look-at, play lands and cast spells clauses with shared object collection/lifetime."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/permission_facts/tagged_surface/library.rs",
+          "symbol": "parse_for_as_long_as_look_at_tagged_lexed",
+          "gap": "Current supported orientation is narrower than postfixed for-as-long-as clauses and standalone linked-source look permissions."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/game_state/object_state_and_events.rs",
+          "symbol": "can_player_look_at_face_down_exiled_card / visibility grant",
+          "gap": "Reuse actual access control, source linkage and object incarnation; no display-only look permission."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/keyword_static/costs_replacements_and_permissions.rs",
+          "symbol": "static permission lines",
+          "gap": "Read complete combined look/play clauses while retaining other restrictions, including Colfenor spell cap."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Overlap with existing filtered-zone, casting-price, source-lifetime and same-name infrastructure; not a new free-cast keyword. Do not duplicate active Aminatou Miracle grant work."
+      ],
+      "candidates": [
+        {
+          "card_name": "Bane Alley Broker",
+          "oracle_ids": [
+            "4993e373-4b76-4582-a789-6a3123e7ca89"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Kheru Mind-Eater",
+          "oracle_ids": [
+            "dfea918b-5702-4c12-ba36-e6aa4ace09c7"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Nightveil Specter",
+          "oracle_ids": [
+            "4ce83f8c-b27e-4e5b-b19b-76b66aaa904b"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Intellect Devourer",
+          "oracle_ids": [
+            "a06fa827-900b-46d4-8f48-b4e15964951a"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Colfenor's Plans",
+          "oracle_ids": [
+            "ad786230-4045-46af-bc89-078d45891e5b"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Rogue Class",
+          "oracle_ids": [
+            "76f0f39a-ce1b-4935-a6b8-5c4e1a27ab24"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Intet, the Dreamer",
+          "oracle_ids": [
+            "9518ffbc-bb3d-4f48-a900-f5bad8302a87"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Elder Brain",
+          "oracle_ids": [
+            "e537bd23-7368-459b-badf-b7b7c112c88a"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Jacob Hauken, Inspector // Hauken's Insight",
+          "oracle_ids": [
+            "16d2a56a-7181-4ef3-866b-10dd8615d9e9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Back face limits one play or cast during each own turn and grants a free casting price; inspect both faces and budget scope."
+        },
+        {
+          "card_name": "Jester's Scepter",
+          "oracle_ids": [
+            "396b943c-b45d-4e5b-a9c1-f70bc603ee9f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Put a source-exiled card into its owner graveyard as a cost and compare the countered spell with that paid card name."
+        },
+        {
+          "card_name": "Grimoire Thief",
+          "oracle_ids": [
+            "a067233b-cff0-45ae-89d9-377e94fcf3b3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Turn all linked cards face up and counter all spells sharing any linked name."
+        },
+        {
+          "card_name": "Three Wishes",
+          "oracle_ids": [
+            "6b3110a5-fd38-4d09-9073-c8a6f3f17840"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Delayed cleanup moves only the unplayed cards from the original exiled set."
+        },
+        {
+          "card_name": "Shared Fate",
+          "oracle_ids": [
+            "e23bf5fe-e494-473e-8502-606106ee1820"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Draw replacement chooses opponent library, tracks which player exiled each card, then personal visibility/play permission."
+        },
+        {
+          "card_name": "Uba Mask",
+          "oracle_ids": [
+            "766c644c-04fe-4b01-93dd-09a50d78d01f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Draw replacement and per-player per-turn exile membership."
+        },
+        {
+          "card_name": "Hedonist's Trove",
+          "oracle_ids": [
+            "9d5f712a-d46c-4d7e-8fea-45fdadb458df"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Only one spell this way per turn, while land permission has a distinct budget."
+        },
+        {
+          "card_name": "Theater of Horrors",
+          "oracle_ids": [
+            "b391a4ce-52ce-4a8c-bbe5-6053951ee1d4"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Static play permission gated by own turn and opponent life-loss history."
+        },
+        {
+          "card_name": "Xanathar, Guild Kingpin",
+          "oracle_ids": [
+            "1a168ba5-8e11-41dd-8f8a-8cb23bbde056"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Chosen-opponent temporary prohibition, top visibility, play permission and mana substitution must share player and duration."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 8
+    },
+    {
+      "id": "nonmana-unless-counter-payments",
+      "priority": 5,
+      "scope": "Counter a bound spell unless an explicit payer completes a typed discard/sacrifice/exile cost; pay and pays share the same reader.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/effects/zone_move_shapes/counter.rs",
+          "symbol": "parse_unless_shape",
+          "gap": "Requires literal pays and immediately parses mana; route a typed payer+cost clause including pay/sacrifice/discard/exile."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/zone_move_verbs.rs",
+          "symbol": "parse_counter / counter_unless_payment_total_cost",
+          "gap": "Use full TotalCost or UnlessAction and preserve the spell controller versus explicit you payer."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/composition/unless_pays.rs",
+          "symbol": "UnlessPaysEffect::with_total_cost",
+          "gap": "Existing composable cost executor and payer-relative source context can handle nonmana costs."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/composition/unless_action.rs",
+          "symbol": "UnlessActionEffect",
+          "gap": "Existing alternative-action cost semantics; retain payment atomicity."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Does not require active paid-result amount cohorts. Full hand discard/exile-empty-set cost semantics must be reviewed rather than treating an empty selection as a failed action."
+      ],
+      "candidates": [
+        {
+          "card_name": "Blood Funnel",
+          "oracle_ids": [
+            "81dd22f7-f6c6-4cf2-9744-b1d918dbcf9a"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Grip of Amnesia",
+          "oracle_ids": [
+            "0144d9bb-d3cb-4c23-b133-6653d7c3a76d"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Hope-Ender Coatl",
+          "oracle_ids": [
+            "57cf576b-5a03-4c60-a531-544df2638323"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Perplex",
+          "oracle_ids": [
+            "904f9e0c-cb7f-4611-8bf7-2e408e8ab237"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Reality Smasher",
+          "oracle_ids": [
+            "17c651c7-da4e-45e9-9a64-fad3e873123d"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Mana Vortex",
+          "oracle_ids": [
+            "98b88734-09e2-4209-a787-9b5b345391f9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Independent state trigger when there are no lands on the battlefield."
+        },
+        {
+          "card_name": "Strict Proctor",
+          "oracle_ids": [
+            "b967870d-9773-4ad5-bf06-c3be5465dab9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Causative permanent-entry triggered-ability object must be identified on the stack."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 5
+    },
+    {
+      "id": "conditional-self-replacement-scalar-and-target-programs",
+      "priority": 6,
+      "scope": "Replace the prior action branch once when a kicker, turn-phase, graveyard, or controller predicate holds; instead is not a second action.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/effect_composition.rs",
+          "symbol": "EffectAst::SelfReplacement builders",
+          "gap": "Generalize existing one-shot self-replacement coordination to discard, sacrifice and conditional counter clauses."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/dispatch_entry/subject_verb_followups/subject_verb_followups_object_action.rs",
+          "symbol": "prior action self-replacement followups",
+          "gap": "Resolve that player/spell to the prior target before binding replacement."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/zone_move_verbs.rs",
+          "symbol": "discard/counter sentence tails",
+          "gap": "Consume trailing instead as program structure while preserving random discard and conditional source filters."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Chocobo Kick explicitly excluded because active paid/result lane owns its doubling receipt. Avoid touching global replacement-event owners for these local alternate branches."
+      ],
+      "candidates": [
+        {
+          "card_name": "Bog Down",
+          "oracle_ids": [
+            "8574f57a-768d-42a0-ac8c-cc0a1de181e0"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Haunting Hymn",
+          "oracle_ids": [
+            "b9a0977a-6364-4358-bab1-112898a1b942"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Hypnotic Cloud",
+          "oracle_ids": [
+            "277757c6-4c4c-4a4c-84f6-4a64fe3b3bfe"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Whispers of Emrakul",
+          "oracle_ids": [
+            "cf8bc2e3-2f22-45d3-9810-bc039202f41c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Epicenter",
+          "oracle_ids": [
+            "264cb7f6-6d36-4e58-87f4-83ccaa998a32"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Bring the Ending",
+          "oracle_ids": [
+            "57b37690-0fb6-4e78-9210-4a529a6ade7c"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Faith's Shield",
+          "oracle_ids": [
+            "dd3cc9e5-b99a-429c-baeb-663a7af70081"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Mixed player/permanent protection scope and one chosen color across the replacement branch."
+        },
+        {
+          "card_name": "Fight with Fire",
+          "oracle_ids": [
+            "202b275e-e0c4-482d-abe9-c5e6360208f3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Target set and divided allocation change at announcement when kicked."
+        },
+        {
+          "card_name": "Orim's Touch",
+          "oracle_ids": [
+            "cc22c210-efd0-494c-8560-448b038b3c5f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Any-target prevention reference must persist as permanent-or-player across alternate amount."
+        },
+        {
+          "card_name": "Pollen Remedy",
+          "oracle_ids": [
+            "ff52f955-98de-4f12-9ec7-f1d73e3edae9"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Prevention amount divided across multiple targets is a shared allocation budget."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 6
+    },
+    {
+      "id": "consumer-specific-produced-mana-restrictions",
+      "priority": 7,
+      "scope": "Union of spell/ability/special-action consumers for produced mana, using transaction predicates and actual consumer metadata.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/abilities/mana_usage.rs",
+          "symbol": "parse_mana_usage_restriction_sentence_lexed / parse_generic_mana_transaction",
+          "gap": "Read equip/power-up/foretell/disturb/morph consumers as typed payment branches rather than discard restriction text."
+        },
+        {
+          "path": "crates/ironsmith-core/src/ability_model.rs",
+          "symbol": "ManaPaymentPurpose / ManaPaymentPredicate / ManaUsageRestriction::PaymentTransaction",
+          "gap": "Purpose set lacks distinct foretell and typed equip/power-up ability identity; SourceMatches alone cannot distinguish two abilities on the same source."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/special_actions/payment.rs",
+          "symbol": "special-action payment transaction",
+          "gap": "Expose correct action/ability/casting-method provenance to payment predicate matching."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/composition/mana_restricted.rs",
+          "symbol": "ManaRestrictedEffect",
+          "gap": "Already carries restrictions on each produced mana unit; preserve this path."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Potential overlap with consumer-mana-spending and foretell source families, but all listed identities remain unaddressed. Coordinate shared payment metadata changes with active paid/result lane."
+      ],
+      "candidates": [
+        {
+          "card_name": "Freya Crescent",
+          "oracle_ids": [
+            "7e3085d8-9d46-41e0-ad9d-54c44d9ef267"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Karfell Harbinger",
+          "oracle_ids": [
+            "0507a9d2-cbad-4a7b-b888-fbd5ac1ed02f"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Qarsi Deceiver",
+          "oracle_ids": [
+            "e12681cc-c66e-4dac-882c-bd8638a2e12c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Quinjet Technician",
+          "oracle_ids": [
+            "e8025c63-80b4-4cce-bf2d-df294450070d"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Ronin, Shadow Stalker",
+          "oracle_ids": [
+            "8ceb1acf-5ff3-4f1a-af04-9f07ad454526"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Unblinking Observer",
+          "oracle_ids": [
+            "871c4b27-990a-4947-b962-8a6d0bfd85ad"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Niko Defies Destiny",
+          "oracle_ids": [
+            "e79bf038-071e-448e-ad95-234c207a9575"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Foretell keyword-filtered cards and chapter-I quantity remain separate from restriction reader."
+        },
+        {
+          "card_name": "Lukka, Bound to Ruin",
+          "oracle_ids": [
+            "8e68eba1-65ac-4c03-956f-45e7b5695e2a"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Ultimate captures power as ability is activated and allocates damage; not fixed by produced mana."
+        },
+        {
+          "card_name": "Open the Omenpaths",
+          "oracle_ids": [
+            "9ac01998-6e26-4ba5-b66c-614ec831caef"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Two distinct chosen mana colors and separate output groups."
+        },
+        {
+          "card_name": "Smoky Lounge // Misty Salon",
+          "oracle_ids": [
+            "4f70b0ee-c24c-45fa-b878-9ba69266344f"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Door-unlock payment route plus back-face unlocked-door token quantity."
+        },
+        {
+          "card_name": "Meeting of the Five",
+          "oracle_ids": [
+            "60fc4c2d-1bf9-4c9a-a240-ab9b1c9c6817"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Exactly-three-colors exile permission and mana filter."
+        },
+        {
+          "card_name": "Ice Cauldron",
+          "oracle_ids": [
+            "2b7e4e70-53b1-4d4f-bdcc-56c2e15f367a"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Persist exact types/amounts of activation payment and bind last exiled card."
+        },
+        {
+          "card_name": "Piracy",
+          "oracle_ids": [
+            "131acf69-fa5c-4ce7-9e39-2677af4f8907"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Permission to activate lands controlled by another player."
+        },
+        {
+          "card_name": "Tazri, Stalwart Survivor",
+          "oracle_ids": [
+            "13a3e61d-c9ff-447d-9016-09a183b7af1d"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Source-color output, another-activated-ability predicate and graveyard ability filter."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 6
+    },
+    {
+      "id": "counter-transfer-sets-and-counter-kind-selections",
+      "priority": 8,
+      "scope": "Counter transfers preserve two endpoints, source/destination collections, counter kinds, allocation and actual move receipts.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/effect_sentences/verb_handlers/zone_move_verbs.rs",
+          "symbol": "parse_move_counted_counters / parse_counter_move_destination",
+          "gap": "Now supports exact or any-number named-kind single-endpoint transfers and same-controller relation; do not recode these."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/counters/move_counters.rs",
+          "symbol": "EffectExecutor for MoveCountersEffect",
+          "gap": "from.first().zip(to.first()) deliberately owns one pair; needs explicit general multi-source/distribution owner for broader text."
+        },
+        {
+          "path": "crates/ironsmith-compiler-semantic/src/model_impl/ast/actions/counters.rs",
+          "symbol": "CounterActionAst::MoveCounters",
+          "gap": "Add collection/allocation shape only when lowerer/runtime can execute it."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Higher cohort size is misleading: at present only two bodies are likely current-source re-review candidates; eight are genuine broader runtime work. Do not count a MoveCounters prefix as completion. Black Panther depends on completed-action receipt semantics."
+      ],
+      "candidates": [],
+      "obvious_partials": [
+        {
+          "card_name": "Aetherborn Marauder",
+          "oracle_ids": [
+            "ff6427f6-d2b1-4e33-984d-c06bd15d7c2c"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Multiple source permanents; current MoveCountersEffect resolves first source only."
+        },
+        {
+          "card_name": "Forgotten Ancient",
+          "oracle_ids": [
+            "2ef75cf3-30dc-4852-a6d1-1d6391fad022"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Distribution among any number of destination creatures."
+        },
+        {
+          "card_name": "Goldberry, River-Daughter",
+          "oracle_ids": [
+            "fca3545a-2956-49f9-8465-1c8937deb294"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Choose a counter of each missing kind; second ability chooses one or more counters of potentially several kinds."
+        },
+        {
+          "card_name": "Resourceful Defense",
+          "oracle_ids": [
+            "83e78565-e61f-4bbc-b834-f47941f7e3ec"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Leaves-battlefield counter snapshot and arbitrary counter-kind transfer."
+        },
+        {
+          "card_name": "Slippery Bogbonder",
+          "oracle_ids": [
+            "2f946c13-cfab-415f-9df7-6d621761b2fc"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Arbitrary kinds from a chosen multi-source set."
+        },
+        {
+          "card_name": "Spike Cannibal",
+          "oracle_ids": [
+            "c175ab0e-7085-41ec-83e4-38fc85c338fa"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "All +1/+1 counters from all creatures requires explicit iteration/batching."
+        },
+        {
+          "card_name": "Black Panther, Wakandan King",
+          "oracle_ids": [
+            "48deff27-b421-430b-a484-55b4a593010a"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "All named counters plus receipt-conditioned life gain and draw."
+        },
+        {
+          "card_name": "Simic Guildmage",
+          "oracle_ids": [
+            "8b70d296-2756-4bda-b51e-f93be395fce7"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Second ability reattaches an Aura with same-controller relation, independently of counter transfer."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [
+        {
+          "card_name": "Bioshift",
+          "oracle_ids": [
+            "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Scrounging Bandar",
+          "oracle_ids": [
+            "8e1eff5a-77e8-4ea2-96b8-547504f83b45"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "estimated_complete_body_candidates": 0
+    },
+    {
+      "id": "variable-and-granted-suspend",
+      "priority": 9,
+      "scope": "Typed suspend-X cost/count binding, legal nonzero X, and separate exile keyword grants/target domains.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/keyword_action_costs.rs",
+          "symbol": "suspend keyword branch around 1459",
+          "gap": "parse_named_number requires fixed time; variable X falls back to unsupported marker text."
+        },
+        {
+          "path": "crates/ironsmith-core/src/alternative_cast_model.rs",
+          "symbol": "AlternativeCastingMethod::Suspend",
+          "gap": "Fixed time u32 must become an explicit chosen-X count or shared quantity binding, including X cannot be zero."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/special_actions.rs",
+          "symbol": "suspend_spec / can_suspend / perform_suspend",
+          "gap": "Payment and counter addition must share chosen X transactionally, without silent zero-count suspend."
+        },
+        {
+          "path": "crates/ironsmith-compiler-lowering/src/lowering_impl/runtime_static_ability_helpers.rs",
+          "symbol": "suspend_exile_triggered_abilities",
+          "gap": "Existing granted-suspend exile triggers can be reused by later expansion; do not substitute marker fallback."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Four complete-body estimates assume existing while-exiled counter-removed trigger and CDA paths survive; runtime X action is a larger cross-layer lane. Time travel/union targets are separate follow-ons, not extra credited members."
+      ],
+      "candidates": [
+        {
+          "card_name": "Aeon Chronicler",
+          "oracle_ids": [
+            "a1399cb8-f22a-487e-b539-2db47b09a790"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Benalish Commander",
+          "oracle_ids": [
+            "3a1e85fe-7064-4df7-bc3b-24131cd15d06"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Detritivore",
+          "oracle_ids": [
+            "ba5fa5ca-f72d-49dd-9f86-e6e1292f5bf0"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Fungal Behemoth",
+          "oracle_ids": [
+            "844f1fb4-81d2-4a2a-9de7-20e6bf37d77b"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Roiling Horror",
+          "oracle_ids": [
+            "52be9dd0-72f4-408b-ae3b-17a0362c2681"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Also needs characteristic-defining life-total difference against highest-life opponent."
+        },
+        {
+          "card_name": "Gandalf of the Secret Fire",
+          "oracle_ids": [
+            "cbad35cd-9026-43ea-8333-94f3b34459e3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Resolve-time exile replacement followed by granted suspend keyword."
+        },
+        {
+          "card_name": "The Eleventh Doctor",
+          "oracle_ids": [
+            "721e8249-ff1b-4c15-964b-4ba2a96beb75"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Exile chosen hand card, use mana value for counters, grant suspend; ability-word label with periods must not split it."
+        },
+        {
+          "card_name": "The Tenth Doctor",
+          "oracle_ids": [
+            "23af0a0a-1d12-47c7-b191-2bd3f84eea93"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Exile-until body, granted suspend and repeated time-travel action."
+        },
+        {
+          "card_name": "The Parting of the Ways",
+          "oracle_ids": [
+            "58d5b285-eb0c-4478-b137-26a897075f70"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Grant suspend per exiled nonland, time travel twice and per-opponent targeting in another chapter."
+        },
+        {
+          "card_name": "The Wedding of River Song",
+          "oracle_ids": [
+            "1ff91cc1-2233-4ceb-91ba-6a49c7147f32"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Two-player hand selection, grant suspend and time travel."
+        },
+        {
+          "card_name": "Watcher of Hours",
+          "oracle_ids": [
+            "b2354092-7a4c-4e69-9c0a-0a2e146dc00c"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Player-removes-time-counter while exiled trigger reader."
+        },
+        {
+          "card_name": "Shivan Sand-Mage",
+          "oracle_ids": [
+            "3afe854a-7daa-4745-a5d9-04879e5d940a"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Union of battlefield permanent and suspended card target domains."
+        },
+        {
+          "card_name": "Fury Charm",
+          "oracle_ids": [
+            "b86b1878-65a9-48df-9727-1e80683d7e86"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Same cross-zone permanent-or-suspended target domain."
+        },
+        {
+          "card_name": "Timebender",
+          "oracle_ids": [
+            "efa3e524-1591-4036-81ec-74199cee25aa"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Same cross-zone permanent-or-suspended target domain plus morph."
+        },
+        {
+          "card_name": "Timecrafting",
+          "oracle_ids": [
+            "57939644-6f9a-4653-920b-f2d28559a9ca"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Same cross-zone permanent-or-suspended target domain; X counter quantity."
+        },
+        {
+          "card_name": "Restore Balance",
+          "oracle_ids": [
+            "ca79d130-6387-47b0-bde8-f45dd93f9221"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Players sacrifice/discard the same way across minimum-population domains."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 4
+    },
+    {
+      "id": "reveal-in-hand-morph-costs",
+      "priority": 10,
+      "scope": "One shared reveal-cost source-zone wording repair across the five color-reveal morph cards.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/activation_costs/zone_segments.rs",
+          "symbol": "parse_reveal_cards_from_hand / parse_from_your_hand",
+          "gap": "Requires from your hand at line 227; Oracle morph cycle uses in your hand. Preserve fixed count, color filter and full input."
+        },
+        {
+          "path": "crates/ironsmith-compiler-grammar/src/grammar/shared_util/keyword_cost_lines.rs",
+          "symbol": "parse_morph / parse_compiler_total_cost",
+          "gap": "Already uses shared activation cost reader; no separate morph-only language patch."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/costs/mod.rs",
+          "symbol": "reveal_from_hand_with_color_filter",
+          "gap": "Existing selected reveal cost and face-up action should execute same typed payment; author but defer verification."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "This is only five identities but a high-confidence minimal independent lane. Full turned-face-up triggered bodies are ordinary existing look-hand, cannot-block, life-loss, trample and life-gain effects."
+      ],
+      "candidates": [
+        {
+          "card_name": "Dragon's Eye Savants",
+          "oracle_ids": [
+            "ca588f4e-4d2f-4aae-84de-be9862e13f1c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Horde Ambusher",
+          "oracle_ids": [
+            "fb7f45eb-c134-4493-af05-e3b14d80e48c"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Ruthless Ripper",
+          "oracle_ids": [
+            "cfbcd70b-d3a9-47e9-a8b3-b8134d00dff8"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Temur Charger",
+          "oracle_ids": [
+            "a0665c10-e652-4608-920b-66206c0e5905"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Watcher of the Roost",
+          "oracle_ids": [
+            "92cf18ab-dd7b-4bc8-8b85-a81b8cb5192c"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 5
+    },
+    {
+      "id": "untap-step-actor-and-ordinal-binding",
+      "priority": 0,
+      "scope": "Active six-card plural/controller lane plus explicitly separated fixed-player, live-set and multi-step follow-ons.",
+      "shared_owners": [
+        {
+          "path": "crates/ironsmith-grammar-common/src/grammar/leaf/durations.rs",
+          "symbol": "LEAF_DURATION_PHRASE_VALUES",
+          "gap": "Plural steps missing, and your-next-untap conflated with controller-next-untap."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/effects/restrictions.rs",
+          "symbol": "CantEffect::execute around 492",
+          "gap": "Currently freezes each object controller; controller-relative duration must follow changed controller until its next actual untap step."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/game_state.rs",
+          "symbol": "RestrictionEffectInstance::is_active / consumed_next_untap",
+          "gap": "Need explicit actor semantics and lifetime; fixed-player and live-object-controller are different."
+        },
+        {
+          "path": "crates/ironsmith-engine/src/turn.rs",
+          "symbol": "execute_untap_step_with duration consumption around 801",
+          "gap": "Consumes by fixed stored effect.controller; preserve skipped-step behavior and do not consume controller-relative lock at former controller's step."
+        }
+      ],
+      "dependencies_and_overlap": [
+        "Coordinator owns all six candidate identities; excluded from next-lane recommendations. Parent verified official Sudden Storm ruling: https://magic.wizards.com/en/news/feature/release-notes-2014-01-22 . Source inspection confirms frozen controller issue; this is grammar plus runtime repair, not pure glue. Code has a separate static-vs-effect conjunction error; Cone requires complete d20 and ETB-tapped rows."
+      ],
+      "candidates": [
+        {
+          "card_name": "Breaching Leviathan",
+          "oracle_ids": [
+            "7d249b16-33ef-463e-9e5d-0b84d434f093"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Dragon Turtle",
+          "oracle_ids": [
+            "a3270e64-38d2-49e5-8a1e-a5e81205776b"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Lorthos, the Tidemaker",
+          "oracle_ids": [
+            "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Sudden Storm",
+          "oracle_ids": [
+            "32e915fb-3836-4bed-93b1-61c9c3951ad1"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Code of Constraint",
+          "oracle_ids": [
+            "b2f83483-24a4-45db-a04e-42ff732ca98a"
+          ],
+          "source_coverage_status": "unaddressed"
+        },
+        {
+          "card_name": "Cone of Cold",
+          "oracle_ids": [
+            "56fd0752-9fb0-4c05-90e5-c3b268b57c6f"
+          ],
+          "source_coverage_status": "unaddressed"
+        }
+      ],
+      "obvious_partials": [
+        {
+          "card_name": "Sleep",
+          "oracle_ids": [
+            "9b93ff69-f195-4d72-8e1d-574c3e53bca8"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Fixed targeted-player next untap step over the affected creature collection, not a controller-duration alias."
+        },
+        {
+          "card_name": "Misstep",
+          "oracle_ids": [
+            "4ee994a1-fd3b-43cf-be3c-9c705e60754a"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Fixed target-player step and correct restriction set/scope."
+        },
+        {
+          "card_name": "Blinding Beam",
+          "oracle_ids": [
+            "0766cf02-ea55-4271-8c73-213c93b0baac"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "At that targeted player's next untap, applies to creatures; do not freeze a list of current creatures."
+        },
+        {
+          "card_name": "Icebreaker Kraken",
+          "oracle_ids": [
+            "01590ff3-34fa-47aa-b5da-f0b8c1b031c6"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Target-opponent next step binding over artifacts/creatures."
+        },
+        {
+          "card_name": "Imaginary Threats",
+          "oracle_ids": [
+            "b1bc4498-43c0-461c-afba-ef81d743e5aa"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Future-step live creature-control set plus earlier attack requirement."
+        },
+        {
+          "card_name": "Telekinesis",
+          "oracle_ids": [
+            "1b9dd2b6-d14d-4c1e-9885-00ab2c0bf8da"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Two actual untap steps, not one step or two turns."
+        },
+        {
+          "card_name": "Samite Alchemist",
+          "oracle_ids": [
+            "120b565a-e22b-4d5d-9841-b11750b4ee49"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Fixed your-next-step duration must not become current controller of affected creature."
+        },
+        {
+          "card_name": "Giant Oyster",
+          "oracle_ids": [
+            "062b4d84-5ba3-417b-b8e1-65afce7b05e3"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Source-tapped lifetime, recurring draw-step counter placement and leave/untap cleanup."
+        },
+        {
+          "card_name": "Leviathan",
+          "oracle_ids": [
+            "d8c49932-9b4f-4cb0-a7e9-4b7eb12203ee"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Mixed enters-tapped/static-untap clause plus attack sacrifice cost; separate from temporary lock."
+        },
+        {
+          "card_name": "Tidebinder Mage",
+          "oracle_ids": [
+            "f881378b-b539-4ea8-981d-e01ee82af105"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Live source-control lifetime and red-or-green target filter."
+        },
+        {
+          "card_name": "Pollen Lullaby",
+          "oracle_ids": [
+            "1f64d70d-ea38-4419-be91-8b68aab3401e"
+          ],
+          "source_coverage_status": "unaddressed",
+          "remaining_blocker": "Clash opponent binding plus opponent-next-step scope."
+        }
+      ],
+      "existing_source_paths_needing_complete_review": [],
+      "estimated_complete_body_candidates": 6
+    }
+  ]
+}

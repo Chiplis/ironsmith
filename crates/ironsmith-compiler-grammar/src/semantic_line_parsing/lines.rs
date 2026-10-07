@@ -1923,6 +1923,20 @@ fn parse_villainous_choice_statement_chunk(
 
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
+    if crate::grammar::statement_shapes::is_extra_coin_ignore_one(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::extra_coin_ignore_one(PlayerFilter::You, rendered),
+            ),
+        ]));
+    }
+    if crate::grammar::statement_shapes::is_first_coin_batch_heads_win(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::first_coin_batch_heads_win(PlayerFilter::You, rendered),
+            ),
+        ]));
+    }
     if crate::grammar::statement_shapes::is_extra_die_ignore_lowest(tokens) {
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
@@ -2226,7 +2240,7 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn sentence_is_conditional_self_replacement_effect(sentence: &[OwnedLexToken]) -> bool {
-    if crate::effect_sentences::recognizes_life_gain_replacement_sentence(sentence) {
+    if crate::effect_sentences::recognizes_scalar_self_replacement_sentence(sentence) {
         return true;
     }
     let instead_semantics =
@@ -2558,7 +2572,7 @@ use lines_counter_programs::{
     exiled_last_counter_qualifier_stays_on_the_trigger_side_of_the_comma,
 };
 use lines_counter_programs::{
-    lower_spell_cast_snow_mana_enter_counter_static_chunk, parse_exiled_last_counter_triggered_line,
+    lower_spell_cast_snow_mana_enter_counter_static_chunk, parse_exiled_counter_removed_triggered_line,
 };
 #[path = "lines/lines_library.rs"]
 mod lines_library_programs;

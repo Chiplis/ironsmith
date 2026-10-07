@@ -453,39 +453,6 @@ fn agenda_name_count(definition: &crate::cards::CardDefinition) -> usize {
 }
 
 impl GameState {
-    pub(crate) fn face_down_conspiracy_characteristics(
-        &self,
-        object: ObjectId,
-    ) -> Option<crate::continuous::CalculatedCharacteristics> {
-        if !self.is_face_down_conspiracy(object) {
-            return None;
-        }
-        let owner = self.object(object)?.owner;
-        Some(crate::continuous::CalculatedCharacteristics {
-            name: "".into(),
-            mana_cost: None,
-            linked_face_mana_value: None,
-            compiled_card_text: std::sync::Arc::<str>::from(""),
-            ability_labels: Default::default(),
-            base_power: None,
-            base_toughness: None,
-            power: None,
-            toughness: None,
-            card_types: Vec::new().into(),
-            subtypes: Vec::new().into(),
-            supertypes: Vec::new().into(),
-            world_supertype_since: None,
-            colors: crate::color::ColorSet::COLORLESS,
-            loyalty: None,
-            defense: None,
-            abilities: Vec::new().into(),
-            static_abilities: Vec::new().into(),
-            numeric_range_error: None,
-            ability_gain_prohibitions: Vec::new(),
-            aura_attach_filter: None,
-            controller: owner,
-        })
-    }
 
     /// Enable the post-draft Conspiracy game and put the selected sideboard
     /// conspiracies into command before libraries are shuffled.

@@ -33,6 +33,7 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
         &[
             &["with", "a", "single", "target"],
             &["with", "a", "single", "targets"],
+            &["with", "one", "or", "more", "targets"],
         ],
     );
 

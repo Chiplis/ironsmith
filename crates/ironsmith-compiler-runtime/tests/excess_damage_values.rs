@@ -502,6 +502,7 @@ fn fall_exports_excess_noncombat_amount_and_keeps_controller_scope_after_source_
                     expected
                 );
                 assert!(game.calculated_subtypes(armies[0]).contains(&Subtype::Orc));
+                assert_eq!(game.object(armies[0]).unwrap().name, "Orc Army Token");
             }
         }
     }
@@ -533,6 +534,7 @@ fn bolg_reflexive_damage_uses_sacrificed_power_then_amasses_only_the_excess() {
         let armies = tokens(&game, Subtype::Army);
         assert_eq!(armies.len(), 1);
         assert_eq!(counters(&game, armies[0], CounterType::PlusOnePlusOne), 4);
+        assert_eq!(game.object(armies[0]).unwrap().name, "Goblin Army Token");
         assert!(
             game.calculated_subtypes(armies[0])
                 .contains(&Subtype::Goblin)

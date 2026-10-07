@@ -262,6 +262,13 @@ const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
             snow: false,
         }),
     ),
+    (
+        "desertwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Desert,
+            snow: false,
+        }),
+    ),
     ("fear", KeywordAction::Fear),
     ("intimidate", KeywordAction::Intimidate),
     ("shadow", KeywordAction::Shadow),
@@ -423,6 +430,13 @@ fn parse_payment_clause_as_effects(
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
+    }
+
+    if trimmed.first().is_some_and(|token| token.is_word("waterbend")) {
+        let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(&trimmed)?;
+        let cost = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)?;
+        let [branch] = cost.branches.as_slice() else { return Ok(None); };
+        return Ok(Some(ironsmith_core::TotalCost::from_costs(branch.clone())));
     }
 
     if let Some(or_idx) = find_payment_alternative_or(&trimmed) {
@@ -958,6 +972,7 @@ pub fn is_known_keyword_action_head(word: &str) -> bool {
                 | "dredge"
                 | "devour"
                 | "frenzy"
+                | "mobilize"
                 | "poisonous"
                 | "rampage"
                 | "saddle"
@@ -1208,7 +1223,99 @@ const COST_KEYWORDS: &[(&str, KeywordCostFallback, fn(ManaCost) -> KeywordAction
     ),
 ];
 
+pub fn parse_dynamic_keyword_amount(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    use crate::grammar::keyword_action_costs::DynamicAmountKeyword;
+    let shape = crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(tokens)?;
+    let amount = match shape.definition {
+        // In a granted keyword, "its power" names the recipient creature.
+        Some(definition) if shape.kind == DynamicAmountKeyword::Mobilize
+            && crate::lexer::parser_token_word_refs(definition) == ["where", "x", "is", "its", "power"] => {
+                // Word matching only admits this reading. The complete token
+                // parser must also consume symbols and punctuation correctly.
+                crate::grammar::keyword_action_costs::parse_recipient_power_definition_tokens(definition)
+                    .then_some(crate::effect::Value::SourcePower)?
+            }
+        Some(definition) => crate::keyword_static::parse_value_binding_clause(definition)?,
+        None => crate::effect::Value::X,
+    };
+    let display = crate::lexer::render_token_slice(tokens);
+    Some(match shape.kind {
+        DynamicAmountKeyword::Bolster => KeywordAction::BolsterValue { amount, display },
+        DynamicAmountKeyword::Mobilize => KeywordAction::MobilizeValue { amount, display },
+    })
+}
+
+pub fn parse_dynamic_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let start = crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens)?;
+    let action = parse_dynamic_keyword_amount(&tokens[start..])?;
+    let mut prefix = &tokens[..start];
+    while prefix.last().is_some_and(|token| token.is_word("and") || token.is_comma()
+        || token.kind == crate::lexer::TokenKind::Semicolon)
+    {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+    let mut actions = if prefix.is_empty() {
+        Vec::new()
+    } else {
+        crate::clause_support::parse_ability_line_lexed(prefix)?
+    };
+    actions.push(action);
+    Some(actions)
+}
+
+/// Suspend owns its X restriction. It must never become a spell-wide X
+/// minimum, since the creature's normal mana cost is unrelated to suspending it.
+pub fn parse_suspend_keyword_action(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    let rules = crate::util::strip_parenthetical_tokens_checked(tokens)?;
+    let tokens = rules.as_slice();
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.first().copied() != Some("suspend") { return None; }
+    if words.len() == 1 { return Some(KeywordAction::Marker("suspend")); }
+    let count = *words.get(1)?;
+    let cost_tokens = strip_leading_keyword_cost_separator(tokens.get(2..)?);
+    let prefix = parse_leaf_mana_cost_prefix_tokens(cost_tokens)?;
+    let tail = &cost_tokens[prefix.consumed..];
+    let tail = crate::util::trim_edge_punctuation_tokens(tail);
+    let suffix = crate::lexer::parser_token_word_refs(tail);
+    let minimum = if suffix.is_empty() {
+        0
+    } else if crate::grammar::effects::dispatch_entry_shapes::is_x_cant_be_zero_tokens(tail) {
+        1
+    } else {
+        return None;
+    };
+    let time = if count == "x" {
+        if !prefix.cost.has_x() { return None; }
+        ironsmith_core::SuspendTime::X { minimum }
+    } else {
+        if minimum != 0 { return None; }
+        ironsmith_core::SuspendTime::Fixed(parse_named_number(count)?)
+    };
+    Some(KeywordAction::Suspend { time, cost: prefix.cost })
+}
+
 pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    // A keyword-qualified activation modifier is not a grant of that keyword.
+    // The complete static-cost reader owns its amount, actor and exclusions.
+    let activation_words = crate::lexer::parser_token_word_refs(tokens);
+    if activation_words.get(1) == Some(&"abilities")
+        && activation_words.first().is_some_and(|word| matches!(*word,
+            "cycling" | "ninjutsu" | "boast" | "exhaust" | "power-up"))
+    { return None; }
+
+    if let Some(action) = parse_dynamic_keyword_amount(tokens) { return Some(action); }
+    // A failed complete amount reading must not become a marker or a literal
+    // prefix that drops the local definition or an unrecognized trailing clause.
+    let amount_words = crate::lexer::parser_token_word_refs(tokens);
+    let amount_words = amount_words.strip_prefix(&["and"]).unwrap_or(&amount_words);
+    if matches!(amount_words.first().copied(), Some("bolster" | "mobilize")) {
+        use crate::grammar::keyword_action_costs::DynamicAmountKeyword;
+        let (kind, amount) = crate::grammar::keyword_action_costs::parse_literal_keyword_amount_tokens(tokens)?;
+        return Some(match kind {
+            DynamicAmountKeyword::Bolster => KeywordAction::Bolster(amount),
+            DynamicAmountKeyword::Mobilize => KeywordAction::Mobilize(amount),
+        });
+    }
     // "can't be blocked by more than N creature(s)" — a grantable blocking
     // restriction that rides in keyword lists ("trample and can't be blocked
     // by more than one creature").
@@ -1396,22 +1503,7 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     }
 
     if keyword_head_is(head, "suspend") {
-        if let Some(time_word) = words.get(1)
-            && let Some(time) = parse_named_number(time_word)
-            && let Some(prefix) = keyword_mana_cost_prefix(phrase_tokens, 2)
-        {
-            return Some(KeywordAction::Suspend {
-                time,
-                cost: prefix.cost,
-            });
-        }
-        if words.len() == 1 {
-            return Some(KeywordAction::Marker("suspend"));
-        }
-        if let Some(display) = marker_keyword_display(phrase_tokens) {
-            return Some(KeywordAction::MarkerText(display));
-        }
-        return Some(KeywordAction::Marker("suspend"));
+        return parse_suspend_keyword_action(phrase_tokens);
     }
 
     if keyword_head_is(head, "hideaway") {
@@ -1769,6 +1861,18 @@ mod tests {
     }
 
     #[test]
+    fn cumulative_upkeep_action_costs_are_not_mana_payment_or_keyword_markers() {
+        for text in ["Cumulative upkeep—Add {R}.", "Cumulative upkeep—Draw a card."] {
+            let action = parse_ability_phrase(&lex(text)).expect("complete action cost");
+            let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else { panic!("typed upkeep action"); };
+            assert!(matches!(total_cost.costs(), [crate::model::CompilerCost::ValidatedEffect(_)]), "action cost stays typed through lowering: {total_cost:?}");
+        }
+        for text in ["Cumulative upkeep—Add {R} quickly.", "Cumulative upkeep—Draw a card from exile."] {
+            assert!(parse_ability_phrase(&lex(text)).is_none(), "must consume the complete action: {text}");
+        }
+    }
+
+    #[test]
     fn activation_cost_accepts_owned_graveyard_bottom_library_payment() {
         let total_cost = parse_payment_clause_as_total_cost(&lex(
             "Put three cards from your graveyard on the bottom of your library",
@@ -1857,5 +1961,37 @@ mod ripple_numeric_keyword_tests {
         assert!(numeric_keyword_action("ripple","x").is_none());
         assert!(numeric_keyword_action("ripple","4 extra").is_none());
         assert!(is_known_keyword_action_head("ripple"));
+    }
+}
+
+#[cfg(test)]
+mod suspend_time_tests {
+    use super::*;
+
+    #[test]
+    fn suspend_preserves_variable_time_cost_and_its_local_minimum() {
+        for (text, expected) in [
+            ("Suspend 4—{R}", ironsmith_core::SuspendTime::Fixed(4)),
+            ("Suspend X—{X}{3}{U}", ironsmith_core::SuspendTime::X { minimum: 0 }),
+            ("Suspend X—{X}{3}{U}. X can't be 0.", ironsmith_core::SuspendTime::X { minimum: 1 }),
+            ("Suspend X—{X}{3}{U}. (Reminder (with nested detail).) X can't be 0.", ironsmith_core::SuspendTime::X { minimum: 1 }),
+            ("Suspend X—{X}{G}{G}. X can't be 0. (Rather than cast this card from your hand, you may pay its suspend cost.)", ironsmith_core::SuspendTime::X { minimum: 1 }),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let action = parse_suspend_keyword_action(&tokens).expect(text);
+            assert!(matches!(&action, KeywordAction::Suspend { time, .. } if *time == expected), "{text}: {action:?}");
+            assert_eq!(crate::clause_support::parse_ability_line_lexed(&tokens), Some(vec![action]));
+        }
+        for text in [
+            "Suspend X—{G}",
+            "Suspend X—{X}{G}. X can't be 2.",
+            "Suspend 4—{R}. Draw a card.",
+            "Suspend X—{X}{G}. X can't be 0. (Reminder text.) Draw a card.",
+            "Suspend X—{X}{G}. X can't be 0. (Unclosed reminder text.",
+            "Suspend X—{X}{G}. X can't be 0. Unmatched closing reminder.)",
+            "Suspend X—{X}{G}. X can't be 0. (Reminder text.))",
+        ] {
+            assert!(parse_suspend_keyword_action(&crate::lexer::lex_line(text, 0).unwrap()).is_none(), "must preserve every restriction/effect: {text}");
+        }
     }
 }

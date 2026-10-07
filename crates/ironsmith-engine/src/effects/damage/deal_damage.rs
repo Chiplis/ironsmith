@@ -146,29 +146,64 @@ pub(super) fn complete_damage_replacement_programs(
         parent,
         outcome,
         programs,
-        |_, context, _| {
-            let damage = crate::events::downcast_event::<DamageEvent>(context.event.inner())
-                .ok_or_else(|| {
-                    ExecutionError::InternalError("damage addition lost its matched event".into())
-                })?;
-            let target = match damage.target {
-                DamageTarget::Player(player) => ResolvedTarget::Player(player),
-                DamageTarget::Object(object) => ResolvedTarget::Object(object),
-            };
-            let snapshots = damage
-                .target_snapshot
-                .clone()
-                .into_iter()
-                .collect::<Vec<_>>();
-            Ok(crate::effects::replacement::ReplacementProgramBindings {
-                targets: Some(vec![target]),
-                object_tags: vec![
-                    ("it".into(), snapshots.clone()),
-                    ("__it__".into(), snapshots),
-                ],
-            })
-        },
+        |_, context, _| damage_replacement_bindings(context),
     )
+}
+
+/// Commit a frozen replacement of an original damage assignment. Selection
+/// never executes this program; its first draw retains the original tail.
+pub(crate) fn commit_damage_replacement_original_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    program: crate::events::processing::PreparedReplacementProgram,
+) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    if program.effects.iter().any(crate::effects::replacement::replacement_effect_contains_draw)
+        && !program.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    {
+        return Err(ExecutionError::Impossible(
+            "damage replacement original has no native draw-continuation owner".into(),
+        ));
+    }
+    let bindings = damage_replacement_bindings(&program.context)?;
+    if let Some(receipt) = crate::effects::replacement::prepare_draw_continuation_with_bindings_and_outputs(
+        game, ctx, &program.effects, program.source, program.controller, &program.context,
+        program.source_snapshot.clone(), bindings.clone(),
+    )? {
+        return Ok(receipt);
+    }
+    let outputs = crate::effects::replacement::execute_replacement_payload_with_outputs(
+        game, ctx, &program.effects, program.source, program.controller, &program.context,
+        bindings.targets, program.source_snapshot, bindings.object_tags,
+    )?;
+    let mut original = EffectOutcome::replaced();
+    original.set_value(crate::effect::OutcomeValue::Count(0));
+    let aggregate = EffectOutcome::aggregate_replacement_outcomes(original, [outputs.outcome.clone()]);
+    Ok(crate::effects::SimultaneousEffectCommit::finished(outputs.project_aggregate(aggregate)))
+}
+
+pub(super) fn damage_replacement_bindings(
+    context: &crate::events::processing::ReplacementEventContext,
+) -> Result<crate::effects::replacement::ReplacementProgramBindings, ExecutionError> {
+    let damage = crate::events::downcast_event::<DamageEvent>(context.event.inner())
+        .ok_or_else(|| {
+            ExecutionError::InternalError("damage addition lost its matched event".into())
+        })?;
+    let target = match damage.target {
+        DamageTarget::Player(player) => ResolvedTarget::Player(player),
+        DamageTarget::Object(object) => ResolvedTarget::Object(object),
+    };
+    let snapshots = damage
+        .target_snapshot
+        .clone()
+        .into_iter()
+        .collect::<Vec<_>>();
+    Ok(crate::effects::replacement::ReplacementProgramBindings {
+        targets: Some(vec![target]),
+        object_tags: vec![
+            ("it".into(), snapshots.clone()),
+            ("__it__".into(), snapshots),
+        ],
+    })
 }
 
 /// CR 120.4a / 120.10: excess damage dealt to a permanent. A permanent that
@@ -1182,6 +1217,17 @@ impl DamageInstructionInputsExt for DealDamageEffect {
 }
 
 impl EffectExecutor for DealDamageEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.target.mentions_player_filter(needle)
+    }
     fn supports_damage_action_cohort(&self) -> bool {
         true
     }
@@ -3232,6 +3278,14 @@ impl DamageInstructionInputProvider for DealDamageToRecipientsEffect {
 }
 
 impl EffectExecutor for DealDamageToRecipientsEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
     fn supports_damage_action_cohort(&self) -> bool {
         true
     }

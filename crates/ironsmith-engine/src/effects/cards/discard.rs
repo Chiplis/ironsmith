@@ -9,6 +9,7 @@ use crate::events::other::CardDiscardedEvent;
 use crate::filter::ObjectFilter;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::PlayerFilter;
@@ -49,6 +50,19 @@ pub struct DiscardEffect {
     /// Optional tag used to track discarded cards for later clauses such as
     /// "didn't discard a creature card this way".
     pub tag: Option<TagKey>,
+}
+
+fn validate_discard_payment_selection(
+    game: &GameState, selected: &[ObjectId], candidates: &[ObjectId], min: usize, max: usize, prospective: bool,
+) -> Result<(), ExecutionError> {
+    if selected.len() < min || selected.len() > max
+        || selected.iter().enumerate().any(|(index, id)| !candidates.contains(id) || selected[..index].contains(id)) {
+        return Err(ExecutionError::Impossible("discard payment needs the exact legal selection".into()));
+    }
+    if !prospective && selected.iter().any(|id| game.is_hidden_card_placeholder(*id)) {
+        return Err(ExecutionError::IncompleteEvidence("discard payment is awaiting its selected public identity opening".into()));
+    }
+    Ok(())
 }
 
 impl DiscardEffect {
@@ -141,7 +155,8 @@ impl DiscardEffect {
         }
         let filter_ctx = ctx.filter_context(game);
         let eligible = hand.iter().copied().filter(|id| {
-            !ctx.replacement.entry_reserved_objects.contains(id)
+            game.object(*id).is_some_and(|object| object.kind == crate::object::ObjectKind::Card && object.zone == crate::Zone::Hand && object.owner == player)
+                && !ctx.replacement.entry_reserved_objects.contains(id)
                 && !(reason == crate::costs::PaymentReason::CastSpell && *id == ctx.source)
         });
         let candidates: Vec<_> = eligible
@@ -239,7 +254,7 @@ fn format_discard_card_type_phrase(card_types: &[CardType]) -> String {
 
 fn collect_selected_object_tags(filter: &ObjectFilter, tags: &mut Vec<TagKey>) {
     for constraint in &filter.tagged_constraints {
-        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        if crate::effects::helpers::tagged_relation_names_members(constraint.relation)
             && !tags.contains(&constraint.tag)
         {
             tags.push(constraint.tag.clone());
@@ -367,6 +382,10 @@ impl DiscardEffect {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        if ctx.targets_are_cost_choices {
+            hand_cards.retain(|id| game.object(*id).is_some_and(|object|
+                object.kind == crate::object::ObjectKind::Card && object.zone == Zone::Hand && object.owner == player_id));
+        }
         // A filtered discard from a hand holding hidden cards depends on
         // identities only the owner knows. Peers keep their placeholders
         // choosable and every peer asks the same (never skipped, never
@@ -420,6 +439,9 @@ impl DiscardEffect {
             .any(|id| game.hidden_identity_is_private(*id));
 
         let required = count.min(hand_cards.len());
+        if ctx.targets_are_cost_choices && !self.any_number && required != count {
+            return Err(ExecutionError::Impossible("not enough cards for the full discard payment".into()));
+        }
         if required == 0 && !self.any_number && !hidden_hand_choice {
             return Ok(EffectOutcome::count(0));
         }
@@ -435,7 +457,7 @@ impl DiscardEffect {
                 crate::effects::ResolvedTarget::Object(id) => Some(*id),
                 crate::effects::ResolvedTarget::Player(_) => None,
             })
-            .filter(|id| hand_cards.contains(id))
+            .filter(|id| ctx.targets_are_cost_choices || hand_cards.contains(id))
             .collect();
 
         let cards_to_discard = if !self.random
@@ -449,7 +471,10 @@ impl DiscardEffect {
             // replace the selected set.
             hand_cards.clone()
         } else if !explicit_cards.is_empty() {
-            normalize_object_selection(explicit_cards, &hand_cards, required)
+            if ctx.targets_are_cost_choices {
+                validate_discard_payment_selection(game, &explicit_cards, &hand_cards, required, required, ctx.prospective_cost_payment)?;
+                explicit_cards
+            } else { normalize_object_selection(explicit_cards, &hand_cards, required) }
         } else if self.discards_source_as_cost() && hand_cards.contains(&ctx.source) {
             vec![ctx.source]
         } else if self.random {
@@ -476,19 +501,22 @@ impl DiscardEffect {
                 Some(required),
             );
             let spec = if hidden_hand_choice {
-                spec.allow_partial_completion().require_explicit_choice()
-            } else {
-                spec
-            };
+                if ctx.targets_are_cost_choices { spec.require_explicit_choice() }
+                else { spec.allow_partial_completion().require_explicit_choice() }
+            } else { spec };
             let spec = if reveal_chosen_publicly {
                 spec.with_selection_reveal_policy(SelectionRevealPolicy::Public)
             } else {
                 spec
             };
+            let spec = if ctx.targets_are_cost_choices { spec.with_cost_payment(ctx.source, ctx.controller) } else { spec };
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
+            }
+            if ctx.targets_are_cost_choices {
+                validate_discard_payment_selection(game, &chosen, &hand_cards, min_required, required, ctx.prospective_cost_payment)?;
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
@@ -525,19 +553,22 @@ impl DiscardEffect {
                 Some(required),
             );
             let spec = if hidden_hand_choice {
-                spec.allow_partial_completion().require_explicit_choice()
-            } else {
-                spec
-            };
+                if ctx.targets_are_cost_choices { spec.require_explicit_choice() }
+                else { spec.allow_partial_completion().require_explicit_choice() }
+            } else { spec };
             let spec = if reveal_chosen_publicly {
                 spec.with_selection_reveal_policy(SelectionRevealPolicy::Public)
             } else {
                 spec
             };
+            let spec = if ctx.targets_are_cost_choices { spec.with_cost_payment(ctx.source, ctx.controller) } else { spec };
             let chosen: Vec<_> =
                 make_decision(game, ctx.decision_maker, player_id, Some(ctx.source), spec);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
+            }
+            if ctx.targets_are_cost_choices {
+                validate_discard_payment_selection(game, &chosen, &hand_cards, required, required, ctx.prospective_cost_payment)?;
             }
             if reveal_chosen_publicly {
                 // Only offered candidates are opened by the peer front end.
@@ -588,18 +619,18 @@ impl DiscardEffect {
                 .copied()
                 .filter(|id| *id != ctx.source)
                 .collect();
-            if game
-                .reveal_private_hidden_cards_publicly(
-                    &mut *ctx.decision_maker,
-                    player_id,
-                    ctx.source,
-                    &to_reveal,
-                    "Reveal the cards you discard",
-                    false,
+            let opened = if ctx.targets_are_cost_choices {
+                game.reveal_private_hidden_cards_publicly_as_cost(
+                    &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", ctx.prospective_cost_payment,
                 )
-                .is_none()
-            {
-                return Ok(EffectOutcome::count(0));
+            } else {
+                game.reveal_private_hidden_cards_publicly(
+                    &mut *ctx.decision_maker, player_id, ctx.source, &to_reveal, "Reveal the cards you discard", false,
+                )
+            };
+            if opened.is_none() {
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                return Err(ExecutionError::IncompleteEvidence("discard payment needs the exact opened selection".into()));
             }
         }
 

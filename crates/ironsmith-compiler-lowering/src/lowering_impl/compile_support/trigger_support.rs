@@ -888,7 +888,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             player,
             filter,
             from_source,
-        } => Trigger::player_reveals_card(player, filter, from_source),
+            first_draw_pair,
+        } => {
+            let mut trigger = Trigger::player_reveals_card(player, filter, from_source);
+            if let ironsmith_core::TriggerKind::PlayerRevealsCard { first_draw_pair: pair, .. } = &mut trigger.kind {
+                *pair = first_draw_pair;
+            }
+            trigger
+        },
         TriggerSpec::PlayerSacrifices {
             player,
             filter,
@@ -1394,12 +1401,20 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
             source,
             player,
+            each_damaged_player,
+            per_source_controller: true,
+        } => Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player),
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source,
+            player,
             each_damaged_player: false,
+            per_source_controller: false,
         } => Trigger::deals_combat_damage_to_player_one_or_more(source, player),
         TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
             source,
             player,
             each_damaged_player: true,
+            per_source_controller: false,
         } => Trigger::deals_combat_damage_to_each_player_one_or_more(source, player),
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction {
@@ -1613,7 +1628,14 @@ pub fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> bool {
 }
 
 pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
+    if matches!(spec, EventValueSpec::Amount)
+        && ironsmith_compiler_semantic::trigger_references::trigger_binds_grouped_zone_amount(trigger) {
+        return true;
+    }
     match spec {
+        EventValueSpec::CastSpell(quantity) => {
+            ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger) == Some(*quantity)
+        }
         EventValueSpec::LifeChange {
             gained,
             for_controller,
@@ -1734,17 +1756,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
     }
 }
 
-fn spell_cast_filter_binds_target_count(filter: &crate::target::ObjectFilter) -> bool {
-    filter.targets_player.is_some()
-        || filter.targets_object.is_some()
-        || filter.targets_only_player.is_some()
-        || filter.targets_only_object.is_some()
-        || filter.target_count.is_some()
-        || filter
-            .any_of
-            .iter()
-            .any(spell_cast_filter_binds_target_count)
-}
+use ironsmith_compiler_semantic::trigger_references::spell_cast_filter_binds_target_count;
 
 pub fn compile_trigger_effects(
     trigger: Option<&TriggerSpec>,

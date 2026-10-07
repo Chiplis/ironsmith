@@ -18,6 +18,7 @@ mod look_at_hand;
 mod look_at_objects;
 mod look_at_top;
 mod mill;
+mod miracle_draw;
 mod put_tagged_remainder_on_library_bottom;
 mod rearrange_looked_cards_in_library;
 mod reorder_top_planar_deck;
@@ -49,10 +50,12 @@ pub use look_at_hand::LookAtHandEffect;
 pub use look_at_objects::LookAtObjectsEffect;
 pub use look_at_top::LookAtTopCardsEffect;
 pub use mill::MillEffect;
+pub(crate) use miracle_draw::{draw_cards_with_miracle_window, miracle_reveal_event};
 pub use put_tagged_remainder_on_library_bottom::PutTaggedRemainderOnLibraryBottomEffect;
 pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reorder_top_planar_deck::ReorderTopPlanarDeckEffect;
 pub use reveal_from_hand::{RevealFromHandEffect, RevealSourceFromHandEffect};
+pub(crate) use reveal_from_hand::{is_exact_reveal_selection, legal_reveal_from_hand_cards};
 pub use reveal_tagged::RevealTaggedEffect;
 pub use reveal_top::RevealTopEffect;
 pub use scry::{EachPlayerScryEffect, FatesealEffect, ScryEffect};
@@ -91,3 +94,5 @@ pub(crate) use library_arrangement::{
 pub(crate) use look::look_at_cards;
 
 pub(crate) use shuffle_library::{shuffle_library, shuffle_library_action};
+
+pub(crate) use draw_cards::{PreparedDrawInstruction, prepare_draw_instruction, execute_prepared_draw_instruction};

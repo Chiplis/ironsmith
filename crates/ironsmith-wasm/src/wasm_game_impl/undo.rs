@@ -134,6 +134,7 @@ impl WasmGame {
             || self.priority_state.pending_activation.is_some()
             || self.priority_state.pending_mana_ability.is_some()
             || self.priority_state.pending_method_selection.is_some()
+            || self.priority_state.has_opened_exile_play_receipt()
             || self.priority_state.pending_continuation.is_some()
     }
 
@@ -184,12 +185,16 @@ impl WasmGame {
 
     fn select_options_uses_live_priority_response(
         &self,
-        _ctx: &ironsmith::decisions::context::SelectOptionsContext,
+        ctx: &ironsmith::decisions::context::SelectOptionsContext,
     ) -> bool {
         // A pending mana ability may be paused inside an effect (for example,
         // choosing its mana color). Generic effect options resume that captured
         // effect; they have no direct PriorityResponse mapping.
-        self.game.effect_store.pending_replacement_choice.is_some()
+        (ctx.exile_face_down_choice && self.priority_state.pending_exile_face_down.as_ref().is_some_and(|pending|
+            ctx.source == Some(pending.card_id) && ctx.player == pending.player))
+            || (ctx.exile_play_choice && self.priority_state.pending_exile_play.as_ref().is_some_and(|pending|
+            ctx.source == Some(pending.card_id) && ctx.player == pending.player))
+            || self.game.effect_store.pending_replacement_choice.is_some()
             || self.priority_state.pending_method_selection.is_some()
             || self
                 .priority_state
@@ -1620,10 +1625,10 @@ impl WasmGame {
                 };
                 self.game.queue_trigger_event(etb_event_provenance, event);
 
-                ironsmith::game_loop::drain_pending_trigger_events(
+                ironsmith::game_loop::try_drain_pending_trigger_events(
                     &mut self.game,
                     &mut self.trigger_queue,
-                );
+                ).map_err(|error| JsValue::from_str(&error.to_string()))?;
 
                 ironsmith::game_loop::handle_saga_enters_battlefield(
                     &mut self.game,
@@ -1641,7 +1646,8 @@ impl WasmGame {
                 .move_object_by_effect(temp_id, zone)
                 .unwrap_or(temp_id)
         };
-        ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+        ironsmith::game_loop::try_drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
         self.recompute_ui_decision()?;
         Ok(object_id)
     }

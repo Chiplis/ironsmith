@@ -35,6 +35,7 @@ pub(super) fn parse_static_line_impl(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    crate::clause_support::validate_protection_static_line(parse_tokens)?;
     let chosen_option = line.chosen_option.as_ref();
     // A pronoun continuation of an attached subject owns the complete line.
     // Read it before broad static leaves can claim a later loss clause and

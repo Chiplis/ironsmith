@@ -67,7 +67,12 @@ fn parses_typed_where_x_shapes() {
             sentence.layout(false).primary_where_tokens,
             sentence.stripped_references_target,
         ),
-        Some(WhereXValueShape::RemovedCountersThisWay),
+        Some(WhereXValueShape::PriorEffectMetric({
+            let mut query = PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::Count)
+                .with_action(ironsmith_core::PriorEffectAction::Removed);
+            query.counter_type = Some(CounterType::Charge);
+            query
+        })),
     );
 }
 

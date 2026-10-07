@@ -475,7 +475,7 @@ fn run(
             assert_eq!(g.turn.active_player, alice());
             ironsmith::turn::advance_step(&mut g).map_err(|e| e.to_string())?;
             ironsmith::turn::advance_step(&mut g).map_err(|e| e.to_string())?;
-            ironsmith::turn::execute_draw_step_with(&mut g, dm);
+            ironsmith::turn::execute_draw_step_with(&mut g, dm).unwrap();
             ironsmith::turn::advance_step(&mut g).map_err(|e| e.to_string())?;
             assert_eq!(g.turn.phase, Phase::FirstMain);
             dm.chosen = resources

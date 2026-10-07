@@ -641,13 +641,10 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         if action == ironsmith_core::PriorEffectAction::Tapped {
             filter.zone.get_or_insert(Zone::Battlefield);
         }
-        // Milling moves cards from a library to a graveyard. Establish that
-        // zone before the creature noun's default battlefield inference.
-        if matches!(
-            action,
-            ironsmith_core::PriorEffectAction::Milled
-                | ironsmith_core::PriorEffectAction::PutIntoGraveyard
-        ) {
+        // An authored graveyard result requires that zone. Milling can
+        // instead arrive in another public zone through a replacement (CR
+        // 701.17c); its exact destination is retained by the producer.
+        if action == ironsmith_core::PriorEffectAction::PutIntoGraveyard {
             filter.zone.get_or_insert(Zone::Graveyard);
         }
         filter.set_prior_effect_action_surface(Some(action));
@@ -687,6 +684,11 @@ pub(in super::super) fn apply_reference_and_tag_stage(
         } else {
             TaggedOpbjectRelation::IsTaggedObject
         };
+        if action == ironsmith_core::PriorEffectAction::Milled
+            && relation == TaggedOpbjectRelation::IsTaggedObject
+        {
+            filter.match_captured_public_destination = true;
+        }
         // "creatures tapped this way" names the objects a preceding "tap
         // all" actually tapped; normalization binds the marker (or falls
         // back to the ordinary `it` antecedent).

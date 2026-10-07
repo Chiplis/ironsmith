@@ -20,6 +20,7 @@ pub struct PersistentAnthemTailHead {
 pub enum ContinuingSegmentShape<'a> {
     CantBlock,
     CantAttack,
+    CantBecomeSuspected,
     CantAttackYou { covers_planeswalkers: bool },
     MustBeBlocked,
     AllMustBlock,
@@ -118,6 +119,7 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
         })
         .or_else(|| {
             for (phrases, shape) in [
+                (&[&["cant", "become", "suspected"][..], &["can't", "become", "suspected"], &["cannot", "become", "suspected"]][..], ContinuingSegmentShape::CantBecomeSuspected),
                 (
                     &[
                         &["cant", "attack"][..],

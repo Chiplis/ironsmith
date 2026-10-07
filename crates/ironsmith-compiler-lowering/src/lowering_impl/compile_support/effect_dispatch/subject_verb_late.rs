@@ -158,6 +158,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::TicketCounters { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Untap { .. })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::UntapAll { .. })
@@ -400,6 +401,7 @@ pub(super) fn compile_put_counters_action(
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
     let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+        maximum_total,
         counter_type,
         count,
         target,
@@ -458,6 +460,7 @@ pub(super) fn compile_put_counters_action(
                     resolved_count,
                     ChooseSpec::Tagged(tag.clone()),
                 );
+                put_counters.maximum_total = *maximum_total;
                 if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
                     put_counters = put_counters
                         .with_completion_action(crate::events::KeywordActionKind::Blight);
@@ -475,6 +478,7 @@ pub(super) fn compile_put_counters_action(
     }
     let mut put_counters =
         crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
+    put_counters.maximum_total = *maximum_total;
     if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
         put_counters =
             put_counters.with_completion_action(crate::events::KeywordActionKind::Blight);
@@ -540,6 +544,13 @@ pub(super) fn compile_subject_verb_late(
                 )],
                 Vec::new(),
             ))
+        }
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { target }) => {
+            let (effects, choices) =
+                compile_tagged_effect_for_target(target, ctx, "turned_face_down", |spec| {
+                    Effect::turn_face_down(spec)
+                })?;
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { target }) => {
             let (effects, choices) =
@@ -1065,6 +1076,9 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Tap { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // A state change names the existing permanent of its antecedent.
+            // A replacement-added move cannot turn it into a later incarnation.
+            let spec = exact_tap_reference(spec);
             let base_effect = Effect::new(
                 crate::effects::TapEffect::with_spec(spec.clone()).with_actor(tap_actor.clone()),
             );
@@ -1886,9 +1900,16 @@ pub(super) fn compile_subject_verb_late(
             count,
             from,
             to,
+            from_all,
         }) => {
-            let (from_spec, mut choices) =
+            let (mut from_spec, mut choices) =
                 resolve_target_spec_with_choices(from, &current_reference_env(ctx))?;
+            if *from_all {
+                let TargetAst::Object(filter, None, _) = from else {
+                    return Err(CardTextError::ParseError("all counter donors require a complete object filter".into()));
+                };
+                from_spec = ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
             let (to_spec, to_choices) =
                 resolve_target_spec_with_choices(to, &current_reference_env(ctx))?;
             for choice in to_choices {
@@ -1904,6 +1925,9 @@ pub(super) fn compile_subject_verb_late(
                                 from_spec.clone(),
                                 to_spec.clone(),
                             )
+                        }
+                        ironsmith_core::effect::CounterMoveAmount::All => {
+                            crate::effects::MoveCountersEffect::all(*counter_type, from_spec.clone(), to_spec.clone())
                         }
                         ironsmith_core::effect::CounterMoveAmount::AnyNumber => {
                             crate::effects::MoveCountersEffect::any_number(
@@ -2735,6 +2759,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Grants(GrantActionAst::GrantNextSpellAbilityThisTurn {
             filter,
             ability,
+            mode,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let mut player_filter = subject.clone_player_filter();
@@ -2758,11 +2783,11 @@ pub(super) fn compile_subject_verb_late(
                 lowered
                     .into_iter()
                     .map(|ability| {
-                        Effect::grant_next_spell_ability_this_turn(
+                        Effect::new(crate::effects::GrantNextSpellAbilityEffect::new(
                             player_filter.clone(),
                             resolved_filter.clone(),
                             ability,
-                        )
+                        ).with_mode(*mode))
                     })
                     .collect(),
                 subject.into_choices(),
@@ -3298,5 +3323,28 @@ fn bind_it_characteristic_to_damage_source_subject(value: &Value) -> Value {
         Value::PowerOf(spec) if is_it(spec) => Value::PowerOf(Box::new(source(spec))),
         Value::ToughnessOf(spec) if is_it(spec) => Value::ToughnessOf(Box::new(source(spec))),
         other => other.clone(),
+    }
+}
+
+
+fn exact_tap_reference(spec: ChooseSpec) -> ChooseSpec {
+    fn exact_filter(mut filter: ObjectFilter) -> ObjectFilter {
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
+            }
+        }
+        filter.any_of = filter.any_of.into_iter().map(exact_filter).collect();
+        filter
+    }
+    match spec {
+        ChooseSpec::Tagged(tag) => ChooseSpec::All(ObjectFilter::exact_tagged(tag)),
+        ChooseSpec::Object(filter) => ChooseSpec::Object(exact_filter(filter)),
+        ChooseSpec::All(filter) => ChooseSpec::All(exact_filter(filter)),
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted { spec: Box::new(exact_tap_reference(*spec)), hints },
+        ChooseSpec::WithCount(spec, count) => ChooseSpec::WithCount(Box::new(exact_tap_reference(*spec)), count),
+        ChooseSpec::WithCountValue(spec, count, value) => ChooseSpec::WithCountValue(Box::new(exact_tap_reference(*spec)), count, value),
+        // Explicit target declarations keep their normal saved-slot owner.
+        other => other,
     }
 }

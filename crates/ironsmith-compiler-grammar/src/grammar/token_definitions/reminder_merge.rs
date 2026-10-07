@@ -1,6 +1,6 @@
 use crate::model::token_definition::{
     ArtifactTokenShape, CreatureTokenRulesShape, EquipmentRuleLineShape, EquipmentRulesShape,
-    TokenDefinitionSpec, TokenRulesSurfaces, VehicleTokenShape,
+    TokenDefinitionSpec, TokenRulesSurfaces, VehicleTokenShape, ModifiedBuiltinTokenShape,
 };
 
 use super::reminder::TokenReminderFacts;
@@ -57,6 +57,22 @@ pub fn merge_token_equipment_reminder_definition(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
 ) -> bool {
+    merge_token_equipment_facts(definition, reminder, false)
+}
+
+pub fn merge_authored_token_equipment_facts(
+    definition: &mut TokenDefinitionSpec,
+    facts: &TokenReminderFacts,
+) -> bool {
+    merge_token_equipment_facts(definition, facts, true)
+}
+
+fn merge_token_equipment_facts(
+    definition: &mut TokenDefinitionSpec,
+    reminder: &TokenReminderFacts,
+    authored: bool,
+) -> bool {
+    let before = definition.clone();
     let TokenDefinitionSpec::Artifact(ArtifactTokenShape {
         equipment_rules, ..
     }) = definition
@@ -65,12 +81,13 @@ pub fn merge_token_equipment_reminder_definition(
     };
     let has_equipment_rules = reminder.definition.equipment_rules.is_some();
     merge_equipment_rules(equipment_rules, &reminder.definition.equipment_rules);
+    if !authored && *definition != before { definition.mark_unproven_ability_words(); }
     has_equipment_rules
 }
 
 #[path = "reminder_merge/object_action.rs"]
 mod object_action_programs;
-pub use object_action_programs::merge_token_reminder_definition;
+pub use object_action_programs::{merge_authored_token_definition_facts, merge_token_reminder_definition};
 #[path = "reminder_merge/core.rs"]
 mod core_programs;
 use core_programs::merge_creature_rules;

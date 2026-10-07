@@ -712,43 +712,10 @@ pub(super) fn water_tribe_rallier_preserves_waterbend_and_the_power_bound() {
             _ => None,
         })
         .expect("Water Tribe Rallier should have a waterbend activation");
-    let branches = activated
-        .mana_cost
-        .as_one_of()
-        .expect("waterbend {5} should lower to alternative mana-or-tap payments");
-    assert_eq!(
-        branches.len(),
-        6,
-        "waterbend {{5}} needs 0..=5 tap branches"
-    );
-    assert_eq!(
-        branches[0].mana_cost().map(ManaCost::to_oracle),
-        Some("{5}".to_string())
-    );
-    for (branch, expected_taps) in [(&branches[1], 1), (&branches[5], 5)] {
-        let choose = branch
-            .costs()
-            .iter()
-            .filter_map(|cost| cost.effect_ref())
-            .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
-            .expect("each non-mana waterbend branch should choose permanents to tap");
-        assert_eq!(choose.count, ChoiceCount::exactly(expected_taps));
-        assert!(choose.filter.untapped);
-        assert_eq!(choose.filter.controller, Some(PlayerFilter::You));
-        assert!(
-            choose
-                .filter
-                .any_of
-                .iter()
-                .any(|filter| filter.card_types == [CardType::Artifact])
-                && choose
-                    .filter
-                    .any_of
-                    .iter()
-                    .any(|filter| filter.card_types == [CardType::Creature]),
-            "waterbend should accept untapped artifacts and creatures: {choose:#?}"
-        );
-    }
+    let mana = activated.mana_cost.mana_cost().expect("one typed Waterbend cost");
+    assert_eq!(mana.to_oracle(), "{5}");
+    assert!(mana.has_waterbend_obligation());
+    assert_eq!(mana.waterbend_capacity(0), 5);
 
     let filters = looked_choice_filters(&definition);
     assert!(
@@ -833,7 +800,7 @@ pub(super) fn gruul_spellbreaker_union_hexproof_covers_you_and_the_source_only()
     let debug = format!("{:?}", definition.abilities);
 
     assert!(
-        debug.contains("BeTargetedPlayerFrom(You"),
+        debug.contains("PlayerHexproofFrom(You"),
         "the \"you\" half of the union must compile to a player targeting restriction: {debug}"
     );
     assert!(

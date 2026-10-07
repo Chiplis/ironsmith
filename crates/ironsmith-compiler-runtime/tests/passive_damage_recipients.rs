@@ -288,6 +288,7 @@ fn bystander_actual_combat_is_one_received_occurrence_and_clue_is_executable() {
         );
         settle(&mut g, &mut dm);
         let clue = tokens(&g, ironsmith::types::Subtype::Clue)[0];
+        assert_eq!(g.object(clue).unwrap().name, "Clue Token");
         action(
             &mut g,
             A,

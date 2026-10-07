@@ -76,3 +76,28 @@ fn any_color_among_parser_returns_the_dynamic_filter_span() {
     let unrestricted = lex_line("one mana of any color", 0).unwrap();
     assert!(parse_any_color_among_span(&unrestricted).is_none());
 }
+
+#[test]
+fn any_of_source_colors_preserves_a_typed_self_reference() {
+    for noun in ["creature", "artifact", "permanent"] {
+        let tokens = lex_line(&format!("one mana of any of this {noun}'s colors"), 0).unwrap();
+        let surface = parse_any_of_source_colors_surface(&tokens).unwrap();
+        assert_eq!(surface.display_text(), format!("this {noun}"));
+    }
+    for text in [
+        "one mana of any color",
+        "one mana of any of that creature's colors",
+        "one mana of any of the exiled card's colors",
+        "two mana of any of this creature's colors",
+        "one mana of any of this creature's colors instead",
+        "one mana of any of this {R} creature's colors",
+        "one mana of any of this creature's colors {R}",
+        "one mana of any of this creature's colors:",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_any_of_source_colors_surface(&tokens).is_none(), "{text}");
+    }
+    let tokens = lex_line("Add one mana of any of this creature's colors.", 0).unwrap();
+    let primary = super::super::activated_lines::parse_primary_mana_clause_tokens(&tokens).unwrap();
+    assert!(primary.requires_general_effect);
+}

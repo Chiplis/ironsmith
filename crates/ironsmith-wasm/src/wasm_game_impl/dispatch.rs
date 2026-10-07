@@ -2,6 +2,7 @@
 #[serde(rename_all = "camelCase")]
 struct HiddenCardMetadata {
     object_id: u64,
+    incarnation: Option<u64>,
     owner: u8,
     zone: String,
     slot: u16,
@@ -46,6 +47,7 @@ impl WasmGame {
         let info = self.game.hidden_card_info(id)?;
         Some(HiddenCardMetadata {
             object_id: id.0,
+            incarnation: info.incarnation,
             owner: info.owner.0,
             zone: sync_zone_name(object.zone).to_string(),
             slot: info.slot,
@@ -232,7 +234,8 @@ impl WasmGame {
                 .map_err(ForceFaceUpError::Execution)?;
             if dm.awaiting_choice() { return Err(ForceFaceUpError::PendingChoice); }
             if outcome.as_count() != Some(1) { return Err(ForceFaceUpError::NotTurnedFaceUp); }
-            ironsmith::game_loop::drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+            ironsmith::game_loop::try_drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue)
+                .map_err(ForceFaceUpError::Execution)?;
             ironsmith::put_triggers_on_stack(&mut self.game, &mut self.trigger_queue)
                 .map_err(|error| ForceFaceUpError::TriggerStack(format!("{error:?}")))?;
             Ok(())
@@ -265,7 +268,6 @@ impl WasmGame {
         let snapshot_id = self.snapshot_serial;
         let battlefield_transitions =
             battlefield_transition_snapshots(self.game.take_ui_battlefield_transitions());
-        let disclosure_view = self.payment_disclosure_view();
         let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
@@ -282,9 +284,7 @@ impl WasmGame {
             &self.snapshot_object_view_cache,
             self.static_library_top_visibility_window(),
         );
-        if let Some(view) = disclosure_view.as_ref() {
-            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
-        }
+        self.include_payment_disclosure_views(&mut snap);
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -928,6 +928,7 @@ mod dispatch_tests {
     #[test]
     fn position_reveal_preserves_existing_public_hidden_identity() {
         let info = ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: ironsmith::ids::PlayerId::from_index(0),
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
@@ -948,6 +949,7 @@ mod dispatch_tests {
     #[test]
     fn position_reveal_sets_public_identity_when_none_exists() {
         let info = ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: ironsmith::ids::PlayerId::from_index(0),
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
@@ -974,6 +976,7 @@ mod dispatch_tests {
             (
                 original_slot_object,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone: ironsmith::zone::Zone::Hand,
                     slot: 13,
@@ -987,6 +990,7 @@ mod dispatch_tests {
             (
                 position_object,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone: ironsmith::zone::Zone::Library,
                     slot: 6,
@@ -1382,7 +1386,8 @@ impl WasmGame {
         // decision while priority_state still holds the staged action, so the
         // chain's remaining decision commands (synced from the actor) would no
         // longer match the pending decision and the peer would flag a cheat.
-        let mid_action_chain = self.priority_state.pending_activation.is_some()
+        let mid_action_chain = self.priority_state.has_opened_exile_play_receipt()
+            || self.priority_state.pending_activation.is_some()
             || self.priority_state.pending_cast.is_some()
             || self.pending_live_continuation.is_some();
         let recompute_decision = recompute_decision && !mid_action_chain;
@@ -2638,6 +2643,7 @@ impl WasmGame {
             input.position_commitment.as_deref(),
         );
         let updated_info = ironsmith::game_state::HiddenCardInfo {
+            incarnation: info.incarnation,
             owner,
             zone,
             slot: input.original_slot,
@@ -3036,6 +3042,14 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = previewCryptoRequirements)]
     pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let typed: UiCommand = serde_wasm_bindgen::from_value(command.clone())
+            .map_err(|error| payment_disclosure_error(&format!("invalid preview command: {error}")))?;
+        if let Some(requirements) = self.blind_exile_opening_requirements(&typed)? {
+            // This action opens before any face-dependent proposal. Dispatching
+            // a placeholder to discover its requirements would be circular.
+            return serde_wasm_bindgen::to_value(&requirements)
+                .map_err(|error| payment_disclosure_error(&error.to_string()));
+        }
         let crypto_before = self.capture_crypto_audit_state();
         let checkpoint = self.capture_replay_checkpoint();
         let pregame = self.pregame.clone();
@@ -3367,6 +3381,7 @@ impl WasmGame {
                     self.game.set_hidden_card_info(
                         object_id,
                         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                             owner,
                             zone,
                             slot: position as u16,
@@ -3408,6 +3423,7 @@ impl WasmGame {
             self.game.set_hidden_card_info(
                 object_id,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone,
                     origin_slot: None,
@@ -3557,7 +3573,6 @@ impl WasmGame {
         if let Some(before) = self.pending_crypto_audit_before.take() {
             self.update_crypto_requirements_from(before);
         }
-        let disclosure_view = self.payment_disclosure_view();
         let mut snap = GameSnapshot::from_game_with_object_view_cache_during_action(
             self.pending_decision_game.as_deref().unwrap_or(&self.game),
             self.perspective,
@@ -3574,9 +3589,7 @@ impl WasmGame {
             &self.snapshot_object_view_cache,
             self.static_library_top_visibility_window(),
         );
-        if let Some(view) = disclosure_view.as_ref() {
-            snap.include_payment_disclosure(self.pending_decision_game.as_deref().unwrap_or(&self.game), view, &self.snapshot_object_view_cache);
-        }
+        self.include_payment_disclosure_views(&mut snap);
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
@@ -4132,7 +4145,8 @@ impl WasmGame {
                     game.freeze_completed_entry_events(std::iter::once(&mut event))
                         .map_err(|error| error.to_string())?;
                     game.queue_trigger_event(provenance, event);
-                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                    ironsmith::game_loop::try_drain_pending_trigger_events(game, trigger_queue)
+                        .map_err(|error| error.to_string())?;
                     ironsmith::game_loop::handle_saga_enters_battlefield(
                         game,
                         entered_id,
@@ -4144,7 +4158,8 @@ impl WasmGame {
                 finish_manual_entry_receipt(game, temp_id, player_id, receipt, dm)?;
                 align_manual_add_stable_id(game, entered_id);
                 if !skip_triggers {
-                    ironsmith::game_loop::drain_pending_trigger_events(game, trigger_queue);
+                    ironsmith::game_loop::try_drain_pending_trigger_events(game, trigger_queue)
+                        .map_err(|error| error.to_string())?;
                 }
                 Ok(entered_id.0)
             };
@@ -4178,10 +4193,10 @@ impl WasmGame {
             self.game.set_as_commander(object_id, player_id);
         }
         if !skip_triggers {
-            ironsmith::game_loop::drain_pending_trigger_events(
+            ironsmith::game_loop::try_drain_pending_trigger_events(
                 &mut self.game,
                 &mut self.trigger_queue,
-            );
+            ).map_err(|error| error.to_string())?;
         }
         Ok(object_id.0)
     }
@@ -5100,7 +5115,14 @@ impl WasmGame {
                 if legend_pending_context.is_some() {
                     // The probe restores the original live state before replay.
                 } else {
-                    drain_pending_trigger_events(&mut self.game, &mut self.trigger_queue);
+                    if let Err(error) = ironsmith::game_loop::try_drain_pending_trigger_events(
+                        &mut self.game, &mut self.trigger_queue,
+                    ) {
+                        self.restore_replay_checkpoint(&replay.checkpoint);
+                        self.pending_decision = Some(pending_ctx);
+                        self.pending_replay_action = Some(replay);
+                        return Err(JsValue::from_str(&error.to_string()));
+                    }
                     self.pending_action_checkpoint = None;
                     self.pending_replay_action = None;
                     self.pending_decision = None;
@@ -5758,7 +5780,7 @@ mod narrow_hidden_metadata_tests {
             .find(|object| object["id"].as_u64() == Some(id.0)).unwrap();
         let hidden = &object["hiddenCard"];
         let expected = serde_json::json!({
-            "objectId": id.0, "owner": hidden["owner"], "zone": object["zone"],
+            "objectId": id.0, "incarnation": hidden["incarnation"], "owner": hidden["owner"], "zone": object["zone"],
             "slot": hidden["slot"], "commitment": hidden["commitment"],
             "publicSlot": hidden["publicSlot"],
             "publicCommitment": hidden["publicCommitment"].as_str().unwrap_or_default(),

@@ -32,11 +32,10 @@ pub(crate) fn check_life_payment_cost_with_context(
     ctx: &ExecutionContext,
     reason: crate::costs::PaymentReason,
 ) -> Result<(), CostValidationError> {
-    let player = resolve_player_from_spec(game, &effect.player, ctx).map_err(|_| {
-        CostValidationError::Other("unable to resolve player for life payment".into())
-    })?;
+    let player = resolve_player_from_spec(game, &effect.player, ctx)
+        .map_err(CostValidationError::ExecutionFailed)?;
     let amount = resolve_value(game, &effect.amount, ctx)
-        .map_err(|_| CostValidationError::Other("unable to resolve life-payment amount".into()))?
+        .map_err(CostValidationError::ExecutionFailed)?
         .max(0) as u32;
     if game.can_pay_life_with_reason(player, amount, reason) {
         Ok(())

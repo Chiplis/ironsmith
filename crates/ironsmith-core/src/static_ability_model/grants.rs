@@ -886,6 +886,12 @@ pub enum ActivatedAbilityCostCondition {
     ThisAbility { ability_index: Option<usize> },
     /// Independent gates on the same priced activation. Appended for artifact compatibility.
     All(Vec<ActivatedAbilityCostCondition>),
+    /// The actual selected activation carries this gameplay keyword.
+    Keyword(crate::ActivatedAbilityKeyword),
+    NonManaAbility,
+    LoyaltyAbility,
+    /// The activator, relative to the modifier's controller; not source ownership.
+    Activator(PlayerFilter),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

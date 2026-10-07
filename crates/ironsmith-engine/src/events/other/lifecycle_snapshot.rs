@@ -27,11 +27,24 @@ pub(crate) fn freeze_completed_lifecycle_events(
             .and_then(|id| observed.object(id))
             .filter(|object| object.zone == crate::zone::Zone::Battlefield)
             .map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+                ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
                     object, &observed, &effects,
                 )
-            });
-        attach_snapshot(event, snapshot);
+            }).transpose()?;
+        if let Some(inner) = event.downcast::<crate::events::EnterBattlefieldEvent>() {
+            let mut entry = inner.clone();
+            entry.completed_snapshot = snapshot;
+            if entry.from == crate::zone::Zone::Stack {
+                entry.emerge_sacrifice = observed.object(entry.object)
+                    .filter(|object| object.optional_costs_paid.was_paid_label("Emerge"))
+                    .and_then(|object| object.cast_tagged_objects.get(
+                        crate::tag::SOURCE_EMERGE_SACRIFICE_TAG))
+                    .filter(|receipts| receipts.len() <= 1).cloned();
+            }
+            *event = event.with_inner_event(entry);
+        } else {
+            attach_snapshot(event, snapshot);
+        }
     }
     Ok(())
 }

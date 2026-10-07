@@ -12,6 +12,9 @@ mod phase_step_gates;
 #[path = "advanced/attack_power.rs"]
 mod attack_power;
 
+#[path = "advanced/combat_participants.rs"]
+mod combat_participants;
+
 #[path = "advanced/damage_history.rs"]
 mod damage_history;
 
@@ -1932,8 +1935,14 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
         label_words.remove(0);
     }
     let label_words = strip_source_possessive_label_prefix(&label_words);
-    let paid_tail = matched.capture_clause("paid_tail", clause)?;
-    let negated = paid_cost_tail_is_negated(paid_tail)?;
+    // The capture locates the marker by words, but completeness must include
+    // every original token through the actual end (including trailing symbols).
+    let tail_start_word = matched.capture("paid_tail")?.word_range.start;
+    let tail_start = clause.words().token_span_for_words(tail_start_word, tail_start_word + 1)?.start;
+    if tokens[..tail_start].iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::Tilde | TokenKind::ManaGroup)) {
+        return None;
+    }
+    let (negated, this_turn) = paid_cost_tail(LexedClause::new(&tokens[tail_start..]))?;
     let label = if label_words.len() == 3
         && surface::exact_words(&label_words[..1], &["this"])
         && is_this_spell_possessive_word(label_words[1])
@@ -1947,7 +1956,9 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     } else {
         mana_cost_label_from_words(label_words)?
     };
-    let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
+    let mut reference = crate::cost::OptionalCostRef::from(label);
+    if this_turn { reference = reference.this_turn(); }
+    let predicate = PredicateAst::ThisSpellPaidLabel(reference);
     if negated {
         Some(PredicateAst::Not(Box::new(predicate)))
     } else {
@@ -1955,17 +1966,26 @@ pub(super) fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
-pub(super) fn paid_cost_tail_is_negated(clause: LexedClause<'_>) -> Option<bool> {
-    if surface::prefix(clause, &["cost", "was", "paid"]) {
-        return Some(false);
+fn paid_cost_tail(clause: LexedClause<'_>) -> Option<(bool, bool)> {
+    // Preserve token completeness. Word projections discard punctuation and
+    // can hide malformed mana/parenthesis tails; only a terminal clause or
+    // sentence delimiter is normalization here.
+    let mut tokens = clause.tokens();
+    if tokens.last().is_some_and(|token| matches!(token.kind, TokenKind::Comma | TokenKind::Period)) {
+        tokens = &tokens[..tokens.len() - 1];
     }
-    if surface::prefix_any(
-        clause,
-        &[&["cost", "wasnt", "paid"], &["cost", "was", "not", "paid"]],
-    ) {
-        return Some(true);
+    let words: Vec<_> = tokens.iter().map(|token| {
+        if token.kind != TokenKind::Word { return None; }
+        Some(match token.parser_text() { "wasn't" => "wasnt", word => word })
+    }).collect::<Option<_>>()?;
+    let (words, this_turn) = if words.ends_with(&["this", "turn"]) {
+        (&words[..words.len() - 2], true)
+    } else { (words.as_slice(), false) };
+    match words {
+        ["cost", "was", "paid"] => Some((false, this_turn)),
+        ["cost", "wasnt", "paid"] | ["cost", "was", "not", "paid"] => Some((true, this_turn)),
+        _ => None,
     }
-    None
 }
 
 pub(super) fn parse_vote_option_result_predicate(
@@ -2519,7 +2539,7 @@ pub(super) fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
         .or_else(|| attack_power::parse_attacked_with_total_power(tokens))
         .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
-        .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))
+        .or_else(|| parse_source_attacked_or_blocked_window_shape(tokens))
 }
 
 /// Negative attack-history gates share the same turn-history predicates as
@@ -2688,7 +2708,7 @@ pub(super) fn parse_you_attacked_with_exactly_other_creatures_shape(
     ))
 }
 
-pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
+pub(super) fn parse_source_attacked_or_blocked_window_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
@@ -2710,6 +2730,14 @@ pub(super) fn parse_source_attacked_or_blocked_this_turn_shape(
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
+    if surface::exact(window_clause, &["this", "combat"]) {
+        // Bare "it" can name a different object; keep that unresolved shape
+        // strict until an object-relative combat-window predicate exists.
+        if surface::exact(subject_clause, &["it"]) { return None; }
+        return Some(PredicateAst::Source(
+            SourcePredicateAst::SourceAttackedOrBlockedThisCombat,
+        ));
+    }
     if !is_this_turn_clause(window_clause) {
         return None;
     }
@@ -2775,9 +2803,16 @@ pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Optio
         .or_else(|| parse_you_cast_source_shape(tokens))
         .or_else(|| parse_tagged_was_cast_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_from_shape(tokens))
+        .or_else(|| parse_this_spell_was_foretold_shape(tokens))
         .or_else(|| parse_no_spells_cast_last_turn_shape(tokens))
         .or_else(|| parse_this_spell_paid_named_label_shape(tokens))
         .or_else(|| parse_target_was_kicked_shape(tokens))
+}
+
+/// A prior foretell designation is distinct from exile origin and paid cost.
+fn parse_this_spell_was_foretold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    surface::exact(LexedClause::new(tokens), &["this", "spell", "was", "foretold"])
+        .then_some(PredicateAst::ThisSpellWasForetold)
 }
 
 pub(super) fn parse_you_cast_source_from_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3682,9 +3717,13 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     if descriptor.tokens().is_empty() {
         return Ok(None);
     }
-    let mut filter = match parse_object_filter(descriptor.tokens(), false) {
-        Ok(filter) => filter,
-        Err(err) => parse_color_only_object_filter_clause(descriptor).ok_or(err)?,
+    let mut filter = if descriptor.word_refs().as_slice() == ["suspected"] {
+        ObjectFilter::default().suspected()
+    } else {
+        match parse_object_filter(descriptor.tokens(), false) {
+            Ok(filter) => filter,
+            Err(err) => parse_color_only_object_filter_clause(descriptor).ok_or(err)?,
+        }
     };
     if filter.card_types.is_empty()
         && let Some(card_type) = subject_card_type
@@ -3700,7 +3739,7 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     filter.set_additional_cost_object_surface(Some(
         ironsmith_core::AdditionalCostObjectSurface::new(cost_action, subject_kind),
     ));
-    Ok(Some(PredicateAst::TaggedMatches(
+    Ok(Some(PredicateAst::TaggedMatchedLastKnown(
         crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
         filter,
     )))
@@ -3946,6 +3985,11 @@ pub(super) fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Opt
 }
 
 pub(super) fn is_implicit_object_state_subject_clause(clause: LexedClause<'_>) -> bool {
+    // A definite token names the immediately preceding creation result.
+    // An indefinite "a token" remains an existential object description.
+    if surface::exact_any(clause.trimmed(), &[&["the", "token"], &["that", "token"]]) {
+        return true;
+    }
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
     surface::exact_any(
         clause,
@@ -5797,6 +5841,9 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     } else {
         tokens
     };
+    if let Some(predicate) = combat_participants::parse(predicate_tokens) {
+        return Ok(predicate);
+    }
     if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {
         return Ok(predicate);
     }

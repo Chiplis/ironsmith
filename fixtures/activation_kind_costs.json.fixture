@@ -1,0 +1,222 @@
+[
+  {
+    "name": "Fluctuator",
+    "id": "c06a2fb3-d933-461f-bcf8-5c614bb75d0b",
+    "oracle_id": "5ed0c7cc-9969-4387-90f8-3084dd18026b",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "Cycling abilities you activate cost {2} less to activate.",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Cycling abilities you activate cost {2} less to activate.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Cycling abilities you activate cost {2} less to activate.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Cycling abilities you activate cost {2} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Cycling abilities you activate cost {2} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Silver-Fur Master",
+    "id": "c1eef728-8f2f-4b18-ae40-f14074ab6791",
+    "oracle_id": "60ec735d-c9be-4776-beb7-f603ae22edbf",
+    "mana_cost": "{U}{B}",
+    "type_line": "Creature — Rat Ninja",
+    "oracle_text": "Ninjutsu {U}{B} ({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nNinjutsu abilities you activate cost {1} less to activate.\nOther Ninja and Rogue creatures you control get +1/+1.",
+    "power": "2",
+    "toughness": "2",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "unsupported marker keyword with non-keyword tail; oracle-only fallback also failed: unsupported marker keyword with non-keyword tail",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "unsupported marker keyword with non-keyword tail",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "unsupported marker keyword with non-keyword tail",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Dragonkin Berserker",
+    "id": "dcfd4840-c524-464a-9519-3fb78e6ee8c5",
+    "oracle_id": "06b77a80-4968-4385-960a-fb66bb4faa94",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Human Berserker",
+    "oracle_text": "First strike\nBoast abilities you activate cost {1} less to activate for each Dragon you control.\nBoast — {4}{R}: Create a 5/5 red Dragon creature token with flying. (Activate only if this creature attacked this turn and only once each turn.)",
+    "power": "2",
+    "toughness": "2",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Boast abilities you activate cost {1} less to activate for each Dragon you control.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Boast abilities you activate cost {1} less to activate for each Dragon you control.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Boast abilities you activate cost {1} less to activate for each Dragon you control.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Boast abilities you activate cost {1} less to activate for each Dragon you control.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Boom Scholar",
+    "id": "f2b84684-10c9-4635-a922-620f04809bb1",
+    "oracle_id": "48296cc0-0141-47c6-9ec8-ada6171fee6f",
+    "mana_cost": "{1}{R}{G}",
+    "type_line": "Creature — Goblin Advisor",
+    "oracle_text": "Exhaust abilities of other permanents you control cost {2} less to activate.\nExhaust — {4}{R}{G}: Creatures and Vehicles you control gain trample until end of turn. Put two +1/+1 counters on this creature. (Activate each exhaust ability only once.)",
+    "power": "3",
+    "toughness": "3",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Exhaust abilities of other permanents you control cost {2} less to activate.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Exhaust abilities of other permanents you control cost {2} less to activate.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Exhaust abilities of other permanents you control cost {2} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Exhaust abilities of other permanents you control cost {2} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Hulk, Gamma Goliath",
+    "id": "2fd034aa-35b3-4122-bd7d-f7a466b5c3fd",
+    "oracle_id": "3508fd7d-ca02-47f9-8b0a-525f7bde4f57",
+    "mana_cost": "{3}{R}{G}",
+    "type_line": "Legendary Creature — Gamma Berserker Hero",
+    "oracle_text": "Reach, trample\nPower-up abilities of other creatures you control cost {3} less to activate.\nPower-up — {6}{R}{G}: Put five +1/+1 counters on Hulk. (Activate each power-up ability only once. Reduce the cost by his mana cost if he entered this turn.)",
+    "power": "6",
+    "toughness": "5",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Power-up abilities of other creatures you control cost {3} less to activate.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Power-up abilities of other creatures you control cost {3} less to activate.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Power-up abilities of other creatures you control cost {3} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Power-up abilities of other creatures you control cost {3} less to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Eidolon of Obstruction",
+    "id": "02694fb6-7695-4296-b5d6-cfe60829f1e7",
+    "oracle_id": "15d38195-b661-42c1-82c9-1af2a3ba2ea5",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment Creature — Spirit",
+    "oracle_text": "First strike\nLoyalty abilities of planeswalkers your opponents control cost {1} more to activate.",
+    "power": "2",
+    "toughness": "1",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Loyalty abilities of planeswalkers your opponents control cost {1} more to activate.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Loyalty abilities of planeswalkers your opponents control cost {1} more to activate.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Loyalty abilities of planeswalkers your opponents control cost {1} more to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Loyalty abilities of planeswalkers your opponents control cost {1} more to activate.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Suppression Field",
+    "id": "0df7883b-f744-4410-a682-7391bd697afb",
+    "oracle_id": "63439f19-01e5-4ae1-9841-90493d62d0c8",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Activated abilities cost {2} more to activate unless they're mana abilities.",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Activated abilities cost {2} more to activate unless they're mana abilities.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Activated abilities cost {2} more to activate unless they're mana abilities.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Activated abilities cost {2} more to activate unless they're mana abilities.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Activated abilities cost {2} more to activate unless they're mana abilities.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Zirda, the Dawnwaker",
+    "id": "5fe75365-7f6d-4faf-9f55-0ba83821836a",
+    "oracle_id": "7b515c56-7b1e-42a8-82b0-1b30201fb162",
+    "mana_cost": "{1}{R/W}{R/W}",
+    "type_line": "Legendary Creature — Elemental Fox",
+    "oracle_text": "Companion — Each permanent card in your starting deck has an activated ability. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.\n{1}, {T}: Target creature can't block this turn.",
+    "power": "3",
+    "toughness": "3",
+    "frozen_input": "cards-20261003.json.xz",
+    "baseline": "baseline-e8740178",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Abilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Abilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.' [rule-path=unsupported-line-family]",
+    "baseline_route_diagnostics": [
+      {
+        "diagnostic": "parser does not yet support line family: 'Abilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "parse_input"
+      },
+      {
+        "diagnostic": "parser does not yet support line family: 'Abilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.' [rule-path=unsupported-line-family]",
+        "outcome": "failed",
+        "route": "oracle_only"
+      }
+    ],
+    "proposed_coverage": "source_complete_candidate_unvalidated",
+    "validation": "authored_not_run"
+  }
+]

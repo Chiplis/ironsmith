@@ -32,6 +32,7 @@ use crate::zone::Zone;
 pub(crate) struct DerivedGameView<'a> {
     game: &'a GameState,
     target_reference_bindings: crate::cost::prospective_references::CostReferenceBindings,
+    counter_removal_declaration: Option<crate::cost::CounterRemovalDeclaration>,
     memo_characteristic_context: Cell<Option<u64>>,
     all_effects: Arc<Vec<ContinuousEffect>>,
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
@@ -176,27 +177,6 @@ impl BattlefieldCharacteristicScope {
     }
 }
 
-/// Append an ability to a fast-path ability list unless it is already there,
-/// with the same identity rule the layer calculation uses (static abilities
-/// by instance id, everything else by value).
-fn push_fast_path_ability_once(abilities: &mut Vec<Ability>, candidate: Ability) {
-    let present = match &candidate.kind {
-        AbilityKind::Static(static_ability) => {
-            let instance_id = static_ability.instance_id();
-            abilities.iter().any(|existing| {
-                matches!(
-                    &existing.kind,
-                    AbilityKind::Static(existing) if existing.instance_id() == instance_id
-                )
-            })
-        }
-        _ => abilities.contains(&candidate),
-    };
-    if !present {
-        abilities.push(candidate);
-    }
-}
-
 fn battlefield_characteristic_scope(
     game: &GameState,
     effects: &[ContinuousEffect],
@@ -285,6 +265,7 @@ fn modification_can_change_spell_cost_modifier_presence(modification: &Modificat
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
@@ -308,6 +289,7 @@ fn modification_can_change_activated_ability_cost_modifier_presence(
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
@@ -329,6 +311,7 @@ fn modification_can_change_minimum_total_spell_mana_presence(modification: &Modi
     match modification {
         Modification::CopyOf { .. }
         | Modification::ChangeText { .. }
+        | Modification::RewriteText(_)
         | Modification::SetTextBox(_)
         | Modification::SetAbilities(_)
         | Modification::RemoveAllAbilities
@@ -386,6 +369,10 @@ fn static_ability_has_minimum_total_spell_mana(
 }
 
 impl<'a> DerivedGameView<'a> {
+    pub(crate) fn rule_maximum_blockers(&self, attacker: ObjectId) -> Option<usize> {
+        self.game.effect_store.cant_effects.maximum_blockers.get(&attacker).copied()
+    }
+
     /// A fresh activation-local target view. Its memo table must never reuse
     /// answers computed for another announced cost identity.
     pub(crate) fn with_target_reference_bindings(
@@ -396,6 +383,13 @@ impl<'a> DerivedGameView<'a> {
         self.spell_target_legality.get_mut().clear();
         self
     }
+
+    pub(crate) fn with_counter_removal_declaration(mut self, declaration: Option<crate::cost::CounterRemovalDeclaration>) -> Self {
+        self.counter_removal_declaration = declaration;
+        self.spell_target_legality.get_mut().clear();
+        self
+    }
+    pub(crate) fn counter_removal_declaration(&self) -> Option<crate::cost::CounterRemovalDeclaration> { self.counter_removal_declaration }
 
     pub(crate) fn target_reference_bindings(
         &self,
@@ -421,6 +415,7 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
+            counter_removal_declaration: None,
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
                 game,
             )),
@@ -464,6 +459,7 @@ impl<'a> DerivedGameView<'a> {
         Self {
             game,
             target_reference_bindings: Default::default(),
+            counter_removal_declaration: None,
             memo_characteristic_context: Cell::new(crate::continuous::characteristic_memo_context(
                 game,
             )),
@@ -737,42 +733,16 @@ impl<'a> DerivedGameView<'a> {
             // Mirror the no-effect ability-layer input: intrinsic basic-land
             // mana precedes level grants, then inactive static abilities are
             // dropped, so advertised and dispatch index spaces agree.
-            let mut abilities = object.abilities_vec();
-            for ability in crate::continuous::intrinsic_basic_land_mana_abilities(
-                &object.card_types,
-                &object.subtypes,
-            ) {
-                if !abilities.contains(&ability) {
-                    abilities.push(ability);
-                }
-            }
-            for (_, ability) in
-                crate::continuous::intrinsic_starting_counter_abilities(&object.card_types)
-            {
-                abilities.push(ability);
-            }
-            for level_ability in object.level_granted_abilities() {
-                for granted in level_ability.source_granted_inline_abilities() {
-                    let candidate = match &granted.kind {
-                        AbilityKind::Static(static_ability) => {
-                            crate::ability::Ability::static_ability(static_ability.clone())
-                        }
-                        _ => granted.clone(),
-                    };
-                    push_fast_path_ability_once(&mut abilities, candidate);
-                }
-                push_fast_path_ability_once(
-                    &mut abilities,
-                    crate::ability::Ability::static_ability(level_ability),
-                );
-            }
+            let mut abilities = crate::continuous::unmodified_ability_occurrences(
+                object, self.game.turn.turn_number,
+            );
             abilities.retain(|ability| match &ability.kind {
                 AbilityKind::Static(static_ability) => {
                     static_ability.is_active(self.game, object_id)
                 }
                 _ => true,
             });
-            Arc::new(abilities)
+            abilities.shared()
         } else {
             // The calculated abilities already live behind an `Arc`; sharing it
             // avoids deep-cloning every `Ability` (each carrying filters and
@@ -938,6 +908,9 @@ impl<'a> DerivedGameView<'a> {
             return self.candidate_ids_for_zone(Some(zone));
         }
 
+        if filter.match_captured_public_destination {
+            return crate::object_query::candidate_ids_for_filter(self.game, filter);
+        }
         if filter.any_of.is_empty() {
             return self.candidate_ids_for_zone(None);
         }
@@ -964,6 +937,9 @@ impl<'a> DerivedGameView<'a> {
         filter_ctx: &crate::filter::FilterContext,
     ) -> Vec<ObjectId> {
         self.ensure_memo_context();
+        if !crate::object_query::require_captured_public_collections(self.game, filter, filter_ctx) {
+            return Vec::new();
+        }
         if let Some(ids) = self.narrow_battlefield_candidates(filter, filter_ctx) {
             return ids;
         }

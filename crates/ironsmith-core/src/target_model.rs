@@ -85,6 +85,15 @@ pub enum ChooseSpec {
 }
 
 impl ChooseSpec {
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
+        match self.base() {
+            Self::Player(filter) | Self::EachPlayer(filter) | Self::PlayerOrPlaneswalker(filter) => filter.mentions_player_filter(needle),
+            Self::Object(filter) | Self::All(filter) => filter.mentions_player_filter(needle),
+            Self::ObjectOrPlayer(object, player) => object.mentions_player_filter(needle) || player.mentions_player_filter(needle),
+            _ => false,
+        }
+    }
+
     pub fn with_surface_hint(self, hint: ChooseSpecSurfaceHint) -> Self {
         self.with_surface_hints([hint])
     }
@@ -184,6 +193,24 @@ impl ChooseSpec {
             Self::WithCount(inner, _) | Self::WithCountValue(inner, _, _) => inner.inner(),
             _ => self,
         }
+    }
+
+    /// One required object with power at most its exact prospective counter cost.
+    pub fn is_activation_counter_power_bound(&self) -> bool {
+        let count = self.count();
+        if !self.is_target() || count.min != 1 || count.max != Some(1) || count.dynamic_x || count.up_to_x || self.count_value().is_some() { return false; }
+        let Self::Object(filter) = self.base() else { return false; };
+        let Some(crate::Comparison::LessThanOrEqualExpr(value)) = &filter.power else { return false; };
+        let quantity = match value.unhinted() {
+            crate::Value::EffectValue(id) => *id == crate::EffectId::ACTIVATION_COUNTER_COST,
+            crate::Value::PriorEffectMetric { effect_id, query } => *effect_id == crate::EffectId::ACTIVATION_COUNTER_COST
+                && query.source == crate::EffectMetricSource::Outcome && query.metric == crate::EffectMetric::Count
+                && query.action == Some(crate::PriorEffectAction::Removed) && query.filter.is_none() && query.player.is_none(),
+            _ => false,
+        };
+        quantity && filter.any_of.is_empty() && filter.toughness.is_none() && filter.mana_value.is_none()
+            && filter.color_count.is_none() && filter.card_type_count.is_none() && filter.tagged_constraints.is_empty()
+            && filter.target_set_aggregate_constraint.is_none() && filter.attached_to_object.is_none() && filter.blocked_or_was_blocked_by_this_turn.is_none()
     }
 
     pub fn base(&self) -> &ChooseSpec {

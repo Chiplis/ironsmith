@@ -97,6 +97,9 @@ pub(super) fn fixed_standard_gift_creature_definition(
     crate::model::token_definition::TokenDefinitionSpec::Creature(
         crate::model::token_definition::CreatureTokenShape {
             name: name.to_string(),
+            // The Gift keyword supplies the template; its implied colors
+            // and rules are not an explicit token-description sentence.
+            text_roles: None,
             card_types: vec![CardType::Creature],
             subtypes: vec![subtype],
             power_toughness,

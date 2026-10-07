@@ -69,6 +69,8 @@ pub(crate) fn search_zones(effect: &ChooseObjectsEffect) -> Result<Vec<Zone>, Ex
     let mut zones = Vec::new();
     if let Some(primary_zone) = effect.filter.zone.or(effect.zone) {
         zones.push(primary_zone);
+    } else if effect.filter.match_captured_public_destination {
+        zones.extend(crate::object_query::PUBLIC_REFERENCE_ZONES);
     } else {
         // A union filter ("a creature or a creature card in your graveyard")
         // carries its zones on the branches; search every branch zone.

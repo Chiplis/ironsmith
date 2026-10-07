@@ -1371,6 +1371,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::CountPlayers(PlayerFilter::Opponent) => Some("opponent you have".to_string()),
         Value::CountPlayers(PlayerFilter::Any) => Some("player".to_string()),
         Value::CountPlayers(PlayerFilter::NotYou) => Some("player other than you".to_string()),
+        Value::CountPlayers(player) => Some(
+            strip_leading_article(&describe_for_each_player_filter(player)).to_string(),
+        ),
         Value::CommanderCastCount(PlayerFilter::You) => Some(format!(
             "time you've cast {} commander from the command zone this game",
             if value.has_surface_hint(ValueSurfaceHint::IndefiniteCommanderReference) {
@@ -1887,6 +1890,7 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
 pub(crate) fn describe_compact_create_token(
     create_token: &crate::effects::CreateTokenEffect,
 ) -> Option<String> {
+    if create_token.text_roles.is_some() { return None; }
     if create_token.exile_at_end_of_combat
         || create_token.sacrifice_at_end_of_combat
         || create_token.sacrifice_at_next_end_step
@@ -2283,6 +2287,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);
+        if choose.count.is_random() {
+            selection.push_str(" at random");
+        }
         selection.push_str(&describe_runtime_choice_where_clause(choose).unwrap_or_default());
         selection.push_str(&where_x_suffix);
         return selection;
@@ -2295,17 +2302,23 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             count_text
         };
         let mut selection = describe_plural_selection(count_text, &card_desc);
+        if choose.count.is_random() {
+            selection.push_str(" at random");
+        }
         selection.push_str(&where_x_suffix);
         return selection;
     }
     // A max-one choice keeps its singular noun ("up to one creature").
+    let mut count_without_method = choose.count;
+    count_without_method.random = false;
+    let count_text = describe_choice_count(&count_without_method);
     let mut selection = if choose.count.max == Some(1) {
-        format!("{} {}", describe_choice_count(&choose.count), card_desc)
+        format!("{count_text} {card_desc}")
     } else {
         let count_prefix = if choose.count.is_any_number() {
-            format!("{} of", describe_choice_count(&choose.count))
+            format!("{count_text} of")
         } else {
-            describe_choice_count(&choose.count)
+            count_text
         };
         describe_plural_selection(count_prefix, &card_desc)
     };
@@ -2336,6 +2349,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
                 " with total {metric} less than or equal to {maximum}"
             ));
         }
+    }
+    if choose.count.is_random() {
+        selection.push_str(" at random");
     }
     selection.push_str(&where_x_suffix);
     selection
@@ -3067,7 +3083,7 @@ pub(super) fn describe_exiled_with_source_move(
     };
     let library_order = match library_placement.and_then(|(_, order)| order) {
         Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-        Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+        Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) => " in any order",
         None => "",
     };
     if matches!(&surface.subject, SubjectSurface::OwnerOfEachCard) && zone == Zone::Library {

@@ -123,7 +123,7 @@ pub(super) fn roll_replacement_batch(
         }
     })?;
     for _ in 0..total {
-        let face = draw_die_face(game, sides);
+        let face = draw_die_face(game, sides)?;
         rolls.push(ResolvedDieRoll {
             natural_result: face,
             result: face,

@@ -126,6 +126,24 @@ pub(crate) fn finish_simultaneous_originals_with_participants<'a, P, R, O: Origi
     ) -> Result<OriginalTriggerObservation, ExecutionError>,
     mut complete: impl FnMut(&mut GameState, &mut ExecutionContext<'a>, P) -> Result<R, ExecutionError>,
 ) -> Result<Vec<R>, ExecutionError> {
+    let participants = prepare_simultaneous_originals_with_participants(game, ctx, participants, receipt, observe)?;
+    let mut outcomes = Vec::with_capacity(participants.len());
+    for participant in participants {
+        outcomes.push(complete(game, ctx, participant)?);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Vec::new());
+        }
+    }
+    Ok(outcomes)
+}
+
+/// Freeze and observe a complete original group without running a completion.
+/// Resumable owners retain this exact prepared group across their draw boundary.
+pub(crate) fn prepare_simultaneous_originals_with_participants<'a, P, O: OriginalEffectOutput>(
+    game: &mut GameState, ctx: &mut ExecutionContext<'a>, mut participants: Vec<P>,
+    receipt: fn(&mut P) -> &mut SimultaneousEffectCommit<O>,
+    observe: impl FnOnce(&mut GameState, &mut ExecutionContext<'a>, &mut [P]) -> Result<OriginalTriggerObservation, ExecutionError>,
+) -> Result<Vec<P>, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(Vec::new());
     }
@@ -189,14 +207,7 @@ pub(crate) fn finish_simultaneous_originals_with_participants<'a, P, R, O: Origi
             }),
         )?;
     }
-    let mut outcomes = Vec::with_capacity(participants.len());
-    for participant in participants {
-        outcomes.push(complete(game, ctx, participant)?);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(Vec::new());
-        }
-    }
-    Ok(outcomes)
+    Ok(participants)
 }
 
 /// Shared dispatch for an already frozen continuation's original observer.
@@ -251,6 +262,7 @@ pub(crate) fn complete_committed_original_with_outputs<O: OriginalEffectOutput>(
     receipt: SimultaneousEffectCommit<O>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let original = receipt.outcome.into_outputs();
+    if ctx.resolution_stopped() { return Ok(original); }
     match receipt.completion {
         Some(completion) => {
             let mut outputs =
@@ -271,6 +283,10 @@ pub(crate) fn complete_committed_original_with_outputs<O: OriginalEffectOutput>(
 /// It receives failures and suspension as well, so result-slot restoration
 /// follows the same contract as ordinary execution.
 pub(crate) trait OriginalOutcomeAdapter: Send {
+    /// Release metadata reserved by an unstarted authored child when its
+    /// resolution stops. This is not an instruction result or an error.
+    fn cancel(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext) {}
+
     fn finish(
         self: Box<Self>,
         game: &mut GameState,
@@ -305,6 +321,18 @@ struct AdaptedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for AdaptedOriginalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let result = self.inner.prepare_draw_boundary_with_outputs(game, ctx, original);
+        match result {
+            Ok(receipt) => adapt_original_outcome_with_outputs(receipt, self.adapter, game, ctx),
+            Err(error) => self.adapter.finish_with_outputs(game, ctx, Err(error))
+                .map(crate::effects::SimultaneousEffectCommit::finished),
+        }
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -372,6 +400,20 @@ struct ScopedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
+        let result = self.inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+            .map(|receipt| with_original_execution_context(receipt, ctx));
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else { parent.restore(ctx); }
+        result
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -406,9 +448,11 @@ impl crate::effects::SimultaneousEffectCompletion for ScopedOriginalCompletion {
         original: EffectOutcome,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        self.context.restore_ref(ctx);
+        self.context.restore_ref_preserving_resolution_control(ctx);
         let result = self.inner.complete_with_outputs(game, ctx, original);
-        parent.restore(ctx);
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            parent.restore_preserving_resolution_control(ctx);
+        } else { parent.restore(ctx); }
         result
     }
 }
@@ -448,6 +492,35 @@ struct GroupedOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for GroupedOriginalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let Self { receipts, project } = *self;
+        let mut retained = Vec::new();
+        let mut paused = false;
+        for mut receipt in receipts {
+            inherit_original_observations(&mut receipt.outcome.outcome, &original.events);
+            if !paused && !ctx.resolution_stopped() {
+                if let Some(completion) = receipt.completion.take() {
+                    let original = receipt.outcome;
+                    receipt = completion.prepare_draw_boundary_with_outputs(game, ctx, original.outcome.clone())?;
+                    receipt.outcome.retain_owned_child(original);
+                }
+                paused = receipt.completion.is_some();
+            }
+            retained.push(receipt);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))));
+            }
+        }
+        if ctx.resolution_stopped() {
+            for receipt in &mut retained { receipt.completion = None; }
+        }
+        compose_original_commits_with_fallible_projection_outputs(retained, project)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -659,6 +732,10 @@ pub(crate) fn complete_prepared_original_with_outputs(
                 return Err(ExecutionError::Impossible(
                     "prepared compound payments exceed available resources".into(),
                 ));
+            }
+            proposal.prepare_selection(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
             proposal.prepare_original(game, ctx)?;
             if ctx.decision_maker.awaiting_choice() {

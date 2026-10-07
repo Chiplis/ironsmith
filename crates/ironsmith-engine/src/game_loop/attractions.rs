@@ -87,7 +87,7 @@ fn roll_to_visit_attractions_inner(
         .chain([completion])
         .flat_map(|outcome| outcome.events)
         .collect();
-    queue_triggers_from_reported_events(game, trigger_queue, events, true);
+    try_queue_triggers_from_reported_events(game, trigger_queue, events, true)?;
     let provenance = crate::provenance::ProvNodeId::default();
 
     let visits = game.attraction_visit_profiles(player, roll.result);

@@ -388,16 +388,13 @@ fn parse_creatures_you_control_anthem_with_terminal_period() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_granted_keyword_and_must_attack_clause_keeps_both_parts() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Hellraiser Variant")
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Hellraiser Variant")
         .parse_text("Creatures you control have haste and attack each combat if able.")
-        .expect_err(
-            "granted keyword + must-attack line should fail until full anthem subject support",
-        );
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported anthem subject"),
-        "expected unsupported anthem-subject parse error, got {message}"
-    );
+        .expect("the full keyword grant and source-owned attack rule should parse");
+    assert_eq!(definition.abilities.len(), 2);
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("Haste"), "{debug}");
+    assert!(debug.contains("RuleRestriction") && debug.contains("MustAttack"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

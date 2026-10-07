@@ -63,6 +63,8 @@ fn queued_upkeep_trigger(
         presentation_label: None,
     };
     TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,

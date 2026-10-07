@@ -7,6 +7,42 @@
 use crate::cards::builders::{TagKey, TriggerSpec};
 use crate::target::{ObjectFilter, ObjectRef, PlayerFilter};
 
+/// The native grouped zone-change matcher captures the size of its exact
+/// matching object set, after the event's owner/type/zone filters are applied.
+pub fn trigger_binds_grouped_zone_amount(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } =>
+            trigger_binds_grouped_zone_amount(trigger),
+        TriggerSpec::Either(left, right) => trigger_binds_grouped_zone_amount(left)
+            && trigger_binds_grouped_zone_amount(right),
+        TriggerSpec::ZoneChange(trigger) => trigger.count == ironsmith_core::trigger_model::CountMode::OneOrMore,
+        TriggerSpec::PutIntoGraveyardOneOrMore(_) | TriggerSpec::DiesOneOrMore(_) => true,
+        TriggerSpec::PutIntoGraveyardFromZone { one_or_more, .. }
+        | TriggerSpec::PutIntoGraveyardFromAnyExcept { one_or_more, .. }
+        | TriggerSpec::LeavesBattlefieldWithoutDying { one_or_more, .. }
+        | TriggerSpec::DiesDuringTurn { one_or_more, .. }
+        | TriggerSpec::DiesDuringCombat { one_or_more, .. } => *one_or_more,
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod grouped_zone_amount_tests {
+    use super::*;
+    #[test]
+    fn only_a_proven_grouped_zone_trigger_supplies_the_matching_object_count() {
+        let grouped = TriggerSpec::PutIntoGraveyardOneOrMore(ObjectFilter::creature());
+        let singular = TriggerSpec::PutIntoGraveyard(ObjectFilter::creature());
+        assert!(trigger_binds_grouped_zone_amount(&grouped));
+        assert!(!trigger_binds_grouped_zone_amount(&singular));
+        assert!(!trigger_binds_grouped_zone_amount(&TriggerSpec::Either(Box::new(grouped.clone()), Box::new(singular))));
+        let mut canonical = ironsmith_core::trigger_model::ZoneChangeTrigger::new();
+        assert!(!trigger_binds_grouped_zone_amount(&TriggerSpec::ZoneChange(canonical.clone())));
+        canonical.count = ironsmith_core::trigger_model::CountMode::OneOrMore;
+        assert!(trigger_binds_grouped_zone_amount(&TriggerSpec::ZoneChange(canonical)));
+    }
+}
+
 pub fn phase_step_trigger_object_reference_tag(trigger: &TriggerSpec) -> Option<TagKey> {
     if let TriggerSpec::WithIntro { trigger, .. } = trigger {
         return phase_step_trigger_object_reference_tag(trigger);
@@ -352,4 +388,44 @@ pub fn trigger_die_event_grouped(trigger: &TriggerSpec) -> Option<bool> {
         TriggerSpec::Either(a,b) => { let a = trigger_die_event_grouped(a)?; (trigger_die_event_grouped(b) == Some(a)).then_some(a) }
         _ => None,
     }
+}
+
+/// A bare demonstrative belongs to the single quantitative restriction on a
+/// completed cast. Multiple different quantities are intentionally ambiguous.
+pub fn trigger_cast_event_quantity(trigger: &TriggerSpec) -> Option<ironsmith_core::CastEventQuantity> {
+    use ironsmith_core::CastEventQuantity;
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => trigger_cast_event_quantity(trigger),
+        TriggerSpec::Either(left, right) => {
+            let left = trigger_cast_event_quantity(left)?;
+            (trigger_cast_event_quantity(right) == Some(left)).then_some(left)
+        }
+        TriggerSpec::SpellCast { filter: Some(filter), .. }
+        | TriggerSpec::SpellCastSameNameCardInZone { filter: Some(filter), .. } => {
+            let mut quantities = Vec::new();
+            if filter.mana_value_eq_counters_on_source.is_some() { quantities.push(CastEventQuantity::ManaValue); }
+            if let Some((color, _)) = filter.mana_symbol_count { quantities.push(CastEventQuantity::ManaSymbols(color)); }
+            // Qualified target relations retain their separately captured subset
+            // count. A bare arity counts the completed cast's distinct targets.
+            if filter.target_count.is_some() && filter.targets_player.is_none()
+                && filter.targets_object.is_none() && filter.targets_only_player.is_none()
+                && filter.targets_only_object.is_none() {
+                quantities.push(CastEventQuantity::DistinctTargets);
+            }
+            if filter.any_of.is_empty() && quantities.len() == 1 { quantities.pop() } else { None }
+        }
+        _ => None,
+    }
+}
+
+/// Legacy relation-qualified target counts use the matcher's captured subset.
+/// An additional quantified characteristic cannot silently win that binding.
+pub fn spell_cast_filter_binds_target_count(filter: &ObjectFilter) -> bool {
+    if filter.mana_symbol_count.is_some() || filter.mana_value_eq_counters_on_source.is_some() {
+        return false;
+    }
+    filter.targets_player.is_some() || filter.targets_object.is_some()
+        || filter.targets_only_player.is_some() || filter.targets_only_object.is_some()
+        || filter.target_count.is_some()
+        || filter.any_of.iter().any(spell_cast_filter_binds_target_count)
 }

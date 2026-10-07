@@ -11,8 +11,31 @@ fn tagged(tag: crate::tag::CompilerReferenceTag, surface: &str) -> Box<ChooseSpe
 
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
+    // A plural possessive names the exact preceding object set. This is a
+    // sum over that set, not the first card and not a fresh zone-wide search.
+    if words.starts_with(&["their", "total", "mana", "value"]) {
+        return Some((Value::TotalManaValue(ObjectFilter::tagged(Tag::It.bind())), 4));
+    }
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
+    // A definite exiled card can be linked by a different ability of this
+    // source. It is not an unqualified result of the previous instruction.
+    // The explicit "this way" surface remains owned by prior-action metrics.
+    let linked_characteristic = match rest {
+        ["power", "of", "the", "exiled", "card", tail @ ..]
+            if !tail.starts_with(&["this", "way"]) =>
+                Some((Value::PowerOf(tagged(Tag::SourceExiled, "the exiled card")), 5)),
+        ["toughness", "of", "the", "exiled", "card", tail @ ..]
+            if !tail.starts_with(&["this", "way"]) =>
+                Some((Value::ToughnessOf(tagged(Tag::SourceExiled, "the exiled card")), 5)),
+        ["mana", "value", "of", "the", "exiled", "card", tail @ ..]
+            if !tail.starts_with(&["this", "way"]) =>
+                Some((Value::ManaValueOf(tagged(Tag::SourceExiled, "the exiled card")), 6)),
+        _ => None,
+    };
+    if let Some((value, used)) = linked_characteristic {
+        return Some((value, offset + used));
+    }
     let bearer_len = if rest.starts_with(&["your", "ring"])
         && rest
             .get(2)
@@ -242,6 +265,9 @@ mod tests {
             "the milled card's mana value",
             "the exiled creature card's power",
             "the exiled creature card's toughness",
+            "the power of the exiled card",
+            "the toughness of the exiled card",
+            "the mana value of the exiled card",
         ] {
             let tokens = crate::lexer::lex_line(text, 0).unwrap();
             let (value, used) = parse_value_expr_tokens(&tokens).unwrap();
@@ -255,6 +281,20 @@ mod tests {
         assert!(matches!(value, Value::PendingPriorEffectMetric(query)
             if query.action == Some(ironsmith_core::PriorEffectAction::Milled)
                 && query.metric == ironsmith_core::EffectMetric::FirstManaValue));
+        for characteristic in ["power", "toughness"] {
+            let words = ["the", characteristic, "of", "the", "exiled", "card"];
+            let (value, used) = parse(&words).unwrap();
+            assert_eq!(used, words.len());
+            let spec = match value {
+                Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec,
+                other => panic!("source-linked characteristic: {other:?}"),
+            };
+            assert!(matches!(spec.base(), ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()));
+            let mut this_way = words.to_vec();
+            this_way.extend(["this", "way"]);
+            assert!(parse(&this_way).is_none(), "explicit result metrics keep their producer");
+        }
         for words in [
             vec!["that", "sagas", "power"],
             vec!["the", "number", "of", "counters", "it", "will", "have"],

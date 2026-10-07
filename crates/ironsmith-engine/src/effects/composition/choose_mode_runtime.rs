@@ -38,6 +38,31 @@ fn related_object_ids_for_mode(
     mode: &EffectMode,
     ctx: &ExecutionContext,
 ) -> Option<Vec<ObjectId>> {
+    // An option that selects one captured group must show that group, rather
+    // than unioning it with the complementary cleanup performed afterward.
+    // These are typed input domains; labels never determine the preview.
+    if let Some(first) = mode.effects.first() {
+        let mut first = first;
+        while let Some(child) = first.0.transparent_child_effect() { first = child; }
+        if let Some(moved) = first.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some((chosen, _)) = moved.tagged_destinations.first()
+            && let crate::target::ChooseSpec::All(filter) = moved.target.base()
+        {
+            let filter = filter.clone().match_tagged(chosen.clone(), crate::target::TaggedOpbjectRelation::SameObjectId);
+            return crate::effects::helpers::preview_object_ids_for_choose_spec(
+                game, &crate::target::ChooseSpec::All(filter), ctx,
+            );
+        }
+        if let Some(chosen) = first.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && !chosen.is_search
+            && chosen.filter.tagged_constraints.iter().any(|constraint|
+                constraint.relation == crate::target::TaggedOpbjectRelation::SameObjectId)
+        {
+            return crate::effects::helpers::preview_object_ids_for_choose_spec(
+                game, &crate::target::ChooseSpec::All(chosen.filter.clone()), ctx,
+            );
+        }
+    }
     let mut saw_preview = false;
     let mut ids = Vec::new();
 
@@ -636,6 +661,10 @@ pub(super) fn selected_mode_cursor(
 }
 
 impl crate::effects::ActionProgramCursor for SelectedModalCursor {
+    fn finish_stopped(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        self.finish()
+    }
     fn next_action(
         &mut self,
         game: &mut GameState,

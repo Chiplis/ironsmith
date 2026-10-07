@@ -8,6 +8,7 @@ use super::{ErasedPayload, decode_as};
 
 pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, String> {
     match kind {
+        "ChangeTextEffect" => decode_as::<ironsmith_core::ChangeTextEffect>(payload).map(Some),
         "AmassEffect" => decode_as::<ironsmith_core::AmassEffect>(payload).map(Some),
         "EmpowerJaceEffect" => decode_as::<ironsmith_core::EmpowerJaceEffect>(payload).map(Some),
         "ApplyContinuousEffect" => decode_as::<
@@ -87,6 +88,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "SuspectEffect" => decode_as::<ironsmith_core::SuspectEffect>(payload).map(Some),
         "TapEffect" => decode_as::<ironsmith_core::TapEffect>(payload).map(Some),
         "TransformEffect" => decode_as::<ironsmith_core::TransformEffect>(payload).map(Some),
+        "TurnFaceDownEffect" => decode_as::<ironsmith_core::TurnFaceDownEffect>(payload).map(Some),
         "TurnFaceUpEffect" => decode_as::<ironsmith_core::TurnFaceUpEffect>(payload).map(Some),
         "UnattachObjectsEffect" => {
             decode_as::<ironsmith_core::UnattachObjectsEffect>(payload).map(Some)
@@ -192,6 +194,7 @@ pub(super) fn map_card_ids(
             ironsmith_core::ExchangeControlEffect,
         >(payload, context)
         .map(Some),
+        "ChangeTextEffect" => super::card_graph::map_payload_as::<ironsmith_core::ChangeTextEffect>(payload, context).map(Some),
         "ExchangeTextBoxesEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ExchangeTextBoxesEffect,
         >(payload, context)
@@ -282,6 +285,10 @@ pub(super) fn map_card_ids(
         }
         "TransformEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::TransformEffect>(payload, context)
+                .map(Some)
+        }
+        "TurnFaceDownEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::TurnFaceDownEffect>(payload, context)
                 .map(Some)
         }
         "TurnFaceUpEffect" => {

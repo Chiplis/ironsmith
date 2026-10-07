@@ -1095,6 +1095,15 @@
         return format!("Backup {}", backup.amount);
     }
     if let Some(bolster) = effect.downcast_ref::<crate::effects::BolsterEffect>() {
+        if let Some(value) = &bolster.amount_value {
+            return if value_prefers_where_x(value) {
+                let basis = describe_where_x_basis(value)
+                    .map(|basis| format!(", where X is {basis}")).unwrap_or_default();
+                format!("Bolster X{basis}")
+            } else {
+                format!("Bolster {}", describe_value(value))
+            };
+        }
         return format!("Bolster {}", bolster.amount);
     }
     if let Some(support) = effect.downcast_ref::<crate::effects::SupportEffect>() {
@@ -1172,8 +1181,8 @@
             });
         }
         if cant.duration == Until::EndOfTurn && cant.start == crate::effect::RestrictionStart::Immediate
-            && let crate::effect::Restriction::BeTargetedPlayerFrom(player, sources) = &cant.restriction
-            && sources == &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+            && let crate::effect::Restriction::PlayerHexproofFrom(player, sources) = &cant.restriction
+            && sources == &ObjectFilter::default()
         {
             let subject = describe_player_filter(player);
             return format!("{} {} hexproof until end of turn", capitalize_first(&subject), player_verb(&subject, "gain", "gains"));
@@ -1645,6 +1654,18 @@
                 format!("Investigate for each {basis}")
             } else {
                 format!("{player} investigates for each {basis}")
+            };
+        }
+        if let Some((multiplier, basis)) = describe_for_each_multiplier_and_basis(&investigate.count) {
+            let repetitions = match multiplier {
+                1 => "once".to_string(),
+                2 => "twice".to_string(),
+                count => format!("{count} times"),
+            };
+            return if player == "you" {
+                format!("Investigate {repetitions} for each {basis}")
+            } else {
+                format!("{player} investigates {repetitions} for each {basis}")
             };
         }
         if let Some(count) = describe_effect_count_backref(&investigate.count) {
@@ -2431,6 +2452,12 @@
     }
     if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
         let player = describe_choose_spec(&pay_mana.player);
+        if pay_mana.cost.has_waterbend_obligation() {
+            let surface = pay_mana.cost.payment_surface();
+            if let Some(amount) = surface.strip_prefix("Waterbend ") {
+                return format!("{} {} {}", player, player_verb(&player, "waterbend", "waterbends"), amount);
+            }
+        }
         return format!(
             "{} {} {}",
             player,
@@ -2726,6 +2753,15 @@
             return format!(
                 "Choose a color of {}. Add one mana of that color{}",
                 add_any_color_among.filter.description(),
+                describe_add_mana_destination_suffix(&add_any_color_among.player)
+            );
+        }
+        if add_any_color_among.filter.is_source_only() {
+            let source = add_any_color_among.filter.source_surface.as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this permanent".to_string());
+            return format!(
+                "Add one mana of any of {source}'s colors{}",
                 describe_add_mana_destination_suffix(&add_any_color_among.player)
             );
         }
@@ -3070,81 +3106,27 @@
                 describe_choose_spec(spec)
             }
         };
-        if redirect_next_time.all_this_turn {
-            let destination_text = match redirect_next_time.destination {
-                crate::effects::RedirectNextTimeDamageDestination::SourceObject => {
-                    "this creature".to_string()
-                }
-                crate::effects::RedirectNextTimeDamageDestination::Controller => "you".to_string(),
-                crate::effects::RedirectNextTimeDamageDestination::SourceController => {
-                    if source_text.ends_with("spell") {
-                        "that spell's controller".to_string()
-                    } else {
-                        "that source's controller".to_string()
-                    }
-                }
-                crate::effects::RedirectNextTimeDamageDestination::TargetObject => {
-                    describe_choose_spec(
-                        redirect_next_time
-                            .destination_target
-                            .as_ref()
-                            .expect("redirect-next damage destination target"),
-                    )
-                }
-            };
-            return if let Some(target) = &redirect_next_time.target {
-                format!(
-                    "All damage that would be dealt to {} this turn by {source_text} is dealt to {destination_text} instead",
-                    describe_choose_spec(target)
-                )
-            } else {
-                format!(
-                    "All damage that would be dealt this turn by {source_text} is dealt to {destination_text} instead"
-                )
-            };
-        }
-        return match redirect_next_time.destination {
-            crate::effects::RedirectNextTimeDamageDestination::SourceObject => format!(
-                "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
-                describe_choose_spec(
-                    redirect_next_time
-                        .target
-                        .as_ref()
-                        .expect("redirect-next damage target")
-                )
-            ),
-            crate::effects::RedirectNextTimeDamageDestination::Controller => format!(
-                "The next time {source_text} would deal damage to {} this turn, that source deals that damage to you instead",
-                describe_choose_spec(
-                    redirect_next_time
-                        .target
-                        .as_ref()
-                        .expect("redirect-next damage target")
-                )
-            ),
-            crate::effects::RedirectNextTimeDamageDestination::SourceController => format!(
-                "The next time {source_text} would deal damage this turn, that damage is dealt to {} instead",
-                if source_text.ends_with("spell") {
-                    "that spell's controller"
-                } else {
-                    "that source's controller"
-                }
-            ),
-            crate::effects::RedirectNextTimeDamageDestination::TargetObject => format!(
-                "The next time {source_text} would deal damage to {} this turn, that damage is dealt to {} instead",
-                describe_choose_spec(
-                    redirect_next_time
-                        .target
-                        .as_ref()
-                        .expect("redirect-next damage target")
-                ),
-                describe_choose_spec(
-                    redirect_next_time
-                        .destination_target
-                        .as_ref()
-                        .expect("redirect-next damage destination target")
-                )
-            ),
+        let damage = if redirect_next_time.combat_only { "combat damage" } else { "damage" };
+        let recipient = redirect_next_time.target.as_ref()
+            .map(|target| format!(" to {}", describe_choose_spec(target))).unwrap_or_default();
+        let destination = match redirect_next_time.destination {
+            crate::effects::RedirectNextTimeDamageDestination::SourceObject => "this creature".into(),
+            crate::effects::RedirectNextTimeDamageDestination::DamageSource => "itself".into(),
+            crate::effects::RedirectNextTimeDamageDestination::Controller => "you".into(),
+            crate::effects::RedirectNextTimeDamageDestination::SourceController => "its controller".into(),
+            crate::effects::RedirectNextTimeDamageDestination::TargetObject => describe_choose_spec(
+                redirect_next_time.destination_target.as_ref().expect("redirect-next damage destination target")),
+        };
+        return if redirect_next_time.all_this_turn {
+            // Preserve the existing all-by-source grammar surface. Its controller
+            // is the event source's controller, never the ability's controller.
+            let destination = if redirect_next_time.destination == crate::effects::RedirectNextTimeDamageDestination::SourceController {
+                if source_text.ends_with("spell") { "that spell's controller".to_string() }
+                else { "that source's controller".to_string() }
+            } else { destination };
+            format!("All {damage} that would be dealt{recipient} this turn by {source_text} is dealt to {destination} instead")
+        } else {
+            format!("The next time {source_text} would deal {damage}{recipient} this turn, that source deals that damage to {destination} instead")
         };
     }
     if let Some(redirect_all) =
@@ -5255,7 +5237,9 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
-        if let Some(price) = &grant_play_tagged.alternative_cost {
+        let source_presence_free_price = grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
+            && grant_play_tagged.alternative_cost.as_ref().is_some_and(|price| price.as_all().is_some_and(|costs| costs.is_empty()));
+        if let Some(price) = &grant_play_tagged.alternative_cost && !source_presence_free_price {
             let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
             let payment = describe_casting_price_payment(price);
             let payment = payment.strip_prefix("paying ").map(|tail| format!("pay {tail}"))
@@ -5316,6 +5300,11 @@
                 } else {
                     "for as long as it remains exiled".to_string()
                 }
+            }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => {
+                let source = grant_play_tagged.surface.as_ref().and_then(|surface| surface.battlefield_source.as_ref())
+                    .map(ironsmith_core::SourceReferenceSurface::display_text).unwrap_or_else(|| "this source".into());
+                format!("for as long as {source} remains on the battlefield")
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
                 let source = grant_play_tagged
@@ -5458,8 +5447,9 @@
             };
             return format!("Until end of turn, you may cast spells from among {cards_text}");
         }
+        let free_price = if source_presence_free_price { " without paying its mana cost" } else { "" };
         let mut rendered = format!(
-            "{} may {verb} {object_text} {timing}",
+            "{} may {verb} {object_text}{free_price} {timing}",
             describe_player_filter(&grant_play_tagged.player),
         );
         if let Some(cost) = &grant_play_tagged.spell_cost_increase {
@@ -5570,6 +5560,9 @@
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
                 "for as long as you control this source"
             }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => {
+                "for as long as this source remains on the battlefield"
+            }
         };
         return format!(
             "{} may cast {object_text}{zone_text} {timing_text} without paying {cost_text}",
@@ -5590,6 +5583,7 @@
                 crate::filter::AlternativeCastKind::Madness => "madness",
                 crate::filter::AlternativeCastKind::Miracle => "miracle",
                 crate::filter::AlternativeCastKind::Suspend => "suspend",
+                crate::filter::AlternativeCastKind::Foretell => "foretell",
             }
         }
 
@@ -5852,6 +5846,13 @@
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
             .unwrap_or(spell_text.as_str());
+        if matches!(grant_next_spell_ability.mode, ironsmith_core::NextSpellGrantMode::CastTiming | ironsmith_core::NextSpellGrantMode::PlayTiming) {
+            let play = grant_next_spell_ability.mode == ironsmith_core::NextSpellGrantMode::PlayTiming;
+            let verb = if play { "play" } else { "cast" };
+            let participle = if play { "played" } else { "cast" };
+            let subject = if play { spell_text.replace("spell", "card") } else { spell_text.to_string() };
+            return format!("The next {subject} {player_text} {verb} this turn can be {participle} as though it had flash");
+        }
         let granted_text = describe_inline_ability(&grant_next_spell_ability.ability);
         if spell_text.contains("from your hand") && player_text == "you" {
             return format!(
@@ -5885,6 +5886,7 @@
             match &move_counters.count {
                 ironsmith_core::effect::CounterMoveAmount::Exact(count) => describe_put_counter_phrase(count, move_counters.counter_type),
                 ironsmith_core::effect::CounterMoveAmount::AnyNumber => format!("any number of {} counters", move_counters.counter_type.description()),
+                ironsmith_core::effect::CounterMoveAmount::All => format!("all {} counters", move_counters.counter_type.description()),
             },
             describe_choose_spec(&move_counters.from),
             describe_choose_spec(&move_counters.to)

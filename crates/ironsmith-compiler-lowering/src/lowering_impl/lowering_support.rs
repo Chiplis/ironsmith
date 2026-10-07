@@ -56,72 +56,6 @@ use crate::model::reference_state::{
     LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports,
 };
 
-pub fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
-    fn replace_value(value: &mut Value) {
-        let hints = value.surface_hints().to_vec();
-        if matches!(
-            value.unhinted(),
-            Value::PendingPriorEffectMetric(query)
-                if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
-        ) {
-            *value = Value::X.with_surface_hints(hints);
-            return;
-        }
-        match value {
-            Value::Add(left, right) | Value::Min(left, right) => {
-                replace_value(left);
-                replace_value(right);
-            }
-            Value::Scaled(inner, _)
-            | Value::DividedRoundedDown(inner, _)
-            | Value::HalfRoundedDown(inner)
-            | Value::SurfaceHinted { value: inner, .. } => replace_value(inner),
-            _ => {}
-        }
-    }
-
-    fn replace_effect(effect: &mut EffectAst) {
-        if let EffectAst::SubjectVerb(subject_verb) = effect {
-            match &mut subject_verb.action {
-                SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
-                    amount, ..
-                })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
-                    amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
-                    count: amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
-                    count: amount,
-                    ..
-                })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCountersAll {
-                    count: amount,
-                    ..
-                }) => replace_value(amount),
-                _ => {}
-            }
-        }
-        for_each_nested_effects_mut(effect, true, |nested| {
-            for nested_effect in nested {
-                replace_effect(nested_effect);
-            }
-        });
-    }
-
-    for effect in effects {
-        replace_effect(effect);
-    }
-}
-
 fn value_counts_creature_deaths(value: &Value) -> bool {
     match value {
         Value::CreaturesDiedThisTurn
@@ -2597,9 +2531,14 @@ fn stage_effects_from_normalized(
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     initial_env.milling_event_filter = config.milling_event_filter.clone();
     initial_env.dice_event_grouped = config.dice_event_grouped;
+    initial_env.cast_event_quantity = config.cast_event_quantity;
     initial_env.life_event_binding = config.life_event_binding.clone();
     initial_env.life_amount_producers = config.life_amount_producers.clone();
     initial_env.die_result_producers = config.die_result_producers.clone();
+    initial_env.coin_result_producers = config.coin_result_producers.clone();
+    initial_env.number_result_producers = config.number_result_producers.clone();
+    initial_env.color_result_producers = config.color_result_producers.clone();
+    initial_env.reveal_result_producers = config.reveal_result_producers.clone();
     let implicit_trigger_references = include_trigger_prelude.then(|| {
         semantic_effects
             .iter()
@@ -3385,6 +3324,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
             milling_event_filter: trigger.and_then(
                 ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter,
             ),
+            cast_event_quantity: trigger.and_then(ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity),
             dice_event_grouped: trigger.and_then(
                 ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped,
             ),
@@ -3581,7 +3521,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
             | PredicateAst::ItMatches(_)
             | PredicateAst::ItMatchedLastKnown(_)
             | PredicateAst::TargetMatches(_) => true,
-            PredicateAst::TaggedMatches(tag, _)
+            PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _)
                 if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
                     || tag.as_str() == "triggering" =>
             {
@@ -3643,7 +3583,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
 
     fn predicate_references_triggering_tag(predicate: &PredicateAst) -> bool {
         match predicate {
-            PredicateAst::TaggedMatches(tag, _) => tag.as_str() == "triggering",
+            PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _) => tag.as_str() == "triggering",
             PredicateAst::Not(inner) => predicate_references_triggering_tag(inner),
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_references_triggering_tag(left)
@@ -4103,6 +4043,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
                 ironsmith_compiler_semantic::trigger_references::trigger_milling_event_filter(
                     &trigger,
                 ),
+            cast_event_quantity: ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(&trigger),
             dice_event_grouped:
                 ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(&trigger),
             life_event_binding:
@@ -4291,6 +4232,7 @@ fn lower_parsed_ability_internal(
     };
 
     if !activated.effects.is_empty() || !activated.choices.is_empty() {
+        validate_counter_cost_target_program(activated)?;
         mark_activated_mana_output_if_needed(activated);
         return Ok(ability);
     }
@@ -4306,8 +4248,21 @@ fn lower_parsed_ability_internal(
     )?;
     activated.effects = lowered.effects;
     activated.choices = lowered.choices;
+    validate_counter_cost_target_program(activated)?;
     mark_activated_mana_output_if_needed(activated);
     Ok(ability)
+}
+
+fn validate_counter_cost_target_program(activated: &crate::ability::ActivatedAbility) -> Result<(), CardTextError> {
+    fn collect(effect: &Effect, targets: &mut Vec<ChooseSpec>) {
+        if let Some(spec) = effect.target_spec().filter(|spec| spec.is_target()) && !targets.contains(spec) { targets.push(spec.clone()); }
+        effect.visit_child_effects(&mut |child| collect(child, targets));
+    }
+    let mut targets = Vec::new(); for effect in &activated.effects { collect(effect, &mut targets); }
+    if targets.iter().any(ChooseSpec::is_activation_counter_power_bound) && (targets.len() != 1 || !targets[0].is_activation_counter_power_bound()) {
+        return Err(CardTextError::ParseError("counter-cost declaration supports one power-bounded target requirement".into()));
+    }
+    Ok(())
 }
 
 fn mark_activated_mana_output_if_needed(activated: &mut crate::ability::ActivatedAbility) {
@@ -4534,6 +4489,8 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         | KeywordAction::Soulbond
         | KeywordAction::Soulshift(_)
         | KeywordAction::SoulshiftValue(_)
+        | KeywordAction::Mobilize(_)
+        | KeywordAction::MobilizeValue { .. }
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
         | KeywordAction::Encore(_)
@@ -4581,6 +4538,12 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         KeywordAction::HexproofFrom(filter) => Some(StaticAbility::hexproof_from(filter.clone())),
         KeywordAction::ProtectionFrom(colors) => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
+        )),
+        KeywordAction::ProtectionFromOwnColors => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::OwnColors,
+        )),
+        KeywordAction::ProtectionFromColorsAmong(filter) => Some(StaticAbility::protection(
+            crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
         )),
         KeywordAction::ProtectionFromAllColors => Some(StaticAbility::protection(
             crate::ability::ProtectionFrom::AllColors,
@@ -5929,7 +5892,8 @@ fn lower_compiler_activated_ability_core(
         mana_usage_restrictions.push(lowered);
     }
     Ok(crate::ability::ActivatedAbility {
-        mana_cost: crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
+        keyword: activated.keyword,
+        mana_cost: crate::lowering::cost_materialization::materialize_compiler_activation_total_cost(
             &activated.mana_cost,
         )?,
         effects,
@@ -7086,34 +7050,7 @@ mod tests {
         assert!(control_loss.watch_ability_source);
     }
 
-    #[test]
-    fn dynamic_remove_counter_cost_metrics_bind_counter_followups_to_x() {
-        let query = ironsmith_core::PriorEffectMetricQuery::new(
-            ironsmith_core::EffectMetricSource::AffectedObjects,
-            ironsmith_core::EffectMetric::Count,
-        )
-        .with_action(ironsmith_core::PriorEffectAction::Removed);
-        let mut effects = vec![EffectAst::subject_verb_put_counters(
-            crate::object::CounterType::PlusOnePlusOne,
-            Value::PendingPriorEffectMetric(query)
-                .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
-            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-            None,
-            false,
-        )];
 
-        replace_pending_removed_counter_metrics_with_x(&mut effects);
-
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }),
-            ..
-        }) = &effects[0]
-        else {
-            panic!("expected a typed counter-placement effect");
-        };
-        assert_eq!(count.unhinted(), &Value::X);
-        assert!(count.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay));
-    }
 
     #[test]
     fn triggering_blocker_prelude_uses_event_identity_not_live_blocking_state() {

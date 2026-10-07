@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Fiery Gambit",
+    "source_id": "6e2f138d-a39d-4bff-b334-9f556311881b",
+    "oracle_id": "78497c54-7179-41b7-9454-7b915fd96cd5",
+    "oracle_text": "Flip a coin until you lose a flip or choose to stop flipping. If you lose a flip, Fiery Gambit has no effect. If you win one or more flips, Fiery Gambit deals 3 damage to target creature. If you win two or more flips, Fiery Gambit deals 6 damage to each opponent. If you win three or more flips, draw nine cards and untap all lands you control.",
+    "text": "Mana cost: {2}{R}\nType: Sorcery\nFlip a coin until you lose a flip or choose to stop flipping. If you lose a flip, Fiery Gambit has no effect. If you win one or more flips, Fiery Gambit deals 3 damage to target creature. If you win two or more flips, Fiery Gambit deals 6 damage to each opponent. If you win three or more flips, draw nine cards and untap all lands you control.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "parser does not yet support line family: 'Flip a coin until you lose a flip or choose to stop flipping. If you lose a flip, Fiery Gambit has no effect. If you win one or more flips, Fiery Gambit deals 3 damage to target creature. If you win two or more flips, Fiery Gambit deals 6 damage to each opponent. If you win three or more flips, draw nine cards and untap all lands you control.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Flip a coin until you lose a flip or choose to stop flipping. If you lose a flip, Fiery Gambit has no effect. If you win one or more flips, Fiery Gambit deals 3 damage to target creature. If you win two or more flips, Fiery Gambit deals 6 damage to each opponent. If you win three or more flips, draw nine cards and untap all lands you control.' [rule-path=unsupported-line-family]",
+    "baseline_content_hash": "de36fb5bb474ba72e922f35ec3c54d65f24648e7d671154a797d59f74ea1f301",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Squee's Revenge",
+    "source_id": "664c8130-311b-4f65-853d-02f8e57ebe5c",
+    "oracle_id": "3c9f3f26-339e-459e-9847-4e33aafb6f9b",
+    "oracle_text": "Choose a number. Flip a coin that many times or until you lose a flip, whichever comes first. If you win all the flips, draw two cards for each flip.",
+    "text": "Mana cost: {1}{U}{R}\nType: Sorcery\nChoose a number. Flip a coin that many times or until you lose a flip, whichever comes first. If you win all the flips, draw two cards for each flip.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported chosen object filter in choose clause (clause: 'choose a number') [rule-path=you-choose-objects-with-count > clause-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported chosen object filter in choose clause (clause: 'choose a number') [rule-path=you-choose-objects-with-count > clause-reading] [rule-path=statement-line > statement-probe]",
+    "baseline_content_hash": "33ffaa67d30d1c4678a28126f3dc150df9327e9898bea3be52c79e0ececebb03",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Planar Chaos",
+    "source_id": "a7ce1d3e-6335-447b-8a70-1c906fef1547",
+    "oracle_id": "f0864dbb-4d91-4282-a774-7b225e649ca8",
+    "oracle_text": "At the beginning of your upkeep, flip a coin. If you lose the flip, sacrifice this enchantment.\nWhenever a player casts a spell, that player flips a coin. If they lose the flip, counter that spell.",
+    "text": "Mana cost: {2}{R}\nType: Enchantment\nAt the beginning of your upkeep, flip a coin. If you lose the flip, sacrifice this enchantment.\nWhenever a player casts a spell, that player flips a coin. If they lose the flip, counter that spell.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported predicate (predicate: 'they lose flip') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported predicate (predicate: 'they lose flip') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "baseline_content_hash": "fc54f283a1152930e46bfd38eae06ba3b95043c2d1055bfb156eca159d000fed",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Crooked Scales",
+    "source_id": "3352ba84-22cc-40e3-ae76-ca5cef8c2dfb",
+    "oracle_id": "49c47768-fcc7-4091-b06d-d8a2bd7d1cc9",
+    "oracle_text": "{4}, {T}: Flip a coin. If you win the flip, destroy target creature an opponent controls. If you lose the flip, destroy target creature you control unless you pay {3} and repeat this process.",
+    "text": "Mana cost: {4}\nType: Artifact\n{4}, {T}: Flip a coin. If you win the flip, destroy target creature an opponent controls. If you lose the flip, destroy target creature you control unless you pay {3} and repeat this process.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported repeat this process effect tail; oracle-only fallback also failed: unsupported repeat this process effect tail",
+    "baseline_content_hash": "dc09b23efd93ffef6206027abca4bb2a47448984feaf458e55bf1564ce019e4c",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Mana Clash",
+    "source_id": "004909d8-b362-44c4-ae6f-96b28546fb72",
+    "oracle_id": "a2f5a5fd-14dc-48e8-bdb0-984a83288023",
+    "oracle_text": "You and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.",
+    "text": "Mana cost: {R}\nType: Sorcery\nYou and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "parser does not yet support line family: 'You and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'You and target opponent each flip a coin. Mana Clash deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.' [rule-path=unsupported-line-family]",
+    "baseline_content_hash": "8fbae4d9a126a547bfeef0286359660f1eccdcf4eda1661749236c92b6350f84",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Game of Chaos",
+    "source_id": "0e4aaab5-a202-4905-839b-ebf39b910082",
+    "oracle_id": "b6756608-a618-4e26-a090-ea8fc992def1",
+    "oracle_text": "Flip a coin. If you win the flip, you gain 1 life and target opponent loses 1 life, and you decide whether to flip again. If you lose the flip, you lose 1 life and that opponent gains 1 life, and that player decides whether to flip again. Double the life stakes with each flip.",
+    "text": "Mana cost: {R}{R}{R}\nType: Sorcery\nFlip a coin. If you win the flip, you gain 1 life and target opponent loses 1 life, and you decide whether to flip again. If you lose the flip, you lose 1 life and that opponent gains 1 life, and that player decides whether to flip again. Double the life stakes with each flip.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "parser does not yet support line family: 'Flip a coin. If you win the flip, you gain 1 life and target opponent loses 1 life, and you decide whether to flip again. If you lose the flip, you lose 1 life and that opponent gains 1 life, and that player decides whether to flip again. Double the life stakes with each flip.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Flip a coin. If you win the flip, you gain 1 life and target opponent loses 1 life, and you decide whether to flip again. If you lose the flip, you lose 1 life and that opponent gains 1 life, and that player decides whether to flip again. Double the life stakes with each flip.' [rule-path=unsupported-line-family]",
+    "baseline_content_hash": "7a48629e81a0022230de89ccd49d0a1e73231640e983df374765553ff22190dd",
+    "proposed_complete": false,
+    "status": "HELD: consequence/choice or actor-local binding owner not completed"
+  }
+]

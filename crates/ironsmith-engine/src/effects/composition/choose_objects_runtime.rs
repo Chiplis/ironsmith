@@ -802,6 +802,11 @@ fn collect_candidates(
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    if !crate::object_query::require_captured_public_collections(game, &effect.filter,
+        &choice_filter_context(effect, game, ctx, chooser_id))
+    {
+        return Err(ExecutionError::IncompleteEvidence("public destination choice requires its producer collection".into()));
+    }
     let mut candidates = Vec::new();
     let zones = effective_search_zones(effect, game, chooser_id)?;
     for zone in zones.iter().copied() {
@@ -1627,9 +1632,15 @@ pub(crate) fn run_choose_objects(
                     ctx.x_value = Some(0);
                 }
                 if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
-                    ctx.clear_object_tag(effect.tag.as_str());
+                    ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
+                } else {
+                    // An accumulating choice keeps earlier members, but an
+                    // actually completed empty choice still publishes its tag.
+                    ctx.tagged_objects.entry(effect.tag.clone()).or_default();
                 }
-                let outcome = EffectOutcome::count(0);
+                let outcome = EffectOutcome::count(0)
+                    .with_result_objects(Vec::new())
+                    .with_execution_fact(ExecutionFact::ChosenObjects(Vec::new()));
                 return Ok(if let Some(search_event) = search_event.clone() {
                     outcome.with_event(search_event)
                 } else {
@@ -1835,6 +1846,20 @@ pub(crate) fn run_choose_objects(
                     "{}: {name} does not satisfy the hidden choice \"{description}\"",
                     crate::game_state::HIDDEN_IDENTITY_VIOLATION_PREFIX
                 )));
+            }
+            // A payment selects an exact legal set. Resolution normalization
+            // must not fill, truncate, deduplicate or substitute what was paid.
+            let exact_cost_choice = ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+                && !effect.is_search;
+            if exact_cost_choice {
+                let mut seen = std::collections::HashSet::new();
+                if chosen.len() < min || chosen.len() > max
+                    || chosen.iter().any(|id| !candidates.contains(id) || !seen.insert(*id))
+                {
+                    return Err(ExecutionError::Impossible(
+                        "cost choice must contain the required distinct legal objects".into(),
+                    ));
+                }
             }
             let preserve_order = effect.count_value.as_ref().is_some_and(|value| {
                 value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ChooseAllInOrder)
@@ -2109,10 +2134,13 @@ pub(crate) fn run_choose_objects(
                     ctx.tag_objects(effect.tag.clone(), snapshots);
                 }
             } else if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
-                ctx.clear_object_tag(effect.tag.as_str());
+                ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
+            } else {
+                ctx.tagged_objects.entry(effect.tag.clone()).or_default();
             }
 
             let outcome = EffectOutcome::with_objects(outcome_objects.clone())
+                .with_result_objects(outcome_objects.clone())
                 .with_execution_fact(ExecutionFact::ChosenObjects(outcome_objects))
                 .with_chosen_object_memory(chosen_memory);
             let original = if let Some(search_event) = search_event {

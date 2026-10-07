@@ -22,6 +22,10 @@ pub enum MetadataLine {
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LineSemanticFacts {
+    /// Exact standalone parenthesized CR 305.6 reminder, recognized from the
+    /// authored token stream. Its types must agree with the card metadata.
+    /// This supplies no printed ability; current types own intrinsic mana.
+    pub intrinsic_basic_land_mana_reminder: Option<Vec<crate::types::Subtype>>,
     /// Extracted before reminder text is removed from authored rules tokens.
     pub station_creature_threshold: Option<i32>,
     pub supported_sneak_form: bool,
@@ -175,6 +179,7 @@ pub struct LoweringFrame {
     pub declared_target_references: Vec<crate::TargetAst>,
     pub last_effect_id: Option<EffectId>,
     pub last_library_search_effect_id: Option<EffectId>,
+    pub counter_removal_cost: Option<super::reference_state::CounterRemovalCostReference>,
     pub last_object_tag: Option<TagKey>,
     pub last_value_comparison: Option<(crate::effect::Value, crate::effect::Value)>,
     pub last_it_choice_is_set: bool,
@@ -212,9 +217,14 @@ pub struct LoweringFrame {
     pub allow_excess_damage_event_value: bool,
     pub milling_event_filter: Option<std::sync::Arc<ObjectFilter>>,
     pub dice_event_grouped: Option<bool>,
+    pub cast_event_quantity: Option<ironsmith_core::CastEventQuantity>,
     pub life_event_binding: Option<std::sync::Arc<crate::trigger_references::LifeEventBinding>>,
     pub life_amount_producers: std::sync::Arc<Vec<crate::trigger_references::LifeAmountProducer>>,
     pub die_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub coin_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub number_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub color_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
+    pub reveal_result_producers: std::sync::Arc<Vec<Option<EffectId>>>,
     pub bind_unbound_x_to_last_effect: bool,
     pub has_announced_x: bool,
 }
@@ -359,6 +369,7 @@ impl EffectLoweringContext {
         self.last_value_comparison = frame.last_value_comparison;
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
+        self.counter_removal_cost = frame.counter_removal_cost;
         self.last_object_tag = frame.last_object_tag;
         self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
@@ -373,9 +384,14 @@ impl EffectLoweringContext {
         self.allow_excess_damage_event_value = frame.allow_excess_damage_event_value;
         self.milling_event_filter = frame.milling_event_filter.clone();
         self.dice_event_grouped = frame.dice_event_grouped;
+        self.cast_event_quantity = frame.cast_event_quantity;
         self.life_event_binding = frame.life_event_binding.clone();
         self.life_amount_producers = frame.life_amount_producers.clone();
         self.die_result_producers = frame.die_result_producers.clone();
+        self.coin_result_producers = frame.coin_result_producers.clone();
+        self.number_result_producers = frame.number_result_producers.clone();
+        self.color_result_producers = frame.color_result_producers.clone();
+        self.reveal_result_producers = frame.reveal_result_producers.clone();
         self.bind_unbound_x_to_last_effect = frame.bind_unbound_x_to_last_effect;
         self.has_announced_x = frame.has_announced_x;
     }

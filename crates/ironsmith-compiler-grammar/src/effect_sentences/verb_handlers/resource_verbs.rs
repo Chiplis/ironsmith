@@ -350,11 +350,14 @@ fn parse_take(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    if resource_grammar::parse_resource_take_extra_turn_shape(tokens) {
-        return Ok(EffectAst::subject_verb_extra_turn_after_turn(
-            extract_subject_player(subject).unwrap_or(PlayerAst::You),
-            ExtraTurnAnchorAst::CurrentTurn,
-        ));
+    let player = match subject {
+        None => PlayerAst::You,
+        Some(subject) => extract_subject_player(Some(subject)).ok_or_else(|| {
+            CardTextError::ParseError("extra turn requires a player subject".to_string())
+        })?,
+    };
+    if let Some(shape) = resource_grammar::parse_resource_take_extra_turn_shape(tokens, player) {
+        return Ok(shape.into_effect());
     }
 
     Err(CardTextError::ParseError(format!(
@@ -370,7 +373,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
         match first {
-            "once" => (Value::Fixed(1), 1),
+            "once" | "again" => (Value::Fixed(1), 1),
             "twice" => (Value::Fixed(2), 1),
             _ => parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -856,6 +859,14 @@ pub fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
 
 pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
+    if resource_grammar::parse_suspect_triggering_group_choice_shape(&target_tokens) {
+        // This definite event subset cannot bind to the source antecedent of
+        // an intervening-if. Keep the whole body unsupported until the counted
+        // event-set choice also proves that suspecting is possible.
+        return Err(CardTextError::ParseError(
+            "suspect-triggering-group-choice requires exact event-set selection and action feasibility".into(),
+        ));
+    }
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "missing suspect target".to_string(),

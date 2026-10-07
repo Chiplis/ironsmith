@@ -62,3 +62,22 @@ test("actual X allocation survives unrelated edits and reset removes only the ch
   assert.equal(Object.hasOwn(paymentPreferences(), "x_allocation"), false);
   assert.equal(Object.hasOwn(paymentPreferences({ x_allocation: null }), "x_allocation"), false);
 });
+
+test("Waterbend selection uses its typed resource and releases incompatible mana", () => {
+  let draft = selectPaymentSource(paymentPreferences(), source);
+  draft = selectPaymentSource(draft, { ...source, source_name: "No keyword in this label", payment_kind: "waterbend" });
+  assert.deepEqual(draft.required_activations, []);
+  assert.deepEqual(draft.required_alternatives, [{ source_id: "10", payment_kind: "waterbend" }]);
+  const rows = paymentDraftRows({ planned_sources: [], available_sources: [{ source_id: "10", source_name: "Resource", payment_kinds: ["waterbend"] }] }, draft);
+  assert.equal(rows[0].payment_kind, "waterbend");
+  assert.equal(rows[0].pending, true);
+  assert.deepEqual(removePaymentStep(draft, rows[0]).required_alternatives, []);
+});
+
+test("ancestor activation exclusion still permits its separate Waterbend resource", async () => {
+  const { paymentSourceOptions } = await import("../src/lib/payment-draft.js");
+  const payment = { fixed_activation_excluded_source_ids: ["10"], activation_options: [source],
+    available_sources: [{ source_id: "10", payment_kinds: ["waterbend"] }] };
+  assert.deepEqual(paymentSourceOptions(payment).map(option => option.payment_kind), ["waterbend"]);
+  assert.deepEqual(paymentSourceOptions({ ...payment, fixed_excluded_source_ids: ["10"] }), []);
+});

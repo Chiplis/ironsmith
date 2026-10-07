@@ -182,13 +182,15 @@ pub(crate) struct SnapshotFactContext {
     pub(crate) mana_cost: Option<crate::mana::ManaCost>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 enum PaymentQueryContext {
     #[default]
     Root,
     ContinuousCheckedRoot,
     ProposedSpellRoot(ObjectId),
     ProposedSpellCheckedRoot(ObjectId),
+    DeclaredCastRoot(ObjectId, crate::alternative_cast::CastingMethod, crate::cost::OptionalCostsPaid),
+    DeclaredCastCheckedRoot(ObjectId, crate::alternative_cast::CastingMethod, crate::cost::OptionalCostsPaid),
 }
 
 /// Owned by a single immutable priority snapshot. Completed queries are reused
@@ -304,7 +306,7 @@ pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compu
         let session = slot.as_mut()?;
         if session.active_root != Some(root as *const GameState as usize)
             || session.active_context != PaymentQueryContext::Root { return None; }
-        let previous = (session.active_root, session.active_context);
+        let previous = (session.active_root, session.active_context.clone());
         session.active_root = Some(checked as *const GameState as usize);
         session.active_context = PaymentQueryContext::ContinuousCheckedRoot;
         Some(previous)
@@ -312,7 +314,7 @@ pub(crate) fn with_checked_query<T>(root: &GameState, checked: &GameState, compu
     struct Restore(Option<(Option<usize>, PaymentQueryContext)>);
     impl Drop for Restore {
         fn drop(&mut self) {
-            if let Some((root, context)) = self.0 {
+            if let Some((root, context)) = self.0.take() {
                 SESSION.with(|slot| {
                     if let Some(session) = slot.borrow_mut().as_mut() {
                         session.active_root = root;
@@ -336,12 +338,12 @@ pub(super) fn with_proposed_spell<T>(
         let mut slot = slot.borrow_mut();
         let session = slot.as_mut()?;
         if session.active_root != Some(root as *const GameState as usize) { return None; }
-        let context = match session.active_context {
+        let context = match session.active_context.clone() {
             PaymentQueryContext::Root => PaymentQueryContext::ProposedSpellRoot(spell),
             PaymentQueryContext::ContinuousCheckedRoot => PaymentQueryContext::ProposedSpellCheckedRoot(spell),
             _ => return None,
         };
-        let previous = (session.active_root, session.active_context);
+        let previous = (session.active_root, session.active_context.clone());
         session.active_root = Some(proposed as *const GameState as usize);
         session.active_context = context;
         Some(previous)
@@ -349,7 +351,7 @@ pub(super) fn with_proposed_spell<T>(
     struct Restore(Option<(Option<usize>, PaymentQueryContext)>);
     impl Drop for Restore {
         fn drop(&mut self) {
-            if let Some((root, context)) = self.0 {
+            if let Some((root, context)) = self.0.take() {
                 SESSION.with(|slot| {
                     if let Some(session) = slot.borrow_mut().as_mut() {
                         session.active_root = root;
@@ -385,6 +387,50 @@ fn payment_result<T>(
     }
 }
 
+
+pub(super) fn failed_calculation(game: &GameState, error: crate::effects::ExecutionError) -> bool {
+    SESSION.with(|slot| payment_result::<()>(game,
+        Err(crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error)),
+        slot.borrow_mut().as_mut()))
+}
+
+/// A selected cast face and price are part of the payment query identity.
+/// Only a deterministic declaration from the bound immutable root is admitted.
+pub(super) fn with_declared_cast<T>(
+    root: &GameState, proposed: &GameState, spell: ObjectId,
+    method: &crate::alternative_cast::CastingMethod, optional_costs: &crate::cost::OptionalCostsPaid, compute: impl FnOnce() -> T,
+) -> T {
+    let previous = SESSION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let session = slot.as_mut()?;
+        if session.active_root != Some(root as *const GameState as usize) { return None; }
+        let context = match session.active_context.clone() {
+            PaymentQueryContext::Root => PaymentQueryContext::DeclaredCastRoot(spell, method.clone(), optional_costs.clone()),
+            PaymentQueryContext::ContinuousCheckedRoot => PaymentQueryContext::DeclaredCastCheckedRoot(spell, method.clone(), optional_costs.clone()),
+            _ => return None,
+        };
+        let previous = (session.active_root, session.active_context.clone());
+        session.active_root = Some(proposed as *const GameState as usize);
+        session.active_context = context;
+        Some(previous)
+    });
+    struct Restore(Option<(Option<usize>, PaymentQueryContext)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            if let Some((root, context)) = self.0.take() {
+                SESSION.with(|slot| {
+                    if let Some(session) = slot.borrow_mut().as_mut() {
+                        session.active_root = root;
+                        session.active_context = context;
+                    }
+                });
+            }
+        }
+    }
+    let _restore = Restore(previous);
+    compute()
+}
+
 pub(crate) fn analysis_failure() -> Option<crate::effects::ExecutionError> {
     SESSION.with(|slot| slot.borrow().as_ref().and_then(|session| session.failure.clone()))
 }
@@ -407,10 +453,10 @@ pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::Man
         return payment_result(game, crate::mana_payment::check_mana_payment(game, request), restore.0.as_mut());
     }
     let session = restore.0.as_mut().unwrap();
-    let context = session.active_context;
+    let context = session.active_context.clone();
     let index = session.payment_searches.iter().position(|(kind, key, _)| *kind == context && key == request)
         .unwrap_or_else(|| {
-            session.payment_searches.push((context, request.clone(), crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone())));
+            session.payment_searches.push((context.clone(), request.clone(), crate::mana_payment::ManaPaymentAnalysis::check(game, request.clone())));
             session.payment_searches.len() - 1
         });
     if session.remaining == 0 {

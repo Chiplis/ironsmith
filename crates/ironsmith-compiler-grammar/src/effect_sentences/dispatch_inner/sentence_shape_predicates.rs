@@ -522,12 +522,16 @@ pub fn lower_where_x_shape(
                 ))),
             ),
         ),
-        sentence_shapes::WhereXValueShape::SourceExiledManaValue => (
-            None,
-            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+        sentence_shapes::WhereXValueShape::SourceExiledCharacteristic(metric) => {
+            let spec = Box::new(crate::target::ChooseSpec::Tagged(
                 (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
-            ))),
-        ),
+            ));
+            (None, match metric {
+                Metric::Power => Value::PowerOf(spec),
+                Metric::Toughness => Value::ToughnessOf(spec),
+                Metric::ManaValue => Value::ManaValueOf(spec),
+            })
+        },
         sentence_shapes::WhereXValueShape::PriorEffectMetric(query) => {
             (None, Value::PendingPriorEffectMetric(query))
         }
@@ -536,7 +540,6 @@ pub fn lower_where_x_shape(
             Value::PendingPriorEffectMetric(query)
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::DiedThisWay),
         ),
-        sentence_shapes::WhereXValueShape::RemovedCountersThisWay => (None, Value::X),
         sentence_shapes::WhereXValueShape::CountersOn {
             reference,
             counter_type,

@@ -361,6 +361,7 @@ pub fn parse_stack_retarget_filter(
 
 pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     const PRIMITIVES: &[ClausePrimitive] = &[
+        specific_primitive!("typed-text-change", &["change"], super::text_changes::parse_text_change),
         specific_primitive!(
             "bounded-number-choice",
             &["choose"],
@@ -472,6 +473,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             "unsupported-play-cast-permission-clause",
             &["you", "that"],
             parse_unsupported_play_cast_permission_clause,
+        ),
+        specific_primitive!(
+            "look-tagged-exile-permission",
+            &["you"],
+            crate::permission_helpers::parse_look_tagged_exile_permission,
         ),
         specific_primitive!(
             "cast-or-play-tagged-clause",

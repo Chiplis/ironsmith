@@ -222,6 +222,8 @@ impl GameState {
             .runtime_cache
             .irreversible_random_count
             .set(self.runtime_cache.irreversible_random_count.get());
+        *restarted.runtime_cache.forced_coin_flips.borrow_mut() =
+            self.runtime_cache.forced_coin_flips.borrow().clone();
         *restarted.runtime_cache.forced_die_rolls.borrow_mut() =
             self.runtime_cache.forced_die_rolls.borrow().clone();
         *restarted.runtime_cache.transcript_random_seeds.borrow_mut() =

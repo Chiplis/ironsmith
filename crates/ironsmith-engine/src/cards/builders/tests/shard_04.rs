@@ -2290,7 +2290,7 @@ pub(super) fn test_mobilize_trigger_creates_attacking_warriors() {
         .copied()
         .filter(|&id| {
             game.object(id)
-                .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Warrior")
+                .is_some_and(|obj| game.controller_of(obj) == alice && obj.name == "Warrior Token")
         })
         .collect();
     assert_eq!(warrior_ids.len(), 2, "expected two mobilize tokens");
@@ -2379,7 +2379,7 @@ pub(super) fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_c
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
         AlternativeCastingMethod::Suspend { cost, time } => {
-            assert_eq!(*time, 3);
+            assert_eq!(*time, ironsmith_core::SuspendTime::Fixed(3));
             assert_eq!(cost.to_oracle(), "{0}");
         }
         other => panic!("expected suspend metadata, got {other:?}"),
@@ -2583,7 +2583,7 @@ pub(super) fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_
     assert_eq!(def.alternative_casts.len(), 1);
     match &def.alternative_casts[0] {
         AlternativeCastingMethod::Suspend { cost, time } => {
-            assert_eq!(*time, 3);
+            assert_eq!(*time, ironsmith_core::SuspendTime::Fixed(3));
             assert_eq!(cost.to_oracle(), "{0}");
         }
         other => panic!("expected Lotus Bloom suspend metadata, got {other:?}"),
@@ -2818,6 +2818,9 @@ pub(super) fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
         costs: vec![("Spectacle".into(), 1)],
         cast_at_sorcery_timing: false,
         branch_choices: Vec::new(),
+        cast_was_foretold: None,
+        cast_payment_turn: None,
+        main_phase_caster: None,
     };
     game.object_mut(source)
         .expect("source object exists")

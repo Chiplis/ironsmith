@@ -6,7 +6,7 @@ use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
-use super::die_roll_transaction::roll_dice_with_modifiers;
+use super::die_roll_transaction::roll_dice_with_authored_modifier;
 
 /// Roll a die for a player using the game's deterministic RNG.
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +14,7 @@ pub struct RollDieEffect {
     pub player: PlayerFilter,
     pub sides: u32,
     pub die_text: Option<String>,
+    pub result_modifier: Option<ironsmith_core::effect::DieResultModifier>,
 }
 
 impl RollDieEffect {
@@ -22,6 +23,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text: None,
+            result_modifier: None,
         }
     }
 
@@ -30,6 +32,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text,
+            result_modifier: None,
         }
     }
 }
@@ -47,7 +50,7 @@ impl EffectExecutor for RollDieEffect {
             if self.sides == 0 {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(transaction) = roll_dice_with_modifiers(game, ctx, player, 1, self.sides)?
+            let Some(transaction) = roll_dice_with_authored_modifier(game, ctx, player, 1, self.sides, self.result_modifier.as_ref())?
             else {
                 return Ok(EffectOutcome::count(0));
             };
@@ -455,4 +458,33 @@ mod wide_die_result_receipt_tests {
     #[test] fn chosen_die_receipt_and_following_effect_keep_unsigned_quantity() { check(i32::MAX as u32,0,i32::MAX as u32+5,true); }
     #[test] fn increasing_by_unsigned_amount_preserves_selected_direction() { check(i32::MAX as u32+1,0,i32::MAX as u32+6,false); }
     #[test] fn decreasing_by_unsigned_amount_preserves_selected_direction() { check(i32::MAX as u32+1,1,0,false); }
+}
+
+#[cfg(test)]
+mod prepared_roll_receipt_tests {
+    use super::*;
+    use crate::effect::Value;
+    use crate::ids::PlayerId;
+
+    #[test]
+    fn authored_arithmetic_keeps_natural_results_and_distinct_completed_identities() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut effect = RollDieEffect::new(PlayerFilter::You, 6);
+        effect.result_modifier = Some(ironsmith_core::effect::DieResultModifier::Add(Value::Fixed(2)));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        game.force_next_die_roll(3);
+        let first = effect.execute(&mut game, &mut ctx).unwrap();
+        game.force_next_die_roll(4);
+        let second = effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(first.count_or_zero(), 5);
+        assert_eq!(second.count_or_zero(), 6);
+        assert_eq!(game.turn_store.turn_history.completed_die_roll_count(alice), 2);
+        let first_event = first.events.iter().find(|event| event.downcast::<DieRolledEvent>().is_some()).unwrap();
+        let second_event = second.events.iter().find(|event| event.downcast::<DieRolledEvent>().is_some()).unwrap();
+        assert_ne!(first_event.provenance(), second_event.provenance());
+        assert_eq!(first_event.downcast::<DieRolledEvent>().unwrap().natural_result, 3);
+        assert_eq!(second_event.downcast::<DieRolledEvent>().unwrap().natural_result, 4);
+    }
 }

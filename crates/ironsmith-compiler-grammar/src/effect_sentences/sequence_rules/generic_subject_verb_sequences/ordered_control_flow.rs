@@ -1707,6 +1707,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
             action:
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects {
                     filter: look_filter,
+                    permit_while_exiled,
                 }),
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1745,6 +1746,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
         PlayerAst::You,
         SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects {
             filter: rebound_look_filter,
+            permit_while_exiled: *permit_while_exiled,
         }),
     ));
     effects.push(

@@ -860,6 +860,7 @@ impl WasmGame {
                         (source, ManaPaymentSourceKind::Improvise)
                     }
                     PlannedPipPayment::Delve(source) => (source, ManaPaymentSourceKind::Delve),
+                    PlannedPipPayment::Waterbend(source) => (source, ManaPaymentSourceKind::Waterbend),
                     _ => return None,
                 };
                 Some(RequiredAlternativePayment { source, kind })

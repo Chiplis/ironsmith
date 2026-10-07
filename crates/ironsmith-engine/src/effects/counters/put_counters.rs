@@ -35,6 +35,14 @@ pub use ironsmith_core::PutCountersEffect;
 /// );
 /// ```
 impl EffectExecutor for PutCountersEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -100,10 +108,10 @@ impl EffectExecutor for PutCountersEffect {
                 // Freeze every original before deferred additions. Grouping
                 // notifications alone does not make sequential mutations simultaneous.
                 let outcomes = if requests.len() > 1 {
-                    super::execute_counter_batch_with_outputs(game, ctx, requests)?
+                    super::placement::execute_counter_batch_with_limit_outputs(game, ctx, requests, self.maximum_total)?
                 } else if let Some(event) = requests.pop() {
-                    vec![super::execute_counter_placement_with_outputs(
-                        game, ctx, event,
+                    vec![super::placement::execute_counter_placement_with_limit_outputs(
+                        game, ctx, event, self.maximum_total,
                     )?]
                 } else {
                     Vec::new()
@@ -124,10 +132,8 @@ impl EffectExecutor for PutCountersEffect {
                 counter_action_completed_outputs(self, game, ctx, outputs, count)
             },
         );
-        // Preserve this adapter's existing neutral result for a suspended child,
-        // including a child that failed after opening its decision. The shared
-        // transaction owns rollback; an ordinary failure still propagates.
-        if ctx.decision_maker.awaiting_choice() {
+        // Suspension is neutral only on success; failed discovery stays failed.
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
@@ -243,7 +249,7 @@ fn resolve_counter_inputs(
         ChooseSpec::Source => vec![ctx.source],
         _ => match resolve_objects_for_effect(game, ctx, &effect.target) {
             Ok(objects) if !objects.is_empty() => objects,
-            _ => {
+            Ok(_) | Err(ExecutionError::InvalidTarget) | Err(ExecutionError::TagNotFound(_)) => {
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CounterInputPlan::Pending);
                 }
@@ -254,12 +260,14 @@ fn resolve_counter_inputs(
                     count,
                 });
             }
+            Err(error) => return Err(error),
         },
     };
 
     if ctx.decision_maker.awaiting_choice() {
         return Ok(CounterInputPlan::Pending);
     }
+    // The authored/shared choice is independent of each recipient's headroom.
     let max_count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
     let amount_is_up_to = effect
         .amount
@@ -366,6 +374,12 @@ fn resolve_counter_inputs(
                     .map_or(0, |(_, amount)| *amount)
             })
             .unwrap_or(count);
+        // A full recipient contributes no proposal and cannot consume a
+        // replacement intended for a later eligible recipient. Modifiers are
+        // still checked against this same recipient's ceiling at commitment.
+        let assigned_count = effect.maximum_total.map_or(assigned_count, |maximum| {
+            assigned_count.min(maximum.saturating_sub(game.counter_count(target_id, effect.counter_type)))
+        });
         if assigned_count == 0 {
             continue;
         }
@@ -403,6 +417,29 @@ struct CounterInstructionCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let Self { effect, count, batch, inner } = *self;
+        let mut receipt = if let Some(inner) = inner {
+            inner.prepare_draw_boundary_with_outputs(game, ctx, original)?
+        } else {
+            crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(original),
+            )
+        };
+        if ctx.decision_maker.awaiting_choice() { return Ok(receipt); }
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self { effect, count, batch, inner: Some(inner) }));
+            return Ok(receipt);
+        }
+        let outputs = counter_action_completed_outputs_in_group(
+            &effect, game, ctx, receipt.outcome, count, batch,
+        )?;
+        Ok(crate::effects::SimultaneousEffectCommit::finished(outputs))
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -458,6 +495,10 @@ impl crate::effects::SimultaneousEffectCompletion for CounterInstructionCompleti
 }
 
 impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
+    fn has_simultaneous_originals(&self) -> bool {
+        matches!(&self.input, Some(CounterInputPlan::Placements { requests, .. }) if requests.len() > 1)
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -478,10 +519,11 @@ impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
                     .as_ref()
                     .is_some_and(|original| !original.requires_replacement_input())
                 {
-                    *prepared = Some(super::prepare_counter_placement(
+                    *prepared = Some(super::prepared_placement::prepare_counter_placement_with_limit(
                         game,
                         ctx,
                         request.clone(),
+                        self.effect.maximum_total,
                     )?);
                 }
                 if ctx.decision_maker.awaiting_choice() {
@@ -1289,5 +1331,110 @@ mod tests {
         assert_eq!(outcome.as_count(), Some(1));
         assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 1);
         assert_eq!(game.counter_count(source, CounterType::MinusOneMinusOne), 0);
+    }
+}
+
+#[cfg(test)]
+mod prepared_ceiling_tests {
+    use super::*;
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::CounterType;
+    use crate::replacement::{EventModification, ReplacementAction, ReplacementEffect};
+    use crate::zone::Zone;
+
+    #[test]
+    fn prepared_and_direct_placements_retain_each_original_recipient_ceiling() {
+        for (initial_first, initial_second, doubled, one_shot, expected_first, expected_second, expected_total) in [
+            (1, 2, true, false, 4, 4, 5),
+            (0, 4, false, false, 3, 4, 3),
+            (1, 3, false, false, 4, 4, 4),
+            (4, 0, true, true, 4, 4, 4),
+        ] {
+        for prepared in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let card = crate::card::CardBuilder::new(CardId::new(), "Ceiling recipient")
+                .card_types(vec![crate::types::CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+                .build();
+            let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.object_mut(first).unwrap().counters.insert(CounterType::Charge, initial_first);
+            game.object_mut(second).unwrap().counters.insert(CounterType::Charge, initial_second);
+            if doubled {
+                let replacement = ReplacementEffect::with_matcher(
+                    first, alice,
+                    crate::events::counters::matchers::WouldPutCountersMatcher::any(),
+                    ReplacementAction::Modify(EventModification::Multiply(2)),
+                );
+                if one_shot {
+                    game.effect_store.replacement_effects.add_one_shot_effect(replacement);
+                } else {
+                    game.effect_store.replacement_effects.add_resolution_effect(replacement);
+                }
+            }
+            let mut effect = PutCountersEffect::new(
+                CounterType::Charge,
+                3,
+                ChooseSpec::All(crate::filter::ObjectFilter::creature()),
+            );
+            effect.maximum_total = Some(4);
+            let mut ctx = ExecutionContext::new_default(first, alice);
+            let result = if prepared {
+                effect.prepare_simultaneous_player_action(&game, &mut ctx).unwrap()
+                    .commit(&mut game, &mut ctx).unwrap()
+            } else {
+                effect.execute(&mut game, &mut ctx).unwrap()
+            };
+            assert_eq!(game.counter_count(first, CounterType::Charge), expected_first);
+            assert_eq!(game.counter_count(second, CounterType::Charge), expected_second);
+            assert_eq!(result.count_or_zero(), expected_total);
+            let counters = result.events_of_type::<crate::events::MarkersChangedEvent>().collect::<Vec<_>>();
+            assert_eq!(counters.len(), usize::from(initial_first < 4) + usize::from(initial_second < 4));
+        }
+        }
+    }
+}
+
+#[cfg(test)]
+mod retained_counter_draw_boundary_tests {
+    use super::*;
+    use crate::ids::{CardId, PlayerId};
+    use crate::object::CounterType;
+    use crate::replacement::{ReplacementAction, ReplacementEffect};
+    use crate::zone::Zone;
+
+    #[test]
+    fn native_counter_owner_retains_replacement_draw_after_all_original_placements() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(CardId::new(), "Counter draw witness")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.create_object_from_card(&card, alice, Zone::Library);
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+            first, alice, crate::events::counters::matchers::WouldPutCountersMatcher::any(),
+            ReplacementAction::Additionally(vec![crate::effect::Effect::gain_life(2),
+                crate::effect::Effect::draw(1), crate::effect::Effect::gain_life(4)]),
+        ));
+        let effect = PutCountersEffect::new(CounterType::Charge, 1,
+            ChooseSpec::All(crate::filter::ObjectFilter::creature().in_zone(Zone::Battlefield)));
+        let mut ctx = ExecutionContext::new_default(first, alice);
+        let boundary = effect.prepare_replacement_draw_continuation_with_outputs(&mut game, &mut ctx).unwrap();
+        assert!(boundary.completion.is_some());
+        assert_eq!(game.counter_count(first, CounterType::Charge), 1);
+        assert_eq!(game.counter_count(second, CounterType::Charge), 1);
+        assert_eq!(game.player(alice).unwrap().life, 22);
+        assert!(game.player(alice).unwrap().hand.is_empty());
+        let completed = crate::effects::composition::complete_committed_original_with_outputs(
+            &mut game, &mut ctx, boundary,
+        ).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 26);
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+        assert_eq!(completed.outcome.count_or_zero(), 2);
+        assert_eq!(completed.outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 2);
+        assert_eq!(completed.outcome.events_of_type::<crate::events::CardDrawnEvent>().count(), 1);
     }
 }

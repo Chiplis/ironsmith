@@ -70,6 +70,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("for-each-opponent-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("who-cast-matching-spell-this-turn"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_cast_history_participant(input)),
+    },
+    Reading {
         id: RuleId::new("for-each-type-slot-choice"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -121,6 +127,38 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_actor_return_clause(input)),
     },
 ];
+
+fn read_cast_history_participant(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::grammar::primitives;
+    let Some(((), after_cast)) = primitives::parse_prefix(
+        input.outer.inner_tokens, primitives::phrase(&["who", "cast"]),
+    ) else { return Ok(None); };
+    let Some((turn_start, (), after_turn)) = primitives::find_prefix(after_cast, || {
+        primitives::phrase(&["this", "turn"])
+    }) else { return Ok(None); };
+    let Some((_, action_word)) = crate::effect_sentences::find_verb(after_turn) else { return Ok(None); };
+    let Some(action_start) = crate::lexer::TokenWordView::new(after_turn).map_word_to_token_start(action_word) else { return Ok(None); };
+    let mut filter_tokens = after_cast[..turn_start].to_vec();
+    filter_tokens.extend_from_slice(&after_turn[..action_start]);
+    let mut filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&filter_tokens, false)?;
+    filter.zone = Some(crate::zone::Zone::Stack);
+    let effects = parse_maybe_effects(&prepend_that_player_subject(&after_turn[action_start..]), true, true)?;
+    Ok(Some(wrap_opponents(&input.iteration_filter, vec![
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: Value::SpellsCastThisTurnMatching {
+                    player: PlayerFilter::IteratedPlayer,
+                    filter,
+                    exclude_source: false,
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            },
+            if_true: effects,
+            if_false: Vec::new(),
+        }),
+    ])))
+}
 
 /// The input's reading, if a rule has one. Every admitted reading runs.
 pub(super) fn read(input: &ParticipantClause<'_>) -> ParseOutcome<RuleMatch<EffectAst>> {

@@ -183,6 +183,7 @@ fn seed(definition: &CardDefinition, source_zone: Zone) -> (GameState, ObjectId)
 fn belongs_to(action: &LegalAction, source: ObjectId) -> bool {
     match action {
         LegalAction::CastSpell { spell_id, .. } => *spell_id == source,
+        LegalAction::OpenExiledCardForPlay { card_id, .. } | LegalAction::CastExiledCardFaceDown { card_id, .. } => *card_id == source,
         LegalAction::ActivateAbility { source: id, .. }
         | LegalAction::ActivateManaAbility { source: id, .. } => *id == source,
         LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {

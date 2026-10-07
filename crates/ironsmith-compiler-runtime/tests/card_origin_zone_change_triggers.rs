@@ -509,3 +509,25 @@ fn desert_warfare_sacrifice_and_hand_arms_create_distinct_delays_and_pin_new_ids
         );
     }
 }
+
+#[test]
+fn desert_warfare_observes_actual_sacrifices_but_not_a_wholly_replaced_selection() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    for definition in definitions("Desert Warfare") { for scenario in 0..4 {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let desert = resource(&mut game, A, Zone::Battlefield, "Type: Land — Desert");
+        let unrelated = resource(&mut game, A, Zone::Battlefield, "Type: Creature\nPower/Toughness: 2/3");
+        let added = ironsmith::effect::Effect::new(ironsmith::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(unrelated)));
+        let action = match scenario {
+            0 => ReplacementAction::Prevent,
+            1 => ReplacementAction::Instead(vec![added]),
+            2 => ReplacementAction::ChangeDestination(Zone::Exile),
+            _ => ReplacementAction::Additionally(vec![added]),
+        };
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(desert), Some(Zone::Battlefield), Some(Zone::Graveyard)), action));
+        execute(&mut game, source, A, &ironsmith::effects::SacrificeTargetEffect::new(ChooseSpec::SpecificObject(desert)));
+        assert_eq!(settle(&mut game), usize::from(scenario >= 2), "only an original completed Desert sacrifice schedules its delayed return");
+    }}
+}

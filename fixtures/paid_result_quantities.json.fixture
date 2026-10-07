@@ -1,0 +1,156 @@
+[
+  {
+    "name": "Bishop of Binding",
+    "oracle_id": "c2dd6c78-e482-4a3c-ad9c-7dd71b3e34d2",
+    "mana_cost": "{3}{W}",
+    "type_line": "Creature — Vampire Cleric",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "When this creature enters, exile target creature an opponent controls until this creature leaves the battlefield.\nWhenever this creature attacks, target Vampire gets +X/+X until end of turn, where X is the power of the exiled card.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Convert to Slime",
+    "oracle_id": "b4429e71-434e-480c-a8d1-2ad11de8b2d9",
+    "mana_cost": "{3}{B}{G}",
+    "type_line": "Sorcery",
+    "power": null,
+    "toughness": null,
+    "oracle_text": "Destroy up to one target artifact, up to one target creature, and up to one target enchantment.\nDelirium — Then if there are four or more card types among cards in your graveyard, create an X/X green Ooze creature token, where X is the total mana value of permanents destroyed this way.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Essence Bottle",
+    "oracle_id": "76f839b0-1d4c-4ad9-b44f-a8a13d6d109f",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "power": null,
+    "toughness": null,
+    "oracle_text": "{3}, {T}: Put an elixir counter on this artifact.\n{T}, Remove all elixir counters from this artifact: You gain 2 life for each elixir counter removed this way.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Eumidian Wastewaker",
+    "oracle_id": "72a570a2-0a22-4680-ac88-a1724faf17de",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Creature — Insect Cleric",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Whenever this creature attacks, you and defending player each discard a card or sacrifice a permanent. You draw a card for each land card put into a graveyard this way.\nEncore {6}{B}{B} ({6}{B}{B}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Ooze Flux",
+    "oracle_id": "631d0de7-4810-4bc3-b86b-8e2505ed91f4",
+    "mana_cost": "{3}{G}",
+    "type_line": "Enchantment",
+    "power": null,
+    "toughness": null,
+    "oracle_text": "{1}{G}, Remove one or more +1/+1 counters from among creatures you control: Create an X/X green Ooze creature token, where X is the number of +1/+1 counters removed this way.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "The Hunger Tide Rises",
+    "oracle_id": "356edd68-7dd5-4ab6-a738-6cb0eb2d4e56",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Saga",
+    "power": null,
+    "toughness": null,
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after IV.)\nI, II, III — Create a 1/1 black and green Insect creature token.\nIV — Sacrifice any number of creatures. Search your library and/or graveyard for a creature card with mana value less than or equal to the number of creatures sacrificed this way and put it onto the battlefield. If you search your library this way, shuffle.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Vish Kal, Blood Arbiter",
+    "oracle_id": "ba3bfe0c-2bd6-469c-802c-440b7caf7fb5",
+    "mana_cost": "{4}{W}{B}{B}",
+    "type_line": "Legendary Creature — Vampire",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "Flying, lifelink\nSacrifice a creature: Put X +1/+1 counters on Vish Kal, where X is the sacrificed creature's power.\nRemove all +1/+1 counters from Vish Kal: Target creature gets -1/-1 until end of turn for each +1/+1 counter removed this way.",
+    "frozen_parse_error": "pending filtered effect metric requires a prior memory-producing effect; oracle-only fallback also failed: pending filtered effect metric requires a prior memory-producing effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Chocobo Kick",
+    "oracle_id": "aa00c18b-8719-4095-940a-8e35a57b46c2",
+    "mana_cost": "{1}{G}",
+    "type_line": "Sorcery",
+    "power": null,
+    "toughness": null,
+    "oracle_text": "Kicker—Return a land you control to its owner's hand. (You may return a land you control to its owner's hand in addition to any other costs as you cast this spell.)\nTarget creature you control deals damage equal to its power to target creature an opponent controls. If this spell was kicked, the creature you control deals twice that much damage instead.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Magnanimous Magistrate",
+    "oracle_id": "ecd3ddd7-2fa8-466b-9319-ae51c744a05f",
+    "mana_cost": "{5}{W}",
+    "type_line": "Creature — Human Advisor",
+    "power": "3",
+    "toughness": "4",
+    "oracle_text": "This creature enters with five reprieve counters on it.\nWhenever another nontoken creature you control dies, if its mana value was 1 or greater, you may remove that many reprieve counters from this creature. If you do, return that card to the battlefield under its owner's control.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Malevolent Witchkite",
+    "oracle_id": "aee2cd1b-9bf9-4b91-83a4-2f1dbc82dcf4",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Creature — Dragon Warlock",
+    "power": "5",
+    "toughness": "4",
+    "oracle_text": "Flying\nWhen this creature enters, sacrifice any number of artifacts, enchantments, and/or tokens, then draw that many cards.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Sawblade Skinripper",
+    "oracle_id": "96fd3ee0-84fb-439b-9e2d-b55afe6850a7",
+    "mana_cost": "{1}{B}{R}",
+    "type_line": "Creature — Human Assassin",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Menace\n{2}, Sacrifice another creature or enchantment: Put a +1/+1 counter on this creature.\nAt the beginning of your end step, if you sacrificed one or more permanents this turn, this creature deals that much damage to any target.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Voracious Brood",
+    "oracle_id": "aeee8308-76aa-4ed5-b7b2-04fb9e29c676",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Alien Insect",
+    "power": "1",
+    "toughness": "1",
+    "oracle_text": "This creature enters with a +1/+1 counter on it for each creature card in your graveyard.\nWhenever one or more creature cards are put into your graveyard from anywhere, put that many +1/+1 counters on this creature.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Yurlok of Scorch Thrash",
+    "oracle_id": "7baaf462-b0e6-4e21-86a7-73a883c4c9f7",
+    "mana_cost": "{1}{B}{R}{G}",
+    "type_line": "Legendary Creature — Lizard Shaman",
+    "power": "4",
+    "toughness": "4",
+    "oracle_text": "Vigilance\nA player losing unspent mana causes that player to lose that much life.\n{1}, {T}: Each player adds {B}{R}{G}.",
+    "frozen_parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+    "proposed_coverage": "held"
+  },
+  {
+    "name": "Tom, Bert, and William",
+    "oracle_id": "0ea58cfe-b37c-49a6-a3be-7e60065b8238",
+    "mana_cost": "{3}{B}{G}",
+    "type_line": "Legendary Creature — Troll",
+    "power": "5",
+    "toughness": "5",
+    "oracle_text": "{1}, Sacrifice another creature: Draw cards equal to the sacrificed creature's power, then discard a card.\nWhen Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact. (They're no longer a creature.)",
+    "frozen_parse_error": "unsupported intervening-if predicate in triggered line: 'When Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact. (They're no longer a creature.)' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported intervening-if predicate in triggered line: 'When Tom, Bert, and William die, if they were a creature, return them to the battlefield. They're an artifact.' [rule-path=statement-line > triggered-line]",
+    "proposed_coverage": "restoration_pending_source_review"
+  }
+]

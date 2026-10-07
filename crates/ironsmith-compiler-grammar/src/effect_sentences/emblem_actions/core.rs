@@ -7,6 +7,7 @@ pub fn parse_emblem_action(
     if let Some(shape) = emblem_shapes::parse_damaged_player_emblem_payload_tokens(tokens) {
         return Some(EffectAst::ForEach(
             crate::cards::builders::ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
                 tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
                 effects: vec![EffectAst::subject_verb_create_emblem(
                     PlayerAst::Implicit,

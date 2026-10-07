@@ -274,6 +274,7 @@ pub(super) fn parse_activated_line_impl(
         let parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: Some(ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level)),
                     mana_cost: normalized_cost,
                     effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                         EffectAst::subject_verb_put_counters(
@@ -311,6 +312,7 @@ pub(super) fn parse_activated_line_impl(
         let mut parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                     mana_cost: normalized_cost.clone(),
                     effects: ironsmith_core::ResolutionProgram::default(),
                     choices: vec![],
@@ -357,6 +359,7 @@ pub(super) fn parse_activated_line_impl(
             let mut parsed = ParsedAbility {
                 ability: Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                         mana_cost: normalized_cost.clone(),
                         effects: ironsmith_core::ResolutionProgram::default(),
                         choices: vec![],
@@ -399,14 +402,12 @@ pub(super) fn parse_activated_line_impl(
         line.info.line_index,
     )?;
     recognize_named_source_action_surfaces(&line.info, &mut effects_ast);
-    if activation_cost_sets_x_from_counter_removal(&normalized_cost) {
-        bind_event_amounts_to_cost_x(&mut effects_ast);
-    }
     let functional_zones = infer_rewrite_activated_functional_zones(line)?;
     let reference_imports = compiler_activation_cost_reference_imports(&normalized_cost);
     let mut parsed = ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: line.presentation_kind.and_then(crate::ir::ActivatedPresentationKind::keyword),
                 mana_cost: normalized_cost,
                 effects: ironsmith_core::ResolutionProgram::default(),
                 choices: vec![],

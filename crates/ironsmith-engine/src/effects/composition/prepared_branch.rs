@@ -215,6 +215,26 @@ struct BranchCompletion {
 }
 
 impl SimultaneousEffectCompletion for BranchCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let Self { scope, bindings, inner } = *self;
+        let before = ChoiceState::capture(ctx);
+        let mut receipt = scope.run(ctx, |ctx| {
+            bindings.apply(ctx);
+            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+        })?;
+        let bindings = bindings.completion_bindings(&before, ctx);
+        if let Some(inner) = receipt.completion.take() {
+            receipt.completion = Some(Box::new(Self { scope, bindings, inner }));
+        } else if !ctx.decision_maker.awaiting_choice() {
+            receipt.outcome.outcome = scope.project(receipt.outcome.outcome, ctx);
+            receipt.outcome.synchronize_observations();
+        }
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -371,7 +391,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             .unwrap_or_default()
     }
 
-    fn prepare_original(
+    fn prepare_selection(
         &mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -380,11 +400,13 @@ impl SimultaneousEffectProposal for PreparedBranch {
             let before = ChoiceState::capture(ctx);
             let result = self.scope.clone().run(ctx, |ctx| {
                 self.bindings.apply(ctx);
-                inner.prepare_original(game, ctx)
+                inner.prepare_selection(game, ctx)
             });
-            if !self.selection.is_empty() {
-                before.restore(ctx);
+            if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+                self.bindings = self.bindings.completion_bindings(&before, ctx);
+                self.bindings.retain_selection_outputs(&self.selection, ctx);
             }
+            if !self.selection.is_empty() { before.restore(ctx); }
             return result;
         }
         let before = ChoiceState::capture(ctx);
@@ -405,7 +427,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
                     self.selection_receipts
                         .iter()
                         .flat_map(|outcome| outcome.outcome.events.iter()),
-                );
+                )?;
             }
             let action = self.action.as_ref().ok_or_else(|| {
                 ExecutionError::Impossible("prepared branch has no selected action".into())
@@ -417,13 +439,34 @@ impl SimultaneousEffectProposal for PreparedBranch {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(());
             }
-            inner.prepare_original(game, ctx)?;
+            inner.prepare_selection(game, ctx)?;
             self.inner = Some(inner);
             Ok(())
         });
         self.bindings = ChoiceChanges::capture(&before, ctx);
         self.bindings.retain_selection_outputs(&self.selection, ctx);
         before.restore(ctx);
+        result
+    }
+
+    fn prepare_original(
+        &mut self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.inner.is_none() {
+            self.prepare_selection(game, ctx)?;
+        }
+        if ctx.decision_maker.awaiting_choice() { return Ok(()); }
+        let inner = self.inner.as_mut().ok_or_else(|| ExecutionError::InternalError(
+            "selected branch has no prepared original".into()))?;
+        let before = ChoiceState::capture(ctx);
+        let result = self.scope.run(ctx, |ctx| {
+            self.bindings.apply(ctx);
+            inner.prepare_original(game, ctx)
+        });
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            self.bindings = self.bindings.completion_bindings(&before, ctx);
+        }
+        if !self.selection.is_empty() { before.restore(ctx); }
         result
     }
 
@@ -443,9 +486,10 @@ impl SimultaneousEffectProposal for PreparedBranch {
             self.bindings.apply(ctx);
             inner.seal_original(game, ctx)
         });
-        if !self.selection.is_empty() {
-            before.restore(ctx);
+        if result.is_ok() && !ctx.decision_maker.awaiting_choice() {
+            self.bindings = self.bindings.completion_bindings(&before, ctx);
         }
+        if !self.selection.is_empty() { before.restore(ctx); }
         result
     }
 

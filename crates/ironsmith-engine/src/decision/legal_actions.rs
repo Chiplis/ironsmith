@@ -114,6 +114,7 @@ pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<Obje
 pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
     match action {
         LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
+        LegalAction::OpenExiledCardForPlay { card_id, .. } | LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(*card_id),
         LegalAction::ActivateAbility { source, .. }
         | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
         LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => {
@@ -122,6 +123,151 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
         LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
         _ => None,
     }
+}
+
+/// Enumerate authoritative spell faces before querying marked readers. A
+/// permission may match only Bestow/Prototype/the linked face; ordinary absence
+/// on another face is not missing evidence and must not poison the menu.
+fn append_exact_permission_actions_for_card(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId,
+    card: &crate::object::Object, zone: Zone, view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    append_exact_permission_actions_for_card_selected(game, actions, player, card, zone, view, None)
+}
+
+fn append_exact_permission_actions_for_card_selected(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId,
+    card: &crate::object::Object, zone: Zone, view: &DerivedGameView<'_>,
+    selected: Option<&crate::alternative_cast::GrantSelection>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let mut origins = vec![CastingMethod::PlayFrom { source: card.id, zone, use_alternative: None }];
+    origins.extend(card.alternative_casts.iter().enumerate().filter(|(_, method)| method.cast_from_zone() == Zone::Hand)
+        .map(|(index, _)| CastingMethod::PlayFrom { source: card.id, zone, use_alternative: Some(index) }));
+    // CR 406.3a exempts a cast being made face down from public opening.
+    // This selected path belongs only to the mandatory face-up opening owner;
+    // already inspected cards keep their separate existing face-down route.
+    if selected.is_none() && spell_can_be_cast_face_down(game, card) {
+        origins.push(CastingMethod::FaceDownPlayFrom { source: card.id, zone });
+    }
+    if let Some(face) = spell_view_for_split_other_half_cast(game, card) {
+        origins.push(CastingMethod::SplitOtherHalfPlayFrom { source: card.id, zone, use_alternative: None });
+        origins.extend(face.alternative_casts.iter().enumerate().filter(|(_, method)| method.cast_from_zone() == Zone::Hand)
+            .map(|(index, _)| CastingMethod::SplitOtherHalfPlayFrom { source: card.id, zone, use_alternative: Some(index) }));
+    }
+    for origin in origins {
+        let (face, _, _) = crate::alternative_cast::play_permission::selected_face(game, player, card, &origin)?;
+        let query = crate::grant_registry::proposed_card_face_query(game, &face)?;
+        let grants = query.effect_store.grant_registry.get_grants_for_card(&query, card.id, zone, player);
+        if let Some(error) = query.token_resource_failure() { return Err(error); }
+        for (index, grant) in grants.iter().enumerate() {
+            if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+                || selected.map_or(grant.play_from_constraints.cast_mana_spend_mode.is_normal(), |selected|
+                    grant.permission_identity.as_ref() != Some(&selected.identity) || grant.source.source_id() != selected.source)
+                || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
+            let identity = grant.permission_identity.clone().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+                "permission-local mana omitted its immutable acquisition identity".into()))?;
+            let source = grant.source.source_id();
+            let mut selected_origin = origin.clone();
+            match &mut selected_origin {
+                CastingMethod::PlayFrom { source: selected, .. }
+                | CastingMethod::SplitOtherHalfPlayFrom { source: selected, .. }
+                | CastingMethod::FaceDownPlayFrom { source: selected, .. } => *selected = source,
+                _ => unreachable!("enumerated ordinary origin"),
+            }
+            let method = CastingMethod::ExactPermission { origin: Box::new(selected_origin),
+                permission: crate::alternative_cast::GrantSelection { source, index, identity } };
+            if can_cast_spell_with_view(game, player, card, &method, view) {
+                actions.push(LegalAction::CastSpell { spell_id: card.id, from_zone: zone, casting_method: method });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Only an explicit public declaration unlocks this generic face-down view.
+/// Each exact origin is reindexed in the proposed face's ordinary grant list.
+pub(crate) fn declared_blind_face_down_action(
+    game: &GameState, player: PlayerId, card_id: ObjectId,
+    selected: &crate::alternative_cast::GrantSelection,
+) -> Result<Option<LegalAction>, crate::effects::ExecutionError> {
+    with_complete_legality_query(game, |game| {
+        crate::alternative_cast::blind_play::resolve(game, card_id, player, selected)?;
+        if game.hidden_face_down_cast_claim(card_id).is_none() { return Ok(None); }
+        let card = game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+        let origin = CastingMethod::FaceDownPlayFrom { source: selected.source, zone: Zone::Exile };
+        let (face, _, _) = crate::alternative_cast::play_permission::selected_face(game, player, card, &origin)?;
+        let query = crate::grant_registry::proposed_card_face_query(game, &face)?;
+        let grants = query.effect_store.grant_registry.get_grants_for_card(&query, card_id, Zone::Exile, player);
+        if let Some(error) = query.token_resource_failure() { return Err(error); }
+        let Some((index, _)) = grants.iter().enumerate().find(|(_, grant)|
+            matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+                && grant.permission_identity.as_ref() == Some(&selected.identity)
+                && grant.source.source_id() == selected.source
+                && grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit)) else { return Ok(None); };
+        let method = CastingMethod::ExactPermission { origin: Box::new(origin), permission: crate::alternative_cast::GrantSelection {
+            identity: selected.identity.clone(), source: selected.source, index,
+        }};
+        if !crate::alternative_cast::blind_play::declared_method_is_authorized(game, card_id, player, &method)? { return Ok(None); }
+        let view = DerivedGameView::new(game);
+        Ok(can_cast_spell_with_view(game, player, card, &method, &view).then_some(LegalAction::CastSpell {
+            spell_id: card_id, from_zone: Zone::Exile, casting_method: method,
+        }))
+    })
+}
+
+fn append_blind_exile_intents(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId, card_id: ObjectId, view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    let permissions = crate::alternative_cast::blind_play::selections(game, card_id, player)?;
+    if permissions.is_empty() { return Ok(()); }
+    let incarnation = crate::alternative_cast::blind_play::incarnation(game, card_id)?;
+    actions.extend(permissions.into_iter().flat_map(|permission| [
+        LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission: permission.clone() },
+        LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission },
+    ]));
+    append_declared_blind_face_down_actions(game, actions, player, card_id, view)
+}
+
+fn append_declared_blind_face_down_actions(
+    game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId, card_id: ObjectId,
+    _view: &DerivedGameView<'_>,
+) -> Result<(), crate::effects::ExecutionError> {
+    if game.blind_face_down_declaration(card_id).is_none() { return Ok(()); }
+    for selection in crate::alternative_cast::blind_play::selections(game, card_id, player)? {
+        if let Some(action) = declared_blind_face_down_action(game, player, card_id, &selection)? { actions.push(action); }
+    }
+    Ok(())
+}
+
+/// Only called after the public face-up transition. The opening selected one
+/// unqualified authority; this menu may choose a face or price, not another grant.
+pub(crate) fn opened_exile_play_actions(
+    game: &GameState, player: PlayerId, card_id: ObjectId,
+    permission: &crate::alternative_cast::GrantSelection,
+) -> Result<Vec<LegalAction>, crate::effects::ExecutionError> {
+    with_complete_legality_query(game, |game| {
+        let card = game.object(card_id).ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
+        if card.zone != Zone::Exile || game.is_face_down(card_id) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence("opened exile play lost its public origin".into()));
+        }
+        let authority = crate::alternative_cast::blind_play::selections(game, card_id, player)?;
+        if authority.get(permission.index) != Some(permission) { return Ok(Vec::new()); }
+        let view = DerivedGameView::new(game); let mut actions = Vec::new();
+        append_exact_permission_actions_for_card_selected(game, &mut actions, player, card, Zone::Exile, &view, Some(permission))?;
+        for method in crate::alternative_cast::price_routes::candidates(game, player, card)? {
+            if matches!(&method, CastingMethod::AlternativePrice { origin_permission: Some(origin), .. }
+                if origin.identity == permission.identity && origin.source == permission.source)
+                && can_cast_spell_with_view(game, player, card, &method, &view)
+            { actions.push(LegalAction::CastSpell { spell_id: card_id, from_zone: Zone::Exile, casting_method: method }); }
+        }
+        for (special, legal) in [
+            (SpecialAction::PlayLand { card_id }, LegalAction::PlayLand { land_id: card_id }),
+            (SpecialAction::PlayLandBackFace { card_id }, LegalAction::PlayLandBackFace { land_id: card_id }),
+        ] {
+            if special_action_is_legal(crate::special_actions::can_perform_check(&special, game, player))? { actions.push(legal); }
+        }
+        Ok(actions)
+    })
 }
 
 fn append_granted_play_from_actions_for_card(
@@ -133,8 +279,10 @@ fn append_granted_play_from_actions_for_card(
     source_zone: Zone,
     view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
+    append_exact_permission_actions_for_card(game, actions, player, card, source_zone, view)?;
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
         if !grant_usage_limit_allows(
             game,
             player,
@@ -260,6 +408,7 @@ fn append_granted_play_from_actions_for_card(
             .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
         let cost = face_down_cast_mana_cost();
         for grant in face_view.granted_play_from_for_card(card_id, source_zone, player) {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
             if !grant_usage_limit_allows(
                 game,
                 player,
@@ -309,6 +458,7 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(card_id, source_zone, player)
             .len();
     for grant in adventure_play_from_grants {
+        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
         if !grant_usage_limit_allows(
             game,
             player,
@@ -639,6 +789,10 @@ fn append_cast_actions_from_zone_for_card(
     view: &DerivedGameView<'_>,
     zone_has_active_grants: bool,
 ) -> Result<(), crate::effects::ExecutionError> {
+    if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) {
+        append_blind_exile_intents(game, actions, player, card_id, view)?;
+        return Ok(());
+    }
     append_native_alternative_cast_actions_for_card_from_zone(
         game, actions, player, card_id, card, from_zone, view,
     );
@@ -715,6 +869,7 @@ fn append_granted_land_play_actions_from_public_zone(
         let Some(card) = game.object(card_id) else {
             continue;
         };
+        if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) { continue; }
         if !card.is_land()
             && crate::decision::linked_other_face_land_definition(game, card).is_none()
         {
@@ -745,6 +900,7 @@ fn append_adventure_exiled_land_play_actions(
         let Some(card) = game.object(card_id) else {
             continue;
         };
+        if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) { continue; }
         if game.adventure_exiled_player(card_id) != Some(player) || !card.is_land() {
             continue;
         }
@@ -893,7 +1049,7 @@ fn add_hand_special_actions(
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     hand_summaries: &[HandCardSummary<'_>],
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     for summary in hand_summaries {
         if !summary.has_any_hand_special_action() {
             continue;
@@ -905,14 +1061,18 @@ fn add_hand_special_actions(
             else {
                 continue;
             };
-            if !offered.contains(&action)
-                && crate::special_actions::can_perform_check(&action, game, player).is_ok()
-            {
-                offered.push(action.clone());
-                actions.push(LegalAction::SpecialAction(action));
+            if offered.contains(&action) { continue; }
+            match crate::special_actions::can_perform_check(&action, game, player) {
+                Ok(()) => {
+                    offered.push(action.clone());
+                    actions.push(LegalAction::SpecialAction(action));
+                }
+                Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => return Err(error),
+                Err(_) => {}
             }
         }
     }
+    Ok(())
 }
 
 fn add_graveyard_cast_actions(
@@ -1003,6 +1163,10 @@ fn add_exile_cast_actions(
         let Some(card) = game.object(card_id) else {
             continue;
         };
+        if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) {
+            append_blind_exile_intents(game, actions, player, card_id, view)?;
+            continue;
+        }
         append_cast_actions_from_zone_for_card(
             game,
             actions,
@@ -1287,7 +1451,8 @@ fn collect_non_battlefield_source_ids(
         game.exile
             .iter()
             .copied()
-            .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)),
+            .filter(|id| game.object(*id).is_some_and(|obj| obj.owner == player)
+                && !crate::alternative_cast::blind_play::requires_opening(game, *id, player)),
     );
     non_battlefield_ids.extend(
         game.command_zone
@@ -1560,7 +1725,7 @@ fn compute_legal_actions_checked(
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
 
     let hand_special_actions_started_at = PerfTimer::start();
-    add_hand_special_actions(game, &mut actions, player, &hand_summaries);
+    add_hand_special_actions(game, &mut actions, player, &hand_summaries)?;
     perf.hand_special_actions_ms = hand_special_actions_started_at.elapsed_ms();
 
     let graveyard_casts_started_at = PerfTimer::start();
@@ -1632,7 +1797,8 @@ fn compute_legal_actions_checked(
             let Some(card) = game.object(id) else {
                 continue;
             };
-            if matches!(card.zone, Zone::Battlefield | Zone::Stack) {
+            if matches!(card.zone, Zone::Battlefield | Zone::Stack)
+                || crate::alternative_cast::blind_play::requires_opening(game, id, player) {
                 continue;
             }
             for method in crate::alternative_cast::price_routes::candidates(game, player, card)? {
@@ -1878,9 +2044,9 @@ fn loyalty_activation_special_rules_allow(
 }
 
 fn loyalty_remove_counters_cost_amount(cost: &crate::costs::Cost) -> Option<u32> {
-    let effect = cost
-        .effect_ref()?
-        .downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+    let effect = cost.effect_ref()?;
+    let effect = effect.downcast_ref::<crate::effects::WithIdEffect>().map_or(effect, |observed| &observed.effect);
+    let effect = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()?;
     if effect.counter_type != crate::CounterType::Loyalty {
         return None;
     }
@@ -1994,35 +2160,11 @@ fn activated_minimum_x_cost_is_payable(
 }
 
 pub(crate) fn is_equip_ability(
-    game: &GameState,
-    source: ObjectId,
+    _game: &GameState,
+    _source: ObjectId,
     activated: &crate::ability::ActivatedAbility,
 ) -> bool {
-    let Some(source_object) = game.object(source) else {
-        return false;
-    };
-    if !source_object
-        .subtypes
-        .contains(&crate::types::Subtype::Equipment)
-    {
-        return false;
-    }
-    activated
-        .effects
-        .flattened_default_effects()
-        .iter()
-        .any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::AttachToEffect>()
-                .is_some()
-                // Printed "Equip {N}" compiles to the Equipment attaching
-                // itself (CR 702.6a).
-                || effect
-                    .downcast_ref::<crate::effects::AttachObjectsEffect>()
-                    .is_some_and(|attach| {
-                        matches!(attach.objects, crate::target::ChooseSpec::Source)
-                    })
-        })
+    activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip)
 }
 
 fn player_may_activate_loyalty_abilities_any_time(
@@ -2291,7 +2433,7 @@ fn activation_precheck_with_view(
             return None;
         }
 
-        let reason = crate::costs::PaymentReason::ActivateAbility;
+        let reason = activated.payment_reason(game, source, controller);
         let loyalty_costs_payable = match activated.mana_cost.kind() {
             ironsmith_core::TotalCostKind::All(costs) => {
                 loyalty_negative_costs_payable(game, source, costs)
@@ -2393,7 +2535,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    let reason = crate::costs::PaymentReason::ActivateAbility;
+    let reason = activated.payment_reason(game, source, controller);
     let loyalty_costs_payable = match activated.mana_cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
             loyalty_negative_costs_payable(game, source, costs)
@@ -2480,6 +2622,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
     source: ObjectId,
     cost: &crate::cost::TotalCost,
     view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
     let mut execution =
@@ -2489,7 +2632,7 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
         controller,
         source,
         cost,
-        crate::costs::PaymentReason::ActivateAbility,
+        reason,
         &mut execution,
         view,
     )
@@ -2502,8 +2645,9 @@ pub(crate) fn activation_total_cost_branch_is_payable_with_view(
     source: ObjectId,
     cost: &crate::cost::TotalCost,
     view: &DerivedGameView<'_>,
+    reason: crate::costs::PaymentReason,
 ) -> bool {
-    activation_total_cost_is_payable_with_view(game, controller, source, cost, view)
+    activation_total_cost_is_payable_with_view(game, controller, source, cost, view, reason)
 }
 
 pub(crate) fn can_activate_ability_with_restrictions_with_view(
@@ -2608,7 +2752,7 @@ pub(crate) fn can_activate_ability_with_restrictions_with_view(
         }
         return false;
     }
-    if !activation_total_cost_is_payable_with_view(game, controller, source, &total_cost, view) {
+    if !activation_total_cost_is_payable_with_view(game, controller, source, &total_cost, view, activated.payment_reason(game, source, controller)) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_total_ms(total_started_at.elapsed_ms());
         }

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Aettir and Priwen",
+    "oracle_id": "19d8937e-23fb-4758-a306-0e7af9bb44c4",
+    "mana_cost": "{6}",
+    "type_line": "Legendary Artifact — Equipment",
+    "oracle_text": "Equipped creature has base power and toughness X/X, where X is your life total.\nEquip {5}",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Equipped creature has base power and toughness X/X, where X is your life total.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Equipped creature has base power and toughness X/X, where X is your life total.' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Angry Mob",
+    "oracle_id": "967c2c79-7e49-448d-8d30-b2eb08b21d0a",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Human",
+    "oracle_text": "Trample\nDuring your turn, Angry Mob's power and toughness are each equal to 2 plus the number of Swamps your opponents control. During turns other than yours, Angry Mob's power and toughness are each 2.",
+    "power": "2+*",
+    "toughness": "2+*",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'During your turn, Angry Mob's power and toughness are each equal to 2 plus the number of Swamps your opponents control. During turns other than yours, Angry Mob's power and toughness are each 2.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'During your turn, Angry Mob's power and toughness are each equal to 2 plus the number of Swamps your opponents control. During turns other than yours, Angry Mob's power and toughness are each 2.' [rule-path=unsupported-line-family]"
+  },
+  {
+    "name": "Duelist of the Mind",
+    "oracle_id": "ff78f166-cca2-44bc-abe3-3a338bf543be",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Human Advisor",
+    "oracle_text": "Flying, vigilance\nDuelist of the Mind's power is equal to the number of cards you've drawn this turn.\nWhenever you commit a crime, you may draw a card. If you do, discard a card. This ability triggers only once each turn.",
+    "power": "*",
+    "toughness": "3",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "unsupported characteristic defining power value (value: 'the number of cards you've drawn this turn') [rule-path=parse_characteristic_defining_pt_line] [rule-path=static-line]; oracle-only fallback also failed: unsupported characteristic defining power value (value: 'the number of cards you've drawn this turn') [rule-path=parse_characteristic_defining_pt_line] [rule-path=static-line]"
+  },
+  {
+    "name": "Roiling Horror",
+    "oracle_id": "52be9dd0-72f4-408b-ae3b-17a0362c2681",
+    "mana_cost": "{3}{B}{B}",
+    "type_line": "Creature — Horror",
+    "oracle_text": "Roiling Horror's power and toughness are each equal to your life total minus the life total of an opponent with the most life.\nSuspend X—{X}{B}{B}{B}. X can't be 0. (Rather than cast this card from your hand, you may pay {X}{B}{B}{B} and exile it with X time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost. It has haste.)\nWhenever a time counter is removed from this card while it's exiled, target player loses 1 life and you gain 1 life.",
+    "power": "*",
+    "toughness": "*",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "unsupported characteristic defining P/T value (value: 'your life total minus the life total of an opponent with the most life') [rule-path=parse_characteristic_defining_pt_line] [rule-path=static-line]; oracle-only fallback also failed: unsupported characteristic defining P/T value (value: 'your life total minus the life total of an opponent with the most life') [rule-path=parse_characteristic_defining_pt_line] [rule-path=static-line]"
+  }
+]

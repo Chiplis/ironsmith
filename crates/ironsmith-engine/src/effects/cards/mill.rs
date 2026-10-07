@@ -30,6 +30,9 @@ use crate::zone::Zone;
 pub type MillEffect = ironsmith_core::MillEffect;
 
 impl EffectExecutor for MillEffect {
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.player.mentions_player_filter(needle)
+    }
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
         Some(crate::effect::PriorEffectAction::Milled)
     }
@@ -86,7 +89,10 @@ impl EffectExecutor for MillEffect {
             game,
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            crate::effects::zones::finish_zone_change_receipts_with_outputs,
+            |game, ctx, outcome, receipts, draws| {
+                let committed = draws.finish(outcome, receipts, ctx);
+                crate::effects::composition::complete_standalone_original_with_outputs(game, ctx, committed)
+            },
         )
     }
 }
@@ -145,14 +151,17 @@ fn execute_prepared_mill(
         game,
         ctx,
         || SimultaneousEffectCommit::finished(EffectOutcome::count(0)),
-        |game, ctx, outcome, receipts| {
-            crate::effects::zones::complete_movement_batch(
-                game,
-                ctx,
-                outcome,
-                receipts,
-                defer_additions,
-            )
+        |game, ctx, outcome, receipts, draws| {
+            let committed = draws.finish(outcome, receipts, ctx);
+            if defer_additions {
+                // The enclosing simultaneous owner completes every original
+                // before freezing this mill's replacement-created draw tails.
+                Ok(committed)
+            } else {
+                crate::effects::composition::complete_standalone_original_with_outputs(game, ctx, committed)
+                    .map(CompletedEffectOutputs::into_outcome)
+                    .map(SimultaneousEffectCommit::finished)
+            }
         },
     )
 }
@@ -172,6 +181,7 @@ fn execute_prepared_mill_with_completion<'a, R>(
                 crate::effects::zones::AppliedZoneChange,
             >,
         )>,
+        crate::effects::zones::ZoneInstructionDraws,
     ) -> Result<R, ExecutionError>,
 ) -> Result<R, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {

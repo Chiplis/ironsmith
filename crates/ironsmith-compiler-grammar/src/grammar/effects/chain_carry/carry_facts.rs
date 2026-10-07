@@ -67,6 +67,7 @@ pub fn parse_carry_duration_prefix_tokens(
             leaf::LeafDurationPhrase::UntilYourNextTurn => Until::YourNextTurn,
             leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
             leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
+        leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
             _ => return None,
         };
         (duration, parsed.rest)

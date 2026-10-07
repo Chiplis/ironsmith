@@ -40,6 +40,15 @@ pub(crate) fn pay_mana_cost_with_choices_in_context(
     execution: Option<&crate::effects::ExecutionContextCheckpoint>,
 ) -> Result<(), CostPaymentError> {
     use crate::mana::ManaSymbol;
+    if cost.has_waterbend_obligation() {
+        let source = source.ok_or(CostPaymentError::InsufficientMana)?;
+        cost.waterbend_capacity_checked(x_value).ok_or_else(|| CostPaymentError::ExecutionFailed(
+            crate::effects::ExecutionError::IncompleteEvidence("Waterbend payment quantity overflows".into())))?;
+        let cost = cost.clone().bind_x_payment_if_unbound(x_value);
+        let cost = cost.with_pips(GameState::expanded_payment_pips(&cost, x_value, false));
+        return crate::mana_payment::pay_mana_interactively_in_context(game, payer, source, cost, reason,
+            Vec::new(), Vec::new(), decision_maker, execution);
+    }
     if game.player(payer).is_none() {
         return Err(CostPaymentError::PlayerNotFound);
     }
@@ -168,6 +177,19 @@ impl ManaPaymentCost {
 impl CostPayer for ManaPaymentCost {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
         let x_value = ctx.x_value.unwrap_or(0);
+        if self.cost.has_waterbend_obligation() {
+            let mut request = crate::mana_payment::ManaPaymentRequest::new(ctx.payer, ctx.source, ctx.reason, self.cost.clone())
+                .with_x(x_value).with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
+            request.allow_mana_abilities = false;
+            request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
+            request.activation_excluded_sources.extend(ctx.interactive_mana_exclusions.iter().flatten().copied());
+            request.allow_black_life = game.player_can_pay_black_with_life_for_reason(ctx.payer, Some(ctx.source), ctx.reason);
+            return crate::mana_payment::check_mana_payment(game, &request)
+                .map_err(|error| match error {
+                    crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
+                    _ => CostPaymentError::InsufficientMana,
+                });
+        }
         if game.player(ctx.payer).is_none() {
             return Err(CostPaymentError::PlayerNotFound);
         }
@@ -178,6 +200,7 @@ impl CostPayer for ManaPaymentCost {
             x_value,
             ctx.reason,
         ) {
+            if let Some(error) = game.token_resource_failure() { return Err(CostPaymentError::ExecutionFailed(error)); }
             return Err(CostPaymentError::InsufficientMana);
         }
 
@@ -199,11 +222,33 @@ impl CostPayer for ManaPaymentCost {
 
     fn can_potentially_pay_with_query(
         &self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &CostContext,
         query: &crate::costs::PotentialManaQuery<'_, '_>,
     ) -> Result<(), CostPaymentError> {
         let x_value = ctx.x_value.unwrap_or(0);
+        if self.cost.has_waterbend_obligation() || query.payment.is_some()
+            || !ctx.reserved_tap_sources.is_empty()
+        {
+            let mut request = crate::mana_payment::ManaPaymentRequest::new(
+                ctx.payer, ctx.source, ctx.reason, self.cost.clone(),
+            ).with_x(x_value).with_spend_policy(game.mana_spend_policy(ctx.payer, Some(ctx.source)));
+            request.reserved_tap_sources = ctx.reserved_tap_sources.clone();
+            request.activation_excluded_sources.extend(ctx.interactive_mana_exclusions.iter().flatten().copied());
+            if let Some(outer) = query.payment {
+                request.activation_excluded_sources.extend(outer.activation_excluded_sources.iter().copied());
+                request.reserved_tap_sources.extend(outer.reserved_tap_sources.iter().copied());
+                request.reserved_graveyard_sources.extend(outer.reserved_graveyard_sources.iter().copied());
+                request.reserved_permanent_sources.extend(outer.reserved_permanent_sources.iter().copied());
+            }
+            request.allow_black_life = game.player_can_pay_black_with_life_for_reason(
+                ctx.payer, Some(ctx.source), ctx.reason,
+            );
+            return crate::mana_payment::check_mana_payment(game, &request).map_err(|failure| match failure {
+                crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
+                _ => CostPaymentError::InsufficientMana,
+            });
+        }
         if !query.view.can_potentially_pay_with_reason(
             ctx.payer,
             Some(ctx.source),
@@ -211,6 +256,7 @@ impl CostPayer for ManaPaymentCost {
             x_value,
             ctx.reason,
         ) {
+            if let Some(error) = game.token_resource_failure() { return Err(CostPaymentError::ExecutionFailed(error)); }
             return Err(CostPaymentError::InsufficientMana);
         }
         Ok(())
@@ -222,15 +268,14 @@ impl CostPayer for ManaPaymentCost {
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
         let execution = ctx.capture_execution_context();
-        pay_mana_cost_with_choices_in_context(
-            game,
-            ctx.payer,
-            Some(ctx.source),
-            &self.cost,
-            ctx.x_value.unwrap_or(0),
-            ctx.reason,
-            ctx.decision_maker,
-            Some(&execution),
+        self.cost.waterbend_capacity_checked(ctx.x_value.unwrap_or(0)).ok_or_else(|| CostPaymentError::ExecutionFailed(
+            crate::effects::ExecutionError::IncompleteEvidence("Waterbend payment quantity overflows".into())))?;
+        let cost = self.cost.clone().bind_x_payment_if_unbound(ctx.x_value.unwrap_or(0));
+        let cost = cost.with_pips(GameState::expanded_payment_pips(&cost, ctx.x_value.unwrap_or(0), false));
+        crate::mana_payment::pay_mana_interactively_in_context(
+            game, ctx.payer, ctx.source, cost, ctx.reason,
+            ctx.interactive_mana_exclusions.clone().unwrap_or_default(), ctx.reserved_tap_sources.clone(),
+            ctx.decision_maker, Some(&execution),
         )?;
 
         Ok(CostPaymentResult::Paid)
@@ -238,7 +283,7 @@ impl CostPayer for ManaPaymentCost {
 
     fn display(&self) -> String {
         // Format the mana cost as a string
-        format_mana_cost(&self.cost)
+        self.cost.payment_surface()
     }
 
     fn is_mana_cost(&self) -> bool {

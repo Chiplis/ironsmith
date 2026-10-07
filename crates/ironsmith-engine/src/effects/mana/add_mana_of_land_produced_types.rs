@@ -106,7 +106,7 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
                 collect_available_mana_symbols(game, ctx, &self.land_filter)
             }
             ManaTypeSource::TriggeringEventProduced => {
-                collect_triggering_event_mana_symbols(game, ctx, &self.land_filter)
+                collect_triggering_event_mana_symbols(game, ctx, &self.land_filter)?
             }
         };
         let available = available
@@ -146,48 +146,40 @@ pub(super) fn collect_triggering_event_mana_symbols(
     game: &GameState,
     ctx: &ExecutionContext,
     source_filter: &ObjectFilter,
-) -> Vec<ManaSymbol> {
+) -> Result<Vec<ManaSymbol>, ExecutionError> {
     let Some(event) = ctx
         .triggering_event
         .as_ref()
         .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
     else {
-        return Vec::new();
+        return Err(ExecutionError::IncompleteEvidence("produced mana types require the exact triggering production event".into()));
     };
 
-    // A captured snapshot is the characteristics of the mana source at the
-    // moment it produced mana. Prefer it to the possibly changed live object.
-    let filter_ctx = ctx.filter_context(game);
-    let source_matches = if let Some(snapshot) = event.snapshot.as_ref() {
-        source_filter.matches_snapshot(snapshot, &filter_ctx, game)
-    } else if let Some(source) = game.object(event.source) {
-        source_filter.matches(source, &filter_ctx, game)
-    } else {
-        false
-    };
-    if !source_matches {
-        return Vec::new();
+    // This is an event-time comparison. A later live object cannot fill a
+    // missing production receipt, even if it still has the same identity.
+    let snapshot = event.snapshot.as_ref().ok_or_else(|| ExecutionError::IncompleteEvidence(
+        "produced mana types require the event-time source snapshot".into(),
+    ))?;
+    if snapshot.object_id != event.source {
+        return Err(ExecutionError::IncompleteEvidence("mana production source snapshot belongs to a different object".into()));
     }
-
-    let mut symbols = event
-        .mana
-        .iter()
-        .copied()
-        .filter(|symbol| {
-            matches!(
-                symbol,
+    let filter_ctx = ctx.filter_context(game);
+    if !source_filter.matches_snapshot(snapshot, &filter_ctx, game) {
+        return Ok(Vec::new());
+    }
+    if event.mana.iter().any(|symbol| !matches!(symbol,
                 ManaSymbol::White
                     | ManaSymbol::Blue
                     | ManaSymbol::Black
                     | ManaSymbol::Red
                     | ManaSymbol::Green
-                    | ManaSymbol::Colorless
-            )
-        })
-        .collect::<Vec<_>>();
+                    | ManaSymbol::Colorless)) {
+        return Err(ExecutionError::IncompleteEvidence("mana production receipt contains an unresolved mana symbol".into()));
+    }
+    let mut symbols = event.mana.clone();
     symbols.sort_by_key(|symbol| canonical_symbol_order(*symbol));
     symbols.dedup();
-    symbols
+    Ok(symbols)
 }
 
 pub(super) fn collect_available_mana_symbols(
@@ -390,5 +382,42 @@ mod tests {
                 .colorless,
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod retained_production_evidence_tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::{CardId, CardType, Zone};
+    #[test]
+    fn absent_mismatched_and_known_empty_production_receipts_stay_distinct() {
+        for case in 0..5 {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let player = crate::PlayerId(0);
+            let definition = CardBuilder::new(CardId::new(), "Production source").card_types(vec![CardType::Land]).build();
+            let source = game.create_object_from_card(&definition, player, Zone::Battlefield);
+            let mut ctx = ExecutionContext::new_default(source, player);
+            if case > 0 {
+                let mut snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+                if case == 2 { snapshot.object_id = crate::ObjectId::from_raw(999_991); }
+                let event = crate::events::ManaAddedEvent::new(source, player, player,
+                    if case == 3 { Vec::new() } else { vec![ManaSymbol::Blue] })
+                    .with_snapshot((case != 1).then_some(snapshot));
+                ctx = ctx.with_triggering_event(event.into_trigger_event());
+            }
+            let effect = AddManaOfLandProducedTypesEffect::from_triggering_event(1, PlayerFilter::You, ObjectFilter::land(), true, false);
+            let projection = effect.mana_production().unwrap().resolve(&game, &ctx);
+            if case < 3 {
+                assert!(matches!(projection, Err(ExecutionError::IncompleteEvidence(_))));
+                assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+                assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+            } else {
+                projection.unwrap();
+                if case == 4 { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+                effect.execute(&mut game, &mut ctx).unwrap();
+                assert_eq!(game.player(player).unwrap().mana_pool.blue, u32::from(case == 4));
+            }
+        }
     }
 }

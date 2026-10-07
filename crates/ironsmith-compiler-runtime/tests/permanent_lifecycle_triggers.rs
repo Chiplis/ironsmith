@@ -302,7 +302,7 @@ fn inquisitor_full_entry_incubate_and_paid_token_transform_bind_exact_permanent(
         let token = *game
             .battlefield
             .iter()
-            .find(|id| game.object(**id).unwrap().name.as_ref() == "Incubator")
+            .find(|id| game.object(**id).unwrap().name.as_ref() == "Incubator Token")
             .unwrap();
         assert_eq!(counters(&game, token), 2);
         assert!(!game.current_is_creature(token));
@@ -318,6 +318,7 @@ fn inquisitor_full_entry_incubate_and_paid_token_transform_bind_exact_permanent(
         resolve(&mut game, &mut dm);
         assert_eq!(game.stack.len(), 1);
         assert!(game.current_is_creature(token));
+        assert_eq!(game.object(token).unwrap().name.as_ref(), "Phyrexian Token");
         assert_eq!(counters(&game, token), 2);
         resolve(&mut game, &mut dm);
         assert_eq!(counters(&game, token), 3);
@@ -325,6 +326,8 @@ fn inquisitor_full_entry_incubate_and_paid_token_transform_bind_exact_permanent(
         let events = transform(&mut game, token, A, token);
         assert_eq!(stack(&mut game, events, &mut dm), 0);
         assert_eq!(counters(&game, token), 3);
+        assert_eq!(game.object(token).unwrap().name.as_ref(), "Incubator Token");
+        assert!(!game.current_is_creature(token));
         // A non-token card can legally blink. The later incarnation is not
         // the permanent identified by the transformation trigger.
         let permanent = host_with_subtype(&mut game, A, ironsmith::types::Subtype::Phyrexian);

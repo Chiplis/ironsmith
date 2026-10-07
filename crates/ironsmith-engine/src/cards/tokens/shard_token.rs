@@ -17,6 +17,7 @@ use crate::zone::Zone;
 pub fn shard_token_definition() -> CardDefinition {
     let scry_and_draw_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]])),
                 Cost::sacrifice_self(),

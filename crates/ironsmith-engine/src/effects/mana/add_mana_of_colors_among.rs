@@ -34,7 +34,7 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let symbols = colors_among_filter(game, &self.filter, ctx.source, player_id);
+        let symbols = colors_among_for_execution(game, &self.filter, ctx, player_id)?;
         if symbols.is_empty() {
             return Ok(EffectOutcome::count(0));
         }
@@ -58,6 +58,32 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
         let symbols = colors_among_filter(game, &self.filter, source, controller);
         (!symbols.is_empty()).then_some(symbols)
     }
+}
+
+/// Execution and the shared mana planner use the same exact self-reference.
+/// A sacrificed or phased source reads its retained colors; no snapshot is
+/// incomplete evidence rather than an invented colorless result.
+pub(super) fn colors_among_for_execution(
+    game: &GameState,
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+    controller: PlayerId,
+) -> Result<Vec<ManaSymbol>, ExecutionError> {
+    if !filter.is_source_only() {
+        return Ok(colors_among_filter(game, filter, ctx.source, controller));
+    }
+    let colors = match game.try_current_characteristics(ctx.source)
+        .map_err(ExecutionError::ContinuousDiscovery)?
+    {
+        Some(chars) => chars.colors,
+        None => ctx.source_snapshot.as_ref()
+            .filter(|snapshot| snapshot.object_id == ctx.source)
+            .map(|snapshot| snapshot.colors)
+            .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "source-color mana requires its exact source or last-known snapshot".into()))?,
+    };
+    Ok(Color::ALL.into_iter().filter(|color| colors.contains(*color))
+        .map(ManaSymbol::from_color).collect())
 }
 
 pub(super) fn colors_among_filter(
@@ -90,7 +116,14 @@ pub(super) fn colors_among_filter(
         if !filter.matches(obj, &filter_ctx, game) {
             return;
         }
-        let color_set = obj.colors();
+        let color_set = match game.try_current_characteristics(id) {
+            Ok(Some(chars)) => chars.colors,
+            Ok(None) => return,
+            Err(error) => {
+                game.record_token_resource_failure(&ExecutionError::ContinuousDiscovery(error));
+                return;
+            }
+        };
         push_color_if_present(&mut colors, color_set, Color::White, ManaSymbol::White);
         push_color_if_present(&mut colors, color_set, Color::Blue, ManaSymbol::Blue);
         push_color_if_present(&mut colors, color_set, Color::Black, ManaSymbol::Black);

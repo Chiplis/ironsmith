@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Breaching Leviathan",
+    "oracle_id": "7d249b16-33ef-463e-9e5d-0b84d434f093",
+    "mana_cost": "{7}{U}{U}",
+    "type_line": "Creature — Leviathan",
+    "power": "9",
+    "toughness": "9",
+    "oracle_text": "When this creature enters, if you cast it from your hand, tap all nonblue creatures. Those creatures don't untap during their controllers' next untap steps.",
+    "text": "Mana cost: {7}{U}{U}\nType: Creature — Leviathan\nPower/Toughness: 9/9\nWhen this creature enters, if you cast it from your hand, tap all nonblue creatures. Those creatures don't untap during their controllers' next untap steps."
+  },
+  {
+    "name": "Cone of Cold",
+    "oracle_id": "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+    "mana_cost": "{3}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Roll a d20.\n1—9 | Tap all creatures your opponents control.\n10—19 | Tap all creatures your opponents control. Those creatures don't untap during their controllers' next untap steps.\n20 | Tap all creatures your opponents control. Those creatures don't untap during their controllers' next untap steps. Until your next turn, creatures your opponents control enter tapped.",
+    "text": "Mana cost: {3}{U}\nType: Sorcery\nRoll a d20.\n1—9 | Tap all creatures your opponents control.\n10—19 | Tap all creatures your opponents control. Those creatures don't untap during their controllers' next untap steps.\n20 | Tap all creatures your opponents control. Those creatures don't untap during their controllers' next untap steps. Until your next turn, creatures your opponents control enter tapped."
+  },
+  {
+    "name": "Dragon Turtle",
+    "oracle_id": "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Creature — Dragon Turtle",
+    "power": "3",
+    "toughness": "5",
+    "oracle_text": "Flash\nDrag Below — When this creature enters, tap it and up to one target creature an opponent controls. They don't untap during their controllers' next untap steps.",
+    "text": "Mana cost: {1}{U}{U}\nType: Creature — Dragon Turtle\nPower/Toughness: 3/5\nFlash\nDrag Below — When this creature enters, tap it and up to one target creature an opponent controls. They don't untap during their controllers' next untap steps."
+  },
+  {
+    "name": "Lorthos, the Tidemaker",
+    "oracle_id": "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4",
+    "mana_cost": "{5}{U}{U}{U}",
+    "type_line": "Legendary Creature — Octopus",
+    "power": "8",
+    "toughness": "8",
+    "oracle_text": "Whenever Lorthos attacks, you may pay {8}. If you do, tap up to eight target permanents. Those permanents don't untap during their controllers' next untap steps.",
+    "text": "Mana cost: {5}{U}{U}{U}\nType: Legendary Creature — Octopus\nPower/Toughness: 8/8\nWhenever Lorthos attacks, you may pay {8}. If you do, tap up to eight target permanents. Those permanents don't untap during their controllers' next untap steps."
+  },
+  {
+    "name": "Sudden Storm",
+    "oracle_id": "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+    "mana_cost": "{3}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Tap up to two target creatures. Those creatures don't untap during their controllers' next untap steps. Scry 1. (Look at the top card of your library. You may put that card on the bottom.)",
+    "text": "Mana cost: {3}{U}\nType: Instant\nTap up to two target creatures. Those creatures don't untap during their controllers' next untap steps. Scry 1. (Look at the top card of your library. You may put that card on the bottom.)"
+  },
+  {
+    "name": "Code of Constraint",
+    "oracle_id": "b2f83483-24a4-45db-a04e-42ff732ca98a",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Target creature gets -4/-0 until end of turn.\nDraw a card.\nAddendum — If you cast this spell during your main phase, tap that creature and it doesn't untap during its controller's next untap step.",
+    "text": "Mana cost: {2}{U}\nType: Instant\nTarget creature gets -4/-0 until end of turn.\nDraw a card.\nAddendum — If you cast this spell during your main phase, tap that creature and it doesn't untap during its controller's next untap step."
+  }
+]

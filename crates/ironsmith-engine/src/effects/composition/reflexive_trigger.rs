@@ -249,6 +249,11 @@ impl EffectExecutor for ReflexiveTriggerEffect {
         {
             return Ok(EffectOutcome::resolved());
         }
+        // The antecedent succeeded. Bind its actor now, not before a declined
+        // optional action, and retain it for this separate resolution.
+        let needs_defender = self.choices.iter().any(|spec| spec.mentions_player_filter(&crate::target::PlayerFilter::Defending))
+            || self.effects.iter().any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending));
+        if needs_defender && !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
         let fallback_it_snapshots = reflexive_it_snapshots(game, &outcome);
 
         // X chosen while paying for the antecedent belongs to this follow-up,
@@ -315,6 +320,8 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             source_stable_id,
             source_name,
             |trigger_identity| PendingReflexiveTrigger {
+                linked_exile_owner: ctx.linked_exile_owner.clone(),
+                source_number_owner: ctx.source_number_owner.clone(),
                 trigger_identity,
                 source: ctx.source,
                 controller: ctx.controller,
@@ -407,6 +414,8 @@ pub(crate) fn queue_reflexive_trigger_with_source_snapshot(
         source_stable_id,
         source_name,
         |trigger_identity| PendingReflexiveTrigger {
+            linked_exile_owner: None,
+            source_number_owner: None,
             trigger_identity,
             source,
             controller,
@@ -446,6 +455,8 @@ fn register_reflexive_trigger(
     let trigger_identity = crate::triggers::TriggerIdentity(hasher.finish());
     let pending = capture(trigger_identity);
     let entry = crate::triggers::TriggeredAbilityEntry {
+        linked_exile_owner: pending.linked_exile_owner.clone(),
+        source_number_owner: pending.source_number_owner.clone(),
         source: pending.source,
         controller: pending.controller,
         x_value: pending.x_value,
@@ -479,6 +490,8 @@ pub(crate) const REFLEXIVE_TRIGGER_ID: &str = "reflexive_trigger";
 /// resolution that triggered it.
 #[derive(Debug, Clone)]
 pub(crate) struct PendingReflexiveTrigger {
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub trigger_identity: crate::triggers::TriggerIdentity,
     pub source: crate::ids::ObjectId,
     pub controller: crate::ids::PlayerId,
@@ -516,6 +529,8 @@ pub(crate) fn reflexive_trigger_stack_entry(
     let pending = game.effect_store.pending_reflexive_triggers[index].clone();
 
     let mut ctx = ExecutionContext::new(pending.source, pending.controller, decision_maker);
+    ctx.linked_exile_owner = pending.linked_exile_owner.clone();
+    ctx.source_number_owner = pending.source_number_owner.clone();
     ctx.tagged_objects = pending.tagged_objects.clone();
     ctx.tagged_players = pending.tagged_players.clone();
     ctx.effect_outcomes = pending.effect_outcomes.clone();
@@ -580,6 +595,8 @@ pub(crate) fn reflexive_trigger_stack_entry(
         .with_trigger_identity(pending.trigger_identity);
     // References such as "that player" in the follow-up still refer to
     // the event that supplied the enclosing ability's context.
+    entry.linked_exile_owner = pending.linked_exile_owner.clone();
+    entry.source_number_owner = pending.source_number_owner.clone();
     entry.iteration = pending.iteration;
     entry.triggering_event = pending.triggering_event;
     entry.event_value_amount = pending.event_value_amount;
@@ -603,6 +620,7 @@ pub(crate) fn reflexive_trigger_stack_entry(
         return Some(None);
     }
     game.effect_store.pending_reflexive_triggers.remove(index);
+    entry.defending_player_reference = pending.combat.defending_player_reference;
     if let Some(defending_player) = pending.combat.defending_player {
         entry = entry.with_defending_player(defending_player);
     }

@@ -17,6 +17,7 @@ include!("priority_analysis.rs");
 
 include!("runtime_savepoint.rs");
 include!("payment_disclosure_transaction.rs");
+include!("blind_exile_play.rs");
 
 #[cfg(test)]
 mod runtime_audit_devourer;
@@ -27,6 +28,8 @@ mod hidden_resolution_tests;
 
 #[cfg(test)]
 mod static_top_visibility_tests;
+#[cfg(test)]
+mod exact_permission_savepoint_tests;
 
 #[cfg(test)]
 mod face_down_zone_permission_tests;
@@ -70,3 +73,12 @@ mod resource_payment_view_tests {
         assert!(wasm.current_mana_payment_view_checked().unwrap().is_some());
     }
 }
+
+#[cfg(test)]
+mod activation_threshold_savepoint_tests;
+
+#[cfg(test)]
+mod activation_kind_cost_savepoints;
+
+#[cfg(test)]
+mod combat_participant_savepoint_tests;

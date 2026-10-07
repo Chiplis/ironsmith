@@ -114,6 +114,30 @@ pub struct PendingMethodSelection {
     pub available_methods: Vec<crate::decision::CastingMethodOption>,
 }
 
+/// One publicly opened exile card awaiting an ordinary play choice. Native
+/// savepoints retain the immutable grant identity and completed opening.
+#[derive(Debug, Clone)]
+pub struct PendingExilePlay {
+    pub card_id: ObjectId,
+    pub incarnation: Option<u64>,
+    pub player: PlayerId,
+    pub permission: crate::alternative_cast::GrantSelection,
+    pub actions: Vec<crate::decision::LegalAction>,
+}
+
+/// Public declaration owner for an unseen face-down cast. No face is opened.
+#[derive(Debug, Clone)]
+pub struct PendingExileFaceDownCast {
+    pub card_id: ObjectId,
+    pub incarnation: Option<u64>,
+    pub player: PlayerId,
+    pub permission: crate::alternative_cast::GrantSelection,
+    pub kinds: Vec<crate::game_state::FaceDownCastKind>,
+    /// Exact source keys with captured public hash/display IDs, not gameplay authority.
+    pub kind_source_public_ids: std::collections::BTreeMap<ObjectId, crate::ids::StableId>,
+    pub declared_kind: Option<crate::game_state::FaceDownCastKind>,
+}
+
 /// A spell or ability being cast/activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingCast {
@@ -162,6 +186,10 @@ pub struct PendingCast {
     /// A resolving instruction's selected alternative price. The effect cast
     /// is replayed atomically if input is pending; this never grants priority.
     pub effect_alternative_cost: Option<crate::cost::TotalCost>,
+    /// A captured keyword-cost recipe reduces its own base after X is
+    /// announced, before adding mandatory/optional costs and ordinary taxes.
+    pub effect_alternative_base_generic_reduction: u32,
+    pub effect_miracle_cast: bool,
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
@@ -276,6 +304,8 @@ impl PendingCast {
             effect_mana_cost_reduction: None,
             effect_additional_mana_cost: None,
             effect_alternative_cost: None,
+            effect_alternative_base_generic_reduction: 0,
+            effect_miracle_cast: false,
             announced_cost_replacements: None,
             cost_resource_announced: false,
             cost_resource: None,
@@ -465,6 +495,9 @@ pub enum ActivationCostStep {
         filter: ObjectFilter,
         description: String,
         choice_tag: Option<crate::tag::TagKey>,
+        /// The exact sacrifice component designated while locking an Emerge
+        /// price. Later components can choose the same object independently.
+        is_emerge_resource: bool,
     },
     /// A card/object choice that must be surfaced through SelectObjects.
     CardChoice(ActivationCardCostChoice),
@@ -537,6 +570,7 @@ pub(crate) fn choose_tagged_cost_step(
             }
             .display(),
             choice_tag: Some(choose.tag.clone()),
+            is_emerge_resource: false,
         });
     }
 
@@ -563,6 +597,7 @@ pub(crate) fn choose_tagged_cost_step(
             }
             .display(),
             choice_tag: Some(choose.tag.clone()),
+            is_emerge_resource: false,
         });
     }
 
@@ -766,6 +801,7 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                 filter,
                 description,
                 choice_tag: None,
+                is_emerge_resource: false,
             });
         }
         CostProcessingMode::DiscardCards { count, filter } => {
@@ -828,20 +864,21 @@ pub(crate) fn append_activation_cost_steps_from_cost(
             card_type,
             color_filter,
         } => {
-            let crate::effect::Value::Fixed(count) = count else {
+            // Revealing does not consume the chosen card. Splitting a counted
+            // reveal into single-card steps would let one card pay repeatedly;
+            // keep the complete typed selection under the cost executor.
+            if count != crate::effect::Value::Fixed(1) {
                 out.push(ActivationCostStep::Cost(cost.clone()));
                 return;
-            };
-            for _ in 0..count.max(0) as u32 {
-                out.push(ActivationCostStep::CardChoice(
-                    ActivationCardCostChoice::RevealFromHand {
-                        cost: single_choice_cost(cost),
-                        card_type,
-                        color_filter,
-                        description: description.clone(),
-                    },
-                ));
             }
+            out.push(ActivationCostStep::CardChoice(
+                ActivationCardCostChoice::RevealFromHand {
+                    cost: single_choice_cost(cost),
+                    card_type,
+                    color_filter,
+                    description,
+                },
+            ));
         }
         CostProcessingMode::ReturnToHandTarget { filter } => {
             out.push(ActivationCostStep::CardChoice(
@@ -857,9 +894,18 @@ pub(crate) fn append_activation_cost_steps_from_cost(
     }
 }
 
+/// Original activation retained for CR 602.2b cost determination. A current
+/// display slot may change during announcement and is not a replacement owner.
+#[derive(Debug, Clone)]
+pub struct AnnouncedActivationCost {
+    pub ability: crate::ability::ActivatedAbility,
+    pub facts: crate::decision::ActivationCostAbility,
+}
+
 /// An activated ability being activated that needs decisions.
 #[derive(Debug, Clone)]
 pub struct PendingActivation {
+    pub announced_cost: Option<AnnouncedActivationCost>,
     /// Identity reserved before target matching; the finalized ability keeps
     /// this exact ID even if its physical source leaves while paying costs.
     pub announced_stack_ability: Option<ObjectId>,
@@ -924,6 +970,8 @@ pub struct PendingActivation {
     /// This preserves cost-time references such as `sacrifice_cost_0` for
     /// later resolution-time value lookups.
     pub tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    /// Completed activation-cost producers, retained through native recovery.
+    pub effect_outcomes: std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Next `sacrifice_cost_{N}` tag index to assign for choose-and-sacrifice costs.
     pub next_sacrifice_cost_tag_index: usize,
     /// Whether this ability is once per turn (needs recording).
@@ -962,6 +1010,7 @@ pub struct PendingActivation {
     pub cost_reference_choices: Vec<crate::effects::ChooseObjectsEffect>,
     pub announced_cost_objects: crate::cost::prospective_references::CostReferenceBindings,
     pub cost_references_ready: bool,
+    pub counter_removal_declaration: Option<crate::cost::CounterRemovalDeclaration>,
 
 }
 
@@ -996,11 +1045,13 @@ impl PendingActivation {
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
     ) -> Self {
         Self {
+            announced_cost: None,
             announced_stack_ability: None,
             cost_reference_base: None,
             cost_reference_choices: Vec::new(),
             announced_cost_objects: Default::default(),
             cost_references_ready: true,
+            counter_removal_declaration: None,
 
             source,
             ability_index,
@@ -1029,6 +1080,7 @@ impl PendingActivation {
             mana_spent_on_activation: ManaPool::default(),
             remaining_cost_steps,
             tagged_objects,
+            effect_outcomes: Default::default(),
             next_sacrifice_cost_tag_index,
             is_once_per_turn,
             is_loyalty_ability,
@@ -1054,6 +1106,13 @@ impl PendingActivation {
 /// (like Blood Celebrant's {B}), we need to let the player tap mana sources first.
 #[derive(Debug, Clone)]
 pub struct PendingManaAbility {
+    /// Acquisition captured at admission, before any nested mana payment.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
+    /// Exact paired rules acquisition retained before nested mana payments.
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    /// The exact announced ability identity, retained through nested payment.
+    pub payment_reason: crate::costs::PaymentReason,
     /// The source permanent of the mana ability.
     pub source: ObjectId,
     /// Index of the ability being activated.
@@ -1109,6 +1168,16 @@ pub struct PriorityLoopState {
     pub pending_activation: Option<PendingActivation>,
     /// A pending casting method selection for spells with multiple available methods.
     pub pending_method_selection: Option<PendingMethodSelection>,
+    pub pending_exile_play: Option<PendingExilePlay>,
+    pub pending_exile_face_down: Option<PendingExileFaceDownCast>,
+    pub declared_exile_face_down: Option<PendingExileFaceDownCast>,
+    /// Exact queue before this no-reveal attempt; manual mana activations may
+    /// add ordinary triggers that must rewind with their tapped sources/mana.
+    pub(crate) exile_face_down_root_queue: Option<Box<TriggerQueue>>,
+    /// Completed public opening retained through the ordinary play transaction.
+    pub opened_exile_play: Option<PendingExilePlay>,
+    /// Physical rules state/queues before opening, distinct from learned identity.
+    pub(crate) exile_play_before_opening: Option<Box<(GameState, TriggerQueue)>>,
     /// A pending mana ability activation waiting for mana payment.
     pub pending_mana_ability: Option<PendingManaAbility>,
     /// Enclosing mana activations, oldest first. The active child owns the live payment.
@@ -1129,6 +1198,12 @@ impl PriorityLoopState {
             pending_cast: None,
             pending_activation: None,
             pending_method_selection: None,
+            pending_exile_play: None,
+            pending_exile_face_down: None,
+            declared_exile_face_down: None,
+            exile_face_down_root_queue: None,
+            opened_exile_play: None,
+            exile_play_before_opening: None,
             pending_mana_ability: None,
             pending_mana_parents: Vec::new(),
             pending_continuation: None,
@@ -1145,6 +1220,11 @@ impl PriorityLoopState {
     /// Clear the checkpoint (called when action completes successfully or after restore).
     pub fn clear_checkpoint(&mut self) {
         self.checkpoint = None;
+        self.opened_exile_play = None;
+        self.pending_exile_face_down = None;
+        self.declared_exile_face_down = None;
+        self.exile_face_down_root_queue = None;
+        self.exile_play_before_opening = None;
     }
 
     /// Restore the pre-action snapshot and discard every suspended part of the
@@ -1157,6 +1237,9 @@ impl PriorityLoopState {
         self.pending_cast = None;
         self.pending_activation = None;
         self.pending_method_selection = None;
+        self.pending_exile_play = self.opened_exile_play.clone();
+        self.pending_exile_face_down = self.declared_exile_face_down.clone();
+        if self.opened_exile_play.is_some() { self.checkpoint = Some(game.clone()); }
         self.pending_mana_ability = None;
         self.pending_mana_parents.clear();
         self.pending_continuation = None;
@@ -1172,11 +1255,21 @@ impl PriorityLoopState {
                 pending.targeting_announcement.is_some() && !pending.chosen_targets.is_empty())
     }
 
+    /// Public/wire snapshots cannot reconstruct this native opening authority.
+    pub fn has_opened_exile_play_receipt(&self) -> bool {
+        self.opened_exile_play.is_some() || self.pending_exile_play.is_some() || self.exile_play_before_opening.is_some()
+            || self.pending_exile_face_down.is_some() || self.declared_exile_face_down.is_some() || self.exile_face_down_root_queue.is_some()
+    }
+
     /// Check if there's an active action chain (pending cast or activation).
     pub fn has_pending_action(&self) -> bool {
         self.pending_cast.is_some()
             || self.pending_activation.is_some()
             || self.pending_method_selection.is_some()
+            || self.pending_exile_play.is_some()
+            || self.pending_exile_face_down.is_some()
+            || self.declared_exile_face_down.is_some()
+            || self.opened_exile_play.is_some()
             || self.pending_mana_ability.is_some()
             || !self.pending_mana_parents.is_empty()
             || self.pending_continuation.is_some()

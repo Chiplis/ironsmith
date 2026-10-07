@@ -209,6 +209,14 @@ impl crate::effects::SimultaneousEffectProposal for TaggedProposal {
         self.inner.declared_life_payments()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.inner.prepare_selection(game, ctx)
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -257,6 +265,16 @@ impl crate::effects::SimultaneousEffectProposal for TaggedProposal {
 }
 
 impl EffectExecutor for TaggedEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        crate::effects::replacement::replacement_effect_supported(&self.effect)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         self.effect.0.supports_prepared_action_program()
     }
@@ -407,6 +425,25 @@ fn execute_tagged_with_outputs(
 }
 
 impl CostExecutableEffect for TaggedEffect {
+    fn finalize_payment_bindings(
+        &self, game: &GameState, outcome: &EffectOutcome,
+        ctx: &mut ExecutionContext, payment_x: Option<u32>,
+    ) -> Result<(), crate::cost::CostPaymentError> {
+        if let Some(cost) = self.effect.0.as_cost_executable() {
+            cost.finalize_payment_bindings(game, outcome, ctx, payment_x)?;
+        }
+        use ironsmith_core::tag::SacrificeCostTag;
+        if let Some(selected @ SacrificeCostTag::Selected(_)) = SacrificeCostTag::parse(&self.tag) {
+            let memory = outcome.instruction_result().execution_facts.iter().rev().find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
+                _ => None,
+            }).ok_or_else(|| crate::cost::CostPaymentError::ExecutionFailed(ExecutionError::IncompleteEvidence(
+                "completed tagged sacrifice cost lacks its original-action receipt".into())))?;
+            ctx.set_tagged_objects(selected.original_result_key(), memory.clone());
+        }
+        Ok(())
+    }
+
     fn execute_payment_with_outputs(
         &self,
         game: &mut GameState,
@@ -421,7 +458,8 @@ impl CostExecutableEffect for TaggedEffect {
     }
 
     fn payment_bindings_are_owned_by_children(&self) -> bool {
-        true
+        !matches!(ironsmith_core::tag::SacrificeCostTag::parse(&self.tag),
+            Some(ironsmith_core::tag::SacrificeCostTag::Selected(_)))
     }
 
     fn supports_prepared_payment(&self) -> bool {

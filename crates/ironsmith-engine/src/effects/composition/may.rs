@@ -73,10 +73,46 @@ fn optional_branch_cursor(
 
 fn execute_optional_effects_with_outputs(
     effects: &[Effect],
+    pay_as_cost: bool,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     purpose: crate::effects::EffectExecutionPurpose,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if pay_as_cost {
+        let cost = crate::costs::Cost::try_effects(effects.iter().cloned())
+            .map_err(ExecutionError::InternalError)?;
+        let payer = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        if let ironsmith_core::TotalCostKind::All(components) = cost.kind()
+            && components.iter().all(|component| component.0.supports_prepared_payment()) {
+            let prepared = crate::costs::prepare_total_cost(&cost, game, ctx, payer, crate::costs::PaymentReason::Effect)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+            }
+            let Some(prepared) = prepared else {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible()));
+            };
+            let simultaneous = prepared.has_simultaneous_originals();
+            let outputs = super::complete_prepared_original_with_outputs(prepared, game, ctx, simultaneous)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+            }
+            let aggregate = EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted),
+                [outputs.outcome.clone()],
+            );
+            return Ok(outputs.project_aggregate(aggregate));
+        }
+        return match crate::special_actions::pay_total_cost_with_choice_in_context(
+            game, payer, ctx.source, &cost, crate::costs::PaymentReason::Effect, ctx,
+        ) {
+            Ok(()) if !ctx.decision_maker.awaiting_choice() => Ok(
+                crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted))),
+            Ok(()) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))),
+            Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
+            Err(_) => Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())),
+        };
+    }
     super::action_program::execute_action_program_with_outputs(
         optional_branch_cursor(effects, None),
         game,
@@ -122,6 +158,8 @@ pub struct MayEffect {
     pub decider: Option<PlayerFilter>,
     /// Strategy when no decision maker is present.
     pub fallback: FallbackStrategy,
+    /// Execute all children as one TotalCost transaction.
+    pub pay_as_cost: bool,
 }
 
 pub(crate) struct PreparedOptionalExecution {
@@ -162,6 +200,7 @@ impl MayEffect {
             effects,
             decider: None,
             fallback: FallbackStrategy::Decline,
+            pay_as_cost: false,
         }
     }
 
@@ -171,6 +210,7 @@ impl MayEffect {
             effects,
             decider: Some(decider),
             fallback: FallbackStrategy::Decline,
+            pay_as_cost: false,
         }
     }
 
@@ -182,6 +222,11 @@ impl MayEffect {
     /// Set the fallback strategy for when no decision maker is present.
     pub fn with_fallback(mut self, fallback: FallbackStrategy) -> Self {
         self.fallback = fallback;
+        self
+    }
+
+    pub fn with_pay_as_cost(mut self, pay_as_cost: bool) -> Self {
+        self.pay_as_cost = pay_as_cost;
         self
     }
 
@@ -206,6 +251,10 @@ impl MayEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<AcceptedOptionalAction>, ExecutionError> {
+        // Direct native preparation can enter this owner without ordinary
+        // dispatch. Bind only its chooser role, never an untaken child's role.
+        if self.decider.as_ref().is_some_and(|decider| decider.mentions_player_filter(&PlayerFilter::Defending))
+            && !ctx.bind_defending_player(game)? { return Ok(None); }
         let identity_guard = ctx.optional_identity_guard.take();
         // "Do this only once each turn" governs the ability's first optional
         // instruction. Once it has been performed the limit's number of times
@@ -337,8 +386,25 @@ impl MayEffect {
 }
 
 impl EffectExecutor for MayEffect {
+    fn directly_mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
+        self.decider.as_ref().is_some_and(|decider| decider.mentions_player_filter(needle))
+    }
+    fn contains_current_source_suspend_cast(&self) -> bool {
+        self.effects.iter().any(|effect| effect.0.contains_current_source_suspend_cast())
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        !self.pay_as_cost && self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
-        self.effects
+        !self.pay_as_cost && self.effects
             .iter()
             .all(super::action_program::action_program_child_is_prepared)
     }
@@ -413,7 +479,10 @@ impl EffectExecutor for MayEffect {
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        true
+        if !self.pay_as_cost { return true; }
+        crate::costs::Cost::try_effects(self.effects.iter().cloned()).is_ok_and(|cost|
+            matches!(cost.kind(), ironsmith_core::TotalCostKind::All(components)
+                if components.iter().all(|component| component.0.supports_prepared_payment())))
     }
 
     fn prepare_simultaneous_player_action(
@@ -421,7 +490,11 @@ impl EffectExecutor for MayEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        let acceptance = self.prepare_optional_decision(game, ctx)?;
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::Impossible("optional cost requires its ordinary payment owner".into()));
+        }
+        let offer_context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut acceptance = self.prepare_optional_decision(game, ctx)?;
         let effects = if acceptance.is_some() {
             self.effects.clone()
         } else {
@@ -431,16 +504,28 @@ impl EffectExecutor for MayEffect {
             .as_ref()
             .map(|accepted| accepted.player)
             .unwrap_or(ctx.iteration.iterated_player);
-        let prepared = super::prepared_branch::prepare_action_branch(
+        let prepared = if self.pay_as_cost && acceptance.is_some() {
+            let cost = crate::costs::Cost::try_effects(self.effects.iter().cloned()).map_err(ExecutionError::InternalError)?;
+            crate::costs::prepare_total_cost(&cost, game, ctx, iterated_player.unwrap_or(ctx.controller), crate::costs::PaymentReason::Effect)?
+        } else if self.pay_as_cost { None } else { super::prepared_branch::prepare_action_branch(
             &effects,
             game,
             ctx,
             iterated_player,
             true,
             true,
-        )?;
+        )? };
+        let rejected_payment = self.pay_as_cost && acceptance.is_some() && prepared.is_none()
+            && !ctx.decision_maker.awaiting_choice();
+        let accepted = acceptance.is_some();
+        if rejected_payment {
+            acceptance = None;
+            offer_context.restore(ctx);
+        }
         Ok(Box::new(MayProposal {
-            accepted: acceptance.is_some(),
+            rejected_payment,
+            pay_as_cost: self.pay_as_cost,
+            accepted,
             effects,
             prepared,
             iterated_player,
@@ -471,10 +556,21 @@ impl EffectExecutor for MayEffect {
 #[derive(Debug)]
 struct MayProposal {
     accepted: bool,
+    rejected_payment: bool,
     acceptance: Option<AcceptedOptionalAction>,
     prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
     effects: Vec<crate::effect::Effect>,
+    pay_as_cost: bool,
     iterated_player: Option<PlayerId>,
+}
+
+struct OptionalPaymentOutcome;
+impl super::OriginalOutcomeAdapter for OptionalPaymentOutcome {
+    fn finish(self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>) -> Result<EffectOutcome, ExecutionError> {
+        result.map(|outcome| EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::count(1).with_execution_fact(ExecutionFact::Accepted), [outcome]))
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for MayProposal {
@@ -547,6 +643,23 @@ impl crate::effects::SimultaneousEffectProposal for MayProposal {
             .unwrap_or_default()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if let Some(accepted) = self.acceptance.take() {
+            accepted.record(game);
+        }
+        if let Some(inner) = &mut self.prepared {
+            inner.prepare_selection(game, ctx)?;
+        }
+        Ok(())
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -595,8 +708,18 @@ impl crate::effects::SimultaneousEffectProposal for MayProposal {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
+        if self.rejected_payment {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible())));
+        }
         if let Some(inner) = self.prepared.take() {
-            return inner.commit_original_with_outputs(game, ctx);
+            let receipt = inner.commit_original_with_outputs(game, ctx)?;
+            return if self.pay_as_cost {
+                super::adapt_original_outcome_with_outputs(receipt, Box::new(OptionalPaymentOutcome), game, ctx)
+            } else { Ok(receipt) };
+        }
+        if self.pay_as_cost && self.accepted && !ctx.decision_maker.awaiting_choice() {
+            return Err(ExecutionError::InternalError("accepted optional cost lost its prepared total".into()));
         }
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -611,6 +734,7 @@ impl crate::effects::SimultaneousEffectProposal for MayProposal {
             ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
                 execute_optional_effects_with_outputs(
                     &self.effects,
+                    self.pay_as_cost,
                     game,
                     ctx,
                     crate::effects::EffectExecutionPurpose::Action,
@@ -638,7 +762,8 @@ fn execute_may_with_outputs(
     // The complete optional instruction owns all of its child actions.
     // Pending answers cannot become a decline or publish earlier partial
     // actions; retry must retain the original context and one-shot state.
-    super::execute_transaction(
+    let unpaid_checkpoint = effect.pay_as_cost.then(|| (game.clone(), crate::effects::ExecutionContextCheckpoint::capture(ctx)));
+    let result = super::execute_transaction(
         game,
         ctx,
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -648,11 +773,18 @@ fn execute_may_with_outputs(
                     EffectOutcome::declined(),
                 ));
             };
-            let result = execute_optional_effects_with_outputs(&effect.effects, game, ctx, purpose);
+            let result = execute_optional_effects_with_outputs(&effect.effects, effect.pay_as_cost, game, ctx, purpose);
             ctx.iteration.iterated_player = prepared.previous_iterated_player;
             result
         },
-    )
+    );
+    if result.as_ref().is_ok_and(|outputs| !outputs.outcome.status.is_success()) {
+        if let Some((checkpoint, context)) = unpaid_checkpoint {
+            game.restore_execution_checkpoint(checkpoint, false);
+            context.restore(ctx);
+        }
+    }
+    result
 }
 
 impl CostExecutableEffect for MayEffect {

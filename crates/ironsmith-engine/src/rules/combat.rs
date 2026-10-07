@@ -11,7 +11,6 @@ use crate::derived_view::DerivedGameView;
 use crate::filter::ObjectFilterExt as _;
 use crate::object::Object;
 use crate::static_abilities::{LandwalkKind, StaticAbilityId};
-use crate::target::FilterContext;
 use crate::types::{CardType, Supertype};
 
 /// Evasion ability types for convenience.
@@ -319,7 +318,8 @@ pub(crate) fn can_block_with_view(
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                if game.current_controller(obj.id) != blocker_controller
+                if game.is_phased_out(obj.id)
+                    || game.current_controller(obj.id) != blocker_controller
                     || !view.object_has_card_type(obj.id, CardType::Land)
                 {
                     return false;
@@ -432,75 +432,11 @@ fn protection_prevents_blocking_with_view(
     game: &crate::game_state::GameState,
     view: &DerivedGameView<'_>,
 ) -> bool {
-    let blocker_chars = view.calculated_characteristics(blocker.id);
-    let blocker_colors = blocker_chars
-        .as_ref()
-        .map(|c| c.colors)
-        .unwrap_or_else(|| blocker.colors());
-    let blocker_card_types = blocker_chars
-        .as_ref()
-        .map(|c| c.card_types.clone())
-        .unwrap_or_else(|| blocker.card_types.clone());
-
-    match protection {
-        ProtectionFrom::Color(colors) => !colors.intersection(blocker_colors).is_empty(),
-        ProtectionFrom::AllColors => !blocker_colors.is_empty(),
-        ProtectionFrom::Creatures => blocker_card_types.contains(&CardType::Creature),
-        ProtectionFrom::CardType(card_type) => blocker_card_types.contains(card_type),
-        ProtectionFrom::Permanents(filter) => {
-            // Create a filter context for the attacker (who has the protection)
-            // "You" is the controller of the attacker, source is the attacker
-            let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
-            filter.matches(blocker, &ctx, game)
-        }
-        ProtectionFrom::EachManaValueAmong(filter) => {
-            let blocker_mana_value = blocker
-                .mana_cost
-                .as_ref()
-                .map_or(0, |cost| cost.mana_value() as i32);
-            let ctx = FilterContext::new(game.controller_of(attacker)).with_source(attacker.id);
-            let zone = filter.zone.unwrap_or(crate::zone::Zone::Battlefield);
-            game.zone_ids(zone).any(|object_id| {
-                let Some(object) = game.object(object_id) else {
-                    return false;
-                };
-                filter.matches(object, &ctx, game)
-                    && object
-                        .mana_cost
-                        .as_ref()
-                        .map_or(0, |cost| cost.mana_value() as i32)
-                        == blocker_mana_value
-            })
-        }
-        ProtectionFrom::ManaValuesOtherThanChosenNumber => {
-            let blocker_mana_value = blocker
-                .mana_cost
-                .as_ref()
-                .map_or(0, |cost| cost.mana_value() as i32);
-            game.chosen_number(attacker.id) != Some(blocker_mana_value)
-        }
-        ProtectionFrom::Everything => true,
-        ProtectionFrom::ColorsOf(_) => false,
-        ProtectionFrom::Colorless => blocker_colors.is_empty(),
-        ProtectionFrom::ChosenPlayer => game
-            .chosen_player(attacker.id)
-            .is_some_and(|chosen| game.controller_of(blocker) == chosen),
-        ProtectionFrom::ColorsOutsideCommanderIdentity => {
-            !crate::targeting::colors_outside_commander_identity(game, game.controller_of(attacker))
-                .intersection(blocker_colors)
-                .is_empty()
-        }
-        // Auras such as Cho-Manno's Blessing store the choice on the Aura.
-        ProtectionFrom::ChosenColor => {
-            game.chosen_color(attacker.id)
-                .is_some_and(|chosen| blocker_colors.contains(chosen))
-                || crate::targeting::attached_grant_protects_from_chosen_color(
-                    game,
-                    attacker,
-                    blocker_colors,
-                )
-        }
-    }
+    // All four protection consumers use the same source characteristics,
+    // live reference controller, choice ownership, and LKI-capable matcher.
+    crate::targeting::protection_from_subject_with_view(
+        game, attacker.id, crate::filter::ObjectSubject::Live(blocker), protection, view,
+    )
 }
 
 /// Returns the minimum number of blockers required to block an attacker.
@@ -570,7 +506,9 @@ pub(crate) fn maximum_blockers_with_view(
         .map(|c| c.static_abilities)
         .unwrap_or_else(|| get_static_abilities(attacker).into());
 
-    abilities.iter().filter_map(|a| a.maximum_blockers()).min()
+    abilities.iter().filter_map(|ability| ability.maximum_blockers())
+        .chain(view.rule_maximum_blockers(attacker.id))
+        .min()
 }
 
 /// Check if a creature can attack this turn.
@@ -762,6 +700,7 @@ pub fn must_block(creature: &Object) -> bool {
 /// Check if a creature must block this turn if able, with continuous effects applied.
 pub fn must_block_with_game(creature: &Object, game: &crate::game_state::GameState) -> bool {
     game.object_has_static_ability_id(creature.id, StaticAbilityId::MustBlock)
+        || game.effect_store.cant_effects.must_block.contains_key(&creature.id)
 }
 
 /// Check if a creature has vigilance (doesn't tap to attack).
@@ -908,6 +847,7 @@ mod tests {
             cast_play_from_constraints: None,
             cast_grant_usage_identity: None,
             cast_price: None,
+            cast_play_permission: None,
             has_fuse: false,
             optional_costs: vec![].into(),
             optional_costs_paid: OptionalCostsPaid::default(),

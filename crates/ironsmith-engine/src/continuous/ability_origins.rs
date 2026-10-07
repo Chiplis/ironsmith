@@ -19,10 +19,14 @@ pub struct ContinuousAbilityOrigin {
 #[derive(Debug, Clone)]
 pub struct AbilityEffectOrigin {
     source: ObjectId,
+    replaces_rules_text: bool,
     registration_id: Option<super::ContinuousEffectId>,
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
     generated_by: Option<Box<ContinuousAbilityOrigin>>,
+    // Captured only for the proved source-only Class gate. This never changes
+    // ordinary Effect identity or another consumer's acquisition namespace.
+    linked_exile_root_pair: Option<(ironsmith_core::LinkedExilePair, u32)>,
 }
 impl PartialEq for AbilityEffectOrigin {
     fn eq(&self, other: &Self) -> bool {
@@ -59,6 +63,27 @@ impl Hash for AbilityEffectOrigin {
     }
 }
 impl AbilityEffectOrigin {
+    pub(crate) fn is_class_linked_exile_effect(effect: &ContinuousEffect) -> bool {
+        class_linked_exile_root(effect).is_some()
+    }
+    pub(crate) fn is_source_class_level_effect(effect: &ContinuousEffect) -> bool {
+        effect.source_type == super::EffectSourceType::StaticAbility
+            && matches!(effect.applies_to, super::EffectTarget::Source)
+            && matches!(effect.condition, Some(crate::ConditionExpr::SourceClassLevelAtLeast(_)))
+            && matches!(effect.modification, super::Modification::AddAbilityGeneric(_))
+    }
+    pub(crate) fn linked_exile_parent(
+        &self, host: ObjectId, pair: ironsmith_core::LinkedExilePair,
+    ) -> Option<&AbilityOrigin> {
+        if self.source != host || self.linked_exile_root_pair.map(|(member, _)| member) != Some(pair) { return None; }
+        let parent = self.generated_by.as_ref()?;
+        (parent.host == host).then_some(&parent.ability)
+    }
+
+    pub(crate) fn linked_exile_class_level(&self) -> Option<u32> {
+        self.linked_exile_root_pair.map(|(_, level)| level)
+    }
+
     /// The object whose effect granted the ability.
     pub fn source(&self) -> ObjectId {
         self.source
@@ -74,6 +99,9 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
     fn from(effect: &ContinuousEffect) -> Self {
         Self {
             source: effect.source,
+            replaces_rules_text: matches!(effect.modification,
+                super::Modification::CopyOf { .. } | super::Modification::SetTextBox(_)),
+            linked_exile_root_pair: class_linked_exile_root(effect),
             registration_id: effect.registration_id,
             generated_by: effect.originating_ability.clone(),
             timestamp: effect.timestamp,
@@ -83,6 +111,23 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
                 .map(|ability| ability.instance_id()),
         }
     }
+}
+
+/// The immutable definition and exact generating occurrence must both prove
+/// this one wrapper. Broad effect grants, other levels, and resolving effects
+/// retain their own acquisition identity.
+fn class_linked_exile_root(effect: &ContinuousEffect) -> Option<(ironsmith_core::LinkedExilePair, u32)> {
+    use super::{EffectSourceType, EffectTarget, Modification};
+    if effect.source_type != EffectSourceType::StaticAbility
+        || !matches!(&effect.applies_to, EffectTarget::Source)
+            && !matches!(&effect.applies_to, EffectTarget::Specific(id) if *id == effect.source)
+    { return None; }
+    let Some(crate::ConditionExpr::SourceClassLevelAtLeast(level)) = &effect.condition else { return None; };
+    let Modification::AddAbilityGeneric(ability) = &effect.modification else { return None; };
+    let crate::ability::AbilityKind::Static(reader) = &ability.kind else { return None; };
+    let spec = reader.grant_spec()?;
+    if !spec.requires_linked_exile_pair || spec.linked_exile_class_level != Some(*level) { return None; }
+    Some((spec.linked_exile_pair?, *level))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -114,6 +159,18 @@ pub enum AbilityOrigin {
 }
 
 impl AbilityOrigin {
+    /// Copy and text-box replacement define the object's text. Ordinary
+    /// grants, borrowed abilities, counters and intrinsic rules do not (612.3).
+    pub(crate) fn is_rules_text(&self) -> bool {
+        match self {
+            Self::Printed(_) => true,
+            Self::Effect { effect, .. } => effect.replaces_rules_text,
+            Self::IntrinsicBasicLandMana(_) | Self::IntrinsicStartingCounters(_)
+            | Self::Temporary(_) | Self::Counter { .. } | Self::Level { .. }
+            | Self::Borrowed { .. } => false,
+        }
+    }
+
     /// Independent grants materialized before the layer loop. Text/copy
     /// replacement must not erase them; ordinary layer-six clearing still can.
     pub(crate) fn is_independent_early_grant(&self) -> bool {
@@ -156,10 +213,35 @@ impl AbilityOrigin {
 pub struct CalculatedAbilities {
     definitions: SharedVec<Ability>,
     origins: Vec<AbilityOrigin>,
+    host: Option<ObjectId>,
     current_effect: Option<AbilityEffectOrigin>,
     next_effect_slot: usize,
 }
 impl CalculatedAbilities {
+    /// Bind definition stamps before the first trigger can read history. A
+    /// collection made without a host remains unproven for active text edits.
+    pub(crate) fn bind_host(&mut self, host: ObjectId) {
+        self.host = Some(host);
+        self.bind_trigger_acquisitions();
+    }
+    fn bind_trigger_acquisitions(&mut self) {
+        if self.definitions.iter().any(|ability| matches!(&ability.kind,
+            crate::ability::AbilityKind::Triggered(triggered)
+                if triggered.effects.retained_trigger_definition().is_some()))
+        {
+            for (ability, origin) in self.definitions.iter_mut().zip(&self.origins) {
+                crate::triggers::acquisition::bind_ability(ability, self.host, origin);
+            }
+        }
+    }
+    pub(super) fn replace_with_origin(
+        &mut self,
+        abilities: Vec<Ability>,
+        effect: Option<AbilityEffectOrigin>,
+    ) {
+        self.definitions = abilities.into();
+        self.rebind_origin(effect);
+    }
     pub fn origin(&self, index: usize) -> Option<&AbilityOrigin> {
         self.origins.get(index)
     }
@@ -182,6 +264,7 @@ impl CalculatedAbilities {
             .collect();
         self.next_effect_slot = self.len();
         self.current_effect = effect;
+        self.bind_trigger_acquisitions();
     }
     pub fn push(&mut self, ability: Ability) {
         let origin = match &self.current_effect {
@@ -197,7 +280,8 @@ impl CalculatedAbilities {
         };
         self.push_with_origin(ability, origin);
     }
-    pub fn push_with_origin(&mut self, ability: Ability, origin: AbilityOrigin) {
+    pub fn push_with_origin(&mut self, mut ability: Ability, origin: AbilityOrigin) {
+        crate::triggers::acquisition::bind_ability(&mut ability, self.host, &origin);
         self.definitions.push(ability);
         self.origins.push(origin);
     }
@@ -218,6 +302,20 @@ impl CalculatedAbilities {
         });
         self.origins = retained;
     }
+    /// Transform definitions atomically while keeping every acquisition and
+    /// generating occurrence paired with its original slot.
+    pub(crate) fn try_map_rules_text<E>(
+        &mut self,
+        mut map: impl FnMut(&Ability) -> Result<Ability, E>,
+    ) -> Result<(), E> {
+        let mut definitions = self.definitions.to_vec();
+        for (definition, origin) in definitions.iter_mut().zip(&self.origins) {
+            if origin.is_rules_text() { *definition = map(definition)?; }
+        }
+        self.definitions = definitions.into();
+        Ok(())
+    }
+
     pub fn clear(&mut self) {
         self.definitions.clear();
         self.origins.clear();
@@ -244,12 +342,15 @@ impl std::ops::Deref for CalculatedAbilities {
 impl From<SharedVec<Ability>> for CalculatedAbilities {
     fn from(definitions: SharedVec<Ability>) -> Self {
         let origins = (0..definitions.len()).map(AbilityOrigin::Printed).collect();
-        Self {
+        let mut abilities = Self {
             definitions,
             origins,
+            host: None,
             current_effect: None,
             next_effect_slot: 0,
-        }
+        };
+        abilities.bind_trigger_acquisitions();
+        abilities
     }
 }
 impl From<Vec<Ability>> for CalculatedAbilities {

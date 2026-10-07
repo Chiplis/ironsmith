@@ -29,6 +29,8 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 CharacteristicActionAst::BecomeBasicLandTypeChoice { .. }
             )
             | SubjectVerbActionAst::Characteristics(
+                CharacteristicActionAst::ChangeText { .. }
+            ) | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeColorChoice { .. }
             )
             | SubjectVerbActionAst::Characteristics(
@@ -52,6 +54,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled { .. })
             | SubjectVerbActionAst::Grants(
                 GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. }
             )
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn { .. })
             | SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn { .. })
@@ -151,6 +154,47 @@ fn token_text_names_source_exiled(
     names
 }
 
+pub(super) fn retain_token_description_roles(
+    source: &crate::model::token_definition::TokenDefinitionSpec,
+    token: &mut crate::cards::CardDefinition,
+    shape_ability_count: usize,
+) -> Result<Option<ironsmith_core::TokenTextRoles>, CardTextError> {
+    use crate::model::token_definition::TokenDefinitionSpec;
+    let Some(roles) = source.text_roles() else { return Ok(None); };
+    let fixed_name = match source {
+        TokenDefinitionSpec::Builtin(template) => template.fixed_name(),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => shape.name.as_deref().or_else(|| shape.template.fixed_name()),
+        _ => None,
+    };
+    if let Some(name) = fixed_name { token.card.name = name.into(); }
+    if roles.name == ironsmith_core::TokenNameTextRole::SubtypeDerived {
+        token.card.name = ironsmith_core::subtype_derived_token_name(&token.card.subtypes)
+            .ok_or_else(|| CardTextError::InvariantViolation("token subtype has no retained canonical rules spelling".into()))?;
+    }
+    let authored_start = token_shape_authored_ability_start(source, shape_ability_count)?;
+    let mut roles = roles.retained(shape_ability_count);
+    if let TokenDefinitionSpec::ModifiedBuiltin(shape) = source {
+        roles.abilities[authored_start..].fill(shape.keyword_words);
+    }
+    let added = token.abilities.len().checked_sub(shape_ability_count).ok_or_else(||
+        CardTextError::InvariantViolation("token grant owner removed shape abilities".into()))?;
+    roles.abilities.extend(std::iter::repeat_n(ironsmith_core::TokenWordRole::Authored, added));
+    Ok(Some(roles))
+}
+
+fn token_shape_authored_ability_start(
+    source: &crate::model::token_definition::TokenDefinitionSpec,
+    shape_ability_count: usize,
+) -> Result<usize, CardTextError> {
+    use crate::model::token_definition::TokenDefinitionSpec;
+    match source {
+        TokenDefinitionSpec::Builtin(_) => Ok(shape_ability_count),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => shape_ability_count.checked_sub(shape.keywords.len())
+            .ok_or_else(|| CardTextError::InvariantViolation("token keyword occurrence inventory exceeds its definition".into())),
+        _ => Ok(0),
+    }
+}
+
 pub(super) fn compile_create_token_with_mods_action(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
@@ -187,7 +231,10 @@ pub(super) fn compile_create_token_with_mods_action(
     };
     let mut token = lower_token_definition_shape(definition.clone())
         .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-    apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
+    let shape_ability_count = token.abilities.len();
+    let authored_start = token_shape_authored_ability_start(definition, shape_ability_count)?;
+    apply_token_definition_granted_abilities(&mut token, granted_abilities, authored_start)?;
+    let text_roles = retain_token_description_roles(definition, &mut token, shape_ability_count)?;
     let subject = if *action_player == PlayerAst::Opponent {
         LoweredSubject::resolve_resolution_chooser(*action_player, ctx, true, true, true)?
     } else {
@@ -222,6 +269,7 @@ pub(super) fn compile_create_token_with_mods_action(
     } else {
         crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
     };
+    effect.text_roles = text_roles;
     if use_source_chosen_color {
         effect = effect.with_source_chosen_color();
     }
@@ -1687,6 +1735,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+            permission_bound_mana,
             tag,
             player,
             allow_land,
@@ -1720,6 +1769,13 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if *permission_bound_mana {
+                if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
+                    || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
+                    || *without_paying_mana_cost || during_turns_counter_put_on_source.is_some()
+                { return Err(CardTextError::ParseError("marked exile permission lost its exact producer".into())); }
+                grant_play.permission_bound_mana = true;
+            }
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
@@ -1749,6 +1805,28 @@ pub(super) fn compile_subject_verb_middle(
                 ));
             }
             Ok((effects, Vec::new()))
+        }
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
+            tag, player, allow_land, without_paying_mana_cost, surface,
+        }) => {
+            let player = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+            let tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
+                ctx.last_object_tag.clone().ok_or_else(|| CardTextError::ParseError(
+                    "source-lifetime permission has no exact card antecedent".into()))?
+            } else if tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG {
+                // A resolving tagged permission must refer to this resolution's
+                // actual collection, never a union from prior acquisitions.
+                ctx.last_exiled_collection_tag.clone().ok_or_else(|| CardTextError::ParseError(
+                    "source-lifetime permission has no exact exile antecedent".into()))?
+            } else { tag.clone().into() };
+            let mut grant = crate::effects::GrantPlayTaggedEffect::new(tag, player,
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield,
+                *allow_land, false);
+            grant.surface = surface.clone();
+            if *without_paying_mana_cost {
+                grant = grant.with_alternative_cost(crate::cost::TotalCost::from_costs(Vec::new()));
+            }
+            Ok((vec![Effect::new(grant)], Vec::new()))
         }
         SubjectVerbActionAst::Grants(
             GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
@@ -1866,6 +1944,8 @@ pub(super) fn compile_subject_verb_middle(
             choices.extend(target_choices);
             let from_exile_tag = choose_spec_references_exiled_tag(&spec);
             let use_move_to_zone = from_exile_tag
+                || matches!(spec.base(), ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+                    if filter.match_captured_public_destination)
                 || *transformed
                 || !matches!(controller, ReturnControllerAst::Preserve);
             let implicit_chooser = if let Some(actor) = explicit_actor.as_ref() {
@@ -1904,6 +1984,7 @@ pub(super) fn compile_subject_verb_middle(
                     }
                     ChooseSpec::WithCount(inner, count)
                         if (count.is_single()
+                            || count.is_random()
                             || count_value.is_some()
                             || inner.target_set_aggregate_constraint().is_some())
                             && matches!(inner.base(), ChooseSpec::Object(filter) if filter.tagged_constraints.is_empty() && filter.zone == Some(Zone::Graveyard)) =>
@@ -1941,6 +2022,7 @@ pub(super) fn compile_subject_verb_middle(
                         let mut spec = spec.clone();
                         if let Some(filter) = choose_spec_object_filter_mut(&mut spec)
                             && filter.zone == Some(Zone::Battlefield)
+                            && !filter.match_captured_public_destination
                             && filter.tagged_constraints.iter().any(|constraint| {
                                 constraint.relation
                                     == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -2107,7 +2189,9 @@ pub(super) fn compile_subject_verb_middle(
                         && (crate::tag::is_sentence_helper_tag(&constraint.tag, "milled")
                             || constraint.tag.as_str().starts_with("milled_"))
                 });
-            if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
+            if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards
+                && !resolved_filter.match_captured_public_destination
+            {
                 // A tagged mill result is a graveyard snapshot. Some "cards
                 // milled this way" subject shapes inherit the destination
                 // battlefield zone while parsing the return action; restore
@@ -2146,6 +2230,7 @@ pub(super) fn compile_subject_verb_middle(
             target,
             source_top_only,
             zone,
+            tagged_destinations,
             to_top,
             library_order,
             library_order_chooser,
@@ -2474,6 +2559,10 @@ pub(super) fn compile_subject_verb_middle(
                 *zone,
                 *to_top,
             ));
+            let mut move_effect = move_effect;
+            move_effect.tagged_destinations = tagged_destinations.iter().map(|(tag, zone)|
+                Ok((resolve_it_tag_key(tag, &current_reference_env(ctx))?, *zone)))
+                .collect::<Result<Vec<_>, CardTextError>>()?;
             let move_effect = if let Some(surface) = exiled_with_source_surface {
                 move_effect.with_exiled_with_source_surface(surface.clone())
             } else {
@@ -3047,6 +3136,9 @@ pub(super) fn compile_subject_verb_middle(
                 excluded_subtypes.clone(),
             ))
         }),
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
+            compile_tagged_effect_for_target(target, ctx, "text_changed", |spec|
+                Effect::new(crate::effects::ChangeTextEffect::new(spec, selection.clone(), duration.clone()))),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             target,
             duration,
@@ -3551,7 +3643,10 @@ pub(super) fn compile_subject_verb_middle(
             };
             let mut token = lower_token_definition_shape(definition.clone())
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
-            apply_token_definition_granted_abilities(&mut token, granted_abilities)?;
+            let shape_ability_count = token.abilities.len();
+            let authored_start = token_shape_authored_ability_start(definition, shape_ability_count)?;
+            apply_token_definition_granted_abilities(&mut token, granted_abilities, authored_start)?;
+            let text_roles = retain_token_description_roles(definition, &mut token, shape_ability_count)?;
             let subject = if *action_player == PlayerAst::Opponent {
                 // A singular authored "an opponent creates ..." is a
                 // resolution-time player choice. Export that chosen player so
@@ -3571,6 +3666,7 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 crate::effects::CreateTokenEffect::new(token, count.clone(), player_filter.clone())
             };
+            effect.text_roles = text_roles;
             if use_source_chosen_color {
                 effect = effect.with_source_chosen_color();
             }
@@ -4190,6 +4286,7 @@ pub(super) fn compile_subject_verb_middle(
 fn apply_token_definition_granted_abilities(
     token: &mut crate::cards::CardDefinition,
     abilities: &[GrantedAbilityAst],
+    authored_shape_start: usize,
 ) -> Result<(), CardTextError> {
     // Abilities the typed token shape already installed from the same words.
     // A quoted rule re-parsed by the generic grant parser must not install a
@@ -4216,8 +4313,8 @@ fn apply_token_definition_granted_abilities(
         for ability in
             lower_granted_abilities_ast_to_object_abilities(std::slice::from_ref(granted))?
         {
-            if token.abilities.contains(&ability)
-                || token.abilities[..shape_ability_count]
+            if token.abilities[authored_shape_start..].contains(&ability)
+                || token.abilities[authored_shape_start..shape_ability_count]
                     .iter()
                     .any(|existing| token_abilities_are_same_printed_ability(existing, &ability))
             {

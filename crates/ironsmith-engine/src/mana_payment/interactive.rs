@@ -55,8 +55,8 @@ fn activate_mana_during_payment_inner(
     let has_tap = game.current_ability(source, ability_index).is_some_and(|ability| {
         matches!(&ability.kind, crate::ability::AbilityKind::Activated(a) if a.has_tap_cost())
     });
-    let mut exclusions = if request.reason == crate::costs::PaymentReason::ActivateManaAbility {
-        request.preferences.excluded_sources.clone()
+    let mut exclusions = if request.reason.is_mana_ability() {
+        request.activation_excluded_sources.clone()
     } else {
         Vec::new()
     };
@@ -68,6 +68,7 @@ fn activate_mana_during_payment_inner(
         ability_index,
         None,
         Some(exclusions),
+        request.reserved_tap_sources.clone(),
         dm,
     );
     if dm.awaiting_choice() {
@@ -107,22 +108,51 @@ pub(crate) fn pay_mana_interactively(
     exclusions: Vec<ObjectId>,
     dm: &mut dyn DecisionMaker,
 ) -> Result<(), CostPaymentError> {
-    pay_mana_interactively_in_context(game, payer, source, cost, reason, exclusions, dm, None)
+    pay_mana_interactively_in_context(game, payer, source, cost, reason, exclusions, Vec::new(), dm, None)
 }
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pay_mana_interactively_in_context(
     game: &mut GameState, payer: PlayerId, source: ObjectId, cost: crate::mana::ManaCost,
-    reason: crate::costs::PaymentReason, exclusions: Vec<ObjectId>, dm: &mut dyn DecisionMaker,
+    reason: crate::costs::PaymentReason, exclusions: Vec<ObjectId>, reserved_tap_sources: Vec<ObjectId>, dm: &mut dyn DecisionMaker,
+    execution: Option<&crate::effects::ExecutionContextCheckpoint>,
+) -> Result<(), CostPaymentError> {
+    let (root, meter) = game.begin_token_resource_scope();
+    let checkpoint = game.clone();
+    let mut result = pay_mana_interactively_inner(game, payer, source, cost, reason, exclusions, reserved_tap_sources, dm, execution);
+    if let Err(CostPaymentError::ExecutionFailed(error)) = &result {
+        game.record_token_resource_failure(error);
+    }
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(CostPaymentError::ExecutionFailed(error));
+    }
+    if result.is_err() || dm.awaiting_choice() {
+        // This checkpoint encloses every manual activation, not just the last
+        // confirmed plan. Cancel, replay and failure cannot leak paid sources,
+        // mana, trigger receipts or speculative hidden-information openings.
+        game.restore_execution_checkpoint(checkpoint, dm.awaiting_choice()
+            && !matches!(&result, Err(CostPaymentError::ExecutionFailed(_))));
+    }
+    game.end_token_resource_scope(root, &meter);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pay_mana_interactively_inner(
+    game: &mut GameState, payer: PlayerId, source: ObjectId, cost: crate::mana::ManaCost,
+    reason: crate::costs::PaymentReason, exclusions: Vec<ObjectId>, reserved_tap_sources: Vec<ObjectId>, dm: &mut dyn DecisionMaker,
     execution: Option<&crate::effects::ExecutionContextCheckpoint>,
 ) -> Result<(), CostPaymentError> {
     if cost.is_empty() {
         return Ok(());
     }
     let mut request = ManaPaymentRequest::new(payer, source, reason, cost)
-        .with_spend_policy(game.mana_spend_policy(payer, Some(source)));
+        .with_spend_policy(game.mana_spend_policy_for_reason(payer, Some(source), reason));
     request.allow_black_life = crate::decision::mana_cost_has_black_symbol(&request.cost)
         && game.player_can_pay_black_with_life_for_reason(payer, Some(source), request.reason);
-    request.preferences.excluded_sources = exclusions.clone();
+    request.activation_excluded_sources.extend(exclusions);
+    request.activation_excluded_sources.sort_unstable();
+    request.activation_excluded_sources.dedup();
+    request.reserved_tap_sources = reserved_tap_sources;
     loop {
         // Foreground prompts need one executable proposal. Source selection
         // remains available through constrained replanning below.
@@ -149,9 +179,6 @@ pub(crate) fn pay_mana_interactively_in_context(
         match response {
             ManaPaymentResponse::Cancel => return Err(CostPaymentError::Cancelled),
             ManaPaymentResponse::Replan { mut preferences } => {
-                preferences
-                    .excluded_sources
-                    .extend(exclusions.iter().copied());
                 preferences.normalize();
                 request.preferences = preferences;
             }
@@ -239,5 +266,68 @@ mod foreground_tests {
             assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
             if replan { assert!(game.is_tapped(sources[7])); }
         }
+    }
+}
+
+#[cfg(test)]
+mod outer_transaction_tests {
+    use super::*;
+    use crate::{Ability, CardId, CardType, ManaCost, ManaSymbol, Zone};
+
+    struct ActivateTwo { sources: Vec<ObjectId>, next: usize }
+    impl DecisionMaker for ActivateTwo {
+        fn decide_mana_payment(&mut self, _game: &GameState,
+            context: &crate::decisions::context::ManaPaymentContext) -> ManaPaymentResponse {
+            if let Some(source) = self.sources.get(self.next).copied() {
+                self.next += 1;
+                return ManaPaymentResponse::Activate { source, ability_index: 0 };
+            }
+            ManaPaymentResponse::Confirm { plan_id: context.plan.id, request_hash: context.plan.request_hash }
+        }
+    }
+
+    #[test]
+    fn direct_mana_payment_shares_resource_meter_and_rolls_back_earlier_manual_sources() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let player = PlayerId::from_index(0);
+        let mut sources = Vec::new();
+        for index in 0..3 {
+            let card = crate::card::CardBuilder::new(CardId::new(), format!("Production {index}"))
+                .card_types(vec![CardType::Land]).build();
+            let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(Ability::mana(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+                vec![ManaSymbol::Green; if index == 2 { 4 } else { 1 }],
+            ));
+            if index < 2 {
+                game.effect_store.replacement_effects.add_resolution_effect(
+                    crate::replacement::ReplacementEffect::with_matcher(source, player,
+                        crate::events::mana::matchers::ManaProducedBySourceMatcher::new(
+                            crate::target::ObjectFilter::specific(source)),
+                        crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::new(
+                            crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 1),
+                        )]),
+                    ),
+                );
+            }
+            sources.push(source);
+        }
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
+            max_created_tokens: 1, ..Default::default()
+        });
+        game.take_pending_trigger_events();
+        let next_object = game.next_object_id_counter();
+        let mut dm = ActivateTwo { sources: sources[..2].to_vec(), next: 0 };
+        let mut context = crate::costs::CostContext::new(sources[2], player, &mut dm);
+        let result = crate::costs::Cost::mana(ManaCost::new().add_generic(3)).pay(&mut game, &mut context);
+        assert!(matches!(result, Err(CostPaymentError::ExecutionFailed(
+            crate::effects::ExecutionError::ResourceLimitExceeded { .. }
+        ))));
+        assert!(dm.next >= 1, "the funded clean producer lets the manual payment window open");
+        assert!(sources.iter().all(|source| !game.is_tapped(*source)));
+        assert_eq!(game.battlefield.len(), 3);
+        assert_eq!(game.next_object_id_counter(), next_object);
+        assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

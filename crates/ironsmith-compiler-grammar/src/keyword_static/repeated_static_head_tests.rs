@@ -166,3 +166,19 @@ fn repeated_static_heads_do_not_widen_specialist_semantic_guards() {
         );
     }
 }
+
+
+#[test]
+fn repeated_prevention_heads_keep_complete_permanent_source_qualifiers() {
+    for text in [
+        "Prevent all damage that would be dealt to this creature by artifact sources.",
+        "Prevent all damage that would be dealt to this creature by artifact creatures.",
+        "Prevent all damage that would be dealt to this creature by enchanted creatures.",
+        "Prevent all damage that would be dealt to this creature by creatures with first strike.",
+        "Prevent all damage that would be dealt to this creature by Deserts.",
+    ] {
+        assert_reachable("parse_permanent_self_damage_prevention_line", text);
+    }
+    assert_reachable("parse_prevent_all_damage_to_matching_permanents_line",
+        "Prevent all damage that would be dealt to this creature.");
+}

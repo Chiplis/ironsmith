@@ -47,6 +47,8 @@ impl EffectExecutor for ScheduleEffectsWhenTaggedLeavesEffect {
             true,
             controller_id,
         )
+        .with_linked_exile_owner(ctx.linked_exile_owner.clone())
+        .with_source_number_owner(ctx.source_number_owner.clone())
         .with_ability_source(match self.ability_source {
             TaggedLeavesAbilitySource::WatchedObject => None,
             TaggedLeavesAbilitySource::CurrentSource => Some(ctx.source),

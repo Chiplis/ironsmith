@@ -17,9 +17,12 @@ pub(crate) fn synthetic_chosen_name_snapshot(
 ) -> ObjectSnapshot {
     ObjectSnapshot {
         stack_kind: None,
+        ability_origins: None,
         chosen_subtype: None,
+                numeric_choice_memory: None,
         secret_chosen_subtype: None,
         noted_life_total: None,
+                saddled: None,
         chosen_object: None,
         object_id: source,
         stable_id: StableId::from(source),
@@ -49,6 +52,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         abilities: std::sync::Arc::new(Vec::new()),
         aura_attach_filter: None,
         copiable_values: crate::snapshot::CopiableValues::default(),
+                revealed_cast_definition: None,
         x_value: None,
         cast_order_this_turn: None,
         mana_spent_to_cast: crate::player::ManaPool::default(),
@@ -62,6 +66,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         tapped: false,
         attacking: false,
         goaded: None,
+            suspected: None,
             ring_bearer: None,
         flipped: false,
         face_down: false,

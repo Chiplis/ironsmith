@@ -984,6 +984,7 @@ pub(crate) fn parse_nonstatic_keyword_action_as_object_ability(
                 ability: Ability {
                     kind: AbilityKind::Activated(
                         crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                            keyword: None,
                             mana_cost: cost,
                             effects: ironsmith_core::ResolutionProgram::from_effects(vec![animate]),
                             choices: Vec::new(),
@@ -1178,6 +1179,7 @@ fn parse_attached_quoted_ability_grant(
 pub fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
     let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
     let Some(has) = attached_grammar::parse_enchanted_has_tokens(tokens) else {
         return Ok(None);

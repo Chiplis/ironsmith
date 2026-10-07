@@ -32,6 +32,8 @@ pub fn split_segments_on_comma_effect_head_tokens(
 ) -> Vec<&[OwnedLexToken]> {
     let mut result = Vec::new();
     for segment in segments {
+        let mixed_target_ranges =
+            crate::grammar::effects::coordination::explicit_mixed_target_ranges(segment);
         let mut start = 0usize;
         let mut split_any = false;
         let mut input = LexStream::new(segment);
@@ -47,6 +49,9 @@ pub fn split_segments_on_comma_effect_head_tokens(
                 continue;
             }
             if inside_quotes || token.kind != TokenKind::Comma {
+                continue;
+            }
+            if mixed_target_ranges.iter().any(|range| range.contains(&idx)) {
                 continue;
             }
             let before = trim_lexed_commas(segment.get(start..idx).unwrap_or_default());

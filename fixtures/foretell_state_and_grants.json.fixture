@@ -1,0 +1,359 @@
+[
+  {
+    "name": "Bohn, Beguiling Balladeer",
+    "oracle_id": "ab31b652-ddf2-480f-a955-e8b5c87728f9",
+    "mana_cost": "{1}{U}{R}",
+    "type_line": "Legendary Creature — Human Bard",
+    "oracle_text": "Each nonland card in your hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {2}. (During your turn, you may pay {2} and exile it from your hand face down. Cast it on a later turn for its foretell cost.)\nWhenever you cast your second spell each turn, goad target creature an opponent controls.",
+    "power": "3",
+    "toughness": "3",
+    "frozen_source_coverage": {
+      "card_name": "Bohn, Beguiling Balladeer",
+      "oracle_ids": [
+        "ab31b652-ddf2-480f-a955-e8b5c87728f9"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "9d15deaeffcec50a90115c6c9806dcddb562b96fb4a89e7709b1491950d9c965",
+    "baseline_parse_error": "granted object ability compiled to unsupported static ability fallback KeywordFallbackText: foretell; oracle-only fallback also failed: granted object ability compiled to unsupported static ability fallback KeywordFallbackText: foretell",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Cosmos Charger",
+    "oracle_id": "603e518c-8f12-432c-ae03-790db5be77bf",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Horse Spirit",
+    "oracle_text": "Flash\nFlying\nForetelling cards from your hand costs {1} less and can be done on any player's turn.\nForetell {2}{U} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "power": "3",
+    "toughness": "3",
+    "frozen_source_coverage": {
+      "card_name": "Cosmos Charger",
+      "oracle_ids": [
+        "603e518c-8f12-432c-ae03-790db5be77bf"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "7400f765cd625326e1549a179a58db47f14d86a74256ab42491acbc0ef500120",
+    "baseline_parse_error": "unsupported foretelling cost modifier clause (clause: 'foretelling cards from your hand costs less and can be done on any player's turn') [rule-path=parse_foretelling_cards_cost_modifier_line] [rule-path=static-line]; oracle-only fallback also failed: unsupported foretelling cost modifier clause (clause: 'foretelling cards from your hand costs less and can be done on any player's turn') [rule-path=parse_foretelling_cards_cost_modifier_line] [rule-path=static-line]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Dream Devourer",
+    "oracle_id": "0ff7440b-b831-40a9-81c4-99d77bf93b8d",
+    "mana_cost": "{1}{B}",
+    "type_line": "Creature — Demon Cleric",
+    "oracle_text": "Each nonland card in your hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {2}. (During your turn, you may pay {2} and exile it from your hand face down. Cast it on a later turn for its foretell cost.)\nWhenever you foretell a card, this creature gets +2/+0 until end of turn.",
+    "power": "0",
+    "toughness": "3",
+    "frozen_source_coverage": {
+      "card_name": "Dream Devourer",
+      "oracle_ids": [
+        "0ff7440b-b831-40a9-81c4-99d77bf93b8d"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "eb1052e83c9af617f667d154b4d3979fe6816756bb08af461c2cebc69ae6c294",
+    "baseline_parse_error": "unsupported triggered line: 'Whenever you foretell a card, this creature gets +2/+0 until end of turn.' [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported triggered line: 'Whenever you foretell a card, this creature gets +2/+0 until end of turn.' [rule-path=statement-line > triggered-line]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Ethereal Valkyrie",
+    "oracle_id": "f0f7c3df-52f8-4835-a18f-69e56ffa3432",
+    "mana_cost": "{4}{W}{U}",
+    "type_line": "Creature — Spirit Angel",
+    "oracle_text": "Flying\nWhenever this creature enters or attacks, draw a card, then exile a card from your hand face down. It becomes foretold. Its foretell cost is its mana cost reduced by {2}. (On a later turn, you may cast it for its foretell cost, even if this creature has left the battlefield.)",
+    "power": "4",
+    "toughness": "4",
+    "frozen_source_coverage": {
+      "card_name": "Ethereal Valkyrie",
+      "oracle_ids": [
+        "f0f7c3df-52f8-4835-a18f-69e56ffa3432"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "afdfb05f836219618c86e609ecc87b4bb25983615b83300f383bf43370589b75",
+    "baseline_parse_error": "unsupported become clause (clause: 'foretold') [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported become clause (clause: 'foretold') [rule-path=statement-line > triggered-line]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Frost Fair Lure Fish",
+    "oracle_id": "51e0a61d-69f0-475d-b40b-50d69252800d",
+    "mana_cost": "{5}{U}{R}",
+    "type_line": "Creature — Fish",
+    "oracle_text": "When this creature enters, create two 1/1 blue Fish creature tokens and create two tapped Treasure tokens.\nFish you control have haste and can't be blocked by Humans.\nForetell {3}{U}{R}",
+    "power": "7",
+    "toughness": "7",
+    "frozen_source_coverage": {
+      "card_name": "Frost Fair Lure Fish",
+      "oracle_ids": [
+        "51e0a61d-69f0-475d-b40b-50d69252800d"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "49657d97a056d9326ae46e0a9857572db88f7d63a3515b44c94248358b18b418",
+    "baseline_parse_error": "unsupported cant clause segment (clause: 'can't be blocked by humans') [rule-path=parse_cant_clauses] [rule-path=static-line]; oracle-only fallback also failed: unsupported cant clause segment (clause: 'can't be blocked by humans') [rule-path=parse_cant_clauses] [rule-path=static-line]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Haunting Voyage",
+    "oracle_id": "334c284e-7bc3-4c18-9f8d-4d846f80008e",
+    "mana_cost": "{4}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose a creature type. Return up to two creature cards of that type from your graveyard to the battlefield. If this spell was foretold, return all creature cards of that type from your graveyard to the battlefield instead.\nForetell {5}{B}{B} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Haunting Voyage",
+      "oracle_ids": [
+        "334c284e-7bc3-4c18-9f8d-4d846f80008e"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "e9c13462a132a5bf9c69f98026749c229932cb536e6b0e7bdb1db7643df0113c",
+    "baseline_parse_error": "unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Karfell Harbinger",
+    "oracle_id": "0507a9d2-cbad-4a7b-b888-fbd5ac1ed02f",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Zombie Wizard",
+    "oracle_text": "{T}: Add {U}. Spend this mana only to foretell a card from your hand or cast an instant or sorcery spell.",
+    "power": "1",
+    "toughness": "3",
+    "frozen_source_coverage": {
+      "card_name": "Karfell Harbinger",
+      "oracle_ids": [
+        "0507a9d2-cbad-4a7b-b888-fbd5ac1ed02f"
+      ],
+      "baseline_category": "semantic_output_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "semantic_output_failure",
+    "baseline_content_hash": "4164e0b28f2bca2a791b86623f00afc1b46eb311c1f9894d066a760b27113a18",
+    "baseline_parse_error": "compiled text dropped required semantic marker: spend-this-mana-only",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Mystic Reflection",
+    "oracle_id": "491dc110-b459-412e-8a0b-45e5744ee8d1",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Choose target nonlegendary creature. The next time one or more creatures or planeswalkers enter this turn, they enter as copies of the chosen creature.\nForetell {U} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Mystic Reflection",
+      "oracle_ids": [
+        "491dc110-b459-412e-8a0b-45e5744ee8d1"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "7067b6e33c64d9c9813f1a64e34ba327b76523d02f06f162f8bb0388e30daecb",
+    "baseline_parse_error": "could not find verb in effect clause (clause: 'the next time one or more creatures or planeswalkers enter this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'the next time one or more creatures or planeswalkers enter this turn'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Niko Defies Destiny",
+    "oracle_id": "e79bf038-071e-448e-ad95-234c207a9575",
+    "mana_cost": "{1}{W}{U}",
+    "type_line": "Enchantment — Saga",
+    "oracle_text": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — You gain 2 life for each foretold card you own in exile.\nII — Add {W}{U}. Spend this mana only to foretell cards or cast spells that have foretell.\nIII — Return target card with foretell from your graveyard to your hand.",
+    "frozen_source_coverage": {
+      "card_name": "Niko Defies Destiny",
+      "oracle_ids": [
+        "e79bf038-071e-448e-ad95-234c207a9575"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "0703d9b75d6d89ded9c47845bd7607ebe13c184f9a6ca20bdb5132de2b28d914",
+    "baseline_parse_error": "compiled card still contains unsupported parser fallback marker KeywordFallbackText; oracle-only fallback also failed: compiled card still contains unsupported parser fallback marker KeywordFallbackText",
+    "cohort": "unaddressed-foretell-family",
+    "proposed_coverage": "source_complete_unvalidated"
+  },
+  {
+    "name": "Poison the Cup",
+    "oracle_id": "58020778-554c-4af6-8484-0b90f64bc5d9",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature. If this spell was foretold, scry 2.\nForetell {1}{B} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Poison the Cup",
+      "oracle_ids": [
+        "58020778-554c-4af6-8484-0b90f64bc5d9"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "97c539a70d53bf6153f9a221f2af09b6c15cd3172b211c0c15be1086df61baa9",
+    "baseline_parse_error": "unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Quakebringer",
+    "oracle_id": "bbe41a21-f8ad-4e5c-88d8-2a41dfd32d13",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Creature — Giant Berserker",
+    "oracle_text": "Your opponents can't gain life.\nAt the beginning of your upkeep, Quakebringer deals 2 damage to each opponent. This ability triggers only if Quakebringer is on the battlefield or if Quakebringer is in your graveyard and you control a Giant.\nForetell {2}{R}{R}",
+    "power": "5",
+    "toughness": "4",
+    "frozen_source_coverage": {
+      "card_name": "Quakebringer",
+      "oracle_ids": [
+        "bbe41a21-f8ad-4e5c-88d8-2a41dfd32d13"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "5468f0d99be00ca5233b31e1bcc7eff571b5a7906361b60cfba52482849062e1",
+    "baseline_parse_error": "could not find verb in effect clause (clause: 'this ability triggers only if this is on the battlefield or'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=control-flow-plan > inner-chain-registry-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'this ability triggers only if this is on the battlefield or'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=control-flow-plan > inner-chain-registry-reading] [rule-path=statement-line > triggered-line]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Ranar the Ever-Watchful",
+    "oracle_id": "c73a9939-0742-4919-94d6-c3b537697f17",
+    "mana_cost": "{2}{W}{U}",
+    "type_line": "Legendary Creature — Spirit Warrior",
+    "oracle_text": "Flying, vigilance\nThe first card you foretell each turn costs {0} to foretell.\nWhenever one or more cards are put into exile from your hand or a spell or ability you control exiles one or more permanents from the battlefield, create a 1/1 white Spirit creature token with flying.",
+    "power": "2",
+    "toughness": "3",
+    "frozen_source_coverage": {
+      "card_name": "Ranar the Ever-Watchful",
+      "oracle_ids": [
+        "c73a9939-0742-4919-94d6-c3b537697f17"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "3ec9d1b21255197af7a90e62fda4d593d8968888ac2d6ab1b1c483283a288572",
+    "baseline_parse_error": "parser does not yet support line family: 'The first card you foretell each turn costs {0} to foretell.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'The first card you foretell each turn costs {0} to foretell.' [rule-path=unsupported-line-family]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Skull Raid",
+    "oracle_id": "7d22c7ed-2f45-42af-b999-b921f4f4db25",
+    "mana_cost": "{3}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target opponent discards two cards. If fewer than two cards were discarded this way, you draw cards equal to the difference.\nForetell {1}{B} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Skull Raid",
+      "oracle_ids": [
+        "7d22c7ed-2f45-42af-b999-b921f4f4db25"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "relative-hand-quantities-and-rounding"
+      ]
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "5fecb1fd18d0edbb739d7400b6a4fb72f75066b871651e70382870f116dbf258",
+    "baseline_parse_error": "missing draw count (clause: 'cards equal to the difference') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: missing draw count (clause: 'cards equal to the difference') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]",
+    "cohort": "existing-proposal-regression"
+  },
+  {
+    "name": "Starnheim Unleashed",
+    "oracle_id": "495ebe60-f0e5-4f0f-9d99-b2c64c95dbf4",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Sorcery",
+    "oracle_text": "Create a 4/4 white Angel Warrior creature token with flying and vigilance. If this spell was foretold, create X of those tokens instead.\nForetell {X}{X}{W} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Starnheim Unleashed",
+      "oracle_ids": [
+        "495ebe60-f0e5-4f0f-9d99-b2c64c95dbf4"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "5f02e3af8e9d2131a94d18dad83c8b36ad64260d3e7f3361d4a6deff9dc227b2",
+    "baseline_parse_error": "unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unsupported predicate (predicate: 'this spell was foretold') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > statement-probe]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "Tales of the Ancestors",
+    "oracle_id": "49e3c192-862f-483e-abd1-e22863ea88dd",
+    "mana_cost": "{3}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Each player with fewer cards in hand than the player with the most cards in hand draws cards equal to the difference.\nForetell {1}{U} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "frozen_source_coverage": {
+      "card_name": "Tales of the Ancestors",
+      "oracle_ids": [
+        "49e3c192-862f-483e-abd1-e22863ea88dd"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "cb7a3f308f747268ba42d4d383977c3ab31fe75caae5dd0fd82702867c0f182e",
+    "baseline_parse_error": "parser does not yet support line family: 'Each player with fewer cards in hand than the player with the most cards in hand draws cards equal to the difference.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Each player with fewer cards in hand than the player with the most cards in hand draws cards equal to the difference.' [rule-path=unsupported-line-family]",
+    "cohort": "unaddressed-foretell-family"
+  },
+  {
+    "name": "The Foretold Soldier",
+    "oracle_id": "02a45719-ee4a-49c4-96ec-a140cd6e1547",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Creature — Alien Zombie Soldier",
+    "oracle_text": "This creature must be blocked if able.\nThis creature can't be blocked by more than one creature.\nWhenever this creature deals damage, exile it face down. It becomes foretold.\nForetell {1}{G} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+    "power": "6",
+    "toughness": "6",
+    "frozen_source_coverage": {
+      "card_name": "The Foretold Soldier",
+      "oracle_ids": [
+        "02a45719-ee4a-49c4-96ec-a140cd6e1547"
+      ],
+      "baseline_category": "parser_failure",
+      "verified_compile_recovery": false,
+      "source_coverage_status": "unaddressed",
+      "source_families": []
+    },
+    "baseline_category": "parser_failure",
+    "baseline_content_hash": "8479165fa2887c2b7d48ce2774bb5f91837afe589ce27731303a18d21f452945",
+    "baseline_parse_error": "unsupported become clause (clause: 'foretold') [rule-path=complete-become > statement-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported become clause (clause: 'foretold') [rule-path=complete-become > statement-reading] [rule-path=statement-line > triggered-line]",
+    "cohort": "unaddressed-foretell-family"
+  }
+]

@@ -605,8 +605,8 @@ pub(super) fn compile_subject_verb_early(
                 player,
                 count,
                 ctx,
-                false,
-                false,
+                true,
+                true,
                 true,
                 true,
                 |count| Effect::investigate_player(count, PlayerFilter::You),
@@ -655,7 +655,12 @@ pub(super) fn compile_subject_verb_early(
             Ok((
                 vec![Effect::new(
                     crate::effects::MoveToZoneEffect::new(
-                        ChooseSpec::Source,
+                        // CR 400.7j: find the exact public successor produced
+                        // by the cost, including a modified destination. An
+                        // unmoved source or later incarnation is not a receipt.
+                        ChooseSpec::All(ObjectFilter::exact_tagged(
+                            ironsmith_core::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG,
+                        )),
                         Zone::Battlefield,
                         false,
                     )
@@ -733,7 +738,8 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) => {
-            Ok((vec![Effect::bolster(*amount)], Vec::new()))
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            Ok((vec![Effect::bolster_value(amount)], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { amount }) => {
             Ok((vec![Effect::support(*amount)], Vec::new()))
@@ -1136,11 +1142,20 @@ pub(super) fn compile_subject_verb_early(
                 Effect::flip_coin(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }) => {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind, repeat_until_loss, stop_condition, loss_action, opponent_results, count_value }) => {
+            let count_value = count_value.as_ref().map(|value| resolve_value_it_tag(value, &current_reference_env(ctx))).transpose()?;
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 let mut effect =
                     crate::effects::FlipCoinEffect::face_only(subject.into_player_filter());
                 effect.count = *count;
+                effect.kind = *kind;
+                effect.repeat_until_loss = *repeat_until_loss;
+                effect.stop_condition = *stop_condition;
+                effect.loss_action = *loss_action;
+                effect.count_value = count_value.clone();
+                effect.opponent_results = opponent_results.as_ref().map(|(won, lost)| ironsmith_core::CoinFlipOpponentTags {
+                    won: won.key().clone(), lost: lost.key().clone(),
+                });
                 Effect::new(effect)
             })
         }
@@ -1154,9 +1169,17 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_number_at_random(choices.clone())
             })
         }
-        SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface }) => {
+        SubjectVerbActionAst::Random(RandomActionAst::RollDie { sides, surface, result_modifier }) => {
+            let mut result_modifier = result_modifier.clone();
+            if let Some(modifier) = &mut result_modifier {
+                *modifier.value_mut() = resolve_value_it_tag(modifier.value(), &current_reference_env(ctx))?;
+            }
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::roll_die_with_surface(*sides, subject.into_player_filter(), *surface)
+                let mut effect = crate::effects::RollDieEffect::new_with_die_text(
+                    subject.into_player_filter(), *sides, surface.map(|surface| surface.render(*sides)),
+                );
+                effect.result_modifier = result_modifier.clone();
+                Effect::new(effect)
             })
         }
         SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult {
@@ -1206,13 +1229,11 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_card_type(subject.into_player_filter(), options.clone())
             })
         }
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max }) => {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::new(crate::effects::ChooseNumberEffect::new(
-                    subject.into_player_filter(),
-                    *min,
-                    *max,
-                ))
+                Effect::new(crate::effects::ChooseNumberEffect {
+                    chooser: subject.into_player_filter(), min: *min, max: *max, source_owned: *source_owned,
+                })
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
@@ -2273,7 +2294,7 @@ pub(super) fn compile_subject_verb_early(
             track_selected_object_player_provenance(&spec, ctx);
             Ok((vec![effect], all_choices))
         }
-        SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter }) => {
+        SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { filter, permit_while_exiled }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -2288,14 +2309,9 @@ pub(super) fn compile_subject_verb_early(
                     .controller
                     .get_or_insert(player_filter.clone());
             }
-            Ok((
-                vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
-                    resolved_filter,
-                    PlayerFilter::You,
-                    player_filter,
-                ))],
-                subject.into_choices(),
-            ))
+            let mut look = crate::effects::LookAtObjectsEffect::new(resolved_filter, PlayerFilter::You, player_filter);
+            look.permit_while_exiled = *permit_while_exiled;
+            Ok((vec![Effect::new(look)], subject.into_choices()))
         }
         SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
             let (spec, choices) =
@@ -3216,7 +3232,12 @@ pub(super) fn compile_subject_verb_early(
                     effect.protected_target = protected_spec;
                     effect
                 }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
+                    let mut effect = crate::effects::RedirectNextDamageToTargetEffect::new(amount, ChooseSpec::Source);
+                    effect.protected_target = protected_spec;
+                    effect
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::DamageSource
                 | crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
                     return Err(CardTextError::ParseError(
                         "unsupported redirected-next damage destination".to_string(),
@@ -3227,65 +3248,48 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                source,
-                target,
-                destination,
-                destination_target,
-                all_this_turn,
+                source, target, combat_only, destination, destination_target, all_this_turn,
             },
         ) => {
-            let source_spec = match source {
-                PreventNextTimeDamageSourceAst::Choice => {
-                    crate::effects::RedirectNextTimeDamageSource::Choice
-                }
-                PreventNextTimeDamageSourceAst::Target(_) => {
-                    return Err(CardTextError::ParseError(
-                        "target-referenced redirect damage source is unsupported".to_string(),
-                    ));
-                }
-                PreventNextTimeDamageSourceAst::Filter(filter) => {
-                    crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(
-                        filter,
-                        &current_reference_env(ctx),
-                    )?)
-                }
-            };
             let refs = current_reference_env(ctx);
-            let (protected_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
-            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
-                source_spec,
-                protected_spec,
-            );
+            let mut choices = Vec::new();
+            let source_spec = match source {
+                PreventNextTimeDamageSourceAst::Choice => crate::effects::RedirectNextTimeDamageSource::Choice,
+                PreventNextTimeDamageSourceAst::Target(target) => {
+                    let (spec, source_choices) = resolve_target_spec_with_choices(target, &refs)?;
+                    for choice in source_choices { push_choice(&mut choices, choice); }
+                    crate::effects::RedirectNextTimeDamageSource::Target(spec)
+                }
+                PreventNextTimeDamageSourceAst::Filter(filter) => crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(filter, &refs)?),
+            };
+            let protected_spec = if let Some(target) = target {
+                let (spec, protected_choices) = resolve_target_spec_with_choices(target, &refs)?;
+                for choice in protected_choices { push_choice(&mut choices, choice); }
+                Some(spec)
+            } else { None };
+            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect {
+                source: source_spec, target: protected_spec, combat_only: *combat_only,
+                destination: ironsmith_core::RedirectNextTimeDamageDestination::SourceObject,
+                destination_target: None, all_this_turn: *all_this_turn,
+            };
             effect = match destination {
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
-                    effect
-                }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
-                    effect.to_controller()
-                }
-                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
-                    effect.to_source_controller()
-                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => effect,
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::DamageSource => effect.to_damage_source(),
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => effect.to_controller(),
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => effect.to_source_controller(),
                 crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
-                    let destination_target = destination_target.as_ref().ok_or_else(|| {
-                        CardTextError::ParseError(
-                            "missing redirected-next-time damage destination target".to_string(),
-                        )
-                    })?;
-                    let (destination_spec, destination_choices) =
-                        resolve_target_spec_with_choices(destination_target, &refs)?;
-                    for choice in destination_choices {
-                        push_choice(&mut choices, choice);
-                    }
-                    effect.to_target(destination_spec)
+                    let destination_target = destination_target.as_ref().ok_or_else(|| CardTextError::ParseError("missing redirected-next-time damage destination target".into()))?;
+                    let (spec, destination_choices) = resolve_target_spec_with_choices(destination_target, &refs)?;
+                    for choice in destination_choices { push_choice(&mut choices, choice); }
+                    effect.to_target(spec)
                 }
             };
-            let effect = if *all_this_turn {
-                effect.all_this_turn()
-            } else {
-                effect
-            };
-            Ok((vec![Effect::new(effect)], choices))
+            // Keep each announced target in oracle order; the runtime effect
+            // exposes the final one and binds all references by assignment spec.
+            let mut effects: Vec<_> = choices.iter().take(choices.len().saturating_sub(1))
+                .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone()))).collect();
+            effects.push(Effect::new(effect));
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

@@ -106,3 +106,22 @@ fn typed_static_grant_migration_parses_type_and_color_facts() {
         Some(LandTypeAdditionFact::EveryBasic { .. })
     ));
 }
+
+#[test]
+fn source_and_nominal_color_predicates_require_complete_clauses() {
+    for text in ["This spell is colorless.", "All Slivers are colorless."] {
+        let tokens = lex(text);
+        assert_eq!(parse_subject_color_tokens(&tokens).unwrap().color, ColorSet::COLORLESS);
+    }
+    for text in ["This creature is all colors.", "This artifact is all colors."] {
+        let tokens = lex(text);
+        assert_eq!(parse_subject_color_tokens(&tokens).unwrap().color,
+            Color::ALL.into_iter().collect::<ColorSet>());
+    }
+    for text in ["This spell is colorless until next turn.",
+        "All Slivers are colorless and indestructible.",
+        "This creature is all colors except blue.",
+        "This spell is colorless nonsense."] {
+        assert!(parse_subject_color_tokens(&lex(text)).is_none(), "{text}");
+    }
+}

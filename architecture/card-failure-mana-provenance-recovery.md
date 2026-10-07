@@ -1,5 +1,10 @@
 # Mana-unit checkpoint boundary
 
+Current-owner note (2026-10-06): the serialized gameplay checkpoint APIs described
+below were removed by `2511818a28ddb00d7ec96e85bf345eb170b88fdb`. This report is
+historical. Use [current recovery and validation boundaries](card-failure-current-recovery-boundaries.md)
+for native savepoints, transcript replay and the distinct public audit version 3.
+
 Status: source correction; all authored scenarios are UNRUN. No build, compilation, test or parser probe was executed.
 
 ## Concrete omission

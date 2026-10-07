@@ -82,6 +82,9 @@
 
 
 
+    if let Some(compact) = binary_card_piles::describe(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_filtered_future_exile_delayed_return_bundle(&filtered) {
         return compact;
     }

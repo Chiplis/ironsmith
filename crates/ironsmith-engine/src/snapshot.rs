@@ -57,7 +57,46 @@ pub struct CopiableValues {
     /// Registered copy effects must use [`RetainedCopiableValues`] instead.
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
+    /// Frozen layer-1 program; text changes are never copied into this value.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub spell_effect: SpellProgramState<crate::effect::Effect>,
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
+}
+
+/// Whether a frozen copy value has exact evidence of its spell program.
+/// Historical payload omission is not evidence that there was no program.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub enum SpellProgramState<E> {
+    Unavailable,
+    Absent,
+    Present(ironsmith_core::ResolutionProgram<E>),
+}
+impl<E> Default for SpellProgramState<E> {
+    fn default() -> Self { Self::Unavailable }
+}
+impl<E> SpellProgramState<E> {
+    pub fn from_option(program: Option<ironsmith_core::ResolutionProgram<E>>) -> Self {
+        match program {
+            Some(program) if !program.has_complete_definition() => Self::Unavailable,
+            Some(program) => Self::Present(program), None => Self::Absent,
+        }
+    }
+    pub fn is_unavailable(&self) -> bool { matches!(self, Self::Unavailable) }
+    pub fn has_program(&self) -> bool { matches!(self, Self::Present(_)) }
+    pub fn has_complete_definition(&self) -> bool {
+        match self { Self::Unavailable => false, Self::Absent => true,
+            Self::Present(program) => program.has_complete_definition() }
+    }
+    pub fn try_map_effects<F: Clone, Error>(self, map: impl FnMut(E) -> Result<F, Error>)
+        -> Result<SpellProgramState<F>, Error>
+    {
+        Ok(match self {
+            Self::Unavailable => SpellProgramState::Unavailable,
+            Self::Absent => SpellProgramState::Absent,
+            Self::Present(program) => SpellProgramState::Present(program.try_map_effects(map)?),
+        })
+    }
 }
 
 /// Lossless copy-effect payload, separate from public claim snapshots.
@@ -67,7 +106,7 @@ pub struct CopiableValues {
     feature = "serialization",
     derive(serde::Serialize, serde::Deserialize)
 )]
-pub struct RetainedCopiableValues<A> {
+pub struct RetainedCopiableValues<A, E = ()> {
     pub name: String,
     #[cfg_attr(
         feature = "serialization",
@@ -101,6 +140,10 @@ pub struct RetainedCopiableValues<A> {
     )]
     pub defense: Option<u32>,
     pub abilities: Vec<A>,
+    /// Absent in earlier artifact6/checkpoint3/audit19 payloads, which did not
+    /// retain a spell program in a permanent's frozen copy-value envelope.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "SpellProgramState::is_unavailable"))]
+    pub spell_effect: SpellProgramState<E>,
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_optional")
@@ -119,11 +162,11 @@ where
     <Option<T> as serde::Deserialize<'de>>::deserialize(deserializer)
 }
 
-impl<A> RetainedCopiableValues<A> {
+impl<A, E> RetainedCopiableValues<A, E> {
     pub fn try_map_abilities<B, Error>(
         self,
         map: impl FnMut(A) -> Result<B, Error>,
-    ) -> Result<RetainedCopiableValues<B>, Error> {
+    ) -> Result<RetainedCopiableValues<B, E>, Error> {
         let Self {
             name,
             mana_cost,
@@ -138,6 +181,7 @@ impl<A> RetainedCopiableValues<A> {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = self;
         Ok(RetainedCopiableValues {
@@ -157,12 +201,27 @@ impl<A> RetainedCopiableValues<A> {
                 .into_iter()
                 .map(map)
                 .collect::<Result<Vec<_>, _>>()?,
+            spell_effect,
             aura_attach_filter,
         })
     }
 }
 
-impl From<CopiableValues> for RetainedCopiableValues<Ability> {
+impl<A, E> RetainedCopiableValues<A, E> {
+    pub fn try_map_effects<F: Clone, Error>(self, mut map: impl FnMut(E) -> Result<F, Error>)
+        -> Result<RetainedCopiableValues<A, F>, Error>
+    {
+        let Self { name, mana_cost, compiled_card_text, ability_labels, power, toughness,
+            card_types, subtypes, supertypes, colors, loyalty, defense, abilities,
+            spell_effect, aura_attach_filter } = self;
+        Ok(RetainedCopiableValues { name, mana_cost, compiled_card_text, ability_labels,
+            power, toughness, card_types, subtypes, supertypes, colors, loyalty, defense,
+            abilities, spell_effect: spell_effect.try_map_effects(&mut map)?,
+            aura_attach_filter })
+    }
+}
+
+impl From<CopiableValues> for RetainedCopiableValues<Ability, crate::effect::Effect> {
     fn from(values: CopiableValues) -> Self {
         let CopiableValues {
             name,
@@ -178,6 +237,7 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability> {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = values;
         Self {
@@ -194,13 +254,14 @@ impl From<CopiableValues> for RetainedCopiableValues<Ability> {
             loyalty,
             defense,
             abilities: abilities.iter().cloned().collect(),
+            spell_effect,
             aura_attach_filter,
         }
     }
 }
 
-impl From<RetainedCopiableValues<Ability>> for CopiableValues {
-    fn from(values: RetainedCopiableValues<Ability>) -> Self {
+impl From<RetainedCopiableValues<Ability, crate::effect::Effect>> for CopiableValues {
+    fn from(values: RetainedCopiableValues<Ability, crate::effect::Effect>) -> Self {
         let RetainedCopiableValues {
             name,
             mana_cost,
@@ -215,6 +276,7 @@ impl From<RetainedCopiableValues<Ability>> for CopiableValues {
             loyalty,
             defense,
             abilities,
+            spell_effect,
             aura_attach_filter,
         } = values;
         Self {
@@ -231,8 +293,19 @@ impl From<RetainedCopiableValues<Ability>> for CopiableValues {
             loyalty,
             defense,
             abilities: Arc::new(abilities),
+            spell_effect,
             aura_attach_filter,
         }
+    }
+}
+
+fn retained_copiable_name(name: &str, alternate: Option<&str>) -> String {
+    if crate::filter::name_is_nameless(name) {
+        return name.to_string();
+    }
+    match alternate {
+        Some(other) if !name.split(" // ").any(|part| part.trim() == other) => format!("{name} // {other}"),
+        _ => name.to_string(),
     }
 }
 
@@ -240,7 +313,7 @@ impl CopiableValues {
     pub fn from_object(obj: &Object) -> Self {
         let bestow_restore = obj.bestow_cast_state.as_ref();
         Self {
-            name: obj.name.to_owned_string(),
+            name: retained_copiable_name(&obj.name, obj.split_other_half_name()),
             mana_cost: obj.mana_cost_owned(),
             compiled_card_text: obj.compiled_card_text.to_string(),
             ability_labels: obj.ability_labels.to_vec(),
@@ -260,6 +333,8 @@ impl CopiableValues {
             loyalty: obj.base_loyalty,
             defense: obj.base_defense,
             abilities: obj.materialized_copiable_abilities(),
+            spell_effect: SpellProgramState::from_option(bestow_restore.map(|restore| restore.spell_effect.clone())
+                .unwrap_or_else(|| obj.spell_effect.clone()).map(|program| program.to_owned_value())),
             aura_attach_filter: if let Some(restore) = bestow_restore {
                 restore
                     .aura_attach_filter
@@ -271,9 +346,23 @@ impl CopiableValues {
         }
     }
 
+    /// Copy a retained spell as it last existed on the stack. Unlike a
+    /// permanent-copy capture, Bestow's cast overlay is part of this envelope.
+    /// Live spell owners first freeze layer 1; this adapter then preserves
+    /// that frozen object without consulting its pre-cast restore payload.
+    pub(crate) fn from_spell_object(obj: &Object) -> Self {
+        let mut values = Self::from_object(obj);
+        values.card_types = obj.card_types.to_vec();
+        values.subtypes = obj.subtypes.to_vec();
+        values.abilities = obj.abilities.clone();
+        values.spell_effect = SpellProgramState::from_option(obj.spell_effect_owned());
+        values.aura_attach_filter = obj.aura_attach_filter_owned();
+        values
+    }
+
     pub fn from_calculated(chars: &CalculatedCharacteristics) -> Self {
         Self {
-            name: chars.name.to_owned_string(),
+            name: retained_copiable_name(&chars.name, chars.alternate_name.as_deref()),
             mana_cost: chars.mana_cost.clone(),
             compiled_card_text: chars.compiled_card_text.to_string(),
             ability_labels: chars.ability_labels.to_vec(),
@@ -286,6 +375,7 @@ impl CopiableValues {
             loyalty: chars.loyalty,
             defense: chars.defense,
             abilities: Arc::new(chars.abilities.to_vec()),
+            spell_effect: chars.spell_effect.clone(),
             aura_attach_filter: chars.aura_attach_filter.clone(),
         }
     }
@@ -302,17 +392,17 @@ impl CopiableValues {
 /// that cannot (or must not) travel: compiled `abilities` and the secretly
 /// chosen subtype. It is lossless only for snapshots in public claim form
 /// ([`ObjectSnapshot::is_public_claim_form`]); encoders must check that.
+
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serialization",
-    derive(serde::Serialize, serde::Deserialize)
-)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectSnapshot {
     /// Independent stack-object kind at capture time.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub stack_kind: Option<crate::filter::StackObjectKind>,
     /// Noncopiable choices needed by abilities after this exact object leaves.
     pub chosen_subtype: Option<Subtype>,
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub numeric_choice_memory: Option<Arc<crate::source_numbers::NumberChoiceMemory>>,
     pub chosen_object: Option<Box<ObjectSnapshot>>,
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub(crate) secret_chosen_subtype: Option<(PlayerId, Subtype)>,
@@ -376,10 +466,18 @@ pub struct ObjectSnapshot {
     /// Abilities the object had. Not encoded (see the type docs).
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub abilities: Arc<Vec<Ability>>,
+    /// Exact historical acquisitions paired with abilities. Public claims
+    /// intentionally omit this; a linked reader then requires native replay.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub ability_origins: Option<Arc<Vec<crate::continuous::AbilityOrigin>>>,
     /// For Auras: what this object can enchant.
     pub aura_attach_filter: Option<AuraAttachmentFilter>,
     /// Frozen layer-1 copiable values at the instant this snapshot was made.
     pub copiable_values: CopiableValues,
+    /// Complete native cast definition captured for a revealed-card copy.
+    /// Public claim snapshots are not executable recovery checkpoints.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    pub revealed_cast_definition: Option<Arc<crate::cards::CardDefinition>>,
     /// For sagas: maximum chapter number.
     /// X value chosen when this object was cast (if any).
     pub x_value: Option<u32>,
@@ -445,6 +543,14 @@ pub struct ObjectSnapshot {
     /// noncopiable information available to already-pending abilities.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub noted_life_total: Option<i32>,
+    /// Suspected designation of this exact incarnation when captured.
+    /// Missing evidence in older/public snapshots is not an unsuspicious result.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub suspected: Option<bool>,
+    /// Exact incarnation's saddle designation. Missing historical/public
+    /// evidence is unknown, never an unsaddled receipt.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub saddled: Option<bool>,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -478,8 +584,40 @@ mod counter_pairs {
 impl ObjectSnapshot {
     /// Capture immutable characteristics before an instruction changes identity or state.
     pub fn from_object_id(game: &crate::game_state::GameState, id: ObjectId) -> Option<Self> {
+        Self::try_from_object_id(game, id)
+            .inspect_err(|error| game.record_token_resource_failure(error))
+            .ok()
+            .flatten()
+    }
+
+    /// Capture the exact current incarnation, propagating incomplete evidence.
+    pub fn try_from_object_id(
+        game: &crate::game_state::GameState,
+        id: ObjectId,
+    ) -> Result<Option<Self>, crate::effects::ExecutionError> {
         game.object(id)
-            .map(|object| Self::from_object_with_calculated_characteristics(object, game))
+            .map(|object| Self::try_from_object_with_calculated_characteristics(object, game))
+            .transpose()
+    }
+
+    /// Outcome memory is the complete immutable observation, without reduction.
+    pub fn from_snapshot(snapshot: &Self) -> Self {
+        snapshot.clone()
+    }
+
+    /// A historical receipt is authoritative even after its incarnation changes.
+    pub fn to_snapshot(&self, _game: &crate::game_state::GameState) -> Self {
+        self.clone()
+    }
+
+    /// Kept for existing outcome readers; neither live state nor a fallback may
+    /// enrich a captured receipt with facts from a different observation.
+    pub fn to_snapshot_with_fallback(
+        &self,
+        _game: &crate::game_state::GameState,
+        _fallback: Option<&Self>,
+    ) -> Self {
+        self.clone()
     }
 
     /// A snapshot carrying only what every peer knows about an object whose
@@ -496,6 +634,7 @@ impl ObjectSnapshot {
         Self {
             stack_kind: None,
             chosen_subtype: None,
+            numeric_choice_memory: None,
             chosen_object: None,
             secret_chosen_subtype: None,
             object_id,
@@ -524,8 +663,10 @@ impl ObjectSnapshot {
             loyalty: None,
             defense: None,
             abilities: Arc::new(Vec::new()),
+            ability_origins: None,
             aura_attach_filter: None,
             copiable_values: CopiableValues::default(),
+            revealed_cast_definition: None,
             x_value: None,
             cast_order_this_turn: None,
             mana_spent_to_cast: ManaPool::default(),
@@ -539,6 +680,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: None,
+            suspected: None,
             ring_bearer: None,
             flipped: false,
             face_down: false,
@@ -552,6 +694,7 @@ impl ObjectSnapshot {
             is_commander: false,
             zone,
             noted_life_total: None,
+            saddled: None,
         }
     }
 
@@ -565,7 +708,11 @@ impl ObjectSnapshot {
         self.card.is_none()
             && self.other_face.is_none()
             && self.abilities.is_empty()
+            && self.ability_origins.is_none()
+            && self.numeric_choice_memory.is_none()
             && self.copiable_values.abilities.is_empty()
+            && !self.copiable_values.spell_effect.has_program()
+            && self.revealed_cast_definition.is_none()
             && self.secret_chosen_subtype.is_none()
             && self
                 .chosen_object
@@ -588,7 +735,11 @@ impl ObjectSnapshot {
         self.card = None;
         self.other_face = None;
         self.abilities = Arc::new(Vec::new());
+        self.ability_origins = None;
+        self.numeric_choice_memory = None;
         self.copiable_values.abilities = Arc::new(Vec::new());
+        self.copiable_values.spell_effect = SpellProgramState::Unavailable;
+        self.revealed_cast_definition = None;
         self.secret_chosen_subtype = None;
     }
 }
@@ -611,11 +762,14 @@ impl ObjectSnapshot {
     /// Captures all relevant characteristics at the current moment.
     /// Game state is required to access battlefield state like tapped, flipped, etc.
     pub fn from_object(obj: &Object, game: &crate::game_state::GameState) -> Self {
+        let mut abilities = crate::continuous::CalculatedAbilities::from(obj.abilities.clone());
+        abilities.bind_host(obj.id);
         let was_enchanted = obj.attachments.iter().any(|&attachment_id| {
-            game.object(attachment_id).is_some_and(|attachment| {
-                attachment.card_types.contains(&CardType::Enchantment)
-                    && attachment.subtypes.contains(&Subtype::Aura)
-            })
+            !game.is_phased_out(attachment_id)
+                && game.object(attachment_id).is_some_and(|attachment| {
+                    attachment.card_types.contains(&CardType::Enchantment)
+                        && attachment.subtypes.contains(&Subtype::Aura)
+                })
         });
         Self {
             stack_kind: if obj.zone == Zone::Stack {
@@ -661,12 +815,16 @@ impl ObjectSnapshot {
             base_toughness: obj.base_toughness.as_ref().map(|t| t.base_value()),
             loyalty: obj.loyalty(),
             defense: obj.base_defense,
-            abilities: obj.abilities.clone(),
+            abilities: abilities.shared(),
+            ability_origins: Some(Arc::new((0..obj.abilities.len())
+                .map(crate::continuous::AbilityOrigin::Printed).collect())),
             aura_attach_filter: obj.aura_attach_filter_owned(),
             chosen_subtype: game.chosen_subtype(obj.id),
+            numeric_choice_memory: Some(Arc::new(game.numeric_choice_memory(obj.id))),
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
             secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
             copiable_values: CopiableValues::from_object(obj),
+            revealed_cast_definition: None,
             x_value: obj.x_value,
             cast_order_this_turn: game.turn_store.turn_history.spell_cast_order(obj.id),
             mana_spent_to_cast: obj.mana_spent_to_cast.clone(),
@@ -689,6 +847,7 @@ impl ObjectSnapshot {
                 .as_ref()
                 .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
             goaded: None,
+            suspected: Some(obj.zone == Zone::Battlefield && game.is_suspected(obj.id)),
             ring_bearer: Some(obj.zone == Zone::Battlefield && game.player(game.controller_of(obj)).is_some_and(|player| player.ring_bearer == Some(obj.id))),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
@@ -702,6 +861,7 @@ impl ObjectSnapshot {
             is_commander: game.is_commander(obj.id),
             zone: obj.zone,
             noted_life_total: game.noted_life_total_for_source(obj.id),
+            saddled: Some(game.is_saddled(obj.id)),
         }
     }
 
@@ -716,7 +876,7 @@ impl ObjectSnapshot {
 
         // Check if any attachment is an Aura
         snapshot.was_enchanted = obj.attachments.iter().any(|&attachment_id| {
-            game.object(attachment_id)
+            !game.is_phased_out(attachment_id) && game.object(attachment_id)
                 .map(|att| {
                     att.card_types.contains(&CardType::Enchantment)
                         && att.subtypes.contains(&Subtype::Aura)
@@ -743,93 +903,121 @@ impl ObjectSnapshot {
     /// * `game` - The game state (needed to compute continuous effects)
     ///
     /// # Returns
-    /// A snapshot with power/toughness reflecting all continuous effects, or base+counters
-    /// if the object is not on the battlefield or has no calculated characteristics.
+    /// A snapshot with complete current characteristics. Legacy callers must
+    /// establish that capture is complete; production mutation owners should
+    /// use the checked variant to propagate failure through their transaction.
     pub fn from_object_with_calculated_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
     ) -> Self {
-        let all_effects = game.all_continuous_effects();
-        Self::from_object_with_calculated_characteristics_and_effects(obj, game, &all_effects)
+        Self::try_from_object_with_calculated_characteristics(obj, game)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
     }
 
-    /// Create a snapshot from an object with calculated characteristics using precomputed effects.
+    /// Checked capture for production owners. An incomplete calculation is
+    /// never converted into a snapshot with provisional power or toughness.
+    pub fn try_from_object_with_calculated_characteristics(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let effects = game.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Self::try_from_object_with_calculated_characteristics_and_effects(obj, game, &effects)
+    }
+
+    /// Adapter for legacy Option/void capture owners inside an execution
+    /// transaction. The owning root must inspect its incomplete-execution
+    /// latch before committing. No snapshot is returned on failure.
+    pub(crate) fn capture_for_execution(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+    ) -> Option<Self> {
+        Self::try_from_object_with_calculated_characteristics(obj, game)
+            .inspect_err(|error| game.record_token_resource_failure(error)).ok()
+    }
+
     pub fn from_object_with_calculated_characteristics_and_effects(
         obj: &Object,
         game: &crate::game_state::GameState,
         effects: &[ContinuousEffect],
     ) -> Self {
+        Self::try_from_object_with_calculated_characteristics_and_effects(obj, game, effects)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
+    }
+
+    pub fn try_from_object_with_calculated_characteristics_and_effects(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        effects: &[ContinuousEffect],
+    ) -> Result<Self, crate::effects::ExecutionError> {
         let calculated = game.calculated_characteristics_with_effects(obj.id, effects);
-        let copiable_values = crate::continuous::copiable_values_with_effects(
-            obj.id,
-            game.objects_map(),
-            effects,
-            &game.battlefield,
-            game.commander_objects(),
-            game,
-        );
-        Self::from_object_with_known_characteristics_and_copiable_values(
-            obj,
-            game,
-            calculated.as_ref(),
-            copiable_values,
+        Self::try_from_object_with_known_characteristics_and_effects(
+            obj, game, calculated.as_ref(), effects,
         )
     }
 
-    /// Create a snapshot using characteristics already calculated for the same
-    /// game-state instant. Callers that batch characteristic work can use this
-    /// to preserve LKI without rerunning the layer system for each object.
     pub fn from_object_with_known_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
     ) -> Self {
-        let effects = game.all_continuous_effects();
-        let copiable_values = crate::continuous::copiable_values_with_effects(
-            obj.id,
-            game.objects_map(),
-            &effects,
-            &game.battlefield,
-            game.commander_objects(),
-            game,
-        );
-        Self::from_object_with_known_characteristics_and_copiable_values(
-            obj,
-            game,
-            calculated,
-            copiable_values,
-        )
+        Self::try_from_object_with_known_characteristics(obj, game, calculated)
+            .expect("legacy snapshot caller requires complete characteristic evidence")
     }
 
-    fn from_object_with_known_characteristics_and_copiable_values(
+    /// Capture a previously calculated frame from this same immutable instant.
+    /// Missing characteristics are unavailable evidence, not printed defaults.
+    pub fn try_from_object_with_known_characteristics(
         obj: &Object,
         game: &crate::game_state::GameState,
         calculated: Option<&CalculatedCharacteristics>,
-        copiable_values: Option<CopiableValues>,
-    ) -> Self {
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let effects = game.try_all_continuous_effects_arc()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Self::try_from_object_with_known_characteristics_and_effects(obj, game, calculated, &effects)
+    }
+
+    fn try_from_object_with_known_characteristics_and_effects(
+        obj: &Object,
+        game: &crate::game_state::GameState,
+        calculated: Option<&CalculatedCharacteristics>,
+        effects: &[ContinuousEffect],
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        let checked = |object: ObjectId, calculated: Option<&CalculatedCharacteristics>| {
+            let calculated = calculated.ok_or(
+                crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object },
+            ).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            calculated.validate_numeric_range()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
+        };
+        checked(obj.id, calculated)?;
+        let copiable_values = crate::continuous::copiable_values_with_effects(
+            obj.id, game.objects_map(), effects, &game.battlefield, game.commander_objects(), game,
+        );
         let mut snapshot = Self::from_object(obj, game);
         snapshot.goaded = Some(obj.zone == Zone::Battlefield && game.is_goaded(obj.id));
         if let Some(copiable_values) = copiable_values {
             snapshot.copiable_values = copiable_values;
         }
-
         snapshot.apply_calculated_characteristics(obj, calculated);
         if !obj.attachments.is_empty() {
-            let effects = game.all_continuous_effects();
-            snapshot.attachment_snapshots = obj
-                .attachments
-                .iter()
-                .filter_map(|id| game.object(*id))
-                .map(|attachment| {
-                    let mut child = Self::from_object(attachment, game);
-                    let calculated =
-                        game.calculated_characteristics_with_effects(attachment.id, &effects);
-                    child.apply_calculated_characteristics(attachment, calculated.as_ref());
-                    child
-                })
-                .collect();
+            // Phased-out attachments are absent at capture (CR 702.26b).
+            snapshot.attachments.retain(|id| !game.is_phased_out(*id));
+            let mut attachments = Vec::new();
+            for id in &snapshot.attachments {
+                let Some(attachment) = game.object(*id) else { continue; };
+                let calculated = game.calculated_characteristics_with_effects(attachment.id, effects);
+                checked(attachment.id, calculated.as_ref())?;
+                let mut child = Self::from_object(attachment, game);
+                child.apply_calculated_characteristics(attachment, calculated.as_ref());
+                attachments.push(child);
+            }
+            snapshot.attachment_snapshots = attachments;
+            snapshot.was_enchanted = snapshot.attachment_snapshots.iter().any(|attachment|
+                attachment.card_types.contains(&CardType::Enchantment)
+                    && attachment.subtypes.contains(&Subtype::Aura));
         }
-        snapshot
+        Ok(snapshot)
     }
 
     fn apply_calculated_characteristics(
@@ -843,6 +1031,9 @@ impl ObjectSnapshot {
                 snapshot.first_printed_set_name = None;
             }
             snapshot.name = calculated.name.to_string();
+            if snapshot.linked_face_layout == crate::card::LinkedFaceLayout::Split {
+                snapshot.other_face_name = calculated.alternate_name.clone();
+            }
             snapshot.mana_cost = calculated.mana_cost.clone();
             snapshot.linked_face_mana_value = calculated.linked_face_mana_value;
             snapshot.compiled_card_text = calculated.compiled_card_text.to_string();
@@ -855,7 +1046,13 @@ impl ObjectSnapshot {
             snapshot.subtypes = calculated.subtypes.to_vec();
             snapshot.supertypes = calculated.supertypes.to_vec();
             snapshot.colors = calculated.colors;
+            snapshot.controller = calculated.controller;
+            snapshot.loyalty = calculated.loyalty;
+            snapshot.defense = calculated.defense;
+            snapshot.aura_attach_filter = calculated.aura_attach_filter.clone();
             snapshot.abilities = Arc::new(calculated.abilities.to_vec());
+            snapshot.ability_origins = Some(Arc::new((0..calculated.abilities.len())
+                .map(|slot| calculated.abilities.origin(slot).expect("calculated origin").clone()).collect()));
         }
     }
 
@@ -1045,6 +1242,7 @@ impl ObjectSnapshot {
             object_id,
             stable_id: object_id.into(),
             chosen_subtype: None,
+            numeric_choice_memory: None,
             secret_chosen_subtype: None,
             chosen_object: None,
             kind: ObjectKind::Card,
@@ -1071,7 +1269,9 @@ impl ObjectSnapshot {
             loyalty: None,
             defense: None,
             abilities: Arc::new(vec![]),
+            ability_origins: None,
             aura_attach_filter: None,
+            revealed_cast_definition: None,
             copiable_values: CopiableValues {
                 name: name.to_string(),
                 ..CopiableValues::default()
@@ -1089,6 +1289,7 @@ impl ObjectSnapshot {
             tapped: false,
             attacking: false,
             goaded: Some(false),
+            suspected: Some(false),
             ring_bearer: Some(false),
             flipped: false,
             face_down: false,
@@ -1102,6 +1303,7 @@ impl ObjectSnapshot {
             is_commander: false,
             zone: Zone::Battlefield,
             noted_life_total: None,
+            saddled: None,
         }
     }
 
@@ -1286,3 +1488,6 @@ mod tests {
         assert_eq!(snapshot.mana_value(), 2);
     }
 }
+
+#[cfg(test)]
+mod checked_capture_tests;

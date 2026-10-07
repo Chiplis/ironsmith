@@ -414,3 +414,18 @@ fn loyalty_prohibition_does_not_become_all_activated_abilities() {
     assert!(matches!(parse_player_activation_restriction_tail_words(&["activate", "planeswalkers", "loyalty", "abilities"]), Some(PlayerActivationRestrictionTailFact::ActivateLoyaltyAbilitiesOf(_))));
     assert!(parse_player_activation_restriction_tail_words(&["activate", "planeswalkers", "loyalty", "abilities", "unless", "theyre", "mana", "abilities"]).is_none());
 }
+
+#[test]
+fn ability_only_source_restriction_retains_its_distinct_envelope() {
+    let tokens = lex_line("be the target of abilities from artifact sources", 0).unwrap();
+    let TargetRestrictionEnvelope::AbilitiesFrom { source_descriptor_tokens } =
+        parse_target_restriction_envelope_tokens(&tokens).unwrap() else { panic!() };
+    assert_eq!(crate::lexer::token_word_refs(&tokens[source_descriptor_tokens]), vec!["artifact"]);
+    for text in [
+        "be the target of abilities from artifact sources and draw a card",
+        "be the target of abilities from sources",
+        "be the target of abilities from artifact sources this turn",
+    ] {
+        assert!(parse_target_restriction_envelope_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}

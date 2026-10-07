@@ -243,6 +243,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 
@@ -1519,6 +1520,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
             | AlternativeCastKind::Madness
             | AlternativeCastKind::Miracle
             | AlternativeCastKind::Suspend
+            | AlternativeCastKind::Foretell
     ) || !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
@@ -1543,6 +1545,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
         AlternativeCastKind::Madness => "Madness",
         AlternativeCastKind::Miracle => "Miracle",
         AlternativeCastKind::Suspend => "Suspend",
+        AlternativeCastKind::Foretell => "Foretell",
     };
 
     match filter.cast_by.as_ref() {
@@ -1969,6 +1972,12 @@ pub enum ActivatedAbilityCostCondition {
     /// `ability_index` of the source (CR 602.2b); unbound applies to all.
     ThisAbility { ability_index: Option<usize> },
     All(Vec<ActivatedAbilityCostCondition>),
+    /// The actual selected activation carries this gameplay keyword.
+    Keyword(ironsmith_core::ActivatedAbilityKeyword),
+    NonManaAbility,
+    LoyaltyAbility,
+    /// The activator, relative to the modifier's controller; not source ownership.
+    Activator(PlayerFilter),
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -2001,6 +2010,25 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
     }
 
     match condition {
+        ActivatedAbilityCostCondition::Keyword(keyword) => {
+            let keyword = match keyword {
+                ironsmith_core::ActivatedAbilityKeyword::Equip => "equip",
+                ironsmith_core::ActivatedAbilityKeyword::PowerUp => "power-up",
+                ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level) => {
+                    return format!("if it's a level {level} ability");
+                }
+                ironsmith_core::ActivatedAbilityKeyword::Cycling => "cycling",
+                ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
+                ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
+                ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+            };
+            format!("if it's a {keyword} ability")
+        }
+        ActivatedAbilityCostCondition::NonManaAbility => "unless it's a mana ability".into(),
+        ActivatedAbilityCostCondition::LoyaltyAbility => "if it's a loyalty ability".into(),
+        ActivatedAbilityCostCondition::Activator(player) => {
+            format!("if {} activates it", player.description())
+        }
         ActivatedAbilityCostCondition::TargetsExactly { count, filter } => {
             if *count == 1 {
                 format!("if it targets {}", filter.description())
@@ -2027,8 +2055,9 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
 
 /// Whether `condition` holds for activating an ability of `source`.
 /// `modifier_source` is the permanent whose static ability carries the
-/// condition; `ability` describes the ability being activated when known
-/// (without it, an ability-kind condition is assumed to hold).
+/// condition; `ability` describes the selected activation. New keyword,
+/// loyalty, nonmana and activator gates do not match absent facts. Legacy
+/// equip/this-ability checks still allow an unbound estimation call.
 pub fn activated_ability_cost_condition_is_active_for_activation(
     game: &crate::game_state::GameState,
     source: crate::ids::ObjectId,
@@ -2042,6 +2071,25 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
     };
     let controller = game.controller_of(source_obj);
     match condition {
+        // Kind-scoped prices require facts from the selected activation. An
+        // absent context must not grant another ability's discount or tax.
+        ActivatedAbilityCostCondition::Keyword(keyword) => {
+            ability.is_some_and(|ability| ability.keyword == Some(*keyword))
+        }
+        ActivatedAbilityCostCondition::NonManaAbility => {
+            ability.is_some_and(|ability| !ability.mana_ability)
+        }
+        ActivatedAbilityCostCondition::LoyaltyAbility => {
+            ability.is_some_and(|ability| ability.loyalty_ability)
+        }
+        ActivatedAbilityCostCondition::Activator(player) => {
+            let Some(activator) = ability.and_then(|ability| ability.activator) else {
+                return false;
+            };
+            let Some(modifier) = game.object(modifier_source) else { return false; };
+            let context = game.filter_context_for(game.controller_of(modifier), Some(modifier_source));
+            crate::filter::player_filter_matches_game(player, activator, game, &context)
+        }
         ActivatedAbilityCostCondition::All(conditions) => conditions.iter().all(|condition| {
             activated_ability_cost_condition_is_active_for_activation(
                 game, source, modifier_source, condition, chosen_targets, ability,
@@ -2464,14 +2512,12 @@ fn condition_expr_matches_for_cast(
     expr: &crate::effect::Condition,
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
 ) -> bool {
-    if let crate::effect::Condition::ThisSpellPaidLabel(label) = expr
-        && let Some(paid) = optional_costs_paid
-    {
-        return paid.was_paid_label(label.clone());
+    let eval_ctx = this_spell_condition_eval_ctx(source, controller);
+    match crate::condition_eval::evaluate_condition_external_checked(game, expr, &eval_ctx, optional_costs_paid) {
+        Ok(value) => value,
+        Err(error) => { game.record_token_resource_failure(&error); false }
     }
 
-    let eval_ctx = this_spell_condition_eval_ctx(source, controller);
-    crate::condition_eval::evaluate_condition_external(game, expr, &eval_ctx)
 }
 
 fn chosen_targets_match(
@@ -2566,6 +2612,16 @@ pub fn this_spell_cost_condition_is_active_for_player(
     this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
         game, source, caster, condition, chosen_targets, None,
     )
+}
+
+fn completed_combat_qualification(
+    game: &crate::game_state::GameState,
+    result: Result<bool, crate::effects::ExecutionError>,
+) -> bool {
+    match result {
+        Ok(qualified) => qualified,
+        Err(error) => { game.record_token_resource_failure(&error); false }
+    }
 }
 
 pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
@@ -2904,30 +2960,20 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 })
             })
         }
-        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) => game
-            .turn_store
-            .turn_history
-            .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype),
+        ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) =>
+            completed_combat_qualification(game, game.turn_store.turn_history
+                .player_dealt_combat_damage_to_player_with_subtype_this_turn(controller, *subtype)),
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn => {
             // The spell's current creature types (changeling counts, CR 702.73a).
             let creature_types = crate::filter::object_creature_subtypes_for_cost(source_obj, game);
             !creature_types.is_empty()
-                && game
-                    .turn_store
-                    .turn_history
-                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(
-                        controller,
-                        &creature_types,
-                    )
+                && completed_combat_qualification(game, game.turn_store.turn_history
+                    .player_dealt_combat_damage_to_player_with_any_subtype_this_turn(controller, &creature_types))
         }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(
             subtype,
-        ) => game
-            .turn_store
-            .turn_history
-            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(
-                controller, *subtype,
-            ),
+        ) => completed_combat_qualification(game, game.turn_store.turn_history
+            .player_dealt_combat_damage_to_player_with_subtype_or_commander_this_turn(controller, *subtype)),
     }
 }
 
@@ -4171,5 +4217,31 @@ mod tests {
             reduction.display(),
             "This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone"
         );
+    }
+}
+
+#[cfg(test)]
+mod alternative_payment_cost_gate_tests {
+    use super::*;
+    #[test]
+    fn prospective_receipt_condition_does_not_erase_unknown_dates() {
+        let mut game = crate::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = crate::PlayerId::from_index(0);
+        let definition = crate::cards::CardDefinitionBuilder::new(crate::CardId::new(), "Payment gate")
+            .card_types(vec![crate::CardType::Sorcery]).build();
+        let source = game.create_object_from_definition(&definition, alice, crate::Zone::Hand);
+        let reference = crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::AlternativeCast(
+            ironsmith_core::AlternativeCostReference::by_name("Sneak", None)));
+        for negated in [false, true] {
+            let mut branch = game.clone();
+            let mut paid = crate::cost::OptionalCostsPaid::default();
+            paid.mark_label_paid(reference.clone());
+            let mut condition = crate::effect::Condition::ThisSpellPaidLabel(reference.clone().this_turn());
+            if negated { condition = crate::effect::Condition::Not(Box::new(condition)); }
+            let (root, meter) = branch.begin_token_resource_scope();
+            assert!(!condition_expr_matches_for_cast(&branch, source, alice, &condition, Some(&paid)));
+            assert!(matches!(branch.token_resource_failure(), Some(crate::effects::ExecutionError::IncompleteEvidence(_))));
+            branch.end_token_resource_scope(root, &meter);
+        }
     }
 }

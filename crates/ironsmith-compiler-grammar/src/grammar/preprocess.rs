@@ -1,3 +1,6 @@
+#[path = "preprocess/attachment_grant_scopes.rs"]
+mod attachment_grant_scopes;
+pub use attachment_grant_scopes::*;
 #[path = "preprocess/borrow_expansion.rs"]
 mod borrow_expansion;
 #[path = "preprocess/borrow_shapes.rs"]
@@ -17,3 +20,7 @@ pub use document_shapes::*;
 pub use line_shapes::*;
 pub use name_shapes::*;
 pub use vote_shapes::*;
+
+#[path = "preprocess/intrinsic_land_mana.rs"]
+mod intrinsic_land_mana;
+pub use intrinsic_land_mana::*;

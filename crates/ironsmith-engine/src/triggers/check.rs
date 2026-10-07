@@ -350,6 +350,8 @@ pub struct ActiveStateTriggerKey {
 /// A triggered ability that needs to go on the stack.
 #[derive(Debug, Clone)]
 pub struct TriggeredAbilityEntry {
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The source permanent that has the triggered ability.
     pub source: ObjectId,
     /// The controller of the triggered ability.
@@ -401,6 +403,8 @@ pub struct PendingDelayedTriggerPayment {
 /// A delayed trigger that waits for a specific event to occur.
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The trigger condition to wait for.
     pub trigger: Trigger,
     /// Effects to execute when the trigger fires.
@@ -445,6 +449,8 @@ pub struct DelayedTrigger {
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     /// Player references captured when the delayed trigger was registered.
     pub tagged_players: std::collections::HashMap<crate::tag::TagKey, Vec<crate::ids::PlayerId>>,
+    /// Selected actor inherited at delayed registration; a new combat observation leaves this absent.
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// Optional payment window that removes this registration when paid.
     pub prepayment: Option<PendingDelayedTriggerPayment>,
     /// Prevention shield whose accumulated prevented damage supplies the
@@ -553,8 +559,14 @@ impl TriggerQueue {
     }
 }
 
-/// Compute a structural identity for a trigger ability.
+/// Authored occurrences use immutable acquisition evidence. Historical
+/// unstamped definitions keep their old identity and execution semantics.
 pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerIdentity {
+    if let Some(identity) = trigger_ability.trigger
+        .acquired_identity(trigger_ability.effects.retained_trigger_definition())
+    {
+        return identity;
+    }
     let mut hasher = DefaultHasher::new();
     trigger_ability.trigger.display().hash(&mut hasher);
     trigger_ability
@@ -736,11 +748,17 @@ fn trigger_source_matches_duplication_filter(
     let Some(source_obj) = game.object(entry.source) else {
         return false;
     };
-    let snapshot = ObjectSnapshot::from_object_with_calculated_characteristics_and_effects(
+    let snapshot = match ObjectSnapshot::try_from_object_with_calculated_characteristics_and_effects(
         source_obj,
         game,
         view.effects(),
-    );
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            game.record_token_resource_failure(&error);
+            return false;
+        }
+    };
     filter.matches_snapshot(&snapshot, &ctx, game)
 }
 
@@ -1016,6 +1034,8 @@ fn push_monarch_trigger(
     let (source, source_stable_id, source_name) = monarch_designation_source();
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1040,6 +1060,8 @@ fn push_ring_trigger(
     let (source, source_stable_id, source_name) = ring_designation_source();
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1064,6 +1086,8 @@ fn push_initiative_trigger(
     let (source, source_stable_id, source_name) = initiative_designation_source();
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1394,6 +1418,62 @@ fn soulbond_trigger_had_eligible_pair(
     })
 }
 
+/// Typed first-draw receipts are executable evidence, not public claim data.
+/// Reject a partial recovery before absence of a trigger could be interpreted
+/// as a complete negative result. Complete mismatching identities still simply
+/// fail their matcher.
+fn validate_first_draw_reveal_evidence(event: &TriggerEvent) -> Result<(), crate::effects::ExecutionError> {
+    let Some(reveal) = event.downcast::<crate::events::CardRevealedEvent>() else { return Ok(()); };
+    let Some(occurrence) = reveal.first_draw.as_ref() else { return Ok(()); };
+    let Some(owner) = occurrence.owner.as_ref() else { return Ok(()); };
+    let incomplete = || crate::effects::ExecutionError::IncompleteEvidence(
+        "first-draw reveal receipt lacks complete card/source acquisition evidence; native recovery or replay required".into(),
+    );
+    match reveal.source {
+        None => return Err(incomplete()),
+        Some(source) if source != owner.host => return Ok(()),
+        Some(_) => {}
+    }
+    let source = event.lookback_source_snapshots().iter()
+        .find(|source| source.object_id == owner.host).ok_or_else(incomplete)?;
+    let origins = source.ability_origins.as_ref().ok_or_else(incomplete)?;
+    if origins.len() != source.abilities.len() { return Err(incomplete()); }
+    for (slot, ability) in source.abilities.iter().enumerate() {
+        let AbilityKind::Triggered(ability) = &ability.kind else { continue; };
+        if ability.trigger.downcast_ref::<crate::triggers::PlayerRevealsCardTrigger>()
+            .is_some_and(|trigger| trigger.first_draw_pair == Some(owner.pair))
+            && crate::linked_exile::LinkedExileOwner::capture(owner.host, Some(owner.pair), origins.get(slot)).is_none()
+        { return Err(incomplete()); }
+    }
+    let card = reveal.snapshot.as_ref().ok_or_else(incomplete)?;
+    if card.object_id != occurrence.drawn_card || card.stable_id != occurrence.drawn_stable_id
+        || reveal.card != occurrence.drawn_card || reveal.player != occurrence.player
+        || card.zone != Zone::Hand || card.owner != occurrence.player
+    { return Err(incomplete()); }
+    Ok(())
+}
+
+/// Fallible trigger discovery for callers without an enclosing execution meter.
+pub fn check_triggers_checked(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+) -> Result<Vec<TriggeredAbilityEntry>, crate::effects::ExecutionError> {
+    validate_first_draw_reveal_evidence(trigger_event)?;
+    // This read-only API owns a local failure scope when no execution root is
+    // active. Numeric matching/capture failures must not become Ok(empty).
+    let mut observed = game.clone();
+    observed.try_all_continuous_effects_arc()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let (root, meter) = observed.begin_token_resource_scope();
+    let entries = check_triggers(&observed, trigger_event);
+    let result = match observed.token_resource_failure() {
+        Some(error) => Err(error),
+        None => Ok(entries),
+    };
+    observed.end_token_resource_scope(root, &meter);
+    result
+}
+
 /// Check all permanents for triggered abilities that match the given event.
 ///
 /// Returns a list of triggered abilities that should go on the stack.
@@ -1402,6 +1482,10 @@ pub fn check_triggers(
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
     if game.action_observations_suppressed() {
+        return Vec::new();
+    }
+    if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
+        game.record_token_resource_failure(&error);
         return Vec::new();
     }
     // LKI payloads are common on zone-change events even when none of the
@@ -1447,6 +1531,13 @@ pub(crate) fn check_triggers_batch(
     }
     if trigger_events.is_empty() {
         return Vec::new();
+    }
+
+    for event in trigger_events {
+        if let Err(error) = validate_first_draw_reveal_evidence(event) {
+            game.record_token_resource_failure(&error);
+            return vec![Vec::new(); trigger_events.len()];
+        }
     }
 
     let mut kind_may_subscribe = FxMap::default();
@@ -1656,7 +1747,7 @@ fn add_flanking_triggers(
 
     let source_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
         game.object(blocked.attacker)
-            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+            .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
     });
     let Some((controller, source_stable_id, source_name)) = source_snapshot
         .as_ref()
@@ -1700,6 +1791,8 @@ fn add_flanking_triggers(
         structural_identity.hash(&mut hasher);
         flanking.instance_id().hash(&mut hasher);
         triggered.push(TriggeredAbilityEntry {
+            linked_exile_owner: None,
+            source_number_owner: None,
             source: blocked.attacker,
             controller,
             x_value: None,
@@ -1758,7 +1851,9 @@ fn add_ward_triggers(
     let Some(object) = game.object(target) else {
         return;
     };
-    let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+    let Some(source_snapshot) = ObjectSnapshot::capture_for_execution(object, game) else {
+        return;
+    };
     for (instance, ward) in wards.into_iter().enumerate() {
         let ability = TriggeredAbility {
             trigger: Trigger::custom(
@@ -1783,6 +1878,8 @@ fn add_ward_triggers(
         instance.hash(&mut hasher);
         ward.cost.display().hash(&mut hasher);
         triggered.push(TriggeredAbilityEntry {
+            linked_exile_owner: None,
+            source_number_owner: None,
             source: target,
             controller: ward.ward_controller,
             x_value: None,
@@ -1823,9 +1920,7 @@ fn add_intrinsic_siege_defeat_trigger(
         .find(|snapshot| snapshot.object_id == source)
         .cloned()
         .or_else(|| {
-            game.object(source).map(|object| {
-                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-            })
+            game.object(source).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
         });
     let Some(source_snapshot) = source_snapshot else {
         return;
@@ -1865,6 +1960,8 @@ fn add_intrinsic_siege_defeat_trigger(
     let controller = source_snapshot.controller;
     let trigger_identity = compute_trigger_identity(&ability);
     triggered.push(TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller,
         x_value: None,
@@ -1971,6 +2068,26 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
+    // Only this entrant's own ETB ability imports its cast payment receipt.
+    // The completed event froze the pre-cost LKI, so departure or a new
+    // incarnation before stacking/resolution cannot change the amount.
+    if let Some(entry) = trigger_event.downcast::<crate::events::EnterBattlefieldEvent>()
+        && entry.object == ctx.source_id
+        && entry.from == crate::zone::Zone::Stack
+        && let Some(sacrificed) = &entry.emerge_sacrifice
+    {
+        tagged.insert(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), sacrificed.clone());
+    }
+    // Ordinary ETB matchers observe the normalized ZoneChangeEvent. Its
+    // completed destination receipt is frozen by the same entry batch owner.
+    if let Some(zone) = trigger_event.downcast::<crate::events::ZoneChangeEvent>()
+        && zone.from == crate::zone::Zone::Stack
+        && zone.to == crate::zone::Zone::Battlefield
+        && zone.destination_objects().contains(&ctx.source_id)
+        && let Some(sacrificed) = zone.destination_emerge_sacrifices.get(&ctx.source_id)
+    {
+        tagged.insert(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG.into(), sacrificed.clone());
+    }
     let blocking = if let Some(event) =
         trigger_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
     {
@@ -1978,9 +2095,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .blocker_snapshot
             .clone()
             .or_else(|| {
-                game.object(event.blocker).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                })
+                game.object(event.blocker).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
             })
             .into_iter()
             .collect::<Vec<_>>()
@@ -1994,9 +2109,7 @@ fn tagged_objects_for_matched_trigger_with_view(
                 .blockers
                 .iter()
                 .filter_map(|id| {
-                    game.object(*id).map(|object| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                    })
+                    game.object(*id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
                 })
                 .collect()
         }
@@ -2048,9 +2161,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .flatten()
             .filter(|attacker| attacks.matches_attacker_info(attacker, ctx))
             .filter_map(|attacker| {
-                game.object(attacker.creature).map(|object| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-                })
+                game.object(attacker.creature).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
             })
             .collect::<Vec<_>>();
         if !attackers.is_empty() {
@@ -2070,7 +2181,7 @@ fn tagged_objects_for_matched_trigger_with_view(
         trigger_event
             .object_id()
             .and_then(|id| game.object(id))
-            .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+            .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game))
     }) {
         tagged.insert(
             crate::tag::TagKey::from(ironsmith_core::TAP_STATE_GROUP_TAG),
@@ -2129,7 +2240,13 @@ fn tagged_objects_for_matched_trigger_with_view(
             _ => None,
         };
         let mut seen = std::collections::HashSet::new();
-        let sources = game
+        let sources = if damage.per_source_controller {
+            // Simultaneous grouping merges the snapshots within this exact
+            // damage-time controller's group. Never collect another actor's
+            // sources from the global live hit list.
+            trigger_event.source_snapshot().filter(|snapshot| snapshot.object_id == event.source)
+                .cloned().into_iter().collect::<Vec<_>>()
+        } else { game
             .combat_damage_player_batch_hits()
             .iter()
             .copied()
@@ -2144,8 +2261,8 @@ fn tagged_objects_for_matched_trigger_with_view(
             .filter_map(|(source, _)| game.object(source))
             .filter(|source| damage.filter.matches(source, &ctx.filter_ctx, game))
             .filter(|source| seen.insert(source.stable_id))
-            .map(|source| ObjectSnapshot::from_object_with_calculated_characteristics(source, game))
-            .collect::<Vec<_>>();
+            .filter_map(|source| ObjectSnapshot::capture_for_execution(source, game))
+            .collect::<Vec<_>>() };
         if !sources.is_empty() {
             tagged.insert(
                 crate::tag::TagKey::from(ironsmith_core::COMBAT_DAMAGE_GROUP_TAG),
@@ -2172,14 +2289,12 @@ fn tagged_objects_for_matched_trigger_with_view(
                 && let Some(object) = game.object(granting)
             {
                 let chars = view.calculated_characteristics_arc(granting);
-                tagged.insert(
-                    crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG),
-                    vec![ObjectSnapshot::from_object_with_known_characteristics(
-                        object,
-                        game,
-                        chars.as_deref(),
-                    )],
-                );
+                match ObjectSnapshot::try_from_object_with_known_characteristics(object, game, chars.as_deref()) {
+                    Ok(snapshot) => {
+                        tagged.insert(crate::tag::TagKey::from(crate::tag::GRANTING_SOURCE_TAG), vec![snapshot]);
+                    }
+                    Err(error) => game.record_token_resource_failure(&error),
+                }
             }
         } else {
             game.insert_granting_source_tag(ctx.source_id, ability_index, &mut tagged);
@@ -2382,6 +2497,13 @@ fn check_battlefield_trigger_subscriber(
         return;
     };
 
+    let source_snapshot = match ObjectSnapshot::try_from_object_with_known_characteristics(
+        obj, game, view.calculated_characteristics_arc(obj_id).as_deref(),
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(error) => { game.record_token_resource_failure(&error); return; }
+    };
+
     let controller = view
         .calculated_characteristics(obj_id)
         .map(|chars| chars.controller)
@@ -2454,6 +2576,14 @@ fn check_battlefield_trigger_subscriber(
         }
 
         let entry = TriggeredAbilityEntry {
+            linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj_id, trigger_ability.effects.linked_exile_pair,
+                view.calculated_characteristics_arc(obj_id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(subscriber.ability_index))),
+            source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj_id, trigger_ability.effects.source_number_pair,
+                view.calculated_characteristics_arc(obj_id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(subscriber.ability_index))),
             source: obj_id,
             controller,
             x_value: trigger_entry_x_value(trigger_event, obj.x_value),
@@ -2468,7 +2598,7 @@ fn check_battlefield_trigger_subscriber(
             triggering_event: trigger_event.clone(),
             source_stable_id: obj.stable_id,
             source_name: obj.name.to_string(),
-            source_snapshot: None,
+            source_snapshot: Some(source_snapshot.clone()),
             tagged_objects: tagged_objects_for_matched_trigger_with_view(
                 game,
                 trigger_event,
@@ -2721,7 +2851,7 @@ fn collect_lookback_source_triggers(
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
     for source_snapshot in trigger_event.lookback_source_snapshots() {
-        for ability in source_snapshot.abilities.iter() {
+        for (ability_index, ability) in source_snapshot.abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -2747,7 +2877,8 @@ fn collect_lookback_source_triggers(
                 filter_ctx,
                 game,
             )
-            .with_trigger_identity(trigger_identity);
+            .with_trigger_identity(trigger_identity)
+            .with_ability_index(ability_index);
             if !trigger_event_is_in_range(
                 game,
                 trigger_event,
@@ -2797,6 +2928,12 @@ fn collect_lookback_source_triggers(
                     trigger_ability,
                 );
                 let entry = TriggeredAbilityEntry {
+                    linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        source_snapshot.object_id, trigger_ability.effects.linked_exile_pair,
+                        source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        source_snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: source_snapshot.object_id,
                     controller: source_snapshot.controller,
                     x_value: dynamic_soulshift_x
@@ -2875,6 +3012,10 @@ fn check_triggers_with_view_and_registry(
     if game.action_observations_suppressed() {
         return Vec::new();
     }
+    if let Err(error) = validate_first_draw_reveal_evidence(trigger_event) {
+        game.record_token_resource_failure(&error);
+        return Vec::new();
+    }
     if trigger_event.triggers_captured() {
         return Vec::new();
     }
@@ -2915,7 +3056,7 @@ fn check_triggers_with_view_and_registry(
             .lookback_source_snapshots()
             .iter()
             .any(|lookback| lookback.stable_id == snapshot.stable_id);
-        for ability in snapshot.abilities.iter() {
+        for (ability_index, ability) in snapshot.abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -2975,6 +3116,12 @@ fn check_triggers_with_view_and_registry(
                     trigger_ability,
                 );
                 let entry = TriggeredAbilityEntry {
+                    linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.linked_exile_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: snapshot.object_id,
                     controller: snapshot.controller,
                     x_value: dynamic_soulshift_x
@@ -3006,7 +3153,7 @@ fn check_triggers_with_view_and_registry(
     if trigger_event.kind() == crate::events::traits::EventKind::CardDiscarded
         && let Some(snapshot) = trigger_event.snapshot()
     {
-        for ability in snapshot.abilities.iter() {
+        for (ability_index, ability) in snapshot.abilities.iter().enumerate() {
             let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
                 continue;
             };
@@ -3052,6 +3199,12 @@ fn check_triggers_with_view_and_registry(
                 }
 
                 let entry = TriggeredAbilityEntry {
+                    linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.linked_exile_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        snapshot.object_id, trigger_ability.effects.source_number_pair,
+                        snapshot.ability_origins.as_ref().and_then(|origins| origins.get(ability_index))),
                     source: snapshot.object_id,
                     controller: snapshot.controller,
                     x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
@@ -3094,6 +3247,48 @@ fn check_triggers_with_view_and_registry(
     for_each_hidden_trigger_object_id(game, |obj_id| {
         check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
+
+    // The original draw/reveal owner pins each accepted linked instance before
+    // additions can remove its granter or the drawn source itself.
+    if let Some(drawn) = trigger_event.downcast::<crate::events::CardsDrawnEvent>()
+        && let Some(decision) = &drawn.miracle
+    {
+        let mut accepted = std::collections::HashSet::new();
+        for proof in decision.revealed_instances() {
+        if !drawn.is_miracle_eligible(proof.card) || drawn.player != proof.player
+            || proof.drawn_snapshot.object_id != proof.card
+            || proof.drawn_snapshot.stable_id != proof.stable_id
+            || proof.drawn_snapshot.owner != proof.player || proof.drawn_snapshot.zone != Zone::Hand
+            || !accepted.insert(proof.instance.identity.clone())
+        {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "Miracle reveal receipt does not identify the exact first drawn hand arrival".into()));
+        } else {
+            let ability = TriggeredAbility {
+                trigger: Trigger::miracle(),
+                effects: ResolutionProgram::from_effects(vec![Effect::may_cast_for_miracle_cost()]),
+                choices: vec![], intervening_if: None, presentation_label: None,
+            };
+            let mut identity = DefaultHasher::new();
+            compute_trigger_identity(&ability).hash(&mut identity);
+            proof.instance.identity.hash(&mut identity);
+            // Each trigger owns only its linked reveal. Resolving or copying
+            // it cannot choose another accepted instance's retained price.
+            let mut linked_draw = drawn.clone();
+            linked_draw.miracle = Some(crate::events::other::MiracleDrawDecision::Revealed(proof.clone()));
+            let linked_event = TriggerEvent::new_with_provenance(linked_draw, trigger_event.provenance());
+            triggered.push(TriggeredAbilityEntry {
+                linked_exile_owner: None,
+                source_number_owner: None,
+                source: proof.card, controller: proof.player, x_value: None, event_value_amount: None,
+                ability, triggering_event: linked_event, source_stable_id: proof.stable_id,
+                source_name: proof.drawn_snapshot.name.clone(), source_snapshot: Some(proof.drawn_snapshot.clone()),
+                tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
+                source_kind: TriggeredAbilitySourceKind::Object, trigger_identity: TriggerIdentity(identity.finish()),
+            });
+        }
+        }
+    }
 
     // Note: Undying/Persist/Miracle triggers are handled through the normal trigger system.
     // They function from the graveyard/hand (where the object is after the event) and use
@@ -3152,6 +3347,8 @@ fn check_triggers_with_view_and_registry(
 
             for _ in 0..cascade_count {
                 triggered.push(TriggeredAbilityEntry {
+                    linked_exile_owner: None,
+                    source_number_owner: None,
                     source: cast.spell,
                     controller: cast.caster,
                     x_value: entry.x_value,
@@ -3209,6 +3406,8 @@ fn check_triggers_with_view_and_registry(
             reference.hash(&mut identity);
             let trigger_identity = TriggerIdentity(identity.finish());
             triggered.push(TriggeredAbilityEntry {
+                linked_exile_owner: None,
+                source_number_owner: None,
                 source: cast.spell,
                 controller: cast.caster,
                 x_value: entry.x_value,
@@ -3332,6 +3531,8 @@ fn add_speed_increase_triggers(
         let source = speed_rule_source_id();
 
         triggered.push(TriggeredAbilityEntry {
+            linked_exile_owner: None,
+            source_number_owner: None,
             source,
             controller,
             x_value: None,
@@ -3370,7 +3571,7 @@ fn collect_state_triggers_for_object(
     {
         return;
     }
-    for ability in abilities {
+    for (ability_index, ability) in abilities.iter().enumerate() {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };
@@ -3417,6 +3618,14 @@ fn collect_state_triggers_for_object(
 
         let tagged_objects = tagged_objects_for_trigger_event(game, &trigger_event);
         triggered.push(TriggeredAbilityEntry {
+            linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj.id, trigger_ability.effects.linked_exile_pair,
+                game.calculated_characteristics_arc(obj.id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(ability_index))),
+            source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                obj.id, trigger_ability.effects.source_number_pair,
+                game.calculated_characteristics_arc(obj.id).as_ref()
+                    .and_then(|chars| chars.abilities.origin(ability_index))),
             source: obj.id,
             controller,
             x_value: trigger_entry_x_value(&trigger_event, obj.x_value),
@@ -3501,12 +3710,14 @@ pub fn check_state_triggers(
     }
 
     for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
-        if let Some(obj) = game.object(obj_id) {
+        if let Some(obj) = game.object(obj_id)
+            && let Some(abilities) = view.abilities_rc(obj_id)
+        {
             collect_state_triggers_for_object(
                 game,
                 obj,
                 game.controller_of(obj),
-                &obj.abilities,
+                &abilities,
                 &mut triggered,
                 &mut active,
                 pending,
@@ -3515,12 +3726,14 @@ pub fn check_state_triggers(
     });
 
     for_each_hidden_trigger_object_id(game, |obj_id| {
-        if let Some(obj) = game.object(obj_id) {
+        if let Some(obj) = game.object(obj_id)
+            && let Some(abilities) = view.abilities_rc(obj_id)
+        {
             collect_state_triggers_for_object(
                 game,
                 obj,
                 game.controller_of(obj),
-                &obj.abilities,
+                &abilities,
                 &mut triggered,
                 &mut active,
                 pending,
@@ -3740,7 +3953,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         let trigger_identity = compute_delayed_trigger_identity(delayed);
 
         let mut fired = false;
-        let mut one_shot_matches = Vec::new();
+        let mut matches: Vec<TriggeredAbilityEntry> = Vec::new();
+        let mut counter_groups: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
         for trigger_event in events.iter().copied() {
             for &source in candidate_sources {
                 let mut ctx = TriggerContext::for_delayed_source(
@@ -3750,6 +3964,10 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                     &delayed.tagged_objects,
                 )
                 .with_trigger_identity(trigger_identity);
+                // Matching and resolution read the same admitted acquisition,
+                // even after its copy effect expires or its source departs.
+                ctx.filter_ctx.source_number_owner = delayed.source_number_owner.clone();
+                ctx.filter_ctx.source_snapshot = delayed.ability_source_snapshot.clone();
                 ctx.filter_ctx.tagged_players = delayed.tagged_players.clone();
                 ctx.filter_ctx.target_players = delayed
                     .tagged_players
@@ -3829,6 +4047,8 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         })
                         .or_else(|| delayed.trigger.event_value_amount(trigger_event, &ctx));
                     let entry = TriggeredAbilityEntry {
+                        linked_exile_owner: delayed.linked_exile_owner.clone(),
+                        source_number_owner: delayed.source_number_owner.clone(),
                         source: ability_source,
                         controller: delayed.controller,
                         x_value: delayed.x_value,
@@ -3840,9 +4060,11 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                             intervening_if: None,
                             presentation_label: None,
                         },
-                        triggering_event: trigger_event
-                            .clone()
-                            .with_player_tags(delayed.tagged_players.clone()),
+                        triggering_event: {
+                            let event = trigger_event.clone().with_player_tags(delayed.tagged_players.clone());
+                            delayed.defending_player_reference
+                                .map(|reference| event.clone().with_defending_player_reference(reference)).unwrap_or(event)
+                        },
                         source_stable_id,
                         source_name,
                         source_snapshot: delayed.ability_source_snapshot.clone(),
@@ -3877,19 +4099,44 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         source_kind: TriggeredAbilitySourceKind::Object,
                         trigger_identity,
                     };
-                    if delayed.one_shot {
-                        one_shot_matches.push(entry);
-                    } else {
-                        triggered.push(entry);
+                    if let Some(group @ crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterRecipient { .. }) =
+                        delayed.trigger.simultaneous_trigger_key(&entry.triggering_event)
+                    {
+                        // Each delayed registration owns its groups. Keep a
+                        // watched source and every singular recipient distinct;
+                        // one-shot alternatives are whole recipient groups.
+                        let key = (source, group);
+                        if let Some(&index) = counter_groups.get(&key) {
+                            let previous: &mut TriggeredAbilityEntry = &mut matches[index];
+                            if let Err(error) = previous.triggering_event.accumulate_counter_trigger_amount(
+                                &entry.triggering_event,
+                            ) {
+                                game.record_token_resource_failure(&error);
+                                // Nothing from any delayed registration has
+                                // been published or consumed yet.
+                                return Vec::new();
+                            }
+                            super::merge_trigger_group_tags(
+                                &mut previous.tagged_objects,
+                                &entry.tagged_objects,
+                            );
+                            continue;
+                        }
+                        counter_groups.insert(key, matches.len());
                     }
+                    matches.push(entry);
                 }
             }
         }
-        if let Some((first, others)) = one_shot_matches.split_first() {
-            if !others.is_empty() {
-                alternatives.push(one_shot_matches.clone());
+        if delayed.one_shot {
+            if let Some((first, others)) = matches.split_first() {
+                if !others.is_empty() {
+                    alternatives.push(matches.clone());
+                }
+                triggered.push(first.clone());
             }
-            triggered.push(first.clone());
+        } else {
+            triggered.extend(matches);
         }
 
         if fired && delayed.one_shot {
@@ -3991,6 +4238,14 @@ fn check_triggers_in_zone(
                 }
 
                 let entry = TriggeredAbilityEntry {
+                    linked_exile_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        obj_id, trigger_ability.effects.linked_exile_pair,
+                        game.calculated_characteristics_arc(obj_id).as_ref()
+                            .and_then(|chars| chars.abilities.origin(ability_index))),
+                    source_number_owner: crate::linked_exile::LinkedExileOwner::capture(
+                        obj_id, trigger_ability.effects.source_number_pair,
+                        game.calculated_characteristics_arc(obj_id).as_ref()
+                            .and_then(|chars| chars.abilities.origin(ability_index))),
                     source: obj_id,
                     controller: game.controller_of(obj),
                     x_value: trigger_entry_x_value(trigger_event, obj.x_value),
@@ -4409,6 +4664,41 @@ fn verify_intervening_if_impl(
     optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
     triggering_object_current: bool,
 ) -> bool {
+    match verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, triggering_object_current) {
+        Ok(value) => value,
+        Err(error) => { game.record_token_resource_failure(&error); false }
+    }
+}
+
+pub fn verify_intervening_if_checked(
+    game: &GameState, condition: &crate::ConditionExpr, controller: PlayerId,
+    event: &TriggerEvent, source_object_id: ObjectId, trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> Result<bool, crate::effects::ExecutionError> {
+    verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, false)
+}
+
+pub fn verify_intervening_if_at_resolution_checked(
+    game: &GameState, condition: &crate::ConditionExpr, controller: PlayerId,
+    event: &TriggerEvent, source_object_id: ObjectId, trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+) -> Result<bool, crate::effects::ExecutionError> {
+    verify_intervening_if_checked_impl(game, condition, controller, event, source_object_id,
+        trigger_identity, optional_costs_paid, true)
+}
+
+fn verify_intervening_if_checked_impl(
+    game: &GameState,
+    condition: &crate::ConditionExpr,
+    controller: PlayerId,
+    event: &TriggerEvent,
+    source_object_id: ObjectId,
+    trigger_identity: Option<TriggerIdentity>,
+    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
+    triggering_object_current: bool,
+) -> Result<bool, crate::effects::ExecutionError> {
     let defending_player = if event.kind() == crate::events::traits::EventKind::CreatureAttacked {
         event
             .downcast::<crate::events::combat::CreatureAttackedEvent>()
@@ -4480,37 +4770,7 @@ fn verify_intervening_if_impl(
             ..Default::default()
         },
     };
-    evaluate_intervening_if_condition(game, condition, &eval_ctx, optional_costs_paid)
-}
-
-fn evaluate_intervening_if_condition(
-    game: &GameState,
-    condition: &crate::ConditionExpr,
-    eval_ctx: &crate::condition_eval::ExternalEvaluationContext<'_>,
-    optional_costs_paid: Option<&crate::cost::OptionalCostsPaid>,
-) -> bool {
-    match condition {
-        crate::effect::Condition::Not(inner) => {
-            !evaluate_intervening_if_condition(game, inner, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::And(left, right) => {
-            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
-                && evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::Or(left, right) => {
-            evaluate_intervening_if_condition(game, left, eval_ctx, optional_costs_paid)
-                || evaluate_intervening_if_condition(game, right, eval_ctx, optional_costs_paid)
-        }
-        crate::effect::Condition::ThisSpellWasKicked => optional_costs_paid.map_or_else(
-            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-            crate::cost::OptionalCostsPaid::was_kicked,
-        ),
-        crate::effect::Condition::ThisSpellPaidLabel(label) => optional_costs_paid.map_or_else(
-            || crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-            |paid| paid.was_paid_label(label.clone()),
-        ),
-        _ => crate::condition_eval::evaluate_condition_external(game, condition, eval_ctx),
-    }
+    crate::condition_eval::evaluate_condition_external_checked(game, condition, &eval_ctx, optional_costs_paid)
 }
 
 #[cfg(test)]
@@ -4997,6 +5257,8 @@ mod tests {
         };
         let trigger_identity = compute_trigger_identity(&ability);
         TriggeredAbilityEntry {
+            linked_exile_owner: None,
+            source_number_owner: None,
             source,
             controller,
             x_value: None,

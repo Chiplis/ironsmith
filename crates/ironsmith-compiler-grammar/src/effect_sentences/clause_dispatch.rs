@@ -81,6 +81,7 @@ use ironsmith_core::ValueSurfaceHint;
 mod become_clause;
 mod helpers;
 mod next_turn_cant;
+mod suspected;
 
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 

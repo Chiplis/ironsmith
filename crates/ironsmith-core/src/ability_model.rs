@@ -135,6 +135,17 @@ pub enum ManaPaymentPurpose {
     TurnFaceUp,
     Effect,
     Other,
+    Foretell,
+}
+
+/// The exact announced method, independent of other methods on the permanent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaTurnFaceUpMethod {
+    Morph,
+    Megamorph,
+    Disguise,
+    PrintedManaCost,
 }
 
 /// A composable predicate over the complete transaction a mana unit would pay.
@@ -159,6 +170,12 @@ pub enum ManaPaymentPredicate {
     All(Vec<ManaPaymentPredicate>),
     AnyOf(Vec<ManaPaymentPredicate>),
     Not(Box<ManaPaymentPredicate>),
+    TurnFaceUpMethod(ManaTurnFaceUpMethod),
+    /// Exact battlefield incarnation; cloak is not manifest.
+    SourceManifested,
+    /// The selected Disturb price, not possession of the keyword.
+    DisturbCost,
+    ActivatedAbilityKeyword(ActivatedAbilityKeyword),
 }
 
 impl Eq for ManaPaymentPredicate {}
@@ -374,6 +391,21 @@ pub enum ProtectionFrom {
     /// mana value.
     ManaValuesOtherThanChosenNumber,
     Everything,
+    /// Continuously reads the protected object's own colors (CR 702.16).
+    OwnColors,
+    /// Continuously reads colors among the filtered objects. `None` uses
+    /// the protected object's context. A grant binds its exact source
+    /// incarnation, whose current controller supplies "you" on every query.
+    /// Only continuous static grants bind this reference. A quoted static
+    /// ability granted by resolution retains its own recipient context.
+    ColorsAmong {
+        filter: ObjectFilter,
+        reference_source: Option<ObjectId>,
+    },
+    /// An unquoted instruction to gain protection from a color population
+    /// reads the resolving spell/ability controller and population once
+    /// (CR 109.5, 608.2h). Materialized to `Color` at resolution.
+    ColorsAmongAtResolution(ObjectFilter),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -621,6 +653,21 @@ pub struct TriggeredAbility<T, E, C = Condition> {
     pub presentation_label: Option<PresentationLabel>,
 }
 
+/// Gameplay keyword identity, independent of labels or effect resemblance.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ActivatedAbilityKeyword {
+    Equip,
+    PowerUp,
+    /// The Class designation reached by this level ability (CR 716).
+    ClassLevel(u32),
+    // Appended identities: cost selectors read the selected ability, never its text.
+    Cycling,
+    Ninjutsu,
+    Boast,
+    Exhaust,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 /// An activated ability, over whatever vocabulary the phase using it speaks.
@@ -630,6 +677,8 @@ pub struct TriggeredAbility<T, E, C = Condition> {
 /// always has.
 #[derive(TagKeyWalk)]
 pub struct ActivatedAbility<E, C, Cond = Condition> {
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub keyword: Option<ActivatedAbilityKeyword>,
     pub mana_cost: TotalCost<C>,
     pub effects: ResolutionProgram<E>,
     pub choices: Vec<crate::ChooseSpec>,
@@ -686,6 +735,7 @@ where
     ) -> Self {
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost,
                 effects: effects.into(),
                 choices: vec![],
@@ -710,6 +760,7 @@ where
         costs.extend(additional_costs);
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_costs(costs),
                 effects: effects.into(),
                 choices: vec![],
@@ -732,6 +783,7 @@ where
         }
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_costs(costs),
                 effects: ResolutionProgram::default(),
                 choices: vec![],
@@ -752,6 +804,7 @@ where
         costs.push(C::tap_cost());
         Self {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_costs(costs),
                 effects: effects.into(),
                 choices: vec![],
@@ -825,6 +878,7 @@ where
                 presentation_label: triggered.presentation_label,
             }),
             AbilityKind::Activated(activated) => AbilityKind::Activated(ActivatedAbility {
+                keyword: activated.keyword,
                 mana_cost: activated.mana_cost.try_map(&mut map_cost)?,
                 effects: activated.effects.try_map_effects(&mut map_effect)?,
                 choices: activated.choices,
@@ -927,6 +981,7 @@ impl<E: Clone, C: CoreCostComponent> ActivatedAbility<E, C, Condition> {
         }
 
         Self {
+            keyword: None,
             mana_cost: TotalCost::from_cost(C::tap_cost()),
             effects: ResolutionProgram::default(),
             choices: vec![],
@@ -1099,6 +1154,7 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
 
     pub fn basic_mana(mana: ManaSymbol) -> Self {
         Self {
+            keyword: None,
             mana_cost: TotalCost::from_cost(C::tap_cost()),
             effects: ResolutionProgram::default(),
             choices: vec![],
@@ -1120,6 +1176,7 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
         let mut costs = cost.costs().to_vec();
         costs.extend(additional_costs);
         Self {
+            keyword: None,
             mana_cost: TotalCost::from_costs(costs),
             effects: ResolutionProgram::default(),
             choices: vec![],

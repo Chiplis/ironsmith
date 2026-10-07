@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Fury Charm",
+    "oracle_id": "b86b1878-65a9-48df-9727-1e80683d7e86",
+    "text": "Mana cost: {1}{R}\nType: Instant\nChoose one —\n• Destroy target artifact.\n• Target creature gets +1/+1 and gains trample until end of turn.\n• Remove two time counters from target permanent or suspended card.",
+    "source": "https://scryfall.com/card/plst/IMA-130/fury-charm?utm_source=api"
+  },
+  {
+    "name": "Shivan Sand-Mage",
+    "oracle_id": "3afe854a-7daa-4745-a5d9-04879e5d940a",
+    "text": "Mana cost: {2}{R}{R}\nType: Creature — Lizard Shaman\nPower/Toughness: 3/2\nWhen this creature enters, choose one —\n• Remove two time counters from target permanent or suspended card.\n• Put two time counters on target permanent with a time counter on it or suspended card.\nSuspend 4—{R}",
+    "source": "https://scryfall.com/card/tsr/189/shivan-sand-mage?utm_source=api"
+  },
+  {
+    "name": "Timebender",
+    "oracle_id": "efa3e524-1591-4036-81ec-74199cee25aa",
+    "text": "Mana cost: {U}\nType: Creature — Human Wizard\nPower/Toughness: 1/1\nMorph {U}\nWhen this creature is turned face up, choose one —\n• Remove two time counters from target permanent or suspended card.\n• Put two time counters on target permanent with a time counter on it or suspended card.",
+    "source": "https://scryfall.com/card/tsr/93/timebender?utm_source=api"
+  },
+  {
+    "name": "Timecrafting",
+    "oracle_id": "57939644-6f9a-4653-920b-f2d28559a9ca",
+    "text": "Mana cost: {X}{R}\nType: Instant\nChoose one —\n• Remove X time counters from target permanent or suspended card.\n• Put X time counters on target permanent with a time counter on it or suspended card.",
+    "source": "https://scryfall.com/card/plc/109/timecrafting?utm_source=api"
+  }
+]

@@ -189,7 +189,7 @@ mod additional_move_owner_contract_tests {
             self.questions += 1;
             let originals = match self.to { Zone::Hand => &game.player(self.alice).unwrap().hand, Zone::Exile => &game.exile, Zone::Library => &game.player(self.alice).unwrap().library, _ => unreachable!() };
             assert_eq!(originals.len(), 2, "all original moves precede added programs");
-            if self.owner == 5 { assert_eq!(game.irreversible_random_count(), self.random_before, "replacement programs precede the subsequent authored shuffle"); }
+            if self.owner == 5 { assert_eq!(game.irreversible_random_count(), self.random_before + 1, "the original shuffle precedes appended replacement programs"); }
             self.pending = self.pause; !self.pause
         }
         fn awaiting_choice(&self) -> bool { self.pending }
@@ -257,7 +257,7 @@ mod additional_move_owner_contract_tests {
                 } else {
                     assert_eq!(game.player(bob).unwrap().life, 27);
                     assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| (e.player,e.amount)).collect::<Vec<_>>(), vec![(bob,3),(bob,4)]);
-                    if owner == 5 { assert!(outcome.events.last().unwrap().downcast::<crate::events::ShuffleLibraryEvent>().is_some()); }
+                    if owner == 5 { assert!(outcome.events.first().unwrap().downcast::<crate::events::ShuffleLibraryEvent>().is_some()); }
                 }
             }
         }

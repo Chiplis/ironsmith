@@ -149,7 +149,7 @@ impl EffectExecutor for DiscoverEffect {
                                 player_id,
                                 result.from_zone,
                                 ctx.provenance,
-                            ));
+                            )?);
                         } else if ctx.decision_maker.awaiting_choice() {
                             return Ok(CompletedEffectOutputs::aggregate_only(
                                 EffectOutcome::count(0),

@@ -1063,7 +1063,8 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
 ) -> String {
     let mut blueprint =
-        describe_token_blueprint_with_presentation(&create.token, ability_presentation);
+        describe_token_blueprint_with_name_role(&create.token, ability_presentation,
+            create.text_roles.as_ref().map(|roles| roles.name), create.text_roles.as_ref().map(|roles| roles.colors));
     if create.use_source_chosen_color {
         blueprint = blueprint.replacen("colorless ", "", 1);
     }
@@ -1088,6 +1089,15 @@ pub(super) fn describe_token_blueprint_with_presentation(
     token: &CardDefinition,
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
 ) -> String {
+    describe_token_blueprint_with_name_role(token, ability_presentation, None, None)
+}
+
+fn describe_token_blueprint_with_name_role(
+    token: &CardDefinition,
+    ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
+    name_role: Option<ironsmith_core::TokenNameTextRole>,
+    color_role: Option<ironsmith_core::TokenWordRole>,
+) -> String {
     let standalone_tail_count = ability_presentation
         .map(ironsmith_core::TokenAbilityPresentation::standalone_tail_count)
         .unwrap_or(0)
@@ -1095,7 +1105,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
     let grouped_ability_presentation = ability_presentation
         .and_then(ironsmith_core::TokenAbilityPresentation::grouped_presentation);
     let card = &token.card;
-    if card.subtypes.contains(&crate::types::Subtype::Role)
+    if name_role.is_none() && card.subtypes.contains(&crate::types::Subtype::Role)
         && !card.name.trim().is_empty()
         && !card.name.eq_ignore_ascii_case("token")
     {
@@ -1103,7 +1113,8 @@ pub(super) fn describe_token_blueprint_with_presentation(
     }
     let mut parts = Vec::new();
     let mut creature_name_prefix: Option<String> = None;
-    let mut explicit_named_clause: Option<String> = None;
+    let mut explicit_named_clause: Option<String> = (name_role == Some(ironsmith_core::TokenNameTextRole::Explicit)
+        && card.subtypes.is_empty()).then(|| card.name.clone());
     let has_characteristic_defining_pt = token.abilities.iter().any(|ability| {
         matches!(
             &ability.kind,
@@ -1112,7 +1123,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
         )
     });
-    let is_named_noncreature_subtype_token = !card.is_creature()
+    let is_named_noncreature_subtype_token = name_role.is_none() && !card.is_creature()
         && !card.name.trim().is_empty()
         && !card.name.eq_ignore_ascii_case("token")
         && !card.subtypes.is_empty()
@@ -1152,7 +1163,8 @@ pub(super) fn describe_token_blueprint_with_presentation(
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::MakeColorless
         )
     });
-    let all_colors = card.colors().count() == crate::color::Color::ALL.len() as u32;
+    let all_colors = card.colors().count() == crate::color::Color::ALL.len() as u32
+        && color_role != Some(ironsmith_core::TokenWordRole::Authored);
     let colors = describe_token_color_words(
         card.colors(),
         (card.is_creature() || explicit_colorless) && !all_colors,
@@ -1161,7 +1173,7 @@ pub(super) fn describe_token_blueprint_with_presentation(
         parts.push(colors);
     }
 
-    if card.subtypes.is_empty()
+    if name_role.is_none() && card.subtypes.is_empty()
         && !card.is_creature()
         && card.card_types.contains(&CardType::Artifact)
         && !card.name.trim().is_empty()
@@ -1209,10 +1221,12 @@ pub(super) fn describe_token_blueprint_with_presentation(
                 .collect::<Vec<_>>()
                 .join(" ");
             let name_matches_any_subtype = subtype_words_lower.contains(&name_lower);
-            let name_is_distinct = !card.name.trim().is_empty()
-                && name_lower != "token"
-                && name_lower != subtype_text.to_ascii_lowercase()
-                && !name_matches_any_subtype;
+            let name_is_distinct = match name_role {
+                Some(ironsmith_core::TokenNameTextRole::Explicit) => true,
+                Some(ironsmith_core::TokenNameTextRole::SubtypeDerived) => false,
+                None => !card.name.trim().is_empty() && name_lower != "token"
+                    && name_lower != subtype_text.to_ascii_lowercase() && !name_matches_any_subtype,
+            };
             let use_name_as_prefix = name_is_distinct
                 && card
                     .supertypes

@@ -100,7 +100,11 @@ pub(crate) fn prepare_manifest_entry(
     })?;
     let original = match &receipt.outcome {
         BattlefieldEntryOutcome::Moved(id) => {
-            game.set_manifested(*id);
+            if cloak {
+                game.set_cloaked(*id);
+            } else {
+                game.set_manifested(*id);
+            }
             EffectOutcome::with_objects(vec![*id])
         }
         BattlefieldEntryOutcome::Redirected(change) => {

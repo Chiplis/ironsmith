@@ -5,29 +5,14 @@
 //! - "Destroy all creatures. Their controllers each create a token for each creature
 //!   they controlled that was destroyed this way."
 
-use crate::effect::{Effect, EffectOutcome, ExecutionFact};
+use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-
-fn correlated_player_count(outcomes: &[EffectOutcome]) -> i64 {
-    let summary = EffectOutcome::aggregate_summing_counts(outcomes.iter().cloned());
-    let count = summary.as_count().unwrap_or(0);
-    if count != 0 {
-        return count;
-    }
-    // Accepting an optional action is itself the correlated "did" result,
-    // even when a hidden-zone search legally finds no card.
-    i64::from(
-        summary
-            .execution_facts
-            .iter()
-            .any(|fact| matches!(fact, ExecutionFact::Accepted)),
-    )
-}
+use super::object_iteration::correlated_player_count;
 
 fn add_correlated_player_count(
     player_counts: &mut Vec<(PlayerId, i64)>,
@@ -204,6 +189,20 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
             .flatten()
             .flat_map(|proposal| proposal.declared_life_payments())
             .collect()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        for proposal in self.iterations.iter_mut().flatten() {
+            proposal.prepare_selection(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        Ok(())
     }
 
     fn prepare_original(
@@ -393,9 +392,7 @@ impl EffectExecutor for ForEachTaggedEffect {
     }
 
     fn prepare_simultaneous_player_action(
-        &self,
-        game: &GameState,
-        ctx: &mut ExecutionContext,
+        &self, game: &GameState, ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
         if !self.supports_simultaneous_player_action() {
             return Err(ExecutionError::Impossible(
@@ -420,13 +417,25 @@ impl EffectExecutor for ForEachTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| execute_tagged_object_iterations(self, game, ctx),
         )
     }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
 }
 
 /// Effect that groups tagged objects by controller and executes effects for each controller.
@@ -516,7 +525,7 @@ impl EffectExecutor for ForEachControllerOfTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -549,6 +558,8 @@ pub struct ForEachTaggedPlayerEffect {
     pub tag: TagKey,
     /// Effects to execute for each tagged player.
     pub effects: Vec<Effect>,
+    /// Missing evidence is an execution error; a present empty roster is valid.
+    pub require_evidence: bool,
 }
 
 impl ForEachTaggedPlayerEffect {
@@ -557,6 +568,7 @@ impl ForEachTaggedPlayerEffect {
         Self {
             tag: tag.into(),
             effects,
+            require_evidence: false,
         }
     }
 }
@@ -575,7 +587,7 @@ impl EffectExecutor for ForEachTaggedPlayerEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
-        Ok(Some(tagged_player_cursor(self, ctx)))
+        Ok(Some(tagged_player_cursor(self, ctx)?))
     }
 
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
@@ -602,7 +614,7 @@ impl EffectExecutor for ForEachTaggedPlayerEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -762,18 +774,21 @@ impl super::iteration_program::SelectedIterationPlan for TaggedPlayerPlan {
 fn tagged_player_cursor(
     effect: &ForEachTaggedPlayerEffect,
     ctx: &mut ExecutionContext,
-) -> Box<dyn crate::effects::ActionProgramCursor> {
+) -> Result<Box<dyn crate::effects::ActionProgramCursor>, ExecutionError> {
+    if effect.require_evidence && ctx.get_tagged_players(&effect.tag).is_none() {
+        return Err(ExecutionError::IncompleteEvidence("required player-result roster is absent".into()));
+    }
     let players = ctx
         .get_tagged_players(&effect.tag)
         .cloned()
         .unwrap_or_default();
-    super::iteration_program::selected_iteration_cursor(
+    Ok(super::iteration_program::selected_iteration_cursor(
         Box::new(TaggedPlayerPlan {
             effects: effect.effects.clone(),
             players,
         }),
         ctx,
-    )
+    ))
 }
 fn execute_tagged_object_iterations(
     effect: &ForEachTaggedEffect,
@@ -805,7 +820,7 @@ fn execute_tagged_player_iterations(
     ctx: &mut ExecutionContext,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     super::action_program::execute_action_program_with_outputs(
-        tagged_player_cursor(effect, ctx),
+        tagged_player_cursor(effect, ctx)?,
         game,
         ctx,
         crate::effects::EffectExecutionPurpose::Action,
@@ -815,6 +830,8 @@ fn execute_tagged_player_iterations(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::ExecutionFact;
+    use super::super::object_iteration::correlated_player_count;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

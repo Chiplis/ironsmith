@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use winnow::combinator::{alt, opt};
+use winnow::combinator::{alt, opt, peek, repeat_till};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
@@ -726,3 +726,66 @@ fn parse_keyword_ability_facts_lexed<'a>(
 
 #[cfg(test)]
 mod tests;
+
+/// A local X definition is owned by this keyword occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DynamicAmountKeyword { Bolster, Mobilize }
+
+fn parse_amount_keyword<'a>(input: &mut LexStream<'a>) -> WResult<DynamicAmountKeyword> {
+    alt((
+        primitives::kw("bolster").value(DynamicAmountKeyword::Bolster),
+        primitives::kw("mobilize").value(DynamicAmountKeyword::Mobilize),
+    )).parse_next(input)
+}
+
+pub fn parse_literal_keyword_amount_tokens(tokens: &[OwnedLexToken]) -> Option<(DynamicAmountKeyword, u32)> {
+    fn read<'a>(input: &mut LexStream<'a>) -> WResult<(DynamicAmountKeyword, u32)> {
+        opt(primitives::kw("and")).parse_next(input)?;
+        let kind = parse_amount_keyword(input)?;
+        let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok((kind, amount))
+    }
+    primitives::probe_all(tokens, read, "complete literal keyword amount")
+}
+
+pub fn parse_recipient_power_definition_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::probe_all(tokens,
+        (primitives::phrase(&["where", "x", "is", "its", "power"]), primitives::sentence_end()).void(),
+        "complete recipient-power keyword definition").is_some()
+}
+
+/// Keep the local definition with the last keyword before ordinary list splitting.
+/// The prefix still has to be parsed as a complete, independent keyword list.
+pub fn dynamic_keyword_tail_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(index, token)| {
+        (token.is_any_word(&["bolster", "mobilize"])
+            && tokens.get(index + 1).is_some_and(|token| token.is_word("x"))
+            && (index == 0 || tokens[index - 1].is_word("and")
+                || tokens[index - 1].is_comma()
+                || tokens[index - 1].kind == crate::lexer::TokenKind::Semicolon))
+            .then_some(index)
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DynamicKeywordAmountShape<'a> {
+    pub kind: DynamicAmountKeyword,
+    pub definition: Option<&'a [OwnedLexToken]>,
+}
+
+pub fn parse_dynamic_keyword_amount_tokens(tokens: &[OwnedLexToken]) -> Option<DynamicKeywordAmountShape<'_>> {
+    fn read<'a>(input: &mut LexStream<'a>) -> WResult<DynamicKeywordAmountShape<'a>> {
+        opt(primitives::kw("and")).parse_next(input)?;
+        let kind = parse_amount_keyword(input)?;
+        primitives::kw("x").parse_next(input)?;
+        let definition = opt((opt(primitives::comma()),
+            (primitives::phrase(&["where", "x", "is"]),
+                repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end()))
+                    .map(|((), _)| ())).take(),
+        )).parse_next(input)?.map(|(_, definition)| definition);
+        primitives::sentence_end().parse_next(input)?;
+        Ok(DynamicKeywordAmountShape { kind, definition })
+    }
+    primitives::probe_all(tokens, read, "complete dynamic keyword amount")
+}

@@ -1,6 +1,62 @@
 use super::*;
 
 #[test]
+fn fully_described_creatures_keep_authored_fields_instead_of_compact_templates() {
+    for (description, subtypes) in [
+        ("a legendary 1/1 green Squirrel creature token named Blue", vec![Subtype::Squirrel]),
+        ("a 3/3 green Elephant creature token", vec![Subtype::Elephant]),
+        ("a 0/4 colorless Wall artifact creature token", vec![Subtype::Wall]),
+        ("a 2/2 white Astartes Warrior creature token with vigilance", vec![Subtype::Astartes, Subtype::Warrior]),
+        ("a 0/1 colorless Eldrazi Spawn creature token", vec![Subtype::Eldrazi, Subtype::Spawn]),
+        ("a 1/1 colorless Eldrazi Scion creature token", vec![Subtype::Eldrazi, Subtype::Scion]),
+    ] {
+        let TokenDefinitionSpec::Creature(creature) = parse_token_definition_shape_text(description).unwrap() else {
+            panic!("a described creature must retain its authored fields: {description}");
+        };
+        assert_eq!(creature.subtypes, subtypes);
+        let roles = creature.text_roles.unwrap();
+        assert_eq!(roles.subtypes, ironsmith_core::TokenWordRole::Authored);
+        if creature.subtypes == [Subtype::Squirrel] {
+            assert_eq!(creature.name, "Blue");
+            assert_eq!(creature.colors, ColorSet::GREEN);
+            assert!(creature.legendary);
+            assert_eq!(roles.name, ironsmith_core::TokenNameTextRole::Explicit);
+        }
+        if creature.subtypes == [Subtype::Wall] {
+            assert!(!creature.keywords.contains(&TokenKeywordShape::Defender));
+        }
+    }
+}
+
+#[test]
+fn predefined_token_modifiers_preserve_literal_fields_beside_the_typed_template() {
+    let TokenDefinitionSpec::ModifiedBuiltin(shape) = parse_token_definition_shape_text(
+        "a legendary blue Heartwood token named Red with protection from red").unwrap() else {
+        panic!("explicit modifications to a predefined token");
+    };
+    assert_eq!(shape.template, BuiltinTokenShape::Heartwood);
+    assert_eq!(shape.name.as_deref(), Some("Red"));
+    assert_eq!(shape.colors, Some(ColorSet::BLUE));
+    assert_eq!(shape.supertypes, vec![ironsmith_core::Supertype::Legendary]);
+    assert!(shape.additional_subtypes.is_empty());
+    assert_eq!(shape.keywords, vec![TokenKeywordShape::ProtectionFromColors(ColorSet::RED)]);
+    let roles = shape.text_roles();
+    assert_eq!(roles.name, ironsmith_core::TokenNameTextRole::Explicit);
+    assert_eq!(roles.colors, ironsmith_core::TokenWordRole::Authored);
+    assert_eq!(roles.subtypes, ironsmith_core::TokenWordRole::RulesImplied);
+    assert_eq!(roles.abilities, ironsmith_core::TokenWordRole::RulesImplied);
+    assert_eq!(shape.keyword_words, ironsmith_core::TokenWordRole::Authored);
+
+    assert_eq!(parse_token_definition_shape_text("a Heartwood token"),
+        Some(TokenDefinitionSpec::Builtin(BuiltinTokenShape::Heartwood)));
+    let TokenDefinitionSpec::ModifiedBuiltin(shape) = parse_token_definition_shape_text(
+        "a Forest land Food token").unwrap() else { panic!("added subtype facts"); };
+    assert_eq!(shape.additional_card_types, vec![CardType::Land]);
+    assert_eq!(shape.additional_subtypes, vec![Subtype::Forest]);
+    assert_eq!(shape.text_roles().subtypes, ironsmith_core::TokenWordRole::Unrecorded);
+}
+
+#[test]
 fn token_shape_preserves_vehicle_crew_and_named_creature_facts() {
     let vehicle = parse_token_definition_shape_text(
         "3/3 colorless artifact Vehicle token named Airship with flying and crew 2",
@@ -14,6 +70,7 @@ fn token_shape_preserves_vehicle_crew_and_named_creature_facts() {
             colorless: true,
             flying: true,
             crew_amount: Some(2),
+            ..
         }) if name == "Airship"
     ));
 
@@ -375,4 +432,83 @@ fn canonical_token_names_are_typed_complete_leaves() {
         let tokens = crate::lexer::lex_line(text, 0).unwrap();
         assert!(super::super::rules::parse_canonical_named_token_shape(&tokens).is_none(), "{text}");
     }
+}
+
+#[test]
+fn token_name_words_and_quoted_protection_colors_do_not_become_description_characteristics() {
+    for text in [
+        "Red Elf, a legendary 2/2 blue Human creature token with protection from green",
+        "a 2/2 blue Human creature token named Red Elf with protection from green",
+    ] {
+        let TokenDefinitionSpec::Creature(shape) = parse_token_definition_shape_text(text).unwrap() else { panic!("described creature"); };
+        assert_eq!(shape.name, "Red Elf");
+        assert_eq!(shape.subtypes, vec![crate::types::Subtype::Human]);
+        assert_eq!(shape.colors, crate::color::ColorSet::BLUE);
+        let roles = shape.text_roles.unwrap();
+        assert_eq!(roles.name, ironsmith_core::TokenNameTextRole::Explicit);
+        assert_eq!(roles.colors, ironsmith_core::TokenWordRole::Authored);
+    }
+    let TokenDefinitionSpec::Creature(shape) = parse_token_definition_shape_text("a 2/2 blue Human creature token").unwrap() else { panic!("described creature"); };
+    assert_eq!(shape.text_roles.unwrap().name, ironsmith_core::TokenNameTextRole::SubtypeDerived);
+    for (text, expected) in [("that are all colors", ironsmith_core::TokenWordRole::RulesImplied),
+        ("that are white, blue, black, red, and green", ironsmith_core::TokenWordRole::Authored)]
+    {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let all = crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLUE).union(crate::color::ColorSet::BLACK)
+            .union(crate::color::ColorSet::RED).union(crate::color::ColorSet::GREEN);
+        assert_eq!(parse_postnominal_token_color_words_tokens(&tokens), Some((all, expected)));
+    }
+}
+
+#[test]
+fn quoted_rule_words_do_not_define_outer_template_characteristics_or_names() {
+    let artifact = parse_token_definition_shape_text(
+        "a colorless artifact token with \"{T}: Target Equipment becomes legendary until end of turn.\"").unwrap();
+    let TokenDefinitionSpec::Artifact(artifact) = artifact else { panic!("outer artifact description"); };
+    assert!(artifact.subtypes.is_empty());
+    assert!(!artifact.legendary);
+    let enchantment = parse_token_definition_shape_text(
+        "a blue enchantment token with \"{T}: Target Saga becomes a Vehicle artifact until end of turn.\"").unwrap();
+    let TokenDefinitionSpec::Enchantment(enchantment) = enchantment else { panic!("outer enchantment description"); };
+    assert!(enchantment.subtypes.is_empty());
+    assert!(!enchantment.legendary);
+    assert_eq!(enchantment.colors, crate::color::ColorSet::BLUE);
+    let creature = parse_token_definition_shape_text(
+        "a 2/2 blue Human creature token with \"Creatures named Elf get +1/+1.\"").unwrap();
+    let TokenDefinitionSpec::Creature(creature) = creature else { panic!("outer creature description"); };
+    assert_eq!(creature.subtypes, vec![crate::types::Subtype::Human]);
+    assert_eq!(creature.text_roles.unwrap().name, ironsmith_core::TokenNameTextRole::SubtypeDerived);
+    let flying_name = parse_token_definition_shape_text("a 2/2 blue Human creature token named Flying").unwrap();
+    let TokenDefinitionSpec::Creature(flying_name) = flying_name else { panic!("explicit keyword-spelled name"); };
+    assert_eq!(flying_name.name, "Flying");
+    assert!(!flying_name.keywords.contains(&TokenKeywordShape::Flying));
+}
+
+#[test]
+fn vehicle_characteristics_and_keywords_use_only_their_own_description() {
+    let vehicle = parse_token_definition_shape_text(
+        "a legendary 3/3 blue artifact Vehicle token with \"{T}: Target creature gains flying and crew 4 until end of turn.\"").unwrap();
+    let TokenDefinitionSpec::Vehicle(vehicle) = vehicle else { panic!("outer vehicle description"); };
+    assert!(vehicle.legendary);
+    assert_eq!(vehicle.colors, crate::color::ColorSet::BLUE);
+    assert!(!vehicle.flying);
+    assert_eq!(vehicle.crew_amount, None);
+    let vehicle = parse_token_definition_shape_text("a 3/3 blue artifact Vehicle token with flying and crew 2").unwrap();
+    let TokenDefinitionSpec::Vehicle(vehicle) = vehicle else { panic!("own vehicle keywords"); };
+    assert!(vehicle.flying);
+    assert_eq!(vehicle.crew_amount, Some(2));
+}
+
+#[test]
+fn named_keywords_and_quoted_grants_do_not_set_intrinsic_keyword_flags() {
+    for name in ["Hexproof", "Indestructible", "Banding", "Changeling"] {
+        let TokenDefinitionSpec::Creature(shape) = parse_token_definition_shape_text(
+            &format!("a 2/2 blue Human creature token named {name}")).unwrap() else { panic!("creature description"); };
+        assert_eq!(shape.name, name);
+        assert!(!shape.rules.hexproof && !shape.rules.indestructible && !shape.rules.banding && !shape.rules.changeling);
+    }
+    let TokenDefinitionSpec::Creature(shape) = parse_token_definition_shape_text(
+        "a 2/2 blue Human creature token with \"{T}: Target creature gains indestructible and double strike until end of turn.\"").unwrap()
+    else { panic!("creature description"); };
+    assert!(!shape.rules.indestructible && !shape.rules.double_strike && !shape.rules.first_strike);
 }

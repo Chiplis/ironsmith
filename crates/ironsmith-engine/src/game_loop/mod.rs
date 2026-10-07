@@ -73,19 +73,22 @@ mod combat_damage;
 mod combat_decisions;
 mod mandatory_loop;
 mod priority_apply;
+mod exile_play;
+mod exile_face_down;
 mod priority_cast;
 mod priority_core;
 mod priority_mana;
 mod priority_state;
 mod saga;
 pub(crate) use sba_triggers::announce_trigger_target_distributions;
-pub(crate) use targeting::extract_target_requirements_with_modes;
+pub(crate) use targeting::{extract_target_requirements_with_modes, extract_target_requirements_with_modes_and_announcements};
 mod sba_triggers;
 mod stack_resolution;
 pub(crate) use targeting::{
-    AssignmentLegalTargets, queue_triggers_from_event, queue_triggers_from_reported_events,
+    AssignmentLegalTargets, capture_completed_spell_cast, queue_triggers_from_event, queue_triggers_from_reported_events,
+    try_queue_triggers_from_reported_events,
     specialize_iterated_player_choose_spec,
-    stack_entry_assignment_legal_targets,
+    stack_entry_assignment_legal_targets, current_stack_entry_target_assignments,
 };
 mod targeting;
 #[cfg(all(test, feature = "engine-integration-tests"))]
@@ -112,7 +115,7 @@ pub use self::combat_damage::*;
 pub use self::combat_decisions::*;
 pub use self::priority_apply::apply_priority_response_with_dm;
 pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_perf};
-pub(crate) use self::priority_cast::{cast_spell_from_resolving_effect_with_context, cast_spell_from_resolving_effect_with_price};
+pub(crate) use self::priority_cast::{cast_spell_from_resolving_effect_with_context, cast_spell_from_resolving_effect_with_price, cast_spell_from_revealed_miracle};
 pub use self::priority_core::*;
 pub use self::priority_core::{PriorityAdvancePerfMetrics, last_priority_advance_perf};
 pub use self::priority_mana::run_priority_loop_with;
@@ -147,7 +150,7 @@ pub(crate) use self::targeting::{
     spell_program_uses_chosen_creature_type_target,
 };
 pub use self::targeting::{
-    drain_pending_trigger_events, drain_pending_trigger_events_with_dm,
+    drain_pending_trigger_events, drain_pending_trigger_events_with_dm, try_drain_pending_trigger_events,
     extract_target_requirements_from_program_with_modes,
 };
 

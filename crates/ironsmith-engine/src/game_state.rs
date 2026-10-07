@@ -40,6 +40,7 @@ use crate::zone::Zone;
 
 mod alternating_teams;
 mod attack_direction;
+mod defending_player;
 mod attractions;
 mod commander_draft;
 mod conspiracy;
@@ -238,6 +239,7 @@ pub struct ExhaustActivationAnnouncement {
     source: ObjectId,
     ability_index: usize,
     origin: Option<(crate::continuous::AbilityOrigin, Option<u32>, u32)>,
+    definition: Option<ironsmith_core::LinkedExileDefinition>,
     counters: Vec<(TurnCounterKey, Option<u32>, u32)>,
     was_activated: bool,
     was_exhausted: bool,
@@ -377,6 +379,10 @@ pub struct UiEffectEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenCardInfo {
+    /// Public zone-change generation within this cryptographic identity.
+    /// None is explicitly unknown historical metadata, never generation zero.
+    /// Hydration preserves it; a new hidden commitment starts at Some(0).
+    pub incarnation: Option<u64>,
     pub owner: PlayerId,
     pub zone: Zone,
     pub slot: u16,
@@ -499,6 +505,8 @@ struct BattlefieldFlags {
     face_down: HashSet<ObjectId>,
     /// Face-down permanents created via manifest.
     manifested: HashSet<ObjectId>,
+    /// Exact cloak origin, distinct from manifest.
+    cloaked: HashSet<ObjectId>,
     /// Split Room permanents whose linked locked door has been unlocked.
     fully_unlocked_rooms: HashSet<ObjectId>,
     /// Rooms that entered without either half cast, so neither door has an
@@ -602,6 +610,9 @@ struct ExileTracking {
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    linked_exile_pairs: HashMap<crate::linked_exile::LinkedExileOwner, Vec<ObjectId>>,
+    /// True after a source-only import, which cannot establish pair absence.
+    linked_exile_pairs_incomplete: bool,
     /// Monotonic count of successful exile events attributed to each source
     /// object. Unlike the live link collection, this does not decrease when an
     /// exiled card changes zones.
@@ -627,6 +638,9 @@ struct ExileTracking {
 /// Combat and per-turn transient tracking grouped behind copy-on-write storage.
 #[derive(Debug, Clone, Default)]
 struct CombatTransientState {
+    attacking_roles: Vec<crate::combat_state::RetainedAttackingRole>,
+    current_attacking_roles: HashMap<ObjectId, crate::combat_state::AttackingRoleId>,
+    combat_defending_players: Vec<(PlayerId, Vec<PlayerId>)>,
     /// Soulbond pairings (stored bidirectionally: A -> B and B -> A).
     soulbond_pairs: crate::incremental::TrackedValue<HashMap<ObjectId, ObjectId>>,
     /// Attack targets captured while paying Ninjutsu costs.
@@ -679,6 +693,9 @@ struct AuxiliaryTrackingState {
     draft_removed_cards: HashMap<(PlayerId, String), HashSet<ObjectId>>,
     /// Cryptographic hidden-card slots that have not been opened on this peer.
     hidden_cards: HashMap<ObjectId, HiddenCardInfo>,
+    /// Public generation high-water mark, retained even when identities retire.
+    /// New anonymous epochs must not recycle an old commitment/generation pair.
+    hidden_incarnation_high_water: u64,
     /// The shared hidden-claim ledger: filters that cards chosen (or withheld)
     /// while hidden from some peer must satisfy once opened. Identical on
     /// every peer (see `hidden_hand_choices::HiddenIdentityObligation`).
@@ -688,6 +705,8 @@ struct AuxiliaryTrackingState {
     /// those that hold only a placeholder, reads the cast's legality and
     /// disguise's ward from it (see `hidden_hand_choices`).
     hidden_face_down_cast_claims: HashMap<ObjectId, hidden_hand_choices::FaceDownCastKind>,
+    /// Exact admitted unseen-exile declaration; never reconstructed from a kind claim.
+    blind_face_down_declarations: HashMap<ObjectId, crate::alternative_cast::blind_play::BlindFaceDownDeclaration>,
     /// Hidden cards snapshotted as their owner left the game (CR 800.4a),
     /// for the end-of-match disclosure.
     departed_hidden_cards: Vec<hidden_hand_choices::DepartedHiddenCard>,
@@ -709,6 +728,9 @@ struct AuxiliaryTrackingState {
     /// Effect permissions to cast cards face down without a printed morph,
     /// megamorph, or disguise (see `hidden_hand_choices`). Public.
     face_down_cast_permissions: Vec<hidden_hand_choices::FaceDownCastPermission>,
+    /// Public display/hash identities captured for exact effect source objects.
+    /// Never used to rebind a permission to another incarnation of that card.
+    face_down_permission_source_public_ids: BTreeMap<ObjectId, StableId>,
     /// Hidden-tracked hand cards whose identity every peer learned through an
     /// owner-answered public reveal (see `hidden_hand_choices`). Symmetric:
     /// it only changes while a decision answer is replayed.
@@ -1173,6 +1195,7 @@ pub struct ChoiceStore {
     pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
+    pub(crate) numeric_acquisitions: crate::source_numbers::NumberChoiceMemory,
     /// The single player targeted by a permanent's own enters-the-battlefield
     /// trigger, keyed by the permanent's stable identity, so its linked
     /// leaves-the-battlefield trigger can refer to "that player" (CR 607.2a;
@@ -1229,6 +1252,7 @@ struct RuntimeCacheState {
     random_state: Cell<u64>,
     irreversible_random_count: Cell<u64>,
     forced_die_rolls: RefCell<VecDeque<u32>>,
+    forced_coin_flips: RefCell<VecDeque<ironsmith_core::CoinFace>>,
     transcript_random_seeds: RefCell<VecDeque<u64>>,
     transcript_library_shuffle_orders: RefCell<VecDeque<TranscriptLibraryShuffleOrder>>,
     verified_hidden_library_epochs:
@@ -1281,6 +1305,7 @@ impl Clone for RuntimeCacheState {
             random_state: Cell::new(self.random_state.get()),
             irreversible_random_count: Cell::new(self.irreversible_random_count.get()),
             forced_die_rolls: RefCell::new(self.forced_die_rolls.borrow().clone()),
+            forced_coin_flips: RefCell::new(self.forced_coin_flips.borrow().clone()),
             transcript_random_seeds: RefCell::new(self.transcript_random_seeds.borrow().clone()),
             transcript_library_shuffle_orders: RefCell::new(
                 self.transcript_library_shuffle_orders.borrow().clone(),
@@ -1335,6 +1360,7 @@ impl RuntimeCacheState {
             random_state: Cell::new(GameState::normalize_random_seed(0)),
             irreversible_random_count: Cell::new(0),
             forced_die_rolls: RefCell::new(VecDeque::new()),
+            forced_coin_flips: RefCell::new(VecDeque::new()),
             transcript_random_seeds: RefCell::new(VecDeque::new()),
             transcript_library_shuffle_orders: RefCell::new(VecDeque::new()),
             verified_hidden_library_epochs: RefCell::new(BTreeMap::new()),
@@ -1729,6 +1755,7 @@ impl TurnCounterTracker {
 /// source-dependent spell filters such as "of the chosen type".
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastRestrictionFilter {
+    pub source_number_owner: Option<crate::source_numbers::NumberChoiceOwner>,
     pub filter: crate::target::ObjectFilter,
     pub source: Option<ObjectId>,
     pub controller: Option<PlayerId>,
@@ -1806,6 +1833,12 @@ pub struct CantEffectTracker {
     /// Positive attack requirements from resolving rule effects, not abilities.
     pub must_attack: HashMap<ObjectId, usize>,
 
+    /// Positive block requirements from source-owned rules.
+    pub must_block: HashMap<ObjectId, usize>,
+
+    /// Source-owned rules limiting blockers for each affected attacker.
+    pub maximum_blockers: HashMap<ObjectId, usize>,
+
     /// Creatures that can't block alone.
     /// Example: "This creature can't block alone."
     pub cant_block_alone: HashSet<ObjectId>,
@@ -1824,6 +1857,9 @@ pub struct CantEffectTracker {
 
     /// Permanents that can't be sacrificed.
     pub cant_be_sacrificed: crate::incremental::ObjectSet,
+
+    /// Live designation prohibitions, owned by their source.
+    pub cant_become_suspected: crate::incremental::ObjectSet,
 
     /// Object, protected cause, and controller of the restriction's source.
     pub cant_be_sacrificed_by_cause: Vec<(ObjectId, ironsmith_core::CauseFilter, PlayerId)>,
@@ -1944,6 +1980,10 @@ pub struct CantEffectTracker {
 
     /// Players that can't be targeted by sources matching a filter.
     pub cant_target_players_from: Vec<PlayerCantBeTargetedFrom>,
+
+    /// Player hexproof uses the retained targeting controller, independently
+    /// of the live/LKI source whose characteristics qualify "hexproof from".
+    pub player_hexproof_from: Vec<PlayerCantBeTargetedFrom>,
 
     /// Players with protection from sources matching a filter (CR 702.16).
     /// Targeting and damage are handled by their own trackers; this is the
@@ -2133,12 +2173,24 @@ pub struct RestrictionEffectInstance {
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
     pub consumed_next_untap: bool,
+    /// Exact affected incarnation whose current controller owns the next step.
+    /// None preserves fixed-player native owners such as exert.
+    pub untap_step_object: Option<ObjectId>,
     /// Creation timestamp, for rule modifications that must be applied in
     /// timestamp order (maximum hand size, CR 613.11 / 402.2).
     pub timestamp: u64,
 }
 
 impl RestrictionEffectInstance {
+    pub fn untap_step_player(&self, game: &GameState) -> Option<PlayerId> {
+        match self.untap_step_object {
+            Some(id) => game.object(id)
+                .filter(|object| object.zone == Zone::Battlefield)
+                .map(|object| game.controller_of(object)),
+            None => Some(self.controller),
+        }
+    }
+
     pub fn is_pending(&self) -> bool {
         self.starts_next_turn_of.is_some() || self.starts_in_added_combat.is_some()
     }
@@ -2146,7 +2198,7 @@ impl RestrictionEffectInstance {
     pub fn is_expired(&self, current_turn: u32) -> bool {
         if matches!(
             self.duration,
-            crate::effect::Until::ControllersNextUntapStep
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
         ) && self.consumed_next_untap
         {
             return true;
@@ -2176,8 +2228,8 @@ impl RestrictionEffectInstance {
                     false
                 }
             }
-            crate::effect::Until::ControllersNextUntapStep => {
-                game.is_active_player(self.controller)
+            crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep => {
+                self.untap_step_player(game).is_some_and(|player| game.is_active_player(player))
                     && matches!(game.turn.phase, Phase::Beginning)
                     && matches!(game.turn.step, Some(Step::Untap))
             }
@@ -2290,6 +2342,7 @@ pub struct TemporarySpellAbilityGrantEffectInstance {
     pub ability: crate::ability::Ability,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
+    pub mode: ironsmith_core::NextSpellGrantMode,
 }
 
 /// A repeatable special action available at instant timing through end of turn.
@@ -2503,14 +2556,23 @@ impl CantEffectTracker {
                 .extend(attackers);
         }
         self.must_be_blocked.extend(other.must_be_blocked);
+        for (object, count) in other.must_block {
+            *self.must_block.entry(object).or_default() += count;
+        }
         for (object, count) in other.must_attack {
             *self.must_attack.entry(object).or_default() += count;
+        }
+        for (object, maximum) in other.maximum_blockers {
+            self.maximum_blockers.entry(object)
+                .and_modify(|existing| *existing = (*existing).min(maximum))
+                .or_insert(maximum);
         }
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
+        self.cant_become_suspected.extend(other.cant_become_suspected);
         self.cant_be_sacrificed_by_cause
             .extend(other.cant_be_sacrificed_by_cause);
         for restriction in other.cant_enter_battlefield {
@@ -2578,6 +2640,8 @@ impl CantEffectTracker {
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
+        self.player_hexproof_from
+            .extend(other.player_hexproof_from);
         self.player_protections
             .extend(other.player_protections.clone());
         self.cant_be_countered.extend(other.cant_be_countered);
@@ -2610,11 +2674,14 @@ impl CantEffectTracker {
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
         self.must_attack.clear();
+        self.must_block.clear();
+        self.maximum_blockers.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
+        self.cant_become_suspected.clear();
         self.cant_be_sacrificed_by_cause.clear();
         self.cant_enter_battlefield.clear();
         self.cant_cast_filters.clear();
@@ -2647,6 +2714,7 @@ impl CantEffectTracker {
         self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
+        self.player_hexproof_from.clear();
         self.player_protections.clear();
         self.cant_be_countered.clear();
         self.cant_transform.clear();
@@ -2893,6 +2961,7 @@ impl CantEffectTracker {
         self.add_scoped_cant_cast_filter(
             player,
             CastRestrictionFilter {
+                source_number_owner: None,
                 filter: spell_filter,
                 source,
                 controller: None,
@@ -3064,30 +3133,53 @@ impl CantEffectTracker {
         player: PlayerId,
         source_id: ObjectId,
     ) -> bool {
+        let Some(source) = game.object(source_id) else {
+            return self.can_target_player(player);
+        };
+
+        self.can_target_player_from_subject(
+            game,
+            player,
+            Some(crate::filter::ObjectSubject::Live(source)),
+            game.controller_of(source),
+        )
+    }
+
+    pub(crate) fn can_target_player_from_subject(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        source: Option<crate::filter::ObjectSubject<'_>>,
+        targeting_controller: PlayerId,
+    ) -> bool {
         if !self.can_target_player(player) {
             return false;
         }
-
-        let Some(source) = game.object(source_id) else {
-            return true;
-        };
-
-        if self.ignores_target_ability_for_player(
-            game,
-            player,
-            game.controller_of(source),
-            crate::static_abilities::StaticAbilityId::Hexproof,
-        ) {
-            return true;
-        }
-
-        !self.cant_target_players_from.iter().any(|restriction| {
-            if restriction.player != player {
-                return false;
+        let matches_source = |restriction: &PlayerCantBeTargetedFrom| {
+            restriction.player == player && {
+                let filter_ctx = game.filter_context_for(
+                    restriction.controller,
+                    source.map(|source| source.object_id()),
+                );
+                source.map_or_else(
+                    || restriction.source_filter == crate::target::ObjectFilter::default(),
+                    |source| source.matches(&restriction.source_filter, &filter_ctx, game),
+                )
             }
-            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
-            restriction.source_filter.matches(source, &filter_ctx, game)
-        })
+        };
+        // Protection and independent prohibitions keep the source's actual
+        // qualities/controller and cannot be bypassed by ignoring hexproof.
+        if self.cant_target_players_from.iter().any(matches_source) {
+            return false;
+        }
+        !game.are_opponents(targeting_controller, player)
+            || self.ignores_target_ability_for_player(
+                game,
+                player,
+                targeting_controller,
+                crate::static_abilities::StaticAbilityId::Hexproof,
+            )
+            || !self.player_hexproof_from.iter().any(matches_source)
     }
 
     /// Check if a spell on the stack can be countered by effects.
@@ -3206,6 +3298,9 @@ pub struct ManaSpendEffectTracker {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActiveManaSpendPermission {
     pub permission: crate::effect::ManaSpendPermission,
+    /// A tagged play producer's exact grant occurrences. None is an
+    /// independently authored mana-spending rule, not inferred linkage.
+    pub play_permission_identities: Option<Vec<crate::grant_registry::GrantPermissionIdentity>>,
     pub controller: PlayerId,
     pub source: ManaSpendPermissionSource,
 }
@@ -3623,6 +3718,8 @@ pub struct StackEntry {
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// Spending restrictions for mana produced while resolving this stack entry.
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for restricted mana produced by this entry.
@@ -3635,6 +3732,7 @@ pub struct StackEntry {
     pub optional_costs_paid: OptionalCostsPaid,
     /// The defending player for combat-related triggers.
     pub defending_player: Option<PlayerId>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// The chosen player linked to this source at the time the stack entry was created.
     pub chosen_player: Option<PlayerId>,
     /// If this is a chapter ability, the source object's ID.
@@ -3665,6 +3763,9 @@ pub struct StackEntry {
     pub trigger_identity: Option<TriggerIdentity>,
     /// Index of the activated ability represented by this stack entry.
     pub ability_index: Option<usize>,
+    /// Exact admitted acquisition; copies retain it and never count as activations.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
+    pub activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     /// Intervening-if condition that must be true at resolution time (for triggered abilities).
     /// If this condition is false when the ability would resolve, the ability does nothing.
     pub intervening_if: Option<crate::ConditionExpr>,
@@ -3727,12 +3828,15 @@ impl StackEntry {
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: None,
+            linked_exile_owner: None,
+            source_number_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: false,
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            defending_player_reference: None,
             chosen_player: None,
             chapter_ability_source: None,
             battle_defeat_source: None,
@@ -3743,6 +3847,8 @@ impl StackEntry {
             event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             intervening_if: None,
             chosen_modes: None,
             spliced_cards: Vec::new(),
@@ -3775,12 +3881,15 @@ impl StackEntry {
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
             ability_effects: Some(effects.into()),
+            linked_exile_owner: None,
+            source_number_owner: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
             is_ability: true,
             casting_method: CastingMethod::Normal,
             optional_costs_paid: OptionalCostsPaid::default(),
             defending_player: None,
+            defending_player_reference: None,
             chosen_player: None,
             chapter_ability_source: None,
             battle_defeat_source: None,
@@ -3791,6 +3900,8 @@ impl StackEntry {
             event_value_amount: None,
             trigger_identity: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             intervening_if: None,
             chosen_modes: None,
             spliced_cards: Vec::new(),
@@ -3967,7 +4078,18 @@ impl StackEntry {
         self
     }
 
-    /// Set the activated ability index for this activated ability stack entry.
+    /// Retain the exact acquisition admitted by the activation owner.
+    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+        self.activation_origin = origin;
+        self
+    }
+
+    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+        self.activation_definition = definition;
+        self
+    }
+
+    /// Legacy ordinal used for selection and existing resolution-count readers.
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
         self
@@ -4525,7 +4647,11 @@ impl GameState {
             turn: TurnState::new(active_player),
             turn_store: TurnStore {
                 turn_order,
-                turn_history: TurnHistory::default(),
+                turn_history: TurnHistory {
+                    ability_activation_counts: Some(HashMap::new()),
+                    draw_occurrences: Some(Default::default()),
+                    ..TurnHistory::default()
+                },
                 ..TurnStore::default()
             },
             effect_store: EffectStore::default(),
@@ -5472,7 +5598,8 @@ impl GameState {
             | ConditionExpr::SourceWasCast
             | ConditionExpr::ThisSpellEscaped
             | ConditionExpr::ThisSpellWasCastFromZone(_)
-            | ConditionExpr::ThisSpellWasCastFromNonHand => false,
+            | ConditionExpr::ThisSpellWasCastFromNonHand
+            | ConditionExpr::ThisSpellWasForetold => false,
             _ => true,
         }
     }
@@ -5891,6 +6018,15 @@ impl GameState {
             .hidden_info_audit_log
             .borrow_mut()
             .push_back(operation);
+    }
+
+    /// Queue a physical coin face; the flip still consumes its normal randomness.
+    pub fn force_next_coin_flip(&mut self, face: ironsmith_core::CoinFace) {
+        self.runtime_cache.forced_coin_flips.borrow_mut().push_back(face);
+    }
+
+    pub(crate) fn take_forced_coin_flip(&self) -> Option<ironsmith_core::CoinFace> {
+        self.runtime_cache.forced_coin_flips.borrow_mut().pop_front()
     }
 
     /// Queue a deterministic die result for test harnesses that mirror external fixtures.
@@ -6396,6 +6532,7 @@ impl GameState {
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
+                untap_step_object: None,
                 timestamp,
             });
     }
@@ -6622,6 +6759,20 @@ impl GameState {
         ability: crate::ability::Ability,
         remaining_uses: u32,
     ) {
+        self.add_temporary_spell_ability_grant_with_mode(
+            player, source, filter, ability, remaining_uses, ironsmith_core::NextSpellGrantMode::Ability,
+        );
+    }
+
+    pub fn add_temporary_spell_ability_grant_with_mode(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        filter: crate::target::ObjectFilter,
+        ability: crate::ability::Ability,
+        remaining_uses: u32,
+        mode: ironsmith_core::NextSpellGrantMode,
+    ) {
         self.effect_store.temporary_spell_ability_grants.push(
             TemporarySpellAbilityGrantEffectInstance {
                 player,
@@ -6630,6 +6781,7 @@ impl GameState {
                 ability,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
+                mode,
             },
         );
     }
@@ -6680,19 +6832,19 @@ impl GameState {
         ability_payload: Option<crate::static_abilities::StaticAbility>,
         expires_end_of_turn: u32,
     ) {
-        let Some(object) = self.object_mut(object_id) else {
-            return;
-        };
+        if self.object(object_id).is_none() { return; }
+        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+        let object = self.object_mut(object_id).expect("grant recipient exists");
         // Each call creates an independent ability grant. Equal payloads and
         // durations do not make two grants the same instance; callers retaining
         // an existing grant must do so before requesting a new one.
         object
             .temporary_static_ability_grants
-            .push(crate::object::TemporaryStaticAbilityGrant {
+            .push_at_timestamp(crate::object::TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload,
                 expires_end_of_turn: Some(expires_end_of_turn),
-            });
+            }, acquired_at);
     }
 
     /// A noncopiable granted ability survives only this object incarnation
@@ -6702,15 +6854,17 @@ impl GameState {
         object: ObjectId,
         ability: StaticAbility,
     ) {
-        if let Some(object) = self.object_mut(object) {
-            object.temporary_static_ability_grants.push(
-                crate::object::TemporaryStaticAbilityGrant {
-                    ability: ability.id(),
-                    ability_payload: Some(ability),
-                    expires_end_of_turn: None,
-                },
-            );
-        }
+        if self.object(object).is_none() { return; }
+        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+        let object = self.object_mut(object).expect("grant recipient exists");
+        object.temporary_static_ability_grants.push_at_timestamp(
+            crate::object::TemporaryStaticAbilityGrant {
+                ability: ability.id(),
+                ability_payload: Some(ability),
+                expires_end_of_turn: None,
+            },
+            acquired_at,
+        );
     }
 
     pub fn temporary_granted_spell_abilities(
@@ -6739,6 +6893,7 @@ impl GameState {
             .iter()
             .filter(|effect| {
                 effect.player == player
+                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6786,6 +6941,7 @@ impl GameState {
             .enumerate()
             .filter_map(|(idx, effect)| {
                 (effect.player == player
+                    && matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility)
                     && !effect.is_expired(current_turn)
                     && self.temporary_spell_filter_matches(
                         &effect.filter,
@@ -6802,11 +6958,16 @@ impl GameState {
                 self.effect_store
                     .temporary_spell_ability_grants
                     .get(*idx)
-                    .map(|effect| effect.ability.clone())
+                    .filter(|effect| matches!(effect.mode, ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility))
+                    .map(|effect| (effect.mode, effect.ability.clone()))
             })
             .collect::<Vec<_>>();
-        if let Some(spell) = self.object_mut(spell_id) {
-            for ability in granted_abilities {
+        for (mode, ability) in granted_abilities {
+            if mode == ironsmith_core::NextSpellGrantMode::IncarnationAbility {
+                if let crate::ability::AbilityKind::Static(ability) = ability.kind {
+                    self.grant_incarnation_static_ability(spell_id, ability);
+                }
+            } else if let Some(spell) = self.object_mut(spell_id) {
                 spell.abilities_mut().push(ability);
             }
         }
@@ -6819,6 +6980,59 @@ impl GameState {
             {
                 effect.remaining_uses -= 1;
             }
+        }
+    }
+
+    /// Pure timing query against the already selected prospective face. It
+    /// grants no origin, price, priority, land-drop, or opponent-turn right.
+    pub(crate) fn next_play_timing_allows(
+        &self, player: PlayerId, object: &crate::object::Object, land_play: bool,
+    ) -> bool {
+        let ctx = self.filter_context_for(player, Some(object.id)).with_caster(Some(player));
+        let mut proposed = object.clone();
+        if !land_play { proposed.zone = Zone::Stack; }
+        self.effect_store.temporary_spell_ability_grants.iter().any(|grant| {
+            grant.player == player && !grant.is_expired(self.turn.turn_number)
+                && match grant.mode {
+                    ironsmith_core::NextSpellGrantMode::Ability | ironsmith_core::NextSpellGrantMode::IncarnationAbility => false,
+                    ironsmith_core::NextSpellGrantMode::CastTiming => !land_play,
+                    ironsmith_core::NextSpellGrantMode::PlayTiming => true,
+                }
+                && grant.filter.matches(&proposed, &ctx, self)
+        })
+    }
+
+    /// Every completed matching cast consumes its timing budget, regardless
+    /// of whether another origin, price, or timing permission was selected.
+    pub(crate) fn consume_next_cast_timing(&mut self, player: PlayerId, id: ObjectId) {
+        let Some(object) = self.object(id) else { return; };
+        let ctx = self.filter_context_for(player, Some(id)).with_caster(Some(player));
+        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+            .filter_map(|(index, grant)| {
+                (matches!(grant.mode, ironsmith_core::NextSpellGrantMode::CastTiming | ironsmith_core::NextSpellGrantMode::PlayTiming)
+                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
+                    && self.temporary_spell_filter_matches(&grant.filter, id, object, &ctx))
+                    .then_some(index)
+            }).collect::<Vec<_>>();
+        for index in matching {
+            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
+        }
+    }
+
+    /// Reserve every matching next-play budget before entry replacements can
+    /// expose nested choices. The land owners' checkpoint restores pending,
+    /// cancelled, and failed instructions, including these reservations.
+    pub(crate) fn reserve_next_land_play_timing(&mut self, player: PlayerId, id: ObjectId) {
+        let Some(object) = self.object(id) else { return; };
+        let ctx = self.filter_context_for(player, Some(id));
+        let matching = self.effect_store.temporary_spell_ability_grants.iter().enumerate()
+            .filter_map(|(index, grant)| {
+                (grant.mode == ironsmith_core::NextSpellGrantMode::PlayTiming
+                    && grant.player == player && !grant.is_expired(self.turn.turn_number)
+                    && grant.filter.matches(object, &ctx, self)).then_some(index)
+            }).collect::<Vec<_>>();
+        for index in matching {
+            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
         }
     }
 
@@ -7047,7 +7261,7 @@ impl GameState {
         let current_turn = self.turn.turn_number;
         self.effect_store
             .temporary_spell_ability_grants
-            .retain(|effect| !effect.is_expired(current_turn));
+            .retain(|effect| effect.remaining_uses > 0 && effect.expires_end_of_turn > current_turn);
     }
 
     pub fn cleanup_repeatable_mana_payment_actions_end_of_turn(&mut self) {
@@ -7844,6 +8058,36 @@ impl GameState {
             .can_target_player_from_source(self, player, source_id)
     }
 
+    /// Targeting by a spell/ability whose controller is independent of its
+    /// physical source. Use retained characteristics only after the source
+    /// leaves or phases out; controller-only hexproof needs no source object.
+    pub fn can_target_player_from_source_or_snapshot(
+        &self,
+        player: PlayerId,
+        source_id: Option<ObjectId>,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+        targeting_controller: PlayerId,
+    ) -> bool {
+        if !self.source_snapshot_is_exempt_from_range(source_id, source_snapshot)
+            && !self.player_is_within_range(targeting_controller, player)
+        {
+            return false;
+        }
+        let source = match (source_id.and_then(|id| self.object(id)), source_snapshot) {
+            (Some(object), _) if !self.is_phased_out(object.id) => {
+                Some(crate::filter::ObjectSubject::Live(object))
+            }
+            (_, Some(snapshot)) => Some(crate::filter::ObjectSubject::Snapshot(snapshot)),
+            (_, None) => None,
+        };
+        self.effect_store.cant_effects.can_target_player_from_subject(
+            self,
+            player,
+            source,
+            targeting_controller,
+        )
+    }
+
     /// Can this spell on the stack be countered?
     pub fn can_be_countered(&self, spell: ObjectId) -> bool {
         self.effect_store.cant_effects.can_be_countered(spell)
@@ -8079,9 +8323,11 @@ impl GameState {
         let id = self.new_object_id();
         let object = Object::new_hidden_card(id, owner, zone);
         self.add_object(object);
+        let incarnation = Some(self.hidden_incarnation_high_water());
         self.auxiliary_tracking_mut().hidden_cards.insert(
             id,
             HiddenCardInfo {
+                incarnation,
                 owner,
                 zone,
                 slot,
@@ -8093,6 +8339,24 @@ impl GameState {
             },
         );
         id
+    }
+
+    pub fn hidden_incarnation_high_water(&self) -> u64 {
+        self.auxiliary_tracking.hidden_incarnation_high_water
+    }
+
+    pub(crate) fn reserve_hidden_incarnation_epoch(&mut self) -> Result<u64, String> {
+        let next = self.hidden_incarnation_high_water().checked_add(1)
+            .ok_or_else(|| "hidden-card incarnation history is exhausted".to_string())?;
+        self.auxiliary_tracking_mut().hidden_incarnation_high_water = next;
+        Ok(next)
+    }
+
+    pub(crate) fn observe_hidden_incarnation(&mut self, incarnation: Option<u64>) {
+        if let Some(value) = incarnation {
+            let next = self.hidden_incarnation_high_water().max(value);
+            self.auxiliary_tracking_mut().hidden_incarnation_high_water = next;
+        }
     }
 
     pub fn hidden_card_info(&self, id: ObjectId) -> Option<&HiddenCardInfo> {
@@ -8107,16 +8371,19 @@ impl GameState {
         // Hydration and later shuffles update the current identity, never the
         // first commitment that independently authenticates this physical card.
         if let Some(existing) = self.hidden_card_info(id) {
+            info.incarnation = existing.incarnation;
             info.origin_slot = existing.origin_slot.or(Some(existing.slot));
             info.origin_commitment = existing
                 .origin_commitment
                 .clone()
                 .or_else(|| Some(existing.commitment.clone()));
         } else {
+            if info.incarnation == Some(0) { info.incarnation = Some(self.hidden_incarnation_high_water()); }
             info.origin_slot.get_or_insert(info.slot);
             info.origin_commitment
                 .get_or_insert_with(|| info.commitment.clone());
         }
+        self.observe_hidden_incarnation(info.incarnation);
         self.auxiliary_tracking_mut().hidden_cards.insert(id, info);
     }
 

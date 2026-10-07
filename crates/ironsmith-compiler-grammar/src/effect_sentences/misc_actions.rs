@@ -269,17 +269,48 @@ pub fn parse_roll(
             ));
         }
     };
-    let Some(shape) = misc_action_shapes::parse_roll_die_tokens(tokens) else {
+    let Some(shape) = misc_action_shapes::parse_roll_die_prefix_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")
         )));
     };
-    Ok(EffectAst::subject_verb_roll_die_with_surface(
-        player,
-        shape.sides,
-        shape.surface,
-    ))
+    let tail = &tokens[shape.consumed..];
+    let result_modifier = if tail.is_empty() {
+        None
+    } else {
+        let [and, operation, value_tokens @ ..] = tail else {
+            return Err(CardTextError::ParseError("incomplete die-result arithmetic".into()));
+        };
+        if !and.is_word("and") || !operation.is_any_word(&["add", "subtract"]) {
+            return Err(CardTextError::ParseError("unsupported trailing die-roll tokens".into()));
+        }
+        if value_tokens.iter().any(|token| !matches!(token.kind,
+            crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Number))
+        {
+            return Err(CardTextError::ParseError("unsupported token in die-result arithmetic".into()));
+        }
+        let Some((value, used)) = parse_value(value_tokens) else {
+            return Err(CardTextError::ParseError("unsupported die-result arithmetic value".into()));
+        };
+        if used != value_tokens.len() {
+            return Err(CardTextError::ParseError("unconsumed die-result arithmetic tokens".into()));
+        }
+        Some(if operation.is_word("add") {
+            ironsmith_core::effect::DieResultModifier::Add(value)
+        } else {
+            ironsmith_core::effect::DieResultModifier::Subtract(value)
+        })
+    };
+    let mut effect = EffectAst::subject_verb_roll_die_with_surface(player, shape.sides, shape.surface);
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::Random(crate::cards::builders::RandomActionAst::RollDie {
+            result_modifier: modifier, ..
+        }) = &mut subject.action
+    {
+        *modifier = result_modifier;
+    }
+    Ok(effect)
 }
 
 pub fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {

@@ -59,7 +59,7 @@ fn heroes(game: &GameState) -> Vec<ObjectId> {
         .copied()
         .filter(|id| {
             game.object(*id)
-                .is_some_and(|object| object.kind == ObjectKind::Token && object.name == "Hero")
+                .is_some_and(|object| object.kind == ObjectKind::Token && object.name == "Hero Token")
         })
         .collect()
 }

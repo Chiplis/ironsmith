@@ -572,7 +572,10 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeCreatureTypeChoice { target, .. },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                target,
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 target,
                 ..
             })
@@ -589,7 +592,7 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
                 ..
             })
             | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. },
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target: Some(target), .. },
             )
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {

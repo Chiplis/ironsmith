@@ -174,6 +174,7 @@ pub(super) fn execute_replacement_program_with_outputs(
         let mut outputs =
             crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
         for (index, effect) in effects.iter().enumerate() {
+            if child.resolution_stopped() { break; }
             let result = execute_effect_with_outputs(game, effect, child)?;
             outcomes.push(result.outcome.clone());
             outputs.retain_owned_child(result);
@@ -195,6 +196,7 @@ pub(super) fn execute_replacement_program_with_outputs(
 
 /// Explicit bindings for one captured replacement program. Each child scope
 /// receives its own bindings; the interrupted instruction's tags are untouched.
+#[derive(Clone)]
 pub(crate) struct ReplacementProgramBindings {
     pub targets: Option<Vec<crate::effects::ResolvedTarget>>,
     pub object_tags: Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)>,

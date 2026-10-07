@@ -128,6 +128,20 @@ impl SimultaneousEffectProposal for ForEachObjectProposal {
             .collect()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        for proposal in self.iterations.iter_mut().flatten() {
+            proposal.prepare_selection(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -195,6 +209,7 @@ impl SimultaneousEffectProposal for ForEachObjectProposal {
     ) -> Result<EffectOutcome, ExecutionError> {
         super::complete_prepared_original(self, game, ctx)
     }
+
 }
 
 struct ObjectIterationPlan {
@@ -319,6 +334,10 @@ impl EffectExecutor for ForEachObject {
         }
     }
 
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![ChooseSpec::All(self.filter.clone())]
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
@@ -329,9 +348,7 @@ impl EffectExecutor for ForEachObject {
     }
 
     fn prepare_simultaneous_player_action(
-        &self,
-        game: &GameState,
-        ctx: &mut ExecutionContext,
+        &self, game: &GameState, ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
         if !self.supports_simultaneous_player_action() {
             return Err(ExecutionError::Impossible(
@@ -395,13 +412,25 @@ impl EffectExecutor for ForEachObject {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| execute_object_iterations(self, game, ctx),
         )
     }
+
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
 }
 
 fn execute_object_iterations(

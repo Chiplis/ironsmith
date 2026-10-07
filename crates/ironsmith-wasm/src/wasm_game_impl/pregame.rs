@@ -467,6 +467,7 @@ impl WasmGame {
                         self.game.set_hidden_card_info(
                             object_id,
                             ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                                 owner: player_id,
                                 zone: ironsmith::zone::Zone::Library,
                                 slot: slot.slot,
@@ -531,6 +532,7 @@ impl WasmGame {
                     self.game.set_hidden_card_info(
                         object_id,
                         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                             owner: player_id,
                             zone: ironsmith::zone::Zone::OutsideGame,
                             slot: slot.slot,
@@ -5044,5 +5046,57 @@ mod character_select_token_partner_tests {
             assert_eq!(WasmGame::commander_pair_is_legal(&donatello, &other), expected);
             assert_eq!(WasmGame::commander_pair_is_legal(&other, &donatello), expected);
         }
+    }
+}
+
+#[cfg(test)]
+mod static_color_identity_tests {
+    use super::*;
+
+    #[test]
+    fn frozen_color_statements_reach_native_commander_deck_legality() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        let all: ColorSet = ironsmith::Color::ALL.into_iter().collect();
+        let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../../fixtures/static_color_bodies.json.fixture")).unwrap();
+        for row in rows {
+            let name = row["name"].as_str().unwrap();
+            let mut text = format!("Mana cost: {}\nType: {}\n",
+                row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap());
+            if let (Some(p), Some(t)) = (row["power"].as_str(), row["toughness"].as_str()) {
+                text.push_str(&format!("Power/Toughness: {p}/{t}\n"));
+            }
+            text.push_str(row["oracle_text"].as_str().unwrap());
+            let definition = ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
+            assert!(definition.card.color_indicator.is_none());
+            let expected = match name {
+                "Ghostfire" => ColorSet::RED,
+                "Ghostflame Sliver" => ColorSet::RED.union(ColorSet::BLACK),
+                _ => all,
+            };
+            assert_eq!(definition.card.color_identity(), expected);
+            game.validate_commander_deck_card(&definition, expected, &mut HashSet::new()).unwrap();
+            let too_small = if expected == all { ColorSet::RED.union(ColorSet::BLACK) } else { ColorSet::COLORLESS };
+            assert!(game.validate_commander_deck_card(&definition, too_small, &mut HashSet::new())
+                .unwrap_err().contains("outside the commander's color identity"));
+        }
+    }
+
+    #[test]
+    fn native_builder_color_cda_contributes_without_oracle_text_or_an_indicator() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
+            CardId::new(), "Native identity witness")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::set_colors(
+                    ironsmith::target::ObjectFilter::source(), ColorSet::BLUE)))
+            .build();
+        assert_eq!(definition.card.colors(), ColorSet::COLORLESS);
+        assert_eq!(definition.card.color_identity(), ColorSet::BLUE);
+        game.validate_commander_deck_card(&definition, ColorSet::BLUE, &mut HashSet::new()).unwrap();
+        assert!(game.validate_commander_deck_card(&definition, ColorSet::COLORLESS, &mut HashSet::new()).is_err());
     }
 }

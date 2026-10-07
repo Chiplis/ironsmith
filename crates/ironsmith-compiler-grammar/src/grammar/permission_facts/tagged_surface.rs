@@ -92,6 +92,7 @@ pub enum PermissionLifetimeFact {
     UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
+    ForAsLongAsSourceOnBattlefield,
     Static,
 }
 
@@ -254,6 +255,21 @@ pub fn parse_permission_duration_prefix_tokens(
     (parsed.lifetime == PermissionLifetimeFact::ForAsLongAsExiled).then_some(parsed)
 }
 
+/// A complete conditional rider belongs to the preceding play permission.
+pub fn parse_cast_this_way_mana_rider_tokens(tokens: &[OwnedLexToken])
+    -> Option<ironsmith_core::value_model::ManaSpendMode> {
+    primitives::probe_all(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"]).parse_next(input)?;
+        opt(primitives::comma()).parse_next(input)?;
+        primitives::phrase(&["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any"]).parse_next(input)?;
+        let mode = alt((primitives::kw("color").value(ironsmith_core::value_model::ManaSpendMode::AnyColor),
+            primitives::kw("type").value(ironsmith_core::value_model::ManaSpendMode::AnyType))).parse_next(input)?;
+        primitives::phrase(&["to", "cast", "it"]).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(mode)
+    }, "cast-this-way-mana-rider")
+}
+
 pub fn parse_allow_any_color_for_cast_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AllowAnyColorForCastSuffixFact<'_>> {
@@ -262,6 +278,33 @@ pub fn parse_allow_any_color_for_cast_suffix_tokens(
         parse_allow_any_color_for_cast_suffix_lexed,
         "allow-any-color-for-cast-suffix",
     )
+}
+
+/// Reuse the complete typed source-presence duration grammar. The optional
+/// price precedes the duration, and every remaining token must be consumed.
+pub fn parse_source_battlefield_permission_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(bool, ironsmith_core::SourceReferenceSurface)> {
+    let (free, duration) = primitives::parse_prefix(tokens, opt(parse_without_paying_mana_cost_lexed))?;
+    let parsed = crate::grammar::effects::control_copy_attach_shapes::parse_permanent_control_duration_shape(duration)?;
+    if parsed.until != crate::effect::Until::while_source_remains_on_battlefield() || parsed.condition.is_some() { return None; }
+    Some((free.is_some(), parsed.source_surface?))
+}
+
+/// Complete standalone private inspection permission over an exact antecedent.
+pub fn parse_look_tagged_while_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<TaggedLookReference> {
+    primitives::probe_all(tokens, |input: &mut LexStream<'_>| {
+        primitives::phrase(&["you", "may", "look", "at"]).parse_next(input)?;
+        let reference = alt((
+            primitives::kw("it").value(TaggedLookReference::It),
+            primitives::phrase(&["that", "card"]).value(TaggedLookReference::ThatCard),
+            primitives::kw("them").value(TaggedLookReference::Them),
+            primitives::phrase(&["those", "cards"]).value(TaggedLookReference::ThoseCards),
+        )).parse_next(input)?;
+        parse_for_as_long_as_exiled_lexed.parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(reference)
+    }, "look-tagged-while-exiled")
 }
 
 pub fn parse_permission_tail_tokens(
@@ -274,11 +317,17 @@ pub fn parse_permission_tail_tokens(
         } else {
             (tokens, false)
         };
-    let (lifetime, without_paying_mana_cost) = crate::grammar::primitives::probe_all(
-        body_tokens,
-        |input: &mut LexStream<'_>| parse_permission_tail_lexed(input, default_lifetime),
-        "permission-tail",
-    )?;
+    let (lifetime, without_paying_mana_cost) = if let Some((free, _)) =
+        parse_source_battlefield_permission_tail_tokens(body_tokens)
+    {
+        (PermissionLifetimeFact::ForAsLongAsSourceOnBattlefield, free)
+    } else {
+        crate::grammar::primitives::probe_all(
+            body_tokens,
+            |input: &mut LexStream<'_>| parse_permission_tail_lexed(input, default_lifetime),
+            "permission-tail",
+        )?
+    };
     Some(PermissionTailFact {
         lifetime,
         without_paying_mana_cost,
@@ -430,6 +479,10 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        primitives::any_phrase(&[
+            &["lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards"],
+            &["lands", "and", "cast", "spells", "from", "among", "those", "cards"],
+        ]).value((TaggedPermissionReference::LastTagged, false, TaggedPermissionTargetSurface::Other, None)),
         (
             primitives::phrase(&["this", "card"]),
             // This cross-zone self reference is the durable exile permission,

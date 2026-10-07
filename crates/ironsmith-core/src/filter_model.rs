@@ -297,6 +297,7 @@ pub enum SameNameAntecedentSurface {
     Permanent,
     Creature,
     Object,
+    Land,
 }
 
 impl SameNameAntecedentSurface {
@@ -307,6 +308,7 @@ impl SameNameAntecedentSurface {
             "permanent" | "permanents" => Some(Self::Permanent),
             "creature" | "creatures" => Some(Self::Creature),
             "object" | "objects" => Some(Self::Object),
+            "land" | "lands" => Some(Self::Land),
             _ => None,
         }
     }
@@ -318,6 +320,7 @@ impl SameNameAntecedentSurface {
             Self::Permanent => "that permanent",
             Self::Creature => "that creature",
             Self::Object => "that object",
+            Self::Land => "that land",
         }
     }
 
@@ -328,6 +331,7 @@ impl SameNameAntecedentSurface {
             Self::Permanent => "this permanent",
             Self::Creature => "this creature",
             Self::Object => "this object",
+            Self::Land => "this land",
         }
     }
 }
@@ -686,6 +690,9 @@ pub struct ObjectFilterUnionSurface {
     /// Oracle framed this turn-long stack-object grant as
     /// "as you cast ... this turn, they gain ...".
     as_you_cast_this_turn_surface: bool,
+    /// Authored comparison noun; the tagged relation alone carries identity.
+    #[cfg_attr(feature = "serde", serde(default))]
+    shared_type_antecedent: Option<DemonstrativeAntecedentSurface>,
 }
 
 impl ObjectFilterUnionSurface {
@@ -739,6 +746,7 @@ impl ObjectFilterUnionSurface {
             you_had_entry_surface: false,
             mana_source_spent_trailing_if_surface: false,
             as_you_cast_this_turn_surface: false,
+            shared_type_antecedent: None,
         }
     }
 
@@ -1100,6 +1108,12 @@ impl ObjectFilterUnionSurface {
         self.chosen_name_source
     }
 
+    pub const fn with_shared_type_antecedent(mut self, surface: Option<DemonstrativeAntecedentSurface>) -> Self {
+        self.shared_type_antecedent = surface;
+        self
+    }
+    pub const fn shared_type_antecedent(self) -> Option<DemonstrativeAntecedentSurface> { self.shared_type_antecedent }
+
     pub const fn with_demonstrative_antecedent(
         mut self,
         surface: Option<DemonstrativeAntecedentSurface>,
@@ -1406,6 +1420,7 @@ pub enum AlternativeCastKind {
     Madness,
     Miracle,
     Suspend,
+    Foretell,
 }
 
 /// Counter-state qualifier for object filters.
@@ -1705,29 +1720,32 @@ impl PlayerFilter {
         }
     }
 
-    pub fn mentions_iterated_player(&self) -> bool {
+    pub fn mentions_iterated_player(&self) -> bool { self.mentions_player_filter(&PlayerFilter::IteratedPlayer) }
+
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
+        if self == needle { return true; }
         match self {
-            Self::IteratedPlayer => true,
-            Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_iterated_player(),
-            Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
-            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_iterated_player(),
+            Self::IteratedPlayer => false,
+            Self::Target(inner) | Self::AliasedTarget(inner) => inner.mentions_player_filter(needle),
+            Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_player_filter(needle),
+            Self::WasDealtDamageBySourceThisGame { base } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => {
-                base.mentions_iterated_player() || sources.mentions_iterated_player()
+                base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
-            Self::LostLifeThisTurn { base } => base.mentions_iterated_player(),
+            Self::LostLifeThisTurn { base } => base.mentions_player_filter(needle),
             Self::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
-                base.mentions_iterated_player() || sources.mentions_iterated_player()
+                base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
-            Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
+            Self::HasMoreLifeThanYou { base } => base.mentions_player_filter(needle),
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
-                player.mentions_iterated_player() || filter.mentions_iterated_player()
+                player.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
             }
             Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } => {
-                filter.mentions_iterated_player()
+                filter.mentions_player_filter(needle)
             }
-            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
+            Self::OpponentOf(base) | Self::MaxSpeed { base, .. } => base.mentions_player_filter(needle),
             Self::Excluding { base, excluded } => {
-                base.mentions_iterated_player() || excluded.mentions_iterated_player()
+                base.mentions_player_filter(needle) || excluded.mentions_player_filter(needle)
             }
             Self::Any
             | Self::You
@@ -2452,6 +2470,9 @@ pub struct ObjectFilter {
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
+    /// Literal presence/absence of the cumulative-upkeep keyword mechanic.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub has_cumulative_upkeep: Option<bool>,
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
     pub no_shared_creature_types_with: Vec<ObjectFilter>,
@@ -2476,6 +2497,15 @@ pub struct ObjectFilter {
     /// turn. Never falls back when that card leaves its current zone.
     #[cfg_attr(feature = "serde", serde(default))]
     pub last_drawn_this_turn: Option<PlayerFilter>,
+    /// Count printed pips containing this color; hybrid pips count once,
+    /// independently of the color or amount of mana actually paid.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_symbol_count: Option<(Color, ChoiceCount)>,
+    /// Match a producer's exact destination incarnation in its
+    /// original public zone. An unspecified zone searches public zones;
+    /// an explicit zone remains an additional constraint.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub match_captured_public_destination: bool,
 }
 
 impl ObjectFilter {
@@ -2588,7 +2618,9 @@ impl ObjectFilter {
         self.union_surface.chosen_type_this_way()
     }
 
-    pub fn mentions_iterated_player(&self) -> bool {
+    pub fn mentions_iterated_player(&self) -> bool { self.mentions_player_filter(&PlayerFilter::IteratedPlayer) }
+
+    pub fn mentions_player_filter(&self, needle: &PlayerFilter) -> bool {
         [
             self.controller.as_ref(),
             self.cast_by.as_ref(),
@@ -2608,39 +2640,39 @@ impl ObjectFilter {
         ]
         .into_iter()
         .flatten()
-        .any(PlayerFilter::mentions_iterated_player)
+        .any(|filter| filter.mentions_player_filter(needle))
             || self
                 .targets_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .mana_from_source_spent_to_cast
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .targets_only_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .attached_to_object
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .blocked_or_was_blocked_by_this_turn
                 .as_deref()
-                .is_some_and(ObjectFilter::mentions_iterated_player)
+                .is_some_and(|filter| filter.mentions_player_filter(needle))
             || self
                 .no_shared_creature_types_with
                 .iter()
-                .any(ObjectFilter::mentions_iterated_player)
+                .any(|filter| filter.mentions_player_filter(needle))
             || self
                 .characteristic_relations
                 .iter()
-                .any(|relation| relation.comparison.mentions_iterated_player())
+                .any(|relation| relation.comparison.mentions_player_filter(needle))
             || self
                 .any_of
                 .iter()
-                .any(ObjectFilter::mentions_iterated_player)
+                .any(|filter| filter.mentions_player_filter(needle))
     }
 
     /// Preserve the Oracle connective used for this filter's inclusive union.
@@ -2929,6 +2961,13 @@ impl ObjectFilter {
         self.union_surface.chosen_name_source()
     }
 
+    pub fn set_shared_type_antecedent_surface(&mut self, surface: Option<DemonstrativeAntecedentSurface>) {
+        self.union_surface = self.union_surface.with_shared_type_antecedent(surface);
+    }
+    pub const fn shared_type_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
+        self.union_surface.shared_type_antecedent()
+    }
+
     /// Preserve the authored noun of an explicit demonstrative condition
     /// subject without changing filter matching.
     pub fn set_demonstrative_antecedent_surface(
@@ -3123,6 +3162,7 @@ impl ObjectFilter {
             || self.mana_value_eq_counters_on_source.is_some()
             || self.exact_mana_cost.is_some()
             || self.has_mana_cost
+            || self.mana_symbol_count.is_some()
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -3139,6 +3179,7 @@ impl ObjectFilter {
             || self.alternative_cast.is_some()
             || !self.static_abilities.is_empty()
             || !self.excluded_static_abilities.is_empty()
+            || self.has_cumulative_upkeep.is_some()
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
             || !self.no_shared_creature_types_with.is_empty()
@@ -3360,6 +3401,72 @@ impl ObjectFilter {
 
     pub fn targeting_only_object(self, object: ObjectFilter) -> Self {
         self.targeting_only(None, Some(object))
+    }
+
+    /// Bounded cast predicates whose remaining operands are all printed
+    /// characteristics of the completed spell. Relation and history queries
+    /// retain their existing owners; new fields fail this check by default.
+    pub fn has_only_completed_cast_characteristics(&self) -> bool {
+        // A spell's printed characteristic disjunction is evaluated against
+        // one completed cast snapshot. The source's choice gates this single
+        // trigger, even when multiple axes match.
+        if self.any_of.len() == 3 {
+            let source_comparison = |comparison: &Option<Comparison>| matches!(comparison,
+                Some(Comparison::EqualExpr(value))
+                    if matches!(value.unhinted(), Value::SourceChosenNumber { .. }));
+            let mut axes = [false; 3];
+            let all_axes = self.any_of.iter().all(|branch| {
+                let mut residual = branch.clone();
+                let axis = if source_comparison(&residual.mana_value) { residual.mana_value = None; 0 }
+                    else if source_comparison(&residual.power) { residual.power = None; 1 }
+                    else if source_comparison(&residual.toughness) { residual.toughness = None; 2 }
+                    else { return false; };
+                axes[axis] = true;
+                residual == Self::default()
+            });
+            let mut residual = self.clone();
+            residual.any_of.clear(); residual.zone = None; residual.stack_kind = None;
+            residual.has_mana_cost = false;
+            if all_axes && axes.into_iter().all(|axis| axis) && residual == Self::default() {
+                return true;
+            }
+        }
+        if self.mana_symbol_count.is_none() && self.mana_value_eq_counters_on_source.is_none()
+            && self.target_count.is_none() {
+            return false;
+        }
+        if !matches!(self.zone, None | Some(Zone::Stack))
+            || !matches!(self.stack_kind, None | Some(StackObjectKind::Spell)) {
+            return false;
+        }
+        let mut residual = self.clone();
+        residual.zone = None;
+        residual.stack_kind = None;
+        residual.has_mana_cost = false;
+        residual.mana_symbol_count = None;
+        residual.mana_value_eq_counters_on_source = None;
+        residual.target_count = None;
+        residual.card_types.clear();
+        residual.all_card_types.clear();
+        residual.excluded_card_types.clear();
+        residual.subtypes.clear();
+        residual.excluded_subtypes.clear();
+        residual.supertypes.clear();
+        residual.excluded_supertypes.clear();
+        residual.colors = None;
+        residual == Self::default()
+    }
+
+    pub fn mana_symbol_count_description(&self) -> Option<String> {
+        let (color, count) = self.mana_symbol_count?;
+        let number = |n: usize| if n == 1 { "one".to_string() } else { n.to_string() };
+        let quantity = match count.max {
+            None => format!("{} or more", number(count.min)),
+            Some(max) if max == count.min => number(max),
+            Some(max) if count.min == 0 => format!("up to {}", number(max)),
+            Some(max) => format!("between {} and {}", number(count.min), number(max)),
+        };
+        Some(format!("with {quantity} {} mana symbols in its mana cost", color.name()))
     }
 
     pub fn with_target_count(mut self, count: ChoiceCount) -> Self {
@@ -3587,6 +3694,20 @@ impl ObjectFilter {
     pub fn with_color_count(mut self, cmp: Comparison) -> Self {
         self.color_count = Some(cmp);
         self
+    }
+
+    /// A protection quality stated solely in terms of mana-value parity.
+    pub fn protection_mana_value_parity_quality(&self) -> Option<&'static str> {
+        let parity = self.mana_value_parity?;
+        if *self != ObjectFilter::default().with_mana_value_parity(parity) {
+            return None;
+        }
+        Some(match parity {
+            ParityRequirement::Odd => "odd mana values",
+            ParityRequirement::Even => "even mana values",
+            ParityRequirement::Chosen => "each mana value of the chosen quality",
+            ParityRequirement::NotChosen => "each mana value not of the chosen quality",
+        })
     }
 
     pub fn with_mana_value_parity(mut self, parity: ParityRequirement) -> Self {
@@ -3918,6 +4039,14 @@ impl ObjectFilter {
             source: true,
             ..Default::default()
         }
+    }
+
+    /// A source reference with no characteristic restriction. Presentation of
+    /// "this spell"/"this creature" does not restrict what the source can become.
+    pub fn is_source_only(&self) -> bool {
+        let mut source = Self::source();
+        source.source_surface = self.source_surface.clone();
+        *self == source
     }
 
     pub fn source_with_surface(surface: SourceReferenceSurface) -> Self {
@@ -4776,6 +4905,10 @@ impl ObjectFilter {
                     );
                 }
                 TaggedOpbjectRelation::SharesCardType => {
+                    if let Some(surface) = self.shared_type_antecedent_surface() {
+                        post_noun_qualifiers.push(format!("that shares a card type with {}", surface.phrase()));
+                        continue;
+                    }
                     if constraint.tag.as_str() == crate::SOURCE_EXILED_TAG {
                         post_noun_qualifiers.push(
                             "that shares a card type with a card exiled with this permanent"
@@ -5762,6 +5895,7 @@ impl ObjectFilter {
                 counter_type.description()
             ));
         }
+        if let Some(description) = self.mana_symbol_count_description() { parts.push(description); }
         if self.has_phyrexian_mana_symbol {
             parts.push("with {H} in its mana cost".to_string());
         }
@@ -5799,6 +5933,9 @@ impl ObjectFilter {
                     parts.push(format!("without {}", label));
                 }
             }
+        }
+        if let Some(has) = self.has_cumulative_upkeep {
+            parts.push(if has { "with cumulative upkeep" } else { "that doesn't have cumulative upkeep" }.into());
         }
         for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
@@ -7382,6 +7519,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 
@@ -7799,6 +7937,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
             Value::LastNotedLifeTotal => "last noted life total".to_string(),
             Value::ThisAbilityResolvedThisTurnCount => {
                 "the number of times this ability has resolved this turn".to_string()
@@ -7893,6 +8032,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     describe_value_expr(right)
                 )
             }
+            Value::EventValue(EventValueSpec::CastSpell(_)) => "that much".to_string(),
             Value::EventValue(EventValueSpec::Amount) => "that damage".to_string(),
             Value::EventValue(EventValueSpec::LifeChange {
                 gained,

@@ -78,12 +78,15 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::MustAttack(filter)
+        | Restriction::MustBlock(filter)
         | Restriction::BlockAlone(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
+        | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)
@@ -118,6 +121,7 @@ fn retarget_it_restriction_for_counter_followup(
         }
         Restriction::ActivateLoyaltyAbilitiesOf(source)
         | Restriction::PreventDamageFrom { sources: source, .. }
+        | Restriction::PlayerHexproofFrom(_, source)
         | Restriction::BeTargetedPlayerFrom(_, source) => {
             retarget_it_filter_for_counter_followup(source, source_filter);
         }

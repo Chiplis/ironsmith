@@ -27,6 +27,7 @@ pub struct EachPlayerMayRevealSelectedHandShape<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct RandomHandRevealShape<'a> {
+    pub count: crate::effect::ChoiceCount,
     pub subject_tokens: &'a [OwnedLexToken],
     pub descriptor_tokens: &'a [OwnedLexToken],
     pub hand_tokens: &'a [OwnedLexToken],
@@ -190,7 +191,12 @@ pub fn parse_random_hand_reveal_shape(
     if subject_tokens.is_empty() {
         return None;
     }
-    let (_, descriptor_body) = primitives::parse_prefix(after_reveal, reveal_article)?;
+    let (count, descriptor_body) = if let Some((_, body)) = primitives::parse_prefix(after_reveal, reveal_article) {
+        (crate::effect::ChoiceCount::exactly(1), body)
+    } else {
+        let (count, consumed) = crate::util::parse_choice_count_token_prefix_consumed(after_reveal)?;
+        (count, after_reveal.get(consumed..)?)
+    };
     let (from_offset, _, hand_tokens) =
         primitives::find_prefix(descriptor_body, || primitives::kw("from"))?;
     let descriptor_tokens = trim_lexed_commas(descriptor_body.get(..from_offset)?);
@@ -198,7 +204,12 @@ pub fn parse_random_hand_reveal_shape(
     if descriptor_tokens.is_empty() || hand_tokens.is_empty() {
         return None;
     }
+    if descriptor_tokens.iter().any(|token| !matches!(token.kind,
+        crate::lexer::TokenKind::Word | crate::lexer::TokenKind::Number)) {
+        return None;
+    }
     Some(RandomHandRevealShape {
+        count,
         subject_tokens,
         descriptor_tokens,
         hand_tokens,

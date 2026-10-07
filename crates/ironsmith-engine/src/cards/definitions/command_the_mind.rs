@@ -93,7 +93,7 @@ mod tests {
             .iter()
             .filter(|&&id| {
                 game.object(id)
-                    .map(|o| o.name == "Clue" && game.controller_of(o) == alice)
+                    .map(|o| o.name == "Clue Token" && game.controller_of(o) == alice)
                     .unwrap_or(false)
             })
             .count();

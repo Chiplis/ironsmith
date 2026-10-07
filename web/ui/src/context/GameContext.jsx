@@ -17,6 +17,7 @@ import { startTransition, useContext, useState, useCallback, useRef, useMemo, us
 import { useGameSnapshot } from "@/hooks/useGameSnapshot";
 import { useWasmGame } from "@/hooks/useWasmGame";
 import { usePeerLobby } from "@/hooks/usePeerLobby";
+import { assertCurrentAuditReplayProtocol } from "@/lib/multiplayer-audit";
 import {
   applyAuditReplayActionWithGame,
   replayAuditTranscriptWithGame,
@@ -521,9 +522,11 @@ function resolveSyncedCommand(command) {
         syncedCommand.object_stable_id = stableId;
       }
     }
-    const hiddenRef = normalizeSelectObjectHiddenRef(
-      command.object_hidden_ref ?? command.objectHiddenRef
-    );
+    const rawHiddenRef = command.object_hidden_ref ?? command.objectHiddenRef;
+    // Opaque commands must reach the paired-identity checker unchanged. The
+    // legacy normalizer may complete partial fields or discard a supplied pair.
+    const hiddenRef = ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(command.action_ref?.kind)
+      ? rawHiddenRef : normalizeSelectObjectHiddenRef(rawHiddenRef);
     if (hiddenRef) {
       syncedCommand.object_hidden_ref = hiddenRef;
     }
@@ -2609,6 +2612,7 @@ export function GameProvider({ children }) {
       if (!transcript || typeof transcript !== "object") {
         throw new Error("Missing audit transcript");
       }
+      assertCurrentAuditReplayProtocol(transcript);
       const prepared = {
         transcript: cloneJson(transcript),
         sourceLabel,
@@ -2640,6 +2644,7 @@ export function GameProvider({ children }) {
       if (!prepared?.transcript || typeof prepared.transcript !== "object") {
         throw new Error("Missing audit transcript");
       }
+      assertCurrentAuditReplayProtocol(prepared.transcript);
       setAuditReplayState((current) => ({
         ...current,
         available: true,

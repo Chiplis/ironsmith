@@ -412,7 +412,7 @@ pub(crate) fn normalize_cost_phrase(text: &str) -> String {
 
 pub(crate) fn describe_cost_component(cost: &crate::costs::Cost) -> String {
     if let Some(mana_cost) = cost.mana_cost_ref() {
-        return mana_cost.to_oracle();
+        return mana_cost.payment_surface();
     }
     if let Some(dynamic) = cost.dynamic_mana_cost_ref() {
         return describe_dynamic_mana_cost(dynamic);
@@ -2439,13 +2439,7 @@ pub(super) fn waterbend_generic_from_branches(branches: &[crate::cost::TotalCost
             {
                 return Some(completion.amount);
             }
-            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-            choose
-                .tag
-                .as_str()
-                .strip_prefix("waterbend_cost_")?
-                .parse::<u32>()
-                .ok()
+            None
         })
     })
 }

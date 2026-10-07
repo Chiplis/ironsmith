@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "family": "variable-suspend-counter-bodies-recovery",
+  "restored_base_commit": "69a946ec767deda59927d63f08dd17fabff470f3",
+  "implementation_checkpoint": "c798cf28a9460c0928acbc3714f4a240c8c551b8",
+  "recovery_provenance": "Replayed retained source transformations after a second filesystem replacement. Historical final c4b22039fc23fa042ea9242e01fae6e35a52868a is not claimed to exist or match this new commit.",
+  "status": "source_implemented_full_cards_unvalidated",
+  "verified_compile_recoveries": 0,
+  "proposed_unique_cards": 4,
+  "fixture": "fixtures/variable_suspend_bodies.json.fixture",
+  "scenario_source": "crates/ironsmith-compiler-runtime/tests/variable_suspend_bodies.rs",
+  "validation": "Source inspection only; no build, compiler probe, test, formatter or corpus execution.",
+  "cards": [
+    {
+      "card_name": "Aeon Chronicler",
+      "oracle_ids": [
+        "a1399cb8-f22a-487e-b539-2db47b09a790"
+      ],
+      "baseline_status": "unaddressed",
+      "baseline_category": "parser_failure",
+      "source_coverage_status": "source_implemented_full_cards_unvalidated"
+    },
+    {
+      "card_name": "Benalish Commander",
+      "oracle_ids": [
+        "3a1e85fe-7064-4df7-bc3b-24131cd15d06"
+      ],
+      "baseline_status": "unaddressed",
+      "baseline_category": "parser_failure",
+      "source_coverage_status": "source_implemented_full_cards_unvalidated"
+    },
+    {
+      "card_name": "Detritivore",
+      "oracle_ids": [
+        "ba5fa5ca-f72d-49dd-9f86-e6e1292f5bf0"
+      ],
+      "baseline_status": "unaddressed",
+      "baseline_category": "parser_failure",
+      "source_coverage_status": "source_implemented_full_cards_unvalidated"
+    },
+    {
+      "card_name": "Fungal Behemoth",
+      "oracle_ids": [
+        "844f1fb4-81d2-4a2a-9de7-20e6bf37d77b"
+      ],
+      "baseline_status": "unaddressed",
+      "baseline_category": "parser_failure",
+      "source_coverage_status": "source_implemented_full_cards_unvalidated"
+    }
+  ],
+  "shared_owners": [
+    {
+      "path": "crates/ironsmith-core/src/suspend.rs",
+      "responsibility": "Typed fixed or announced-X time count, local minimum, legacy fixed-count JSON representation and keyword rendering."
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/activation_and_restrictions/keyword_action_costs.rs",
+      "responsibility": "Consume the entire Suspend count, mana price and local X restriction; preserve bare granted Suspend."
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/semantic_line_parsing/lines/lines_counter.rs",
+      "responsibility": "Parse every named counter removal from an exiled source, preserve each-counter multiplicity and typed Exile source filter."
+    },
+    {
+      "path": "crates/ironsmith-engine/src/special_actions.rs",
+      "responsibility": "Minimum affordability, bounded X announcement, shared interactive payment, action rollback and replacement-aware initial counter placement."
+    },
+    {
+      "path": "crates/ironsmith-engine/src/triggers/counters/counter_removed_from.rs",
+      "responsibility": "Existing each-counter event fanout plus rendering of the typed exile qualifier."
+    },
+    {
+      "path": "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs",
+      "responsibility": "Existing shared characteristic-defining P/T grammar for hand size, subtype counts, graveyard card counts and counter totals."
+    },
+    {
+      "path": "crates/ironsmith-engine/src/continuous/value_context.rs",
+      "responsibility": "Live layer counter totals over typed creature/control filters, widened before aggregation with checked addition; shared CDA evaluation records host-range failure on calculated characteristics before checked discovery publishes them."
+    },
+    {
+      "path": "crates/ironsmith-engine/src/effects/helpers/value_eval.rs",
+      "responsibility": "CDA scalar narrowing records explicit numeric-range failure through the existing checked characteristic boundary in direct and layer-context calculation paths."
+    }
+  ],
+  "explicit_partials_no_credit": [
+    {
+      "card_name": "Roiling Horror",
+      "oracle_ids": [
+        "52be9dd0-72f4-408b-ae3b-17a0362c2681"
+      ],
+      "reason": "Shared Suspend X and passive exile-removal infrastructure now applies, but the whole CDA phrase \"your life total minus the life total of an opponent with the most life\" has not been completed or source-cleared in this bounded cohort. No count credit."
+    },
+    {
+      "card_name": "Watcher of Hours",
+      "oracle_ids": [
+        "b2354092-7a4c-4e69-9c0a-0a2e146dc00c"
+      ],
+      "reason": "The actor-qualified \"Whenever you remove a time counter\" needs an explicit removal-player matcher across grammar, trigger model and runtime. General passive counter-removal support must not erase that condition. No count credit."
+    }
+  ],
+  "source_concerns": [
+    "All authored parser and full-card scenarios are unrun; compilation and semantic-output reconciliation remain deferred by campaign instruction.",
+    "Other remaining Suspend cards with suspended-card targets, grant-Suspend programs or unrelated body gaps are outside this cohort.",
+    "No pre-outage claim or missing SHA is reused as coverage evidence.",
+    "The global source-coverage ledger was not edited; coordinator must independently reconcile exact identities.",
+    "Existing continuous scalar/counter limits remain bounded by the engine host representation; this change does not claim arbitrary-precision totals."
+  ]
+}

@@ -86,7 +86,7 @@ impl DestroyEffect {
     ) -> Result<Option<OutcomeStatus>, ExecutionError> {
         let pre_snapshot = game
             .object(object_id)
-            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+            .map(|obj| ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)).transpose()?;
         let result = process_destroy_with_regeneration(
             game,
             object_id,
@@ -229,8 +229,8 @@ pub(crate) fn execute_simultaneous_destroy(
     let mut applied_count = 0usize;
     for object_id in selected_objects {
         let pre_snapshot = decision_view.object(object_id).map(|object| {
-            ObjectSnapshot::from_object_with_calculated_characteristics(object, &decision_view)
-        });
+            ObjectSnapshot::try_from_object_with_calculated_characteristics(object, &decision_view)
+        }).transpose()?;
         let result = process_destroy_with_regeneration(
             &mut staged_game,
             object_id,

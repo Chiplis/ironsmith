@@ -110,7 +110,7 @@ pub fn apply_priority_response_with_dm(
     }
     // Entry and activation can suspend inside replacement programs. Their
     // priority actor and loop bookkeeping are part of the same operation.
-    let checkpoint = matches!(
+    let restore_on_pending = matches!(
         response,
         PriorityResponse::PriorityAction(
             LegalAction::PlayLand { .. }
@@ -120,20 +120,21 @@ pub fn apply_priority_response_with_dm(
         ) | PriorityResponse::NextCostChoice(_)
             | PriorityResponse::SacrificeTarget(_)
             | PriorityResponse::CardCostChoice(_)
-    )
-    .then(|| (game.clone(), trigger_queue.clone(), state.clone()));
+    );
+    let checkpoint = (game.clone(), trigger_queue.clone(), state.clone());
     let result =
         apply_priority_response_with_dm_inner(game, trigger_queue, state, response, decision_maker);
-    if let Some((game_before, queue_before, state_before)) = checkpoint {
-        if result.is_err() || decision_maker.awaiting_choice() {
-            game.restore_execution_checkpoint(
-                game_before,
-                result.is_ok() && decision_maker.awaiting_choice(),
-            );
-            *trigger_queue = queue_before;
-            *state = state_before;
-        }
-        if decision_maker.awaiting_choice() {
+    let incomplete = matches!(&result, Err(GameLoopError::ExecutionFailed(error))
+        if error.is_incomplete_execution());
+    if incomplete || (restore_on_pending && (result.is_err() || decision_maker.awaiting_choice())) {
+        let (game_before, queue_before, state_before) = checkpoint;
+        game.restore_execution_checkpoint(
+            game_before,
+            result.is_ok() && decision_maker.awaiting_choice(),
+        );
+        *trigger_queue = queue_before;
+        *state = state_before;
+        if restore_on_pending && decision_maker.awaiting_choice() && !incomplete {
             return Ok(GameProgress::Continue);
         }
     }
@@ -165,24 +166,17 @@ pub(super) fn begin_mana_ability_activation(
                 state.save_checkpoint(game);
                 saved_root_checkpoint = true;
             }
+            let payment_reason = mana_ability.payment_reason(game, *source, player);
             let mana_to_add = mana_ability.mana_output.clone().unwrap_or_default();
             let effects_to_run = mana_ability.effects.clone();
-            let base_cost = mana_ability.mana_cost.clone();
             let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
             let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
-            let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
-                game,
-                player,
-                *source,
-                &base_cost,
-                &[],
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    player,
-                    *source,
-                    mana_ability,
-                )),
-            );
+            let Some((cost, announced_x)) = crate::special_actions::prepare_mana_activation_cost(
+                game, player, *source, *ability_index, mana_ability, decision_maker,
+            ).map_err(|error| match error {
+                crate::special_actions::ActionError::ExecutionFailure { error, .. } => GameLoopError::ExecutionFailed(error),
+                error => GameLoopError::InvalidState(format!("mana activation cost: {error}")),
+            })? else { return Ok(GameProgress::Continue); };
             let activation_cost_has_tap = cost.costs().iter().any(|cost| cost.requires_tap());
             let mana_production_provenance =
                 crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
@@ -197,38 +191,6 @@ pub(super) fn begin_mana_ability_activation(
                 } else {
                     other_costs.push(c.clone());
                 }
-            }
-
-            // CR 602.2b / 601.2f: an {X} in a mana ability's activation
-            // cost (Wizard's Rockets) is announced before the cost is
-            // paid; the ability's effect then refers to that X.
-            let mut announced_x: Option<u32> = None;
-            if let Some(mc) = mana_cost.as_ref()
-                && mc.has_x()
-            {
-                let policy = game.mana_spend_policy(player, Some(*source));
-                let allow_black_life = crate::decision::mana_cost_has_black_symbol(mc)
-                    && game.player_can_pay_black_with_life_for_reason(
-                        player,
-                        Some(*source),
-                        crate::costs::PaymentReason::ActivateManaAbility,
-                    );
-                let max_x = crate::decision::compute_potential_mana(game, player)
-                    .max_x_for_cost_with_mana_spend_policy_and_black_life(
-                        mc,
-                        &policy,
-                        allow_black_life,
-                    );
-                let x_ctx =
-                    crate::decisions::context::NumberContext::x_value(player, *source, max_x);
-                let x = decision_maker.decide_number(game, &x_ctx).min(max_x);
-                if decision_maker.awaiting_choice() {
-                    return Ok(GameProgress::Continue);
-                }
-                announced_x = Some(x);
-                let locked =
-                    crate::decision::mana_cost_with_locked_x_and_generic_reduction(mc, x, 0);
-                mana_cost = (!locked.pips().is_empty()).then_some(locked);
             }
 
             let mana_ability_provenance =
@@ -247,6 +209,18 @@ pub(super) fn begin_mana_ability_activation(
             let source_snapshot = game
                 .object(*source)
                 .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+
+            let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                *source, effects_to_run.linked_exile_pair,
+                source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index)));
+
+            let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                *source, effects_to_run.source_number_pair,
+                source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index)));
+            crate::linked_exile::validate_program_owner(effects_to_run.linked_exile_pair, linked_exile_owner.as_ref())
+                .map_err(GameLoopError::ExecutionFailed)?;
 
             let view = crate::derived_view::DerivedGameView::new(game);
             if !crate::decision::exhaust_activation_allows(
@@ -273,7 +247,7 @@ pub(super) fn begin_mana_ability_activation(
             if mana_cost.is_none() {
                 // Pay all costs immediately
                 let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
-                    .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
+                    .with_reason(payment_reason)
                     .with_provenance(mana_ability_provenance);
                 cost_ctx.x_value = announced_x;
                 let cost_summary =
@@ -287,6 +261,7 @@ pub(super) fn begin_mana_ability_activation(
                 // The effects may refer to objects the costs chose
                 // ("the exiled creature's mana value", Food Chain).
                 let cost_tagged_objects = cost_ctx.tagged_objects.clone();
+                let cost_effect_outcomes = cost_ctx.effect_outcomes.clone();
                 drop(cost_ctx);
 
                 if decision_maker.awaiting_choice() {
@@ -295,14 +270,23 @@ pub(super) fn begin_mana_ability_activation(
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(mana_ability_provenance),
                 );
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
 
+                let activation_origin = source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                    .and_then(|origins| origins.get(*ability_index).cloned());
+                game.record_ability_activation_with_origin(*source, *ability_index, activation_origin.clone(), effects_to_run.activation_definition);
                 let mut mana_ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                    .with_activation_origin(activation_origin.clone())
+                    .with_activation_definition(effects_to_run.activation_definition)
+                    .with_ability_index(*ability_index)
+                    .with_linked_exile_owner(linked_exile_owner.clone())
+                    .with_source_number_owner(source_number_owner.clone())
                     .with_provenance(mana_ability_provenance)
                     .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                     .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
                     .with_mana_production_provenance(mana_production_provenance)
-                    .with_tagged_objects(cost_tagged_objects.clone());
+                    .with_tagged_objects(cost_tagged_objects.clone())
+                    .with_effect_outcomes(cost_effect_outcomes.clone());
                 if let Some(snapshot) = source_snapshot.clone() {
                     mana_ctx = mana_ctx.with_source_snapshot(snapshot);
                 }
@@ -321,11 +305,16 @@ pub(super) fn begin_mana_ability_activation(
                     return Ok(GameProgress::Continue);
                 }
                 drop(mana_ctx);
-                queue_triggers_for_events(game, trigger_queue, outcome.events);
+                queue_triggers_for_events(game, trigger_queue, outcome.events)?;
 
                 // Execute additional effects (for complex mana abilities)
                 if !effects_to_run.is_empty() {
                     let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
+                        .with_activation_origin(activation_origin.clone())
+                    .with_activation_definition(effects_to_run.activation_definition)
+                        .with_ability_index(*ability_index)
+                        .with_linked_exile_owner(linked_exile_owner.clone())
+                        .with_source_number_owner(source_number_owner.clone())
                         .with_provenance(mana_ability_provenance)
                         .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                         .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
@@ -336,7 +325,7 @@ pub(super) fn begin_mana_ability_activation(
                     if let Some(x) = x_value_from_costs {
                         ctx = ctx.with_x(x);
                     }
-                    ctx = ctx.with_tagged_objects(cost_tagged_objects);
+                    ctx = ctx.with_tagged_objects(cost_tagged_objects).with_effect_outcomes(cost_effect_outcomes);
                     let mut emitted_events = Vec::new();
 
                     for effect in &effects_to_run {
@@ -346,11 +335,9 @@ pub(super) fn begin_mana_ability_activation(
                         }
                         emitted_events.extend(outcome.events);
                     }
-                    queue_triggers_for_events(game, trigger_queue, emitted_events);
-                    drain_pending_trigger_events(game, trigger_queue);
+                    queue_triggers_for_events(game, trigger_queue, emitted_events)?;
+                    try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
-
-                game.record_ability_activation(*source, *ability_index);
 
                 queue_ability_activated_event(
                     game,
@@ -361,7 +348,7 @@ pub(super) fn begin_mana_ability_activation(
                     true,
                     None,
                     activation_cost_has_tap,
-                );
+                )?;
 
                 // Player retains priority after activating mana ability
                 return advance_priority_with_dm(game, trigger_queue, decision_maker);
@@ -375,6 +362,11 @@ pub(super) fn begin_mana_ability_activation(
                 let context = format!("{}'s ability", source_name);
 
                 let pending = PendingManaAbility {
+                    activation_origin: source_snapshot.as_ref().and_then(|snapshot| snapshot.ability_origins.as_ref())
+                        .and_then(|origins| origins.get(*ability_index).cloned()),
+                    linked_exile_owner,
+                    source_number_owner,
+                    payment_reason,
                     source: *source,
                     ability_index: *ability_index,
                     activator: player,
@@ -587,6 +579,29 @@ fn apply_priority_response_with_dm_inner(
     }
 
     // Handle casting method selection for a pending spell with multiple methods
+    if let PriorityResponse::ExileFaceDownChoice(choice) = response {
+        return super::exile_face_down::apply_choice(game, trigger_queue, state, *choice, decision_maker);
+    }
+    if let Some(pending) = &state.pending_exile_face_down
+        && let PriorityResponse::PriorityAction(action) = response {
+        if matches!(action, LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission }
+            if *card_id == pending.card_id && *incarnation == pending.incarnation && permission == &pending.permission) {
+            return super::exile_face_down::resume(game, state);
+        }
+        return Err(GameLoopError::InvalidState("Finish the face-down declaration before taking another action".into()));
+    }
+    if let PriorityResponse::ExilePlayChoice(choice) = response {
+        return super::exile_play::apply_exile_play_choice(game, trigger_queue, state, *choice, decision_maker);
+    }
+    if let Some(pending) = &state.pending_exile_play
+        && let PriorityResponse::PriorityAction(action) = response
+    {
+        if matches!(action, LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission }
+            if *card_id == pending.card_id && *incarnation == pending.incarnation && permission == &pending.permission) {
+            return super::exile_play::resume_open_exile_play(game, trigger_queue, state, decision_maker);
+        }
+        return Err(GameLoopError::InvalidState("Finish the opened exile play before taking another action".into()));
+    }
     if let PriorityResponse::CastingMethodChoice(choice_idx) = response {
         return apply_casting_method_choice_response(
             game,
@@ -611,7 +626,20 @@ fn apply_priority_response_with_dm_inner(
         game.turn.priority_player = Some(actor);
     }
 
+    apply_admitted_priority_action(game, trigger_queue, state, action, decision_maker)
+}
+
+/// Shared transaction owner after priority admission or an exact opened-card
+/// choice has established the actor, card and permission.
+pub(super) fn apply_admitted_priority_action(
+    game: &mut GameState, trigger_queue: &mut TriggerQueue, state: &mut PriorityLoopState,
+    action: &LegalAction, decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     match action {
+        LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission } =>
+            super::exile_face_down::begin(game, trigger_queue, state, *card_id, *incarnation, permission),
+        LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission } =>
+            super::exile_play::begin_open_exile_play(game, trigger_queue, state, *card_id, *incarnation, permission, decision_maker),
         LegalAction::PassPriority => super::priority_mana::apply_priority_action_with_dm(
             game,
             trigger_queue,
@@ -648,16 +676,24 @@ fn apply_priority_response_with_dm_inner(
                 crate::special_actions::can_perform(&action, game, player, &mut *decision_maker)
                     .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
+                let opened_permission = state.opened_exile_play.as_ref().map(|opened| {
+                    if opened.card_id != *land_id || opened.player != player {
+                        return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                            "opened land permission and announcement disagree".into()));
+                    }
+                    Ok(&opened.permission)
+                }).transpose()?;
                 crate::special_actions::execute_land_play_with_observer(
                     game,
                     player,
                     *land_id,
                     back_face,
+                    opened_permission,
                     crate::special_actions::LandPlayObservationTiming::BeforeHistory,
                     decision_maker,
                     |game, decision_maker, new_id, kind, event| {
                         if matches!(kind, crate::special_actions::LandPlayObservationKind::Entry) {
-                            drain_pending_trigger_events(game, trigger_queue);
+                            try_drain_pending_trigger_events(game, trigger_queue)?;
                         }
                         for trigger in check_triggers(game, &event) {
                             trigger_queue.add(trigger);
@@ -672,7 +708,7 @@ fn apply_priority_response_with_dm_inner(
                 if decision_maker.awaiting_choice() {
                     return Ok(());
                 }
-                drain_pending_trigger_events(game, trigger_queue);
+                try_drain_pending_trigger_events(game, trigger_queue)?;
                 Ok(())
             })();
             if instruction.is_err() || decision_maker.awaiting_choice() {
@@ -900,6 +936,19 @@ fn apply_priority_response_with_dm_inner(
                 .turn
                 .priority_player
                 .ok_or_else(|| GameLoopError::InvalidState("No priority player".to_string()))?;
+            let announced_ability = game.current_ability(*source, *ability_index)
+                .and_then(|ability| match &ability.kind {
+                    AbilityKind::Activated(activated) => Some(activated.clone()),
+                    _ => None,
+                }).ok_or_else(|| GameLoopError::ExecutionFailed(
+                    crate::effects::ExecutionError::IncompleteEvidence(
+                        "announced activation has no original ability".into(),
+                    ),
+                ))?;
+            let mut announced_facts = crate::decision::ActivationCostAbility::of(
+                game, player, *source, &announced_ability,
+            );
+            announced_facts.ability_index = Some(*ability_index);
             let needs_cost_references =
                 crate::cost::prospective_references::needs_activation_reference_context(
                     &base_cost,
@@ -911,14 +960,18 @@ fn apply_priority_response_with_dm_inner(
                 *source,
                 &base_cost,
                 &[],
-                crate::decision::ActivationCostAbility::at(game, player, *source, *ability_index),
+                Some(announced_facts),
             );
             let activation_cost_has_tap = total_cost_contains_tap(&cost);
             let alternative_cost_branches = cost
                 .as_one_of()
                 .map(|branches| branches.to_vec())
                 .unwrap_or_default();
-            let payment_reason = crate::costs::PaymentReason::ActivateAbility;
+            let payment_reason = game.current_ability(*source, *ability_index)
+                .and_then(|ability| match &ability.kind {
+                    AbilityKind::Activated(activated) => Some(activated.payment_reason(game, *source, player)),
+                    _ => None,
+                }).ok_or_else(|| GameLoopError::InvalidState("announced activated ability is unavailable".into()))?;
             let activation_provenance =
                 game.provenance_graph_mut()
                     .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -941,6 +994,12 @@ fn apply_priority_response_with_dm_inner(
             );
             for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
+                    // Power-up keeps a conditional source-mana subtraction in
+                    // its dynamic component. Announce X before resolving it.
+                    if dynamic_mana.base.has_x() && dynamic_mana.x_value.is_none() {
+                        mana_cost_to_pay = Some(dynamic_mana.base.clone());
+                        continue;
+                    }
                     if needs_cost_references && dynamic_mana.mana_cost_of.is_some() {
                         continue;
                     }
@@ -1029,8 +1088,8 @@ fn apply_priority_response_with_dm_inner(
                 let mut pending = PendingActivation::new(
                     *source,
                     *ability_index,
-                    game.current_characteristics(*source)
-                        .and_then(|chars| chars.abilities.origin(*ability_index).cloned()),
+                    source_snapshot.ability_origins.as_ref()
+                        .and_then(|origins| origins.get(*ability_index).cloned()),
                     player,
                     activation_provenance,
                     stage,
@@ -1056,6 +1115,10 @@ fn apply_priority_response_with_dm_inner(
                     pips_to_announce,
                 );
 
+                pending.announced_cost = Some(super::priority_state::AnnouncedActivationCost {
+                    ability: announced_ability,
+                    facts: announced_facts,
+                });
                 if needs_cost_references {
                     pending.cost_reference_base = Some(base_cost.clone());
                     pending.cost_references_ready = false;
@@ -1081,13 +1144,23 @@ fn apply_priority_response_with_dm_inner(
                 // No choices needed - put ability on stack directly
                 let mut granting_source_tags = std::collections::HashMap::new();
                 game.insert_granting_source_tag(*source, *ability_index, &mut granting_source_tags);
-                game.record_ability_activation(*source, *ability_index);
+                game.record_ability_activation_with_origin(*source, *ability_index,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index).cloned()), effects.activation_definition);
                 if is_loyalty_ability {
                     game.record_loyalty_ability_activation(*source);
                 }
 
-                let entry = StackEntry::ability(*source, player, effects.to_vec())
+                let linked_exile_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    *source, effects.linked_exile_pair,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
+
+                let source_number_owner = crate::linked_exile::LinkedExileOwner::capture(
+                    *source, effects.source_number_pair,
+                    source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index)));
+                let mut entry = StackEntry::ability(*source, player, effects.clone())
                     .with_ability_index(*ability_index)
+                    .with_activation_origin(source_snapshot.ability_origins.as_ref().and_then(|origins| origins.get(*ability_index).cloned()))
+                    .with_activation_definition(effects.activation_definition)
                     .with_activation_cost_has_x(activation_cost_has_x)
                     .with_activation_cost_has_tap(activation_cost_has_tap)
                     .with_source_info(source_stable_id, source_name)
@@ -1097,6 +1170,8 @@ fn apply_priority_response_with_dm_inner(
                         mana_source_chosen_creature_type,
                     )
                     .with_tagged_objects(granting_source_tags);
+                entry.linked_exile_owner = linked_exile_owner;
+                entry.source_number_owner = source_number_owner;
                 game.push_to_stack(entry);
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),
@@ -1110,7 +1185,7 @@ fn apply_priority_response_with_dm_inner(
                     false,
                     Some(source_stable_id),
                     activation_cost_has_tap,
-                );
+                )?;
 
                 priority_after_player_action(game, &mut state.tracker, player);
                 advance_priority_with_dm(game, trigger_queue, decision_maker)
@@ -1154,7 +1229,7 @@ fn apply_priority_response_with_dm_inner(
                 game,
                 decision_maker,
             )?;
-            drain_pending_trigger_events(game, trigger_queue);
+            try_drain_pending_trigger_events(game, trigger_queue)?;
 
             // CR 116.3 / 117.3c / 117.4: the player retains priority, and the
             // action breaks any run of passes in succession.
@@ -1210,7 +1285,7 @@ fn apply_priority_response_with_dm_inner(
                         true,
                         None,
                         activation_cost_has_tap,
-                    );
+                    )?;
                 }
             }
 
@@ -1258,6 +1333,17 @@ pub(super) fn apply_targets_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
+        let declaration = pending.counter_removal_declaration;
+        if declaration.is_some() && decision_maker.awaiting_choice() { state.pending_activation = Some(pending); return Ok(GameProgress::Continue); }
+        let result = (|| {
+        if declaration.is_some() {
+            if pending.stage != ActivationStage::ChoosingTargets { return Err(GameLoopError::InvalidState("counter-bound targets arrived outside target announcement".into())); }
+            let current = super::targeting::extract_target_requirements_with_modes_and_announcements(game,
+                pending.effects.flattened_default_effects(), pending.activator, Some(pending.source), pending.chosen_modes.as_deref(), Some(&pending.tagged_objects), declaration);
+            if current.len() != 1 || targets.len() != 1 || !current[0].legal_targets.contains(&targets[0]) {
+                return Err(GameLoopError::InvalidState("declared quantity no longer admits this target".into()));
+            }
+        }
         let prompt_count = pending.active_target_requirement_count.max(1);
         let requirements = pending
             .remaining_requirements
@@ -1289,17 +1375,19 @@ pub(super) fn apply_targets_response(
         pending.remaining_requirements.drain(..requirements.len());
         pending.active_target_requirement_count = 0;
 
-        if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
-            && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
         {
+            let announced = super::priority_cast::announced_activation_cost(&pending)?;
+            let activated = &announced.ability;
+            let facts = announced.facts;
             // X was announced before targets (CR 602.2b, 601.2b); price the
             // cost with it locked so reductions apply to the X part too.
-            let base_cost = match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
+            let base_cost = if let Some(captured) = super::priority_cast::pending_counter_declaration_cost(&pending)? { captured }
+            else { match pending.x_value.and_then(|x| u32::try_from(x).ok()) {
                 Some(x) => {
                     super::priority_cast::activation_cost_with_locked_x(&activated.mana_cost, x)
                 }
                 None => activated.mana_cost.clone(),
-            };
+            }};
             let base_cost = if pending.cost_reference_base.is_some() {
                 match base_cost.as_one_of() {
                     Some(branches) => branches
@@ -1331,18 +1419,16 @@ pub(super) fn apply_targets_response(
             .map_err(|error| {
                 GameLoopError::InvalidState(format!("activation reference pricing: {error:?}"))
             })?;
+            let base_cost = if let Some(declaration) = declaration {
+                crate::cost::counter_declaration::lock(game, pending.source, &base_cost, declaration).map_err(|error| GameLoopError::InvalidState(format!("declared counter repricing: {error:?}")))?
+            } else { base_cost };
             let repriced = crate::decision::calculate_effective_activation_total_cost_for_ability(
                 game,
                 pending.activator,
                 pending.source,
                 &base_cost,
                 &pending.chosen_targets,
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    pending.activator,
-                    pending.source,
-                    activated,
-                )),
+                Some(facts),
             );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => repriced.clone(),
@@ -1369,7 +1455,12 @@ pub(super) fn apply_targets_response(
             ActivationStage::ChoosingTargets
         };
 
-        return continue_activation(game, trigger_queue, state, pending, decision_maker);
+        continue_activation(game, trigger_queue, state, pending, decision_maker)
+        })();
+        if result.is_err() && (declaration.is_some() || matches!(&result,
+            Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(_)))))
+        { state.rollback_action(game); }
+        return result;
     }
 
     let pending = state.pending_cast.take().ok_or_else(|| {
@@ -1511,15 +1602,34 @@ pub(super) fn apply_x_value_response(
 ) -> Result<GameProgress, GameLoopError> {
     // Check for pending activation first
     if let Some(mut pending) = state.pending_activation.take() {
-        let min_x = game
-            .current_ability(pending.source, pending.ability_index)
-            .and_then(|ability| match &ability.kind {
-                crate::ability::AbilityKind::Activated(activated) => {
-                    Some(activated.activation_x_minimum())
-                }
-                _ => None,
-            })
-            .unwrap_or(0);
+        if pending.counter_removal_declaration.is_some() && pending.stage != ActivationStage::ChoosingCostReferences {
+            state.pending_activation = Some(pending);
+            return Err(GameLoopError::InvalidState("counter declaration is locked; no numeric choice is pending".into()));
+        }
+        if pending.stage == ActivationStage::ChoosingCostReferences {
+            if decision_maker.awaiting_choice() { state.pending_activation = Some(pending); return Ok(GameProgress::Continue); }
+            let base = match super::priority_cast::pending_counter_declaration_cost(&pending) {
+                Ok(Some(base)) => base,
+                Ok(None) => { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState("number response has no counter declaration".into())); }
+                Err(error) => { state.rollback_action(game); return Err(error); }
+            };
+            if pending.counter_removal_declaration.is_some() { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState("counter amount was already declared".into())); }
+            let declaration = match crate::cost::counter_declaration::declare(game, pending.source, &base, x_value) {
+                Ok(declaration) => declaration,
+                Err(error) => { state.pending_activation = Some(pending); return Err(GameLoopError::InvalidState(format!("counter declaration: {error:?}"))); }
+            };
+            pending.counter_removal_declaration = Some(declaration);
+            let result = continue_activation(game, trigger_queue, state, pending, decision_maker);
+            if result.is_err() { state.rollback_action(game); }
+            return result;
+        }
+        let announced = match super::priority_cast::announced_activation_cost(&pending) {
+            Ok(announced) => announced,
+            Err(error) => { state.rollback_action(game); return Err(error); }
+        };
+        let min_x = announced.ability.activation_x_minimum();
+        let original = announced.ability.clone();
+        let facts = announced.facts;
         if x_value < min_x {
             state.pending_activation = Some(pending);
             return Err(GameLoopError::InvalidState(format!(
@@ -1535,12 +1645,12 @@ pub(super) fn apply_x_value_response(
         // CR 602.2b / 601.2f: with X announced, the total cost is determined
         // with X as generic mana, so generic reductions (Training Grounds,
         // Heartstone) and the one-mana floor apply to it.
-        if let Some(ability) = game.current_ability(pending.source, pending.ability_index)
-            && let crate::ability::AbilityKind::Activated(activated) = &ability.kind
-            && activated.mana_cost.as_all().is_none_or(|components| {
+        let activated = &original;
+        if activated.mana_cost.as_all().is_none_or(|components| {
                 components
                     .iter()
-                    .any(|component| component.mana_cost_ref().is_some_and(|mana| mana.has_x()))
+                    .any(|component| component.mana_cost_ref().is_some_and(|mana| mana.has_x())
+                        || component.dynamic_mana_cost_ref().is_some_and(|dynamic| dynamic.base.has_x()))
             })
         {
             let locked =
@@ -1551,12 +1661,7 @@ pub(super) fn apply_x_value_response(
                 pending.source,
                 &locked,
                 &pending.chosen_targets,
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    pending.activator,
-                    pending.source,
-                    activated,
-                )),
+                Some(facts),
             );
             let locked_cost = match repriced.kind() {
                 ironsmith_core::TotalCostKind::All(_) => Some(repriced.clone()),
@@ -1647,6 +1752,8 @@ fn finish_special_action_response(
             decision_maker.on_action_cancelled(game, "Special action cancelled");
             Ok(false)
         }
+        Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) =>
+            Err(GameLoopError::ExecutionFailed(error)),
         Err(error) => Err(GameLoopError::InvalidState(format!(
             "Failed special action: {error}"
         ))),

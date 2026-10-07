@@ -64,18 +64,45 @@ impl EffectExecutor for RevealObjects {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
+        crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
+        let mut objects = self.objects.clone();
+        // Authentication precedes every public view and identity-dependent observation.
+        for index in 0..game.players.len() {
+            let owner = PlayerId::from_index(index as u8);
+            let private = objects.iter().filter_map(|snapshot| {
+                game.object(snapshot.object_id)
+                    .filter(|object| object.owner == owner && game.hidden_identity_is_private(object.id))
+                    .map(|object| object.id)
+            }).collect::<Vec<_>>();
+            if private.is_empty() { continue; }
+            let Some(opened) = game.reveal_private_hidden_cards_publicly(
+                &mut *ctx.decision_maker, owner, ctx.source, &private, &self.description, false,
+            ) else {
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                return Err(ExecutionError::IncompleteEvidence("mandatory reveal has no completed opening answer".into()));
+            };
+            if private.iter().any(|id| !opened.contains(id) || game.is_hidden_card_placeholder(*id)) {
+                return Err(ExecutionError::IncompleteEvidence(
+                    "a mandatory public reveal lacks an authenticated selected identity".into()));
+            }
+        }
+        for snapshot in &mut objects {
+            if game.object(snapshot.object_id).is_some_and(|object| object.stable_id == snapshot.stable_id) {
+                *snapshot = ObjectSnapshot::try_from_object_id(game, snapshot.object_id)?
+                    .ok_or_else(|| ExecutionError::IncompleteEvidence("revealed object disappeared during capture".into()))?;
+            }
+        }
         // A view context has one subject and zone; partition mixed selections
         // without changing their original order or publishing other cards.
         let mut groups = Vec::new();
-        for snapshot in &self.objects {
+        for snapshot in &objects {
             let key = (snapshot.owner, snapshot.zone);
             if !groups.contains(&key) {
                 groups.push(key);
             }
         }
         for (owner, zone) in groups {
-            let ids = self
-                .objects
+            let ids = objects
                 .iter()
                 .filter(|snapshot| snapshot.owner == owner && snapshot.zone == zone)
                 .map(|snapshot| snapshot.object_id)
@@ -97,8 +124,7 @@ impl EffectExecutor for RevealObjects {
                 }
             }
         }
-        let ids = self
-            .objects
+        let ids = objects
             .iter()
             .map(|snapshot| snapshot.object_id)
             .collect::<Vec<_>>();
@@ -107,18 +133,17 @@ impl EffectExecutor for RevealObjects {
             .tagged_objects
             .entry(TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
             .or_default();
-        for snapshot in &self.objects {
-            if !public
-                .iter()
-                .any(|existing| existing.object_id == snapshot.object_id)
-            {
+        for snapshot in &objects {
+            if let Some(existing) = public.iter_mut().find(|existing| existing.object_id == snapshot.object_id) {
+                *existing = snapshot.clone();
+            } else {
                 public.push(snapshot.clone());
             }
         }
-        let events = self
-            .objects
+        let events = objects
             .iter()
             .map(|snapshot| {
+                let provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::CardRevealed);
                 public_reveal_observation(
                     self.actor.unwrap_or(snapshot.owner),
                     snapshot.object_id,
@@ -126,14 +151,15 @@ impl EffectExecutor for RevealObjects {
                     ctx.source,
                     Some(snapshot.clone()),
                     self.context_amount,
-                    ctx.provenance,
+                    provenance,
                 )
             })
             .collect::<Vec<_>>();
-        Ok(EffectOutcome::count(self.objects.len() as i32)
+        Ok(EffectOutcome::count(objects.len() as i32)
             .with_events(events)
-            .with_chosen_object_memory(self.objects.clone())
-            .with_affected_object_memory(self.objects.clone()))
+            .with_chosen_object_memory(objects.clone())
+            .with_affected_object_memory(objects.clone()))
+        })
     }
 }
 

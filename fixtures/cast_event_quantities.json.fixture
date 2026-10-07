@@ -1,0 +1,138 @@
+[
+  {
+    "name": "Imminent Doom",
+    "oracle_id": "6ded956d-30ed-49ca-8653-cbaaae676b0c",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "This enchantment enters with a doom counter on it.\nWhenever you cast a spell with mana value equal to the number of doom counters on this enchantment, this enchantment deals that much damage to any target. Then put a doom counter on this enchantment.",
+    "baseline": {
+      "card_name": "Imminent Doom",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "8a3cd0aae01204d3797f69cea119e0c12180809fb56b149daf6a244b5fef9bf6",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "This enchantment enters with a doom counter on it.\nWhenever you cast a spell with mana value equal to the number of doom counters on this enchantment, this enchantment deals that much damage to any target. Then put a doom counter on this enchantment.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "This enchantment enters with a doom counter on it.\nWhenever you cast a spell with mana value equal to the number of doom counters on this enchantment, this enchantment deals that much damage to any target. Then put a doom counter on this enchantment.",
+      "parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: event-derived amount requires a compatible trigger or prior effect",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "This enchantment enters with a doom counter on it.\nWhenever you cast a spell with mana value equal to the number of doom counters on this enchantment, this enchantment deals that much damage to any target. Then put a doom counter on this enchantment.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Namor the Sub-Mariner",
+    "oracle_id": "dff11626-ad4d-443a-b7db-f508790b5fd2",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Legendary Creature — Mutant Merfolk Villain",
+    "power": "*",
+    "toughness": "4",
+    "oracle_text": "Flying\nNamor's power is equal to the number of Merfolk you control.\nWhenever you cast a noncreature spell with one or more blue mana symbols in its mana cost, create that many 1/1 blue Merfolk creature tokens.",
+    "baseline": {
+      "card_name": "Namor the Sub-Mariner",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "d2ceb77300fce81bf1b9110216f8d4840b93b3ae0a9f8aff021871bf02ce010a",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Flying\nNamor's power is equal to the number of Merfolk you control.\nWhenever you cast a noncreature spell with one or more blue mana symbols in its mana cost, create that many 1/1 blue Merfolk creature tokens.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Flying\nNamor's power is equal to the number of Merfolk you control.\nWhenever you cast a noncreature spell with one or more blue mana symbols in its mana cost, create that many 1/1 blue Merfolk creature tokens.",
+      "parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: event-derived amount requires a compatible trigger or prior effect",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Flying\nNamor's power is equal to the number of Merfolk you control.\nWhenever you cast a noncreature spell with one or more blue mana symbols in its mana cost, create that many 1/1 blue Merfolk creature tokens.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+    "validation": "authored_not_run"
+  },
+  {
+    "name": "Voracious Bibliophile",
+    "oracle_id": "dcc323d6-ddae-4fd9-9c9e-466b07895d73",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Dragon",
+    "power": "3",
+    "toughness": "3",
+    "oracle_text": "Flying, vigilance\nWhenever you cast a spell with one or more targets, draw that many cards.",
+    "baseline": {
+      "card_name": "Voracious Bibliophile",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "cedd882cf337ef1340c2efedabbc0d598da8c00b44fe6ad626da7cb09a12e4f5",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Flying, vigilance\nWhenever you cast a spell with one or more targets, draw that many cards.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Flying, vigilance\nWhenever you cast a spell with one or more targets, draw that many cards.",
+      "parse_error": "event-derived amount requires a compatible trigger or prior effect; oracle-only fallback also failed: event-derived amount requires a compatible trigger or prior effect",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: event-derived amount requires a compatible trigger or prior effect",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Flying, vigilance\nWhenever you cast a spell with one or more targets, draw that many cards.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "event-derived amount requires a compatible trigger or prior effect",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    },
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "source_review_commit": "5257004b1b7a24fdc32ee6f3d8c7856717592ac4",
+    "validation": "authored_not_run"
+  }
+]

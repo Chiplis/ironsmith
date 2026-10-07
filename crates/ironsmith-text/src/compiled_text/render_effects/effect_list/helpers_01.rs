@@ -2693,23 +2693,22 @@ pub(crate) fn describe_random_hand_reveal_bundle(filtered: &[&Effect]) -> Option
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
     if !choose.count.random
-        || choose_exact_count(choose) != Some(1)
         || choose_primary_zone(choose) != Some(Zone::Hand)
         || reveal.tag != choose.tag
     {
         return None;
     }
-    let subject = match &choose.chooser {
-        PlayerFilter::You => "You reveal a card at random from your hand",
-        PlayerFilter::Opponent => "Target opponent reveals a card at random from their hand",
+    let selection = describe_choose_selection(choose);
+    let (subject, verb, hand) = match &choose.chooser {
+        PlayerFilter::You => ("You", "reveal", "your"),
+        PlayerFilter::Opponent => ("Target opponent", "reveals", "their"),
         player if is_target_opponent_player_filter(player) => {
-            "Target opponent reveals a card at random from their hand"
+            ("Target opponent", "reveals", "their")
         }
-        PlayerFilter::Target(_) => "Target player reveals a card at random from their hand",
-        PlayerFilter::IteratedPlayer => "That player reveals a card at random from their hand",
-        _ => "That player reveals a card at random from their hand",
+        PlayerFilter::Target(_) => ("Target player", "reveals", "their"),
+        _ => ("That player", "reveals", "their"),
     };
-    Some(subject.to_string())
+    Some(format!("{subject} {verb} {selection} from {hand} hand"))
 }
 
 pub(crate) fn describe_choose_then_reveal_from_hand_bundle(filtered: &[&Effect]) -> Option<String> {

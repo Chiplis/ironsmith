@@ -377,7 +377,7 @@ fn step(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Dm) -> Result<(), Stri
         ironsmith::turn::execute_untap_step(g);
     }
     if g.turn.step == Some(ironsmith::Step::Draw) {
-        for e in ironsmith::turn::execute_draw_step_with(g, dm) {
+        for e in ironsmith::turn::execute_draw_step_with(g, dm).unwrap() {
             for t in ironsmith::triggers::check_triggers(g, &e) {
                 q.add(t);
             }

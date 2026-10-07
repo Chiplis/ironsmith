@@ -22,6 +22,33 @@ pub(super) fn matches_subject(
         Some(bound)
     } else { None };
     let ctx = candidate_context.as_ref().unwrap_or(ctx);
+    if filter.match_captured_public_destination {
+        let mut saw_capture = false;
+        for constraint in filter.tagged_constraints.iter().filter(|constraint|
+            matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject | TaggedOpbjectRelation::SameObjectId))
+        {
+            saw_capture = true;
+            let Some(captured) = ctx.tagged_objects.get(&constraint.tag) else {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "public destination reference has no exact producer collection".into(),
+                ));
+                return false;
+            };
+            if !captured.iter().any(|snapshot| snapshot.object_id == subject.object_id()
+                && snapshot.stable_id == subject.stable_id()
+                && snapshot.zone.is_public()
+                && subject.zone() == snapshot.zone)
+            {
+                return false;
+            }
+        }
+        if !saw_capture {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "public destination reference has no captured object identity".into(),
+            ));
+            return false;
+        }
+    }
     // Specific object check
     if let Some(id) = filter.specific
         && subject.object_id() != id
@@ -386,7 +413,7 @@ pub(super) fn matches_subject(
     }
 
     if filter.suspected
-        && (subject.zone() != Zone::Battlefield || !game.is_suspected(subject.object_id()))
+        && (subject.zone() != Zone::Battlefield || !subject.suspected(game))
     {
         return false;
     }
@@ -795,10 +822,17 @@ pub(super) fn matches_subject(
     if filter.nontoken && subject.is_token() {
         return false;
     }
-    if let Some(require_face_down) = filter.face_down
-        && subject.face_down(game) != require_face_down
-    {
-        return false;
+    if let Some(require_face_down) = filter.face_down {
+        // A prospective cast has a selected object view before its public
+        // status is installed. Use that view only for this exact candidate;
+        // ordinary battlefield and historical filters retain public status.
+        let face_down = match subject {
+            ObjectSubject::Live(object) if ctx.prospective_cast == Some(object.id) => {
+                object.face_down_cast_state.is_some()
+            }
+            _ => subject.face_down(game),
+        };
+        if face_down != require_face_down { return false; }
     }
     if filter.foretold && !game.is_foretold(subject.object_id()) {
         return false;
@@ -1224,7 +1258,7 @@ pub(super) fn matches_subject(
 
     // Mana value check
     if let Some(mv_cmp) = &filter.mana_value {
-        let mv = subject.mana_value();
+        let mv = subject.mana_value(game);
         let satisfied = if mv_cmp.references_filter_candidate() {
             // The operand is relative to this candidate ("cards in its
             // controller's graveyard"), so bind the candidate's players.
@@ -1244,7 +1278,7 @@ pub(super) fn matches_subject(
         }
     }
     if let Some(mana_value_parity) = filter.mana_value_parity {
-        let mv = subject.mana_value();
+        let mv = subject.mana_value(game);
         if !mana_value_parity.matches(mv, game, ctx) {
             return false;
         }
@@ -1257,13 +1291,13 @@ pub(super) fn matches_subject(
             return false;
         };
         let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
-        let mv = subject.mana_value();
+        let mv = subject.mana_value(game);
         if mv != required {
             return false;
         }
     }
     if let Some(required_cost) = &filter.exact_mana_cost
-        && subject.mana_cost() != Some(required_cost)
+        && subject.mana_cost(game) != Some(required_cost)
     {
         return false;
     }
@@ -1280,13 +1314,22 @@ pub(super) fn matches_subject(
             && (filter.zone == Some(Zone::Stack)
                 || filter.stack_kind == Some(StackObjectKind::Spell)))
     {
-        match subject.mana_cost() {
+        match subject.mana_cost(game) {
             Some(mc) if !mc.is_empty() => {} // Has a mana cost, OK
             _ => return false,               // No mana cost or empty
         }
     }
+    if let Some((color, count)) = filter.mana_symbol_count {
+        let symbol = crate::mana::ManaSymbol::from_color(color);
+        let actual = subject.mana_cost(game).map_or(0, |cost| {
+            cost.pips().iter().filter(|pip| pip.contains(&symbol)).count()
+        });
+        if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
+            return false;
+        }
+    }
     if filter.has_phyrexian_mana_symbol
-        && !subject.mana_cost().is_some_and(|cost| {
+        && !subject.mana_cost(game).is_some_and(|cost| {
             cost.pips().iter().any(|pip| {
                 pip.iter()
                     .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
@@ -1298,12 +1341,12 @@ pub(super) fn matches_subject(
 
     // No X in cost check
     if filter.no_x_in_cost
-        && let Some(mc) = subject.mana_cost()
+        && let Some(mc) = subject.mana_cost(game)
         && mc.has_x()
     {
         return false;
     }
-    if filter.has_x_in_cost && !subject.mana_cost().is_some_and(|cost| cost.has_x()) {
+    if filter.has_x_in_cost && !subject.mana_cost(game).is_some_and(|cost| cost.has_x()) {
         return false;
     }
 
@@ -1364,9 +1407,10 @@ fn stack_object_would_destroy_matching(
             let program = if entry.is_ability {
                 entry.ability_effects.clone()
             } else {
-                game.object(entry.object_id)
-                    .and_then(|object| object.spell_effect.as_ref())
-                    .map(|program| (**program).clone())
+                match checked_spell_program_for_filter(game, entry.object_id) {
+                    Ok(program) => Some(program),
+                    Err(_) => None, // Propagated through the checked-action latch.
+                }
             };
             let Some(program) = program else {
                 return false;

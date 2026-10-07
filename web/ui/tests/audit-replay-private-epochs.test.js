@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { startAuditTranscriptReplayWithGame, applyAuditReplayActionWithGame } from '../src/lib/audit-replay.js';
 import { buildZiffleInputDeck } from '../src/lib/ziffle-private-epochs.js';
+import { CURRENT_AUDIT_PROTOCOL_VERSION, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION } from '../src/lib/multiplayer-audit.js';
 
 async function fixture({ disclose = true, inputOverride = null, fairRandomFirst = false } = {}) {
   const genesis = { owner: 0, deckCount: 8, deckHash: 'genesis', context: 'private-replay', steps: [] };
@@ -25,7 +26,7 @@ async function fixture({ disclose = true, inputOverride = null, fairRandomFirst 
   const game = {
     startMatch: async () => {}, setPerspective: async () => {},
     getHiddenCardState: async () => ({ objects: [] }),
-    exportPublicAuditCheckpoint: async () => ({}),
+    exportPublicAuditCheckpoint: async () => ({ version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION }),
     previewCryptoRequirements: async () => {
       calls.push(['preview', queued.length, openings.length]);
       if (!randomReady) return [{ type: 'fair_random', id: 'coin-flip' }];
@@ -45,7 +46,8 @@ async function fixture({ disclose = true, inputOverride = null, fairRandomFirst 
     revealHiddenPosition: async () => { throw new Error('Future output does not exist before the shuffle boundary'); },
     dispatch: async command => calls.push(['dispatch', command]),
   };
-  const transcript = { match: { protocolVersion: 15, players: [{ index: 0 }, { index: 1 }], ziffleCeremonies: [genesis] } };
+  const transcript = { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+    match: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, players: [{ index: 0 }, { index: 1 }], ziffleCeremonies: [genesis] } };
   await startAuditTranscriptReplayWithGame({ game, transcript });
   const action = { seq: 1, command: { type: 'priority_action', action_ref: { kind: 'pass_priority' } },
     audit: { seq: 1, shuffleProofs: [first, second], openings: [opening],

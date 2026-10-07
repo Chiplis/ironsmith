@@ -450,7 +450,7 @@ fn parse_activation_cost_cst_tokens(
             segments,
             alternative_branches: Vec::new(),
             is_loyalty_shorthand: true,
-            waterbend_generic: None,
+            waterbend_cost: None,
         });
     }
 
@@ -473,7 +473,7 @@ fn parse_activation_cost_cst_tokens(
                     segments: Vec::new(),
                     alternative_branches: vec![left, right],
                     is_loyalty_shorthand: false,
-                    waterbend_generic: None,
+                    waterbend_cost: None,
                 });
             }
         }
@@ -481,6 +481,8 @@ fn parse_activation_cost_cst_tokens(
 
     let mut segments = Vec::new();
     for segment_tokens in split_activation_cost_segments_tokens(tokens) {
+        let waterbend = first_non_comma_token_index(&segment_tokens)
+            .is_some_and(|start| token_slice_at_is(&segment_tokens, start, "waterbend"));
         let segment_tokens = trim_activation_cost_segment_tokens(&segment_tokens);
         if segment_tokens.is_empty() {
             continue;
@@ -495,7 +497,7 @@ fn parse_activation_cost_cst_tokens(
         }
 
         let segment = render_trimmed_lexed_tokens(segment_tokens);
-        let parsed = if is_exile_it_cost_segment(segment_tokens)
+        let mut parsed = if is_exile_it_cost_segment(segment_tokens)
             && segments
                 .last()
                 .is_some_and(cost_segment_preserves_source_identity)
@@ -516,6 +518,15 @@ fn parse_activation_cost_cst_tokens(
                 segment,
             ))
         })?;
+        if waterbend {
+            let ActivationCostSegmentCst::Mana(cost) = &mut parsed else {
+                return Err(CardTextError::ParseError("waterbend requires a generic or X cost".into()));
+            };
+            if cost.pips().iter().any(|pip| !matches!(pip.as_slice(), [ManaSymbol::Generic(_) | ManaSymbol::X])) {
+                return Err(CardTextError::ParseError("waterbend requires a generic or X cost".into()));
+            }
+            *cost = cost.clone().with_waterbend();
+        }
         segments.push(parsed);
     }
 
@@ -525,25 +536,17 @@ fn parse_activation_cost_cst_tokens(
         ));
     }
 
-    let waterbend_generic = first_non_comma_token_index(tokens)
-        .filter(|start| token_slice_at_is(tokens, *start, "waterbend"))
-        .and_then(|_| match segments.as_slice() {
-            [ActivationCostSegmentCst::Mana(cost)] => match cost.pips() {
-                [pip] => match pip.as_slice() {
-                    [ManaSymbol::Generic(amount)] => Some(u32::from(*amount)),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
-        });
+    let waterbend_cost = segments.iter().find_map(|segment| match segment {
+        ActivationCostSegmentCst::Mana(cost) if cost.has_waterbend_obligation() => Some(cost.clone()),
+        _ => None,
+    });
 
     Ok(ActivationCostCst {
         raw: trimmed_raw.to_string(),
         segments,
         alternative_branches: Vec::new(),
         is_loyalty_shorthand: false,
-        waterbend_generic,
+        waterbend_cost,
     })
 }
 

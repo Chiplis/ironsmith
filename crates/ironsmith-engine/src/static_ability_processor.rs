@@ -386,13 +386,29 @@ fn source_abilities(
                 .unwrap_or_else(|| object.abilities.clone().into())
         }).clone()
     } else { object.abilities.clone().into() };
-    for (index, grant) in object.temporary_static_ability_grants.iter().enumerate() {
+    // A later host timestamp makes its granted effects share that timestamp.
+    // Keep their prior acquisition order even when component merge storage is
+    // arranged differently (CR 613.7a). The registered slots/origins are intact.
+    let mut grants: Vec<_> = object.temporary_static_ability_grants.iter().enumerate().collect();
+    grants.sort_by_key(|(index, _)| object.temporary_static_ability_grants
+        .origin(*index).expect("temporary grant has a paired origin").acquired_at());
+    for (index, grant) in grants {
         if grant.is_expired(game.turn.turn_number) { continue; }
         let Some(ability) = grant.materialize() else { continue; };
         let origin = object.temporary_static_ability_grants.origin(index)
             .expect("temporary grant has a paired origin").clone();
-        abilities.push_with_origin(crate::ability::Ability::static_ability(ability),
-            crate::continuous::AbilityOrigin::Temporary(origin));
+        // A temporary grant is not printed/copied rules text. Color setters
+        // use the host's ordinary zone (CR 113.6), not a CDA's all-zone default.
+        // Other grant families keep their existing policy.
+        let is_color_definition = ability.characteristic_defining_colors().is_some();
+        let ability = crate::ability::Ability::static_ability(ability);
+        let ability = if is_color_definition {
+            let zone = if object.has_card_type(crate::types::CardType::Instant)
+                || object.has_card_type(crate::types::CardType::Sorcery)
+            { Zone::Stack } else { Zone::Battlefield };
+            ability.in_zones(vec![zone])
+        } else { ability };
+        abilities.push_with_origin(ability, crate::continuous::AbilityOrigin::Temporary(origin));
     }
     abilities
 }
@@ -415,22 +431,32 @@ fn generate_direct_static_effects(
             continue;
         }
         let mut ability_effects = static_ability.generate_effects(object_id, controller, game);
-        let object_timestamp = game
-            .effect_store
-            .continuous_effects
+        let origin = abilities.origin(slot).expect("static source has paired origins").clone();
+        let acquired_at = match &origin {
+            crate::continuous::AbilityOrigin::Temporary(origin) => origin.acquired_at(),
+            _ => None,
+        };
+        let object_timestamp = game.effect_store.continuous_effects
             .get_object_timestamp(object_id);
+        // CR 613.7a: a granted static effect uses the later of its object's
+        // timestamp and the timestamp of the effect that created the ability.
+        let timestamp = match (object_timestamp, acquired_at) {
+            (Some(object), Some(grant)) => Some(object.max(grant)),
+            (object, grant) => object.or(grant),
+        };
         for (branch, effect) in ability_effects.iter_mut().enumerate() {
-            if let Some(ts) = object_timestamp {
+            if let Some(ts) = timestamp {
                 effect.timestamp = ts;
             }
             effect.originating_static_ability = Some(static_ability.clone());
-            let origin = abilities.origin(slot).expect("static source has paired origins").clone();
             let face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_))
                 .then_some(object.card).flatten();
             effect.originating_ability = Some(Box::new(crate::continuous::ContinuousAbilityOrigin {
-                host: object_id, ability: origin, printed_face: face, branch,
+                host: object_id, ability: origin.clone(), printed_face: face, branch,
             }));
-            if effect_is_characteristic_defining(effect, object_id) {
+            if effect.originating_ability.as_ref().is_some_and(|origin| origin.ability.is_rules_text())
+                && effect_is_characteristic_defining(effect, object_id)
+            {
                 effect.source_type = EffectSourceType::CharacteristicDefining;
             }
         }
@@ -455,13 +481,7 @@ fn effect_is_characteristic_defining(effect: &ContinuousEffect, source: ObjectId
         EffectTarget::Source => true,
         EffectTarget::Specific(id) => *id == source,
         // "~ is colorless" compiles to a filter that names only the source.
-        EffectTarget::Filter(filter) => {
-            filter.source && {
-                let mut source_only = crate::target::ObjectFilter::source();
-                source_only.source_surface = filter.source_surface.clone();
-                *filter == source_only
-            }
-        }
+        EffectTarget::Filter(filter) => filter.is_source_only(),
         _ => false,
     };
     if !applies_to_self {
@@ -645,6 +665,7 @@ fn registered_grant_may_emit_late_effects(effect: &ContinuousEffect) -> bool {
     use crate::continuous::Modification;
     match &effect.modification {
         Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+        Modification::SetAbilities(abilities) => abilities.iter().any(crate::linked_exile::is_class_linked_exile_wrapper),
         Modification::AddAbilityGeneric(ability) => match &ability.kind {
             AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
             _ => false,
@@ -698,6 +719,14 @@ fn generate_granted_late_static_effects(
             }
             if let Some(source) = originating_source
                 && matches!(effect.applies_to, EffectTarget::Source)
+                && !crate::continuous::AbilityEffectOrigin::is_class_linked_exile_effect(&effect)
+                && !(crate::continuous::AbilityEffectOrigin::is_source_class_level_effect(&effect)
+                    && registered.iter().any(|registered| {
+                        matches!(&origin, crate::continuous::AbilityOrigin::Effect { effect, .. }
+                            if *effect == crate::continuous::AbilityEffectOrigin::from(registered))
+                            && matches!(&registered.modification, Modification::SetAbilities(abilities)
+                                if abilities.iter().any(crate::linked_exile::is_class_linked_exile_wrapper))
+                    }))
             {
                 // A static ability granted by another permanent keeps that
                 // permanent as the source for source-relative filters (for
@@ -765,6 +794,7 @@ impl Default for StaticEffectDiscoveryLimits {
 /// engine computation boundary, not a Magic dependency cycle or game result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticEffectDiscoveryError {
+    TextChangeDomain(crate::continuous::text_changes::TextChangeDomainError),
     RoundLimit { maximum: usize, generated_effects: usize },
     EffectLimit { maximum: usize, completed_rounds: usize },
     MissingGeneratingOrigin { host: ObjectId },
@@ -772,11 +802,13 @@ pub enum StaticEffectDiscoveryError {
     UnavailableCharacteristics { object: ObjectId },
     /// An existing signed scalar cannot represent this exact quantity.
     ScalarRange { resource: &'static str, value: i128 },
+    NumericChoiceEvidence { detail: &'static str },
 }
 
 impl std::fmt::Display for StaticEffectDiscoveryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::TextChangeDomain(error) => write!(f, "text-changing model domain is incomplete: {error}"),
             Self::RoundLimit { maximum, generated_effects } => write!(f,
                 "static-effect discovery did not converge within {maximum} rounds ({generated_effects} generated effects)"),
             Self::EffectLimit { maximum, completed_rounds } => write!(f,
@@ -787,6 +819,7 @@ impl std::fmt::Display for StaticEffectDiscoveryError {
                 "continuous source-controller context unavailable for {source:?}"),
             Self::ScalarRange { resource, value } => write!(f,
                 "{resource} value {value} exceeds the engine's signed scalar representation"),
+            Self::NumericChoiceEvidence { detail } => write!(f,"numeric choice evidence unavailable: {detail}"),
             Self::UnavailableCharacteristics { object } => write!(f,
                 "continuous characteristics unavailable for existing object {object:?}"),
         }
@@ -910,7 +943,9 @@ pub fn try_generate_continuous_effects_from_static_abilities(
                 .any(|effect| effect.modification.layer() == Layer::PowerToughness)
                 || game.objects_map().values().any(|object|
                     object.counters.iter().any(|(counter, count)| *count != 0 && counter.pt_delta().is_some()));
-            if has_pt {
+            let has_text_rewrite = registered.iter().chain(effects.iter())
+                .any(|effect| matches!(effect.modification, Modification::RewriteText(_)));
+            if has_pt || has_text_rewrite {
                 let mut complete = registered.clone(); complete.extend(effects.iter().cloned());
                 validate_final_pt_characteristics(game, &complete)?;
             }
@@ -2724,4 +2759,34 @@ fn controller_bound_grant_prefix_preserves_control_dependency_order() {
     assert_eq!(game.object(grantor).unwrap().owner, charlie);
 }
 
+}
+
+
+#[test]
+fn typed_text_domain_failure_is_checked_without_a_power_toughness_effect() {
+    use crate::{card::CardBuilder, ids::{CardId, PlayerId}, types::CardType};
+    #[derive(Debug, Clone)]
+    struct UnmodeledWords;
+    impl crate::effects::EffectExecutor for UnmodeledWords {
+        fn execute(&self, _: &mut GameState, _: &mut crate::effects::ExecutionContext)
+            -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
+        { Ok(crate::effect::EffectOutcome::resolved()) }
+    }
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let controller = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Unmodeled text witness")
+        .card_types(vec![CardType::Creature]).build();
+    let id = game.create_object_from_card(&card, controller, Zone::Battlefield);
+    game.object_mut(id).unwrap().abilities = std::sync::Arc::new(vec![crate::ability::Ability::activated(
+        crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords)])]);
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+        id, controller, vec![id], Modification::RewriteText(
+            ironsmith_core::TextChange::color(crate::color::Color::Red, crate::color::Color::Blue).unwrap())));
+    let revision = game.effect_store.continuous_effects.revision();
+    assert!(matches!(try_generate_continuous_effects_from_static_abilities(&game, Default::default()),
+        Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert!(matches!(game.update_static_ability_effects(), Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert!(matches!(game.continuous_query_snapshot(), Err(StaticEffectDiscoveryError::TextChangeDomain(_))));
+    assert_eq!(game.effect_store.continuous_effects.revision(), revision);
+    assert!(!game.continuous_state_is_clean_public());
 }

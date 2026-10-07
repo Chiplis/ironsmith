@@ -505,6 +505,7 @@ pub fn lower_parsed_modal(
             )?;
         builder = builder.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: activated.keyword,
                 mana_cost,
                 effects: combined_effects.clone(),
                 choices: prefix_choices,

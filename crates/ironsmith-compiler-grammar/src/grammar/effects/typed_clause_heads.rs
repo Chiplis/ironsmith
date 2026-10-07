@@ -276,6 +276,8 @@ fn is_structural_action(word: &str) -> bool {
             | "surveils"
             | "suspect"
             | "suspects"
+            | "take"
+            | "takes"
             | "venture"
             | "ventures"
     )
@@ -289,4 +291,24 @@ fn clause_span(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
         start: first.span.start,
         end: last.span.end,
     })
+}
+
+#[cfg(test)]
+mod extra_turn_head_tests {
+    use super::*;
+
+    #[test]
+    fn take_and_takes_allow_the_shared_action_dispatch() {
+        for text in [
+            "Take two extra turns after this one.",
+            "You take an extra turn after this one.",
+            "Target player takes an extra turn after this one.",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let ParseOutcome::Match(matched) = classify_typed_clause_head(&tokens) else {
+                panic!("extra-turn head did not match: {text}");
+            };
+            assert!(matched.value.permits_action_fallback());
+        }
+    }
 }

@@ -46,6 +46,7 @@ pub enum GrantActionAst {
         max_plays: Option<u32>,
     },
     GrantPlayTaggedForAsLongAsExiled {
+        permission_bound_mana: bool,
         tag: TagRef,
         player: PlayerAst,
         allow_land: bool,
@@ -114,5 +115,15 @@ pub enum GrantActionAst {
     GrantNextSpellAbilityThisTurn {
         filter: ObjectFilter,
         ability: Box<GrantedAbilityAst>,
+        mode: ironsmith_core::NextSpellGrantMode,
     },
+    /// A resolving permission with a fixed beneficiary and exact source lifetime.
+    GrantPlayTaggedWhileSourceOnBattlefield {
+        tag: TagRef,
+        player: PlayerAst,
+        allow_land: bool,
+        without_paying_mana_cost: bool,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+    },
+
 }

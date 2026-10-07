@@ -20,6 +20,28 @@ impl EffectExecutor for LookAtObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.permit_while_exiled {
+            let [reference] = self.filter.tagged_constraints.as_slice() else {
+                return Err(ExecutionError::IncompleteEvidence("private exile permission has no single exact antecedent".into()));
+            };
+            let mut remaining = self.filter.clone(); remaining.tagged_constraints.clear(); remaining.zone = None;
+            if self.filter.zone != Some(Zone::Exile)
+                || reference.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+                || reference.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
+                || remaining != crate::target::ObjectFilter::default()
+            { return Err(ExecutionError::IncompleteEvidence("private exile permission has an unsupported object scope".into())); }
+            let snapshots = ctx.get_tagged_all(&reference.tag).cloned().ok_or_else(||
+                ExecutionError::IncompleteEvidence("private exile permission lost its exact antecedent".into()))?;
+            let viewers = resolve_player_filter_to_list(game, &self.viewer, &ctx.filter_context(game), ctx)?;
+            let mut entitled = 0;
+            for snapshot in snapshots {
+                if snapshot.zone != Zone::Exile || !game.object(snapshot.object_id).is_some_and(|object| object.zone == Zone::Exile)
+                    || !game.is_face_down(snapshot.object_id) { continue; }
+                for viewer in &viewers { game.grant_face_down_exile_view(snapshot.object_id, *viewer); }
+                entitled += 1;
+            }
+            return Ok(EffectOutcome::count(entitled));
+        }
         let filter_ctx = ctx.filter_context(game);
         let subjects = match resolve_player_filter_to_list(game, &self.subject, &filter_ctx, ctx) {
             Ok(subjects) => subjects,

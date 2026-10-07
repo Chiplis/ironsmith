@@ -131,6 +131,12 @@ pub fn resolve_condition_from_predicate(
             }
             Condition::TaggedObjectMatches(resolved_tag, resolved)
         }
+        PredicateAst::TaggedMatchedLastKnown(tag, filter) => {
+            let resolved_tag = resolve_it_tag_key(tag, &refs)?;
+            let mut resolved = resolve_it_tag(filter, &refs)?;
+            resolved.zone = None;
+            Condition::TaggedObjectMatchedLastKnown(resolved_tag, resolved)
+        }
         PredicateAst::TaggedWasCast(tag) => match resolve_it_tag_key(tag, &refs) {
             Ok(resolved_tag) => Condition::TaggedObjectWasCast(resolved_tag),
             // "When this creature enters, if it was cast, ..." (Doomsday
@@ -154,6 +160,8 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep) => {
             Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::CombatParticipant(condition)) =>
+            Condition::CombatParticipant(*condition),
         PredicateAst::Triggering(TriggeringPredicateAst::TriggeringEventCausedBy { controller, effect_like_only }) =>
             Condition::TriggeringEventCausedBy { controller: controller.clone(), effect_like_only: *effect_like_only },
         PredicateAst::Triggering(
@@ -699,6 +707,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn) => {
             Condition::SourceCameUnderYourControlThisTurn
         }
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat) => {
+            Condition::SourceAttackedOrBlockedThisCombat
+        }
         PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn) => {
             Condition::SourceAttackedOrBlockedThisTurn
         }
@@ -851,6 +862,8 @@ pub fn resolve_condition_from_predicate(
             }
         },
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
+        PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)) =>
+            Condition::ThisAbilityActivatedThisTurnAtLeast(*count),
         PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(
             count,
         )) => Condition::ThisAbilityResolvedThisTurnExactly(*count),
@@ -903,6 +916,7 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
         PredicateAst::ThisSpellWasCastFromNonHand => Condition::ThisSpellWasCastFromNonHand,
+        PredicateAst::ThisSpellWasForetold => Condition::ThisSpellWasForetold,
         PredicateAst::TurnHistory(predicate) => Condition::TurnHistory(match predicate {
             TurnHistoryPredicateAst::SpellsCastLastTurnAtLeast(count) => {
                 ironsmith_core::TurnHistoryCondition::SpellsCastLastTurnAtLeast(*count)

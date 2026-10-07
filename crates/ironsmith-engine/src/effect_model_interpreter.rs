@@ -362,6 +362,7 @@ where
             payload.count.clone(),
             payload.controller.clone(),
         );
+        converted.text_roles = payload.text_roles.clone();
         converted.controller_target = payload.controller_target.clone();
         if payload.use_source_chosen_color {
             converted = converted.with_source_chosen_color();
@@ -590,7 +591,7 @@ where
                 payload.player.clone(),
                 payload.filter.clone(),
                 hooks.runtime_ability_hook(payload.ability.clone())?,
-            ),
+            ).with_mode(payload.mode),
         ));
     }
     if let Some(payload) = M::downcast_ref::<
@@ -842,6 +843,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::ChangeTextEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::ExchangeTextBoxesEffect>(&effect)
     {
@@ -995,7 +999,7 @@ where
         } else {
             crate::effects::MayEffect::new(effects)
         };
-        return Ok(Effect::new(converted));
+        return Ok(Effect::new(converted.with_pay_as_cost(payload.pay_as_cost)));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RevealTopEffect>(&effect) {
         return Ok(converted);
@@ -1004,6 +1008,11 @@ where
         clone_direct_effect::<M, crate::effects::TagAttachedToSourceEffect>(&effect)
     {
         return Ok(converted);
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::CollectManaPaymentsEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::CollectManaPaymentsEffect::new(
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+        )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ForPlayersEffect<M::Effect>>(&effect) {
         let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
@@ -1046,10 +1055,11 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedPlayerEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::ForEachTaggedPlayerEffect::new(
-            payload.tag.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-        )));
+        let mut runtime = crate::effects::ForEachTaggedPlayerEffect::new(
+            payload.tag.clone(), convert_effects(payload.effects.iter().cloned(), hooks)?,
+        );
+        runtime.require_evidence = payload.require_evidence;
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::VoteEffect<M::Effect>>(&effect) {
         let converted = match &payload.choice {
@@ -1410,13 +1420,15 @@ where
         } else {
             crate::effects::RedirectNextTimeDamageToSourceEffect {
                 source,
+                combat_only: payload.combat_only,
                 target: None,
                 destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
                 destination_target: None,
                 all_this_turn: false,
             }
         };
-        let effect = match payload.destination {
+        let mut effect = match payload.destination {
+            ironsmith_core::RedirectNextTimeDamageDestination::DamageSource => effect.to_damage_source(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceObject => effect,
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
@@ -1431,6 +1443,7 @@ where
                 effect.to_target(target)
             }
         };
+        effect.combat_only = payload.combat_only;
         let effect = if payload.all_this_turn {
             effect.all_this_turn()
         } else {
@@ -1502,6 +1515,7 @@ where
             grant = grant.with_filter(filter);
         }
         grant.spell_filter = payload.spell_filter.clone();
+        grant.permission_bound_mana = payload.permission_bound_mana;
         grant.alternative_cost = payload
             .alternative_cost
             .clone()
@@ -1925,19 +1939,22 @@ where
             }
         };
         runtime.count = payload.count;
+        runtime.repeat_until_loss = payload.repeat_until_loss;
+        runtime.stop_condition = payload.stop_condition;
+        runtime.loss_action = payload.loss_action;
+        runtime.opponent_results = payload.opponent_results.clone();
+        runtime.count_value = payload.count_value.clone();
         runtime.forced_face = payload.forced_face;
         runtime.forced_winner = payload.forced_winner.clone();
         runtime.forced_loser = payload.forced_loser.clone();
         return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDieEffect>(&effect) {
-        return Ok(Effect::new(
-            crate::effects::RollDieEffect::new_with_die_text(
-                payload.player.clone(),
-                payload.sides,
-                payload.die_text.clone(),
-            ),
-        ));
+        let mut runtime = crate::effects::RollDieEffect::new_with_die_text(
+            payload.player.clone(), payload.sides, payload.die_text.clone(),
+        );
+        runtime.result_modifier = payload.result_modifier.clone();
+        return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDiceChooseResultEffect>(&effect) {
         return Ok(Effect::new(
@@ -2310,6 +2327,7 @@ where
         crate::effects::RemoveCountersEffect,
         crate::effects::ReorderLibraryTopEffect,
         crate::effects::RetainManaUntilEndOfTurnEffect,
+        crate::effects::TurnFaceDownEffect,
         crate::effects::TurnFaceUpEffect,
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
@@ -2355,7 +2373,7 @@ pub fn prune_redundant_target_only_effects_in_program(
             ));
         }
     }
-    *program = crate::resolution::ResolutionProgram::new(segments);
+    program.replace_segments(segments);
 }
 
 fn convert_effect_mode<M, H>(

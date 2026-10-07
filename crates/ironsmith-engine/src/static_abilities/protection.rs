@@ -76,6 +76,17 @@ fn describe_color_set(colors: crate::color::ColorSet) -> String {
 }
 
 impl StaticAbilityKind for Protection {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::protection(self.from.clone()))
+    }
+
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let from = crate::continuous::text_changes::rewrite_protection_words(&self.from, change)?;
+        Ok((from != self.from).then(|| super::StaticAbility::new(Self { from })))
+    }
+
     // Protection is queried directly by targeting, blocking, attachment and
     // damage prevention. It does not emit continuous effects.
     fn may_generate_continuous_effects(&self) -> bool {
@@ -96,6 +107,9 @@ impl StaticAbilityKind for Protection {
                     format!("Protection from {}", described)
                 }
             }
+            ProtectionFrom::OwnColors => "Protection from each of its colors".to_string(),
+            ProtectionFrom::ColorsAmong { filter, .. } | ProtectionFrom::ColorsAmongAtResolution(filter) => format!(
+                "Protection from each color among {}", describe_protection_mana_value_scope(filter)),
             ProtectionFrom::AllColors => "Protection from all colors".to_string(),
             ProtectionFrom::Colorless => "Protection from colorless".to_string(),
             ProtectionFrom::Everything => "Protection from everything".to_string(),
@@ -168,6 +182,20 @@ impl StaticAbilityKind for Protection {
         game: &crate::game_state::GameState,
         ctx: &mut crate::effects::ExecutionContext<'_>,
     ) -> Result<Option<super::StaticAbility>, crate::effects::ExecutionError> {
+        if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
+            let context = ctx.filter_context(game);
+            let mut colors = crate::color::ColorSet::new();
+            for &id in &game.battlefield {
+                if game.is_phased_out(id) { continue; }
+                let Some(chars) = game.try_current_characteristics(id)
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? else { continue; };
+                if game.object(id).is_some_and(|object| {
+                    use crate::filter::ObjectFilterExt as _;
+                    filter.matches(object, &context, game)
+                }) { colors = colors.union(chars.colors); }
+            }
+            return Ok(Some(super::StaticAbility::protection(ProtectionFrom::Color(colors))));
+        }
         let ProtectionFrom::ColorsOf(spec) = &self.from else {
             return Ok(None);
         };
@@ -221,7 +249,9 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         if ctx.source != Some(target) || damage.amount == 0 {
             return false;
         }
-        let subject = if let Some(object) = ctx.game.object(damage.source) {
+        let subject = if let Some(object) = ctx.game.object(damage.source)
+            && !ctx.game.is_phased_out(damage.source)
+        {
             crate::filter::ObjectSubject::Live(object)
         } else if let Some(snapshot) = ctx
             .event_source_snapshot
@@ -229,6 +259,26 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         {
             crate::filter::ObjectSubject::Snapshot(snapshot)
         } else {
+            // Every source-dependent quality needs actual characteristics.
+            // An absent object with no retained snapshot is incomplete
+            // evidence, never permission to damage through protection.
+            let needs_evidence = match &self.0 {
+                ProtectionFrom::Everything => return true,
+                ProtectionFrom::Color(colors) => !colors.is_empty(),
+                ProtectionFrom::ColorsOf(_) | ProtectionFrom::ColorsAmongAtResolution(_) => false,
+                ProtectionFrom::ChosenColor => ctx.game.chosen_color(target).is_some(),
+                ProtectionFrom::ChosenPlayer => ctx.game.chosen_player(target).is_some(),
+                ProtectionFrom::Permanents(filter) if filter.mana_value_parity.is_some() => {
+                    use crate::filter::ParityRequirementRuntimeExt as _;
+                    filter.mana_value_parity.and_then(|parity| parity.resolve(ctx.game, Some(target))).is_some()
+                }
+                _ => true,
+            };
+            if needs_evidence {
+                ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "protection requires the exact damage source or its last-known snapshot".into(),
+                ));
+            }
             return false;
         };
         let view = crate::derived_view::DerivedGameView::new(ctx.game);
@@ -270,8 +320,17 @@ fn pluralize_leading_subject(description: &str) -> Option<String> {
 }
 
 fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
+    if let Some(quality) = filter.protection_mana_value_parity_quality() {
+        return quality.to_string();
+    }
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
+    }
+    if *filter == ObjectFilter::default().monocolored() {
+        return "monocolored".to_string();
+    }
+    if *filter == ObjectFilter::default().with_supertype(crate::types::Supertype::Snow) {
+        return "snow".to_string();
     }
     if *filter == ObjectFilter::default().multicolored() {
         return "multicolored".to_string();
@@ -448,6 +507,16 @@ fn all_magic_colors() -> crate::color::ColorSet {
 }
 
 impl StaticAbilityKind for HexproofFrom {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::hexproof_from(self.filter.clone()))
+    }
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let filter = crate::continuous::text_change_predicates::rewrite_filter_words(&self.filter, change)?;
+        Ok((filter != self.filter).then(|| super::StaticAbility::new(Self { filter })))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::HexproofFrom
     }
@@ -520,26 +589,6 @@ impl Ward {
     }
 }
 
-fn ward_waterbend_generic(cost: &crate::cost::TotalCost) -> Option<u32> {
-    let ironsmith_core::TotalCostKind::OneOf(branches) = cost.kind() else {
-        return None;
-    };
-    branches.iter().find_map(|branch| {
-        let ironsmith_core::TotalCostKind::All(costs) = branch.kind() else {
-            return None;
-        };
-        costs.iter().find_map(|cost| {
-            let effect = cost.downcast_ref::<crate::costs::CostEffect>()?.effect();
-            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-            choose
-                .tag
-                .as_str()
-                .strip_prefix("waterbend_cost_")?
-                .parse::<u32>()
-                .ok()
-        })
-    })
-}
 
 impl StaticAbilityKind for Ward {
     // Ward is handled when an object becomes targeted. It does not emit
@@ -561,10 +610,9 @@ impl StaticAbilityKind for Ward {
     }
 
     fn display(&self) -> String {
-        // Waterbend's expanded tap branches are the executable payment model;
-        // the authored keyword is the public cost surface.
-        if let Some(generic) = ward_waterbend_generic(&self.cost) {
-            return format!("Ward—Waterbend {{{generic}}}.");
+        if self.cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+            .any(|cost| cost.has_waterbend_obligation()) {
+            return format!("Ward—{}.", self.cost.display());
         }
         // Mana-only ward uses a space ("Ward {2}"); ward with any non-mana cost
         // uses an em dash ("Ward—Discard a card").
@@ -698,7 +746,17 @@ pub(crate) fn bind_chosen_protection_qualities(
     ability: &super::StaticAbility,
     game: &crate::game_state::GameState,
     chooser_source: crate::ids::ObjectId,
+    static_grant: bool,
 ) -> Option<super::StaticAbility> {
+    if static_grant
+        && let Some(ProtectionFrom::ColorsAmong { filter, reference_source: None }) = ability.protection_from()
+    {
+        // Bind the exact granting object, not a controller snapshot or the
+        // receiving creature. Later control and population changes are live.
+        return Some(super::StaticAbility::protection(ProtectionFrom::ColorsAmong {
+            filter: filter.clone(), reference_source: Some(chooser_source),
+        }));
+    }
     // "Protection from the chosen color" granted by a spell or another
     // permanent (Brave the Elements, Ward Sliver): the color is the one
     // chosen for the granting object, not for the protected creature.
@@ -748,6 +806,20 @@ pub(crate) fn bind_chosen_filter_qualities(
 ) -> Option<ObjectFilter> {
     let mut bound = filter.clone();
     let mut changed = false;
+    // A granted choice-dependent quality belongs to the granting object.
+    // Bind it before the recipient's own choice context could replace it.
+    if let Some(parity @ (ironsmith_core::ParityRequirement::Chosen | ironsmith_core::ParityRequirement::NotChosen)) = bound.mana_value_parity {
+        use crate::filter::ParityRequirementRuntimeExt as _;
+        if let Some(resolved) = parity.resolve(game, Some(chooser_source)) {
+            bound.mana_value_parity = Some(resolved);
+        } else {
+            // An unchosen grantor grants protection from no mana values. Do
+            // not leave a relative choice for the recipient to supply later.
+            bound.mana_value_parity = None;
+            bound.mana_value = Some(crate::filter::Comparison::OneOf(Vec::new()));
+        }
+        changed = true;
+    }
     if bound.chosen_card_type
         && let Some(card_type) = game.chosen_card_type(chooser_source)
     {
@@ -768,23 +840,25 @@ pub(crate) fn bind_chosen_filter_qualities(
         }
         changed = true;
     }
-    if bound.chosen_color
-        && let Some(color) = game.chosen_color(chooser_source)
-    {
-        let chosen = crate::color::ColorSet::from(color);
-        match bound.colors {
-            None => {
-                bound.colors = Some(chosen);
-                bound.chosen_color = false;
-                changed = true;
+    if bound.chosen_color {
+        match game.chosen_color(chooser_source) {
+            Some(color) if bound.colors.is_none_or(|existing| existing.contains(color)) => {
+                bound.colors = Some(crate::color::ColorSet::from(color));
             }
-            Some(existing) if existing.contains(color) => {
-                bound.colors = Some(chosen);
-                bound.chosen_color = false;
-                changed = true;
+            Some(color) => {
+                // `colors` requires any overlap, while `chosen_color`
+                // additionally requires this particular color. Red plus a
+                // blue choice matches red-blue objects. Preserve that
+                // conjunction and any already required colors.
+                bound.required_colors = Some(bound.required_colors
+                    .unwrap_or(crate::color::ColorSet::COLORLESS).with(color));
             }
-            Some(_) => {}
+            // No color was chosen at this resolution. A later choice must
+            // not retroactively supply this grant/restriction's meaning.
+            None => bound.mana_value = Some(crate::filter::Comparison::OneOf(Vec::new())),
         }
+        bound.chosen_color = false;
+        changed = true;
     }
     for (index, branch) in filter.any_of.iter().enumerate() {
         if let Some(bound_branch) = bind_chosen_filter_qualities(branch, game, chooser_source) {

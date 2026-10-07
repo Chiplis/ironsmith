@@ -75,6 +75,8 @@ mod tests {
     ) -> TriggerEvent {
         TriggerEvent::new_with_provenance(
             CoinFlippedEvent {
+                turn_ordinal: 0,
+                instruction_ordinal: 0,
                 player,
                 source: ObjectId::from_raw(99),
                 face: ironsmith_core::CoinFace::Heads,

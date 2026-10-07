@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Air Bladder",
+    "oracle_id": "25c8a3b0-c393-4fc6-a373-808cd8e9850c",
+    "text": "Mana cost: {U}\nType: Enchantment \u2014 Aura\nEnchant creature\nEnchanted creature has flying.\nEnchanted creature can block only creatures with flying."
+  },
+  {
+    "name": "Stratus Walk",
+    "oracle_id": "eda37caa-d676-460a-804b-3ba9d8a8d044",
+    "text": "Mana cost: {1}{U}\nType: Enchantment \u2014 Aura\nEnchant creature\nWhen this Aura enters, draw a card.\nEnchanted creature has flying. (It can't be blocked except by creatures with flying or reach.)\nEnchanted creature can block only creatures with flying."
+  },
+  {
+    "name": "Chaosphere",
+    "oracle_id": "ed01d5d7-8f34-47b3-9ca8-d82c242d38b4",
+    "text": "Mana cost: {2}{G}\nType: Enchantment\nCreatures with flying can block only creatures with flying.\nCreatures without flying have reach. (They can block creatures with flying.)"
+  },
+  {
+    "name": "Dense Canopy",
+    "oracle_id": "d182ab7d-77bd-49d1-9001-9b4016350181",
+    "text": "Mana cost: {1}{G}\nType: Enchantment\nCreatures with flying can block only creatures with flying."
+  },
+  {
+    "name": "Razorgrass Screen",
+    "oracle_id": "1818324c-2738-42e2-a78b-63abf325d8e9",
+    "text": "Mana cost: {1}\nType: Artifact Creature \u2014 Wall\nPower/Toughness: 2/1\nDefender (This creature can't attack.)\nThis creature blocks each combat if able."
+  },
+  {
+    "name": "Grand Melee",
+    "oracle_id": "1accf98a-0905-4a9d-9ab3-72e9f853f4ab",
+    "text": "Mana cost: {3}{R}\nType: Enchantment\nAll creatures attack each combat if able.\nAll creatures block each combat if able."
+  },
+  {
+    "name": "Iron Golem",
+    "oracle_id": "43990801-ed4a-49ff-a96e-03faa302214f",
+    "text": "Mana cost: {4}\nType: Artifact Creature \u2014 Golem\nPower/Toughness: 5/3\nVigilance\nThis creature attacks or blocks each combat if able."
+  },
+  {
+    "name": "Relentless Raptor",
+    "oracle_id": "4727db28-98e9-453d-90c3-2d51365d32fc",
+    "text": "Mana cost: {R}{W}\nType: Creature \u2014 Dinosaur\nPower/Toughness: 3/3\nVigilance\nThis creature attacks or blocks each combat if able."
+  },
+  {
+    "name": "Spirespine",
+    "oracle_id": "de0edcc8-1595-4dbb-ac8a-46dcd96299cb",
+    "text": "Mana cost: {2}{G}\nType: Enchantment Creature \u2014 Beast\nPower/Toughness: 4/1\nBestow {4}{G} (If you cast this card for its bestow cost, it's an Aura spell with enchant creature. It becomes a creature again if it's not attached.)\nThis creature blocks each combat if able.\nEnchanted creature gets +4/+1 and blocks each combat if able."
+  },
+  {
+    "name": "Watchdog",
+    "oracle_id": "6a951d2d-fc5a-4f41-bd77-3e301b76cf47",
+    "text": "Mana cost: {3}\nType: Artifact Creature \u2014 Dog\nPower/Toughness: 1/2\nThis creature blocks each combat if able.\nAs long as this creature is untapped, all creatures attacking you get -1/-0."
+  },
+  {
+    "name": "Avatar of Slaughter",
+    "oracle_id": "2fc6305e-e75e-478a-826b-49f655ed832c",
+    "text": "Mana cost: {6}{R}{R}\nType: Creature \u2014 Avatar\nPower/Toughness: 8/8\nAll creatures have double strike and attack each combat if able."
+  },
+  {
+    "name": "Hellraiser Goblin",
+    "oracle_id": "c30e89fa-8993-468d-b2ee-093c3950f520",
+    "text": "Mana cost: {2}{R}\nType: Creature \u2014 Goblin Berserker\nPower/Toughness: 2/2\nCreatures you control have haste and attack each combat if able."
+  }
+]

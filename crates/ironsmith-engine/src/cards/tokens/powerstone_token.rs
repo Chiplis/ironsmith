@@ -29,6 +29,7 @@ pub fn powerstone_token_definition() -> CardDefinition {
     };
     let ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::tap()]),
             effects: vec![Effect::add_mana(vec![ManaSymbol::Colorless])].into(),
             choices: vec![],

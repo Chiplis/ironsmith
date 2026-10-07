@@ -9,6 +9,8 @@ use crate::zone::Zone;
 
 pub use ironsmith_core::{ClearSuspectedEffect, SuspectEffect};
 
+include!("suspect_targets.rs");
+
 impl EffectExecutor for SuspectEffect {
     fn execute(
         &self,
@@ -35,8 +37,7 @@ impl EffectExecutor for SuspectEffect {
             if game.is_suspected(object_id) {
                 continue;
             }
-            game.set_suspected(object_id);
-            count += 1;
+            if game.set_suspected(object_id) { count += 1; }
         }
 
         Ok(EffectOutcome::count(count))
@@ -58,7 +59,7 @@ impl EffectExecutor for ClearSuspectedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let objects = if let Some(target) = &self.target {
-            match resolve_objects_for_effect(game, ctx, target) {
+            match resolve_suspected_designation_objects(game, ctx, target) {
                 Ok(objects) => objects,
                 Err(ExecutionError::InvalidTarget) if !target.is_target() => {
                     return Ok(EffectOutcome::count(0));
@@ -166,5 +167,64 @@ mod tests {
         assert_eq!(cleared.value, OutcomeValue::Count(2));
         assert!(!game.is_suspected(first));
         assert!(!game.is_suspected(second));
+    }
+}
+
+#[cfg(test)]
+mod designation_history_tests {
+    use super::*;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::condition_eval::evaluate_condition_resolution;
+    use crate::effect::{Condition, Until};
+    use crate::ids::{CardId, PlayerId};
+    use crate::snapshot::ObjectSnapshot;
+    use crate::target::ObjectFilter;
+    use crate::types::CardType;
+
+    fn creature(game: &mut GameState) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), "Designation history")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
+        game.create_object_from_card(&card, PlayerId(0), Zone::Battlefield)
+    }
+    #[test]
+    fn suspected_lki_is_exact_and_unknown_evidence_is_an_error() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = creature(&mut game);
+        assert!(game.set_suspected(source));
+        let snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        assert_eq!(snapshot.suspected, Some(true));
+        let mut ctx = ExecutionContext::new_default(source, PlayerId(0)).with_source_snapshot(snapshot.clone());
+        ctx.tag_object("paid", snapshot.clone());
+        let paid = Condition::TaggedObjectMatchedLastKnown("paid".into(), ObjectFilter::default().suspected());
+        game.clear_suspected(source);
+        assert_eq!(evaluate_condition_resolution(&game, &paid, &ctx), Ok(true));
+        assert_eq!(evaluate_condition_resolution(&game, &Condition::SourceSuspected, &ctx), Ok(false));
+        game.set_suspected(source);
+        let graveyard = game.move_object_by_game_rule(source, Zone::Graveyard).unwrap();
+        let returned = game.move_object_by_game_rule(graveyard, Zone::Battlefield).unwrap();
+        assert!(!game.is_suspected(returned));
+        assert_eq!(evaluate_condition_resolution(&game, &Condition::SourceSuspected, &ctx), Ok(true));
+        assert_eq!(evaluate_condition_resolution(&game, &paid, &ctx), Ok(true));
+        let mut unknown = snapshot;
+        unknown.suspected = None;
+        let mut unknown_ctx = ExecutionContext::new_default(source, PlayerId(0));
+        unknown_ctx.tag_object("paid", unknown);
+        assert!(matches!(evaluate_condition_resolution(&game, &paid, &unknown_ctx), Err(ExecutionError::IncompleteEvidence(_))));
+    }
+    #[test]
+    fn phased_designation_is_preserved_and_blocked_suspect_reports_no_change() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = creature(&mut game);
+        game.set_suspected(source);
+        game.phase_out(source);
+        assert!(!game.clear_suspected(source));
+        assert!(!game.set_suspected(source));
+        assert!(game.is_suspected(source));
+        game.phase_in(source);
+        assert!(game.clear_suspected(source));
+        game.add_restriction_effect(crate::effect::Restriction::BecomeSuspected(ObjectFilter::source()), Until::Forever, source, PlayerId(0), None);
+        let outcome = SuspectEffect::new(ChooseSpec::SpecificObject(source)).execute(&mut game, &mut ExecutionContext::new_default(source, PlayerId(0))).unwrap();
+        assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(0));
+        assert!(!game.is_suspected(source));
     }
 }

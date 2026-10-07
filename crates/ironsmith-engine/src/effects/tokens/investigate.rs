@@ -78,11 +78,15 @@ impl EffectExecutor for InvestigateEffect {
                 );
                 let mut created_clues = 0i64;
                 for _ in 0..count {
+                    let token = clue_token_definition();
+                    let roles = ironsmith_core::TokenTextRoles::rules_implied(
+                        ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len(),
+                    );
                     let effect = CreateTokenEffect::new(
-                        clue_token_definition(),
+                        token,
                         1,
                         PlayerFilter::Specific(player_id),
-                    );
+                    ).with_text_roles(roles);
                     let creation = effect.execute_child_with_outputs(game, ctx)?;
                     created_clues += creation.outcome.output_objects().len() as i64;
                     if ctx.decision_maker.awaiting_choice() {
@@ -167,7 +171,7 @@ mod tests {
             .first()
             .expect("investigate should create a clue token");
         let clue = game.object(clue_id).expect("clue should exist");
-        assert_eq!(clue.name, "Clue");
+        assert_eq!(clue.name, "Clue Token");
         assert!(
             game.object_has_card_type(clue_id, crate::types::CardType::Artifact),
             "Clue should be an artifact token"

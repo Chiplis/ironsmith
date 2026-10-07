@@ -1,4 +1,5 @@
-use crate::decisions::ask_choose_one;
+#[path = "coin_flip_transaction.rs"]
+mod coin_flip_transaction;
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -9,17 +10,28 @@ use crate::target::PlayerFilter;
 /// Flip a coin for a player using the game's deterministic RNG.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlipCoinEffect {
+    /// Each retained flip is a fresh batch until an actual loss ends the process.
+    pub repeat_until_loss: bool,
+    pub opponent_results: Option<ironsmith_core::CoinFlipOpponentTags>,
+    pub count_value: Option<ironsmith_core::Value>,
     pub count: u32,
     pub player: PlayerFilter,
     pub kind: ironsmith_core::CoinFlipKind,
     pub forced_face: Option<ironsmith_core::CoinFace>,
     pub forced_winner: Option<PlayerFilter>,
     pub forced_loser: Option<PlayerFilter>,
+    pub stop_condition: Option<ironsmith_core::CoinFlipStopCondition>,
+    pub loss_action: Option<ironsmith_core::CoinFlipLossAction>,
 }
 
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::Called,
@@ -31,6 +43,11 @@ impl FlipCoinEffect {
 
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: ironsmith_core::CoinFlipKind::FaceOnly,
@@ -71,99 +88,143 @@ impl EffectExecutor for FlipCoinEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.count != 1 {
-            let mut single = self.clone();
-            single.count = 1;
-            let mut outcomes = Vec::new();
-            for _ in 0..self.count {
-                let outcome = single.execute_child(game, ctx)?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(outcome);
+        let checkpoint = game.clone();
+        let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let result = (|| {
+            if (self.repeat_until_loss || self.loss_action.is_some()) && self.kind != ironsmith_core::CoinFlipKind::Called {
+                return Err(ExecutionError::UnresolvableValue("repeat until loss requires called flips".into()));
+            }
+            use ironsmith_core::CoinFlipStopCondition;
+            if self.stop_condition.is_some() && !self.repeat_until_loss {
+                return Err(ExecutionError::UnresolvableValue("a coin stop condition requires successive called flips".into()));
+            }
+            let player = resolve_player_filter(game, &self.player, ctx)?;
+            if self.repeat_until_loss && self.opponent_results.is_some() {
+                return Err(ExecutionError::UnresolvableValue("a repeated flip cannot also be an opponent batch".into()));
+            }
+            let associated = if self.opponent_results.is_some() {
+                let players_in_range = ctx.filter_context(game).players_in_range;
+                let mut opponents = Vec::new();
+                opponents.try_reserve(game.players.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                    resource: "opponent coin associations", requested: game.players.len(),
+                })?;
+                for participant in &game.players {
+                    if participant.is_in_game() && game.are_opponents(player, participant.id)
+                        && players_in_range.as_ref().is_none_or(|range| range.contains(&participant.id)) {
+                        opponents.push(participant.id);
+                    }
                 }
-                outcomes.push(outcome);
+                Some(opponents)
+            } else { None };
+            if self.count_value.is_some() && (self.opponent_results.is_some()
+                || (self.repeat_until_loss && self.stop_condition != Some(CoinFlipStopCondition::CountReached))) {
+                return Err(ExecutionError::UnresolvableValue("a chosen coin count cannot also be a repeat or opponent count".into()));
             }
-            let count = outcomes
-                .iter()
-                .map(|outcome| outcome.instruction_result().count_or_zero())
-                .sum::<i64>();
-            return Ok(EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(count),
-                outcomes,
-            ));
-        }
-        let player = resolve_player_filter(game, &self.player, ctx)?;
-        let call = if self.kind == ironsmith_core::CoinFlipKind::Called {
-            let options = [
-                ("Heads".to_string(), ironsmith_core::CoinFace::Heads),
-                ("Tails".to_string(), ironsmith_core::CoinFace::Tails),
-            ];
-            let selected =
-                ask_choose_one(game, &mut ctx.decision_maker, player, ctx.source, &options);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(EffectOutcome::count(0));
+            let authored_count = if let Some(value) = &self.count_value {
+                crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?
+            } else if let Some(players) = &associated {
+                u32::try_from(players.len()).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                    resource: "opponent coin count", requested: players.len() as u128, maximum: u32::MAX as u128,
+                })?
+            } else { self.count };
+            let mut results = Vec::new();
+            let mut events = Vec::new();
+            let mut facts = Vec::new();
+            loop {
+                if self.stop_condition == Some(CoinFlipStopCondition::CountReached)
+                    && results.len() as u128 >= u128::from(authored_count) { break; }
+                let count = if self.repeat_until_loss { 1 } else { authored_count };
+                let start = u32::try_from(results.len()).map_err(|_| ExecutionError::ResourceLimitExceeded {
+                    resource: "instruction coin-flip ordinal", requested: results.len() as u128,
+                    maximum: i32::MAX as u128,
+                })? + 1;
+                let Some(mut batch) = coin_flip_transaction::flip_batch(game, ctx, self, player, count, start)? else {
+                    return Ok(EffectOutcome::count(0));
+                };
+                events.try_reserve(batch.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                    resource: "coin-flip event receipts", requested: batch.len(),
+                })?;
+                results.try_reserve(batch.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                    resource: "coin-flip grouped receipt", requested: batch.len(),
+                })?;
+                facts.try_reserve(batch.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                    resource: "coin-flip result facts", requested: batch.len(),
+                })?;
+                if let Some(players) = &associated {
+                    for (flip, opponent) in batch.iter_mut().zip(players) { flip.associated_player = Some(*opponent); }
+                }
+                let lost = batch.iter().any(|flip| flip.loser == Some(player));
+                let batch_provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::CoinFlipped);
+                for flip in &batch {
+                    let result = match self.kind {
+                        ironsmith_core::CoinFlipKind::Called => flip.winner == Some(player),
+                        ironsmith_core::CoinFlipKind::FaceOnly => flip.face == ironsmith_core::CoinFace::Heads,
+                    };
+                    game.record_ui_effect_event(
+                        "coin_flip", Some(player), None, Vec::new(), Some(i64::from(result)),
+                        Some(if flip.face == ironsmith_core::CoinFace::Heads { "heads" } else { "tails" }.into()),
+                    );
+                    let provenance = game.alloc_child_event_provenance(ctx.provenance, crate::events::EventKind::CoinFlipped);
+                    events.push(crate::triggers::TriggerEvent::new_with_provenance(CoinFlippedEvent {
+                        player, source: ctx.source, face: flip.face, call: flip.call,
+                        winner: flip.winner, loser: flip.loser,
+                        turn_ordinal: flip.turn_ordinal, instruction_ordinal: flip.instruction_ordinal,
+                    }, provenance).with_simultaneous_batch(batch_provenance));
+                    facts.push(ExecutionFact::CoinFlip {
+                        face: flip.face, call: flip.call, winner: flip.winner, loser: flip.loser,
+                    });
+                }
+                results.extend(batch);
+                if !self.repeat_until_loss || lost { break; }
+                if self.stop_condition == Some(CoinFlipStopCondition::ChooseToStop) {
+                    let again = crate::decisions::ask_may_choice(
+                        game, &mut ctx.decision_maker, player, ctx.source,
+                        "Flip again", crate::decision::FallbackStrategy::Decline,
+                    );
+                    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                    if !again { break; }
+                }
             }
-            Some(selected.unwrap_or(ironsmith_core::CoinFace::Heads))
-        } else {
-            None
-        };
-
-        let mut faces = [
-            ironsmith_core::CoinFace::Heads,
-            ironsmith_core::CoinFace::Tails,
-        ];
-        game.shuffle_slice(&mut faces);
-        let face = self.forced_face.unwrap_or(faces[0]);
-        let result_is_overridden = self.forced_winner.is_some() || self.forced_loser.is_some();
-        let winner = if let Some(winner) = &self.forced_winner {
-            Some(resolve_player_filter(game, winner, ctx)?)
-        } else if !result_is_overridden && call == Some(face) {
-            Some(player)
-        } else {
-            None
-        };
-        let loser = if let Some(loser) = &self.forced_loser {
-            Some(resolve_player_filter(game, loser, ctx)?)
-        } else if !result_is_overridden && call.is_some() && call != Some(face) {
-            Some(player)
-        } else {
-            None
-        };
-        let result = match self.kind {
-            ironsmith_core::CoinFlipKind::Called => u32::from(winner == Some(player)),
-            ironsmith_core::CoinFlipKind::FaceOnly => {
-                u32::from(face == ironsmith_core::CoinFace::Heads)
+            if let Some(tags) = &self.opponent_results {
+                let mut won = Vec::new();
+                let mut lost = Vec::new();
+                for players in [&mut won, &mut lost] {
+                    players.try_reserve(results.len()).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                        resource: "opponent coin-result roster", requested: results.len(),
+                    })?;
+                }
+                for flip in &results {
+                    if let Some(opponent) = flip.associated_player {
+                        if flip.winner == Some(player) { won.push(opponent); }
+                        if flip.loser == Some(player) { lost.push(opponent); }
+                    }
+                }
+                ctx.set_tagged_players(tags.won.clone(), won);
+                ctx.set_tagged_players(tags.lost.clone(), lost);
             }
-        };
-        let face_text = match face {
-            ironsmith_core::CoinFace::Heads => "heads",
-            ironsmith_core::CoinFace::Tails => "tails",
-        };
-        game.record_ui_effect_event(
-            "coin_flip",
-            Some(player),
-            None,
-            Vec::new(),
-            Some(i64::from(result)),
-            Some(face_text.to_string()),
-        );
-        Ok(EffectOutcome::count(result as i32)
-            .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                CoinFlippedEvent {
-                    player,
-                    source: ctx.source,
-                    face,
-                    call,
-                    winner,
-                    loser,
-                },
-                ctx.provenance,
+            let positive = results.iter().filter(|flip| match self.kind {
+                ironsmith_core::CoinFlipKind::Called => flip.winner == Some(player),
+                ironsmith_core::CoinFlipKind::FaceOnly => flip.face == ironsmith_core::CoinFace::Heads,
+            }).count() as i64;
+            facts.try_reserve(1).map_err(|_| ExecutionError::ResourceAllocationFailed {
+                resource: "coin-flip grouped fact", requested: 1,
+            })?;
+            if self.loss_action == Some(ironsmith_core::CoinFlipLossAction::StopResolution)
+                && results.iter().any(|flip| flip.loser == Some(player)) {
+                ctx.stop_resolution();
+            }
+            facts.push(ExecutionFact::CoinFlips(results));
+            Ok(EffectOutcome::with_details(
+                crate::effect::OutcomeStatus::Succeeded, crate::effect::OutcomeValue::Count(positive), events, facts,
             ))
-            .with_execution_fact(ExecutionFact::CoinFlip {
-                face,
-                call,
-                winner,
-                loser,
-            }))
+        })();
+        let pending = ctx.decision_maker.awaiting_choice();
+        if pending || result.is_err() {
+            game.restore_execution_checkpoint(checkpoint, pending && result.is_ok());
+            context_checkpoint.restore(ctx);
+        }
+        if pending && result.is_ok() { return Ok(EffectOutcome::count(0)); }
+        result
     }
 }
 

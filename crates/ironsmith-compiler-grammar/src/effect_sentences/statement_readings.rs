@@ -60,10 +60,16 @@ pub(super) const STATEMENT_REGISTRY: RuleId = RuleId::new("statement-reading-reg
 /// The readings, in the order they were ranked.
 const STATEMENT_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("trailing-local-action-replacement"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(super::local_self_replacement::read(input.sentence)),
+    },
+    Reading {
         id: RuleId::new("bounded-number-choice"),
         head: HeadDiscriminator::Words(&["choose"]),
         admits: |_| true,
-        read: |input| input.outcome(super::bounded_number_choice::parse(input.sentence).map(|result|result.map(|effect|vec![effect]))),
+        read: |input| input.outcome(super::bounded_number_choice::parse_sentence(input.sentence)),
     },
     Reading {
         id: RuleId::new("owner-subject-shuffle"),

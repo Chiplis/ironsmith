@@ -211,11 +211,13 @@ pub fn compile_delayed_trigger_spec(
             source,
             player,
             each_damaged_player,
+            per_source_controller,
         } => Ok(
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source: source.clone(),
                 player: player.clone(),
                 each_damaged_player: *each_damaged_player,
+                per_source_controller: *per_source_controller,
             },
         ),
         TriggerSpec::SpellCast {
@@ -992,6 +994,7 @@ fn compile_duration_scoped_delayed_trigger(
             source,
             player,
             each_damaged_player,
+            per_source_controller,
         } => {
             let resolved = resolve_it_tag(source, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {
@@ -1001,12 +1004,14 @@ fn compile_duration_scoped_delayed_trigger(
                     source: ObjectFilter::source(),
                     player: player.clone(),
                     each_damaged_player: *each_damaged_player,
+                    per_source_controller: *per_source_controller,
                 }
             } else {
                 ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                     source: resolved,
                     player: player.clone(),
                     each_damaged_player: *each_damaged_player,
+                    per_source_controller: *per_source_controller,
                 }
             }
         }
@@ -1731,6 +1736,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                     source,
                     player,
                     each_damaged_player,
+                    per_source_controller,
                 } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
                     let trigger =
@@ -1738,6 +1744,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             source: resolved_source.clone(),
                             player: player.clone(),
                             each_damaged_player: *each_damaged_player,
+                            per_source_controller: *per_source_controller,
                         };
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
@@ -2037,7 +2044,7 @@ fn compile_conditional_ast(
     let mut effective_if_true = if_true.to_vec();
     let predicate_names_explicit_subject = matches!(
         predicate,
-        PredicateAst::TaggedMatches(tag, _)
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _)
             if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
     );
     if let Some(antecedent) = predicate_object_filter_antecedent(predicate)

@@ -9,12 +9,12 @@ use crate::types::{CardType, Subtype};
 ///
 /// Scrubland
 /// Land — Plains Swamp
-/// {T}: Add {W} or {B}.
+/// ({T}: Add {W} or {B}.)
 pub fn scrubland() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Scrubland")
         .card_types(vec![CardType::Land])
         .subtypes(vec![Subtype::Plains, Subtype::Swamp])
-        .parse_text("{T}: Add {W} or {B}.")
+        .parse_text("({T}: Add {W} or {B}.)")
         .expect("Card text should be supported")
 }
 
@@ -22,7 +22,6 @@ pub fn scrubland() -> CardDefinition {
 mod tests {
     use super::*;
     use crate::ability::AbilityKind;
-    use crate::effects::AddManaOfAnyColorEffect;
     use crate::game_state::GameState;
     use crate::ids::PlayerId;
     use crate::types::Supertype;
@@ -100,52 +99,30 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn test_scrubland_has_one_mana_ability() {
-        let def = scrubland();
-
-        // Should have exactly one mana ability with a color choice
-        assert_eq!(def.abilities.len(), 1);
-
-        // It should be a mana ability
-        assert!(def.abilities.iter().all(|a| a.is_mana_ability()));
+    fn test_scrubland_has_no_printed_mana_ability() {
+        assert!(scrubland().abilities.is_empty());
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_can_produce_white_or_black() {
-        let def = scrubland();
-
-        let mana_ability = def
-            .abilities
-            .iter()
-            .find_map(|a| match &a.kind {
-                AbilityKind::Activated(mana_ability) if mana_ability.is_mana_ability() => {
-                    Some(mana_ability)
-                }
-                _ => None,
-            })
-            .expect("Should have a mana ability");
-        let add_any = mana_ability
-            .effects
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
-            .expect("Should use restricted color-choice mana effect");
-        let colors = add_any
-            .available_colors
-            .as_ref()
-            .expect("Should expose restricted colors");
-        assert_eq!(colors.len(), 2);
-        assert!(colors.contains(&crate::color::Color::White));
-        assert!(colors.contains(&crate::color::Color::Black));
+        let mut game = setup_game();
+        let id = game.create_object_from_definition(&scrubland(), PlayerId::from_index(0), Zone::Battlefield);
+        let abilities = game.current_abilities(id).unwrap();
+        assert_eq!(abilities.len(), 2);
+        for subtype in [Subtype::Plains, Subtype::Swamp] {
+            assert!(abilities.contains(&crate::ability::Ability::basic_land_mana(subtype).unwrap()));
+        }
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_scrubland_mana_abilities_have_tap_cost() {
-        let def = scrubland();
-
-        // Both mana abilities should have tap as cost
-        for ability in &def.abilities {
+        let mut game = setup_game();
+        let id = game.create_object_from_definition(&scrubland(), PlayerId::from_index(0), Zone::Battlefield);
+        let abilities = game.current_abilities(id).unwrap();
+        assert_eq!(abilities.len(), 2);
+        for ability in &abilities {
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {
@@ -175,9 +152,10 @@ mod tests {
         assert!(game.battlefield.contains(&land_id));
 
         // Verify the object has the mana abilities
-        let obj = game.object(land_id).unwrap();
-        assert_eq!(obj.abilities.len(), 1);
-        assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
+        assert!(game.object(land_id).unwrap().abilities.is_empty());
+        let abilities = game.current_abilities(land_id).unwrap();
+        assert_eq!(abilities.len(), 2);
+        assert!(abilities.iter().all(|a| a.is_mana_ability()));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -197,8 +175,9 @@ mod tests {
         assert!(game.is_tapped(land_id));
 
         // Verify both abilities require tapping
-        let obj = game.object(land_id).unwrap();
-        for ability in obj.abilities.iter() {
+        let abilities = game.current_abilities(land_id).unwrap();
+        assert_eq!(abilities.len(), 2);
+        for ability in abilities.iter() {
             if let AbilityKind::Activated(mana_ability) = &ability.kind
                 && mana_ability.is_mana_ability()
             {
@@ -226,29 +205,13 @@ mod tests {
         assert!(!obj.is_creature(), "Scrubland is not a creature");
 
         // Mana abilities are usable immediately
-        assert!(obj.abilities.iter().all(|a| a.is_mana_ability()));
+        assert_eq!(game.current_abilities(land_id).unwrap().iter().filter(|a| a.is_mana_ability()).count(), 2);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn test_scrubland_oracle_text() {
-        let def = scrubland();
-
-        assert!(
-            crate::runtime_display::debug_compiled_lines(&def)
-                .join("\n")
-                .contains("Add")
-        );
-        assert!(
-            crate::runtime_display::debug_compiled_lines(&def)
-                .join("\n")
-                .contains("{W}")
-        );
-        assert!(
-            crate::runtime_display::debug_compiled_lines(&def)
-                .join("\n")
-                .contains("{B}")
-        );
+    fn test_scrubland_compiled_text_has_no_authored_activation() {
+        assert!(crate::runtime_display::debug_compiled_lines(&scrubland()).is_empty());
     }
 
     // =========================================================================
@@ -305,7 +268,7 @@ mod tests {
     /// Tests tapping Scrubland for white mana.
     ///
     /// Scrubland: Land — Plains Swamp
-    /// {T}: Add {W} or {B}.
+    /// ({T}: Add {W} or {B}.)
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn test_replay_scrubland_tap_for_white() {

@@ -654,6 +654,13 @@ const SENTENCE_READINGS: &[Reading] = &[
         read: |input| input.outcome(part_3::read_scaled_target_power(input)),
     },
     Reading {
+        id: RuleId::new("fixed-flashback-grant"),
+        head: HeadDiscriminator::words(&["target", "that"]),
+        admits: |input| !input.claimed_by("leading-result-prefix")
+            && !input.claimed_by("leading-player-may"),
+        read: |input| input.outcome(part_3::read_fixed_flashback_grant(input)),
+    },
+    Reading {
         id: RuleId::new("next-spell-grant-sentence"),
         head: HeadDiscriminator::Any,
         admits: |input| {

@@ -1,0 +1,48 @@
+[
+  {
+    "name": "God-Eternal Kefnet",
+    "id": "451262e2-4888-46e1-b69c-ad1113613b8d",
+    "oracle_id": "41d11144-32fc-4e45-a8db-3edb9dc0ce80",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Legendary Creature — Zombie God",
+    "oracle_text": "Flying\nYou may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, copy that card and you may cast the copy. That copy costs {2} less to cast.\nWhen God-Eternal Kefnet dies or is put into exile from the battlefield, you may put it into its owner's library third from the top.",
+    "power": "4",
+    "toughness": "5"
+  },
+  {
+    "name": "Inquisitor Eisenhorn",
+    "id": "9780ef78-4177-4e19-81d1-a69b8f2dad3d",
+    "oracle_id": "db07a3f9-c6d1-4cae-a899-12b3e8d94018",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Creature — Human Inquisitor",
+    "oracle_text": "You may reveal the first card you draw each turn as you draw it. Whenever you reveal an instant or sorcery card this way, create Cherubael, a legendary 4/4 black Demon creature token with flying.\nWhenever Inquisitor Eisenhorn deals combat damage to a player, investigate that many times. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "power": "2",
+    "toughness": "3"
+  },
+  {
+    "name": "Keranos, God of Storms",
+    "id": "93c13445-60e3-43a0-a56a-de91c6442367",
+    "oracle_id": "2bd6f13a-ae02-426d-8f99-c20c5c08cf55",
+    "mana_cost": "{3}{U}{R}",
+    "type_line": "Legendary Enchantment Creature — God",
+    "oracle_text": "Indestructible\nAs long as your devotion to blue and red is less than seven, Keranos isn't a creature.\nReveal the first card you draw on each of your turns. Whenever you reveal a land card this way, draw a card. Whenever you reveal a nonland card this way, Keranos deals 3 damage to any target.",
+    "power": "6",
+    "toughness": "5"
+  },
+  {
+    "name": "Primitive Etchings",
+    "id": "eae26b8d-c3af-42d1-94f4-56950ceac1c7",
+    "oracle_id": "dddda9a2-dc59-446d-bfc4-3240d12a3654",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "Reveal the first card you draw each turn. Whenever you reveal a creature card this way, draw a card."
+  },
+  {
+    "name": "Rowen",
+    "id": "0a7e6a58-eda0-4224-b517-ad6dfb721c88",
+    "oracle_id": "eb44f5eb-1c6a-49f0-9751-23d167bf8288",
+    "mana_cost": "{2}{G}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "Reveal the first card you draw each turn. Whenever you reveal a basic land card this way, draw a card."
+  }
+]

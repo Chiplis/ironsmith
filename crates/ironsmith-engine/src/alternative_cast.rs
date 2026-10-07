@@ -1,5 +1,7 @@
 use crate::zone::Zone;
 pub(crate) mod price_routes;
+pub mod play_permission;
+pub mod blind_play;
 pub use ironsmith_core::{AlternativeCastRequirements, TrapCondition};
 
 pub type AlternativeCastingMethod = ironsmith_core::AlternativeCastingMethod<
@@ -166,20 +168,35 @@ pub enum CastingMethod {
         /// is independent of the replacement price (CR 718.3).
         prototype: Option<usize>,
     },
+    /// An exact origin permission, independent of a replacement casting price.
+    /// Native identity is never reconstructed from a public ordinal alone.
+    #[cfg_attr(feature = "serialization", serde(skip))]
+    ExactPermission {
+        origin: Box<CastingMethod>,
+        permission: GrantSelection,
+    },
 }
 
 impl CastingMethod {
     /// The underlying spell face/origin, without discarding its price receipt.
     /// Validation admits only one layer; this intentionally does not recurse.
     pub fn origin_method(&self) -> &Self {
-        match self { Self::AlternativePrice { origin, .. } => origin, _ => self }
+        match self { Self::AlternativePrice { origin, .. } | Self::ExactPermission { origin, .. } => origin, _ => self }
+    }
+
+    /// Preserve a separate price wrapper while inspecting the printed origin
+    /// behavior of one exact-permission wrapper. Admission rejects nesting.
+    pub fn without_exact_permission(&self) -> &Self {
+        match self { Self::ExactPermission { origin, .. } => origin, _ => self }
     }
 
     pub fn is_alternative(&self) -> bool {
+        if let Self::ExactPermission { origin, .. } = self { return origin.is_alternative(); }
         matches!(self, Self::Alternative(_) | Self::FaceDown | Self::FaceDownPlayFrom { .. } | Self::AlternativePrice { .. })
     }
 
     pub fn exiles_after_resolution(&self) -> bool {
+        if let Self::ExactPermission { origin, .. } = self { return origin.exiles_after_resolution(); }
         matches!(
             self,
             Self::GrantedFlashback | Self::SplitOtherHalfPlayFrom { use_alternative: Some(_), .. }

@@ -31,10 +31,15 @@ pub struct RawEvent {
     /// such as "one or more creatures". It must survive until the pending
     /// trigger queue is drained so those events can be checked as one batch.
     simultaneous_batch: Option<ProvNodeId>,
+    /// Only a queued singular-recipient counter trigger owns this projection.
+    /// Keep physical per-kind receipts intact for matching and history. The
+    /// legacy generic trigger scalar is i32; counter amounts must stay wide.
+    counter_trigger_amount: Option<i64>,
     source_snapshot: Option<ObjectSnapshot>,
     lookback_source_snapshots: Vec<ObjectSnapshot>,
     /// Contextual player bindings carried across delayed-trigger boundaries.
     player_tags: HashMap<TagKey, Vec<PlayerId>>,
+    defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
 }
 
 impl RawEvent {
@@ -46,9 +51,11 @@ impl RawEvent {
             triggers_captured: false,
             completed_action_provenance: None,
             simultaneous_batch: None,
+            counter_trigger_amount: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
             player_tags: HashMap::new(),
+            defending_player_reference: None,
         }
     }
 
@@ -60,9 +67,11 @@ impl RawEvent {
             triggers_captured: false,
             completed_action_provenance: None,
             simultaneous_batch: None,
+            counter_trigger_amount: None,
             source_snapshot: None,
             lookback_source_snapshots: Vec::new(),
             player_tags: HashMap::new(),
+            defending_player_reference: None,
         }
     }
 
@@ -148,6 +157,15 @@ impl RawEvent {
         &self.player_tags
     }
 
+    pub fn defending_player_reference(&self) -> Option<crate::combat_state::DefendingPlayerReference> {
+        self.defending_player_reference
+    }
+    #[must_use]
+    pub fn with_defending_player_reference(mut self, reference: crate::combat_state::DefendingPlayerReference) -> Self {
+        self.defending_player_reference = Some(reference);
+        self
+    }
+
     /// Human-readable event description.
     pub fn display(&self) -> String {
         self.inner().display()
@@ -230,6 +248,39 @@ impl RawEvent {
         self.simultaneous_batch
     }
 
+    pub(crate) fn counter_trigger_amount(&self) -> Result<i64, crate::effects::ExecutionError> {
+        self.counter_trigger_amount.map(Ok).unwrap_or_else(|| {
+            self.downcast::<super::MarkersChangedEvent>()
+                .map(|event| i64::from(event.amount))
+                .ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+                    "counter trigger group lost its placement receipt".into(),
+                ))
+        })
+    }
+
+    /// Queue ownership only: preserve the event payload, occurrence identity,
+    /// actor and snapshots while retaining the checked sum for resolution.
+    /// An unrepresentable total remains a typed failure, never a first-event
+    /// fallback, wrapping value, or saturated successful amount.
+    pub(crate) fn accumulate_counter_trigger_amount(
+        &mut self,
+        next: &Self,
+    ) -> Result<(), crate::effects::ExecutionError> {
+        let prior = self.counter_trigger_amount()?;
+        let next = next.counter_trigger_amount()?;
+        let amount = prior.checked_add(next).ok_or_else(|| {
+            crate::effects::ExecutionError::ResourceLimitExceeded {
+                resource: "counter trigger group amount",
+                requested: prior as u128 + next as u128,
+                maximum: i64::MAX as u128,
+            }
+        })?;
+        // Check before changing even the private staged entry. Queue owners
+        // publish nothing until the complete group's checked projection exists.
+        self.counter_trigger_amount = Some(amount);
+        Ok(())
+    }
+
     #[must_use]
     pub fn with_provenance(mut self, provenance: ProvNodeId) -> Self {
         self.provenance = provenance;
@@ -272,9 +323,11 @@ impl RawEvent {
             triggers_captured: self.triggers_captured,
             completed_action_provenance: self.completed_action_provenance.clone(),
             simultaneous_batch: self.simultaneous_batch,
+            counter_trigger_amount: self.counter_trigger_amount,
             source_snapshot: self.source_snapshot.clone(),
             lookback_source_snapshots: self.lookback_source_snapshots.clone(),
             player_tags: self.player_tags.clone(),
+            defending_player_reference: self.defending_player_reference,
         }
     }
 
@@ -294,6 +347,7 @@ impl std::fmt::Debug for RawEvent {
                 &self.completed_action_provenance,
             )
             .field("simultaneous_batch", &self.simultaneous_batch)
+            .field("defending_player_reference", &self.defending_player_reference)
             .field("source_snapshot", &self.source_snapshot)
             .field("lookback_source_snapshots", &self.lookback_source_snapshots)
             .field("player_tags", &self.player_tags)
@@ -314,3 +368,36 @@ impl PartialEq for RawEvent {
 }
 
 impl Eq for RawEvent {}
+
+#[cfg(test)]
+mod counter_group_amount_tests {
+    use super::*;
+
+    #[test]
+    fn checked_counter_group_failure_leaves_prior_projection_and_physical_receipt_intact() {
+        let mut receipt = RawEvent::new(super::super::MarkersChangedEvent::added(
+            crate::CounterType::Charge, ObjectId::from_raw(1), 1, None, None,
+        ), ProvNodeId::default());
+        for _ in 0..62 {
+            receipt.accumulate_counter_trigger_amount(&receipt.clone()).unwrap();
+        }
+        let prior = receipt.clone();
+        assert_eq!(receipt.counter_trigger_amount(), Ok(1i64 << 62));
+        assert_eq!(receipt.accumulate_counter_trigger_amount(&prior),
+            Err(crate::effects::ExecutionError::ResourceLimitExceeded {
+                resource: "counter trigger group amount",
+                requested: 1u128 << 63,
+                maximum: i64::MAX as u128,
+            }));
+        assert_eq!(receipt.counter_trigger_amount(), prior.counter_trigger_amount());
+        assert_eq!(receipt.downcast::<super::super::MarkersChangedEvent>().unwrap().amount, 1);
+        assert!(receipt.ptr_eq(&prior));
+        let enriched = receipt.with_inner_event(
+            receipt.downcast::<super::super::MarkersChangedEvent>().unwrap().clone().with_count_after(7),
+        );
+        assert_eq!(enriched.counter_trigger_amount(), prior.counter_trigger_amount());
+        let restored = enriched.with_completed_action_receipt(&prior);
+        assert_eq!(restored.counter_trigger_amount(), prior.counter_trigger_amount());
+        assert!(restored.ptr_eq(&prior));
+    }
+}

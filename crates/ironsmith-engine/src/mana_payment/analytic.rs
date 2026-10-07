@@ -189,7 +189,8 @@ fn measure_choices_inner(
     let mut measured = Vec::new();
     let analysis = super::sources::ManaSourceAnalysis::new(game);
     for choice in collect_activation_choices_with_view(game, request, false, &analysis.view) {
-        if request.preferences.excluded_sources.contains(&choice.source) {
+        if request.preferences.excluded_sources.contains(&choice.source)
+            || request.activation_excluded_sources.contains(&choice.source) {
             continue;
         }
         let produced = if let Some(projected) = analysis.project(&choice) {

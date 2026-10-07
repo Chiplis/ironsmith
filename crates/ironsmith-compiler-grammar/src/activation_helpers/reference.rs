@@ -3,6 +3,9 @@ use super::*;
 pub(super) fn parse_add_one_mana_any_color_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
+    if let Some(surface) = activation_grammar::parse_any_of_source_colors_surface(tokens) {
+        return Ok(Some(ObjectFilter::source_with_surface(surface)));
+    }
     let Some(span) = activation_grammar::parse_any_color_among_span(tokens) else {
         return Ok(None);
     };

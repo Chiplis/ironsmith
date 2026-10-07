@@ -38,8 +38,14 @@ pub mod spell_cost_condition_model;
 pub mod spell_timing_model;
 pub mod static_ability_id;
 pub mod static_ability_model;
+pub mod suspend;
+pub use suspend::SuspendTime;
 pub mod tag;
 pub mod target_model;
+pub mod text_change;
+pub use text_change::{ChangeTextEffect, TextChange, TextChangeError, TextChangeSelection, TextWord};
+pub mod token_text;
+pub use token_text::{TokenNameTextRole, TokenTextRoles, TokenWordRole, subtype_derived_token_name};
 pub mod trigger_model;
 pub mod types;
 pub mod value_model;
@@ -50,8 +56,8 @@ pub mod zone;
 pub struct WorkspaceSplitMarker;
 
 pub use ability_model::{
-    Ability, AbilityKind, ActivatedAbility, ActivatedPresentationLabel, ActivationTiming,
-    LevelAbility, ManaPaymentPredicate, ManaPaymentPurpose, ManaSpendAbilityGrantDuration,
+    Ability, AbilityKind, ActivatedAbility, ActivatedAbilityKeyword, ActivatedPresentationLabel, ActivationTiming,
+    LevelAbility, ManaPaymentPredicate, ManaPaymentPurpose, ManaTurnFaceUpMethod, ManaSpendAbilityGrantDuration,
     ManaSpendBonusCondition, ManaSpendGrantedKeyword, ManaSpendPayload, ManaUsageRestriction,
     ManaUsageSubtypeRequirement, PresentationKeyword, PresentationLabel, ProtectionFrom,
     RestrictedManaUnit, TriggeredAbility,
@@ -92,7 +98,7 @@ pub use effect::{
     ChooseLandTypeEffect, ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect,
     RippleEffect, ChooseNumberAtRandomEffect, ChooseNumberEffect, ChooseObjectsEffect, ChoosePlayerEffect,
     ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode, ClearGoadEffect,
-    ClearSuspectedEffect, CoinFace, CoinFlipKind, CombatDamagePreventionTarget, ConditionalEffect,
+    ClearSuspectedEffect, CoinFace, CoinFlipKind, CoinFlipOpponentTags, CoinFlipStopCondition, CoinFlipLossAction, CombatDamagePreventionTarget, ConditionalEffect,
     ConditionalModeRange, ConditionalSurface, ConniveEffect, ConspireCostEffect,
     ConsultTopOfLibraryEffect, ConsultTopOfLibraryStopRule, ContinuousDurationObject,
     ContinuousDurationPlayer, ContinuousDurationPredicate, ControlCombatChoicesThisTurnEffect,
@@ -117,9 +123,9 @@ pub use effect::{
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
     ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
-    ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GoadEffect,
+    ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
     GrantAbilitiesTargetEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
-    GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
+    GrantNextSpellCostReductionEffect, NextSpellGrantMode, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantPlayTaggedManaReferenceSurface, GrantPlayTaggedObjectSurface, GrantPlayTaggedSurface,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
@@ -181,13 +187,13 @@ pub use effect::{
     TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
     TapEffect, TargetOnlyEffect, TicketCountersEffect, TokenAbilityPresentation,
-    TokenCopyReferenceSurface, TransformEffect, TurnFaceUpEffect, TypeRetentionSurface,
+    TokenCopyReferenceSurface, TransformEffect, TurnFaceDownEffect, TurnFaceUpEffect, TypeRetentionSurface,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
     UnlockRoomDoorEffect, UntapEffect, Until, VariableCasualtyPlaneswalkerCopyEffect,
     VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VotePayload,
     WinTheGameEffect, WithIdEffect, ZoneReplacementLibraryPlacement,
 };
-pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
+pub use effect_model::{CastEventQuantity, Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;
 pub use filter_model::{
     AdditionalCostObjectAction, AdditionalCostObjectSurface, AlternativeCastKind,
@@ -202,7 +208,7 @@ pub use filter_model::{
 };
 pub use grant_model::{
     DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, GrantUsageLimit,
-    Grantable, SourceExiledGrantSurface,
+    Grantable, SourceExiledGrantSurface, SourceExiledManaRiderSurface,
 };
 pub use ids::{
     CardId, IdCountersSnapshot, ObjectId, PlayerId, StableId, reset_runtime_id_counters,
@@ -211,7 +217,7 @@ pub use ids::{
 pub use interned::{InternedI32Slice, InternedStr};
 pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
-pub use resolution_model::{ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
+pub use resolution_model::{LinkedExileDefinition, LinkedExilePair, ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
@@ -253,10 +259,10 @@ pub use trigger_model::{
 };
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};
 pub use value_model::{
-    AttachmentConditionHost, Condition, ConditionConjunction, DeathHistoryControllerSurface,
+    AttachmentConditionHost, Condition, CombatParticipantCondition, ConditionConjunction, DeathHistoryControllerSurface,
     EffectMetric, EffectMetricSource, ManaSpendPermission, ManaSpendScope,
     ManaSpentCastReferenceSurface, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
-    PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    PriorEffectMetricQuery, ColorChoiceReference, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
     TurnHistoryCondition, TurnHistoryCount, Value, ValueSurfaceHint,
 };
 pub use zone::Zone;

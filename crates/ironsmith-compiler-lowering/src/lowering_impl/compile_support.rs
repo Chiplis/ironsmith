@@ -106,6 +106,7 @@ pub use control_flow_handlers::{
     with_preserved_lowering_context,
 };
 pub use effect_dispatch::compile_effect;
+pub(crate) use effect_dispatch::visit_direct_nested_effect_values;
 pub(crate) use effect_dispatch::link_unproduced_result_references_in_program;
 pub use effect_handlers::compile_delayed_trigger_spec;
 #[cfg(test)]
@@ -174,9 +175,14 @@ pub fn compile_effects(
             allow_excess_damage_event_value: ctx.allow_excess_damage_event_value,
             milling_event_filter: ctx.milling_event_filter.clone(),
             dice_event_grouped: ctx.dice_event_grouped,
+            cast_event_quantity: ctx.cast_event_quantity,
             life_event_binding: ctx.life_event_binding.clone(),
             life_amount_producers: ctx.life_amount_producers.clone(),
             die_result_producers: ctx.die_result_producers.clone(),
+            coin_result_producers: ctx.coin_result_producers.clone(),
+            number_result_producers: ctx.number_result_producers.clone(),
+            color_result_producers: ctx.color_result_producers.clone(),
+            reveal_result_producers: ctx.reveal_result_producers.clone(),
             bind_unbound_x_to_last_effect: ctx.bind_unbound_x_to_last_effect,
             has_announced_x: ctx.has_announced_x,
             initial_last_effect_id: ctx.last_effect_id,
@@ -2051,6 +2057,15 @@ pub fn tagged_alias_for_choice(effects: &[Effect], choice: &ChooseSpec) -> Optio
     None
 }
 
+/// Result tags wrap an instruction without changing its executable action.
+/// Semantic inventories share this helper instead of reading wrapper labels.
+pub fn effect_without_result_tags(mut effect: &Effect) -> &Effect {
+    while let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        effect = &tagged.effect;
+    }
+    effect
+}
+
 pub fn tag_object_target_effect(
     effect: Effect,
     spec: &ChooseSpec,
@@ -2169,63 +2184,11 @@ fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
     }
 }
 
-/// Build the alternative payment branches for a "waterbend {N}" cost. The
-/// player may pay the {N} generic with mana, or tap untapped artifacts/creatures
-/// they control (each paying {1}), so the cost expands into N+1 branches: pay
-/// all the mana (0 taps), down to fully paying by tapping N permanents.
+/// Legacy compiler shape converges on the same scoped mana obligation.
 pub fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
-    let tag = crate::tag::CompilerIndexedTag::WaterbendCost.key(generic);
-    let mut branches = Vec::new();
-    for taps in 0..=generic {
-        if taps == 0 {
-            branches.push(TotalCost::from_costs(vec![
-                crate::costs::Cost::mana(generic_mana_cost(generic).unwrap_or_default()),
-                crate::costs::Cost::validated_effect(Effect::emit_keyword_action(
-                    crate::events::KeywordActionKind::Waterbend,
-                    generic,
-                )),
-            ]));
-            continue;
-        }
-        let mana_remaining = generic - taps;
-        let mut costs = Vec::new();
-        if mana_remaining > 0
-            && let Some(mana) = generic_mana_cost(mana_remaining)
-        {
-            costs.push(crate::costs::Cost::mana(mana));
-        }
-
-        let artifact_filter = ObjectFilter {
-            card_types: vec![CardType::Artifact],
-            ..ObjectFilter::default()
-        };
-        let creature_filter = ObjectFilter {
-            card_types: vec![CardType::Creature],
-            ..ObjectFilter::default()
-        };
-        let mut filter = ObjectFilter::default();
-        filter.untapped = true;
-        filter.controller = Some(PlayerFilter::You);
-        filter.zone = Some(Zone::Battlefield);
-        filter.any_of = vec![artifact_filter, creature_filter];
-
-        let choose = crate::effects::ChooseObjectsEffect::new(
-            filter,
-            ChoiceCount::exactly(taps as usize),
-            PlayerFilter::You,
-            tag.clone(),
-        )
-        .in_zone(Zone::Battlefield);
-        costs.push(crate::costs::Cost::effect(Effect::new(choose)));
-        costs.push(crate::costs::Cost::effect(Effect::new(
-            crate::effects::TapEffect::with_spec(ChooseSpec::Tagged(tag.clone().into())),
-        )));
-        costs.push(crate::costs::Cost::validated_effect(
-            Effect::emit_keyword_action(crate::events::KeywordActionKind::Waterbend, generic),
-        ));
-        branches.push(TotalCost::from_costs(costs));
-    }
-    TotalCost::one_of(branches)
+    TotalCost::from_cost(crate::costs::Cost::mana(
+        ManaCost::new().add_generic(generic).with_waterbend(),
+    ))
 }
 
 fn equipment_equip_ability(amount: u32) -> Option<Ability> {
@@ -2237,6 +2200,7 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
     };
     Some(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
             mana_cost: total_cost,
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::attach_to(
                 target.clone(),
@@ -2276,6 +2240,7 @@ fn equipment_granted_damage_ability(
     let target = ChooseSpec::AnyTarget;
     Some(Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(costs),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::deal_damage(
                 Value::Fixed(shape.damage_amount),
@@ -2442,6 +2407,11 @@ fn apply_embedded_token_rules(
 ) -> CardDefinitionBuilder {
     for rule in &rules.embedded_rules {
         builder = match rule {
+            token_grammar::TokenEmbeddedRuleShape::MaximumBlockers { maximum } => {
+                builder.with_ability(Ability::static_ability(
+                    StaticAbility::cant_be_blocked_by_more_than(*maximum),
+                ))
+            }
             token_grammar::TokenEmbeddedRuleShape::CantBlockOrBeBlockedByNonSubtypeCreatures {
                 subtype,
             } => {
@@ -2643,6 +2613,7 @@ fn apply_embedded_token_rules(
                 ]);
                 builder.with_ability(Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost: costs,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::add_mana_of_any_color(1),
@@ -2678,6 +2649,7 @@ fn apply_embedded_token_rules(
                 ]);
                 builder.with_ability(Ability {
                     kind: AbilityKind::Activated(ActivatedAbility {
+                        keyword: None,
                         mana_cost: costs,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![
                             Effect::add_mana_of_any_color_restricted(1, colors),
@@ -2773,6 +2745,7 @@ pub fn token_dies_target_creature_gets_minus_one_minus_one_ability() -> Ability 
 pub fn token_red_pump_ability() -> Ability {
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]])),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::pump(
                 1,
@@ -2797,6 +2770,7 @@ pub fn token_white_tap_target_creature_ability() -> Ability {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::White]])),
                 crate::costs::Cost::tap(),
@@ -2830,6 +2804,7 @@ pub fn token_tap_mana_ability(shape: token_grammar::TokenTapManaAbilityShape) ->
         .ok()?;
     Some(Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
             effects: crate::resolution::ResolutionProgram::default(),
             choices: Vec::new(),
@@ -2994,6 +2969,7 @@ pub fn token_sacrifice_return_named_from_graveyard_ability(
     );
     Ability {
         kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs({
                 let mut total_costs = vec![crate::costs::Cost::mana(mana_cost)];
                 total_costs.extend(costs);
@@ -3151,7 +3127,9 @@ fn build_vehicle_token_definition(
     if let Some((power, toughness)) = shape.power_toughness {
         builder = builder.power_toughness(PowerToughness::fixed(power, toughness));
     }
-    if shape.colorless {
+    if shape.legendary { builder = builder.supertypes(vec![crate::types::Supertype::Legendary]); }
+    if !shape.colors.is_empty() { builder = builder.color_indicator(shape.colors); }
+    else if shape.colorless {
         builder = builder.with_ability(Ability::static_ability(StaticAbility::make_colorless(
             ObjectFilter::source(),
         )));
@@ -3428,6 +3406,7 @@ fn build_creature_token_definition(
         let ability =
             Ability {
                 kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::pump(1, 0, target.clone(), Until::EndOfTurn),
@@ -3465,6 +3444,7 @@ fn build_creature_token_definition(
         ));
         let counter_ability = Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_costs(vec![
                     crate::costs::Cost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
                         1,
@@ -3535,8 +3515,33 @@ fn build_creature_token_definition(
 
 pub fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefinition> {
     match shape {
-        TokenDefinitionSpec::PriorCreated => None,
+        // Prototype references must be resolved from the authored AST before
+        // lowering. Never infer their blueprint from runtime token objects.
+        TokenDefinitionSpec::PrototypeReference(_) => None,
         TokenDefinitionSpec::Builtin(builtin) => Some(build_builtin_token_definition(builtin)),
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+            let mut definition = build_builtin_token_definition(shape.template);
+            if let Some(name) = shape.name { definition.card.name = name; }
+            if let Some(colors) = shape.colors { definition.card.color_indicator = Some(colors); }
+            if let Some((power, toughness)) = shape.power_toughness {
+                definition.card.power_toughness = Some(PowerToughness::fixed(power, toughness));
+            }
+            for value in shape.supertypes {
+                if !definition.card.supertypes.contains(&value) { definition.card.supertypes.push(value); }
+            }
+            for value in shape.additional_card_types {
+                if !definition.card.card_types.contains(&value) { definition.card.card_types.push(value); }
+            }
+            for value in shape.additional_subtypes {
+                if !definition.card.subtypes.contains(&value) { definition.card.subtypes.push(value); }
+            }
+            // Reuse the keyword construction owner. Only its ordered ability
+            // occurrences are appended; no replacement card is allocated.
+            let mut keywords = CardDefinitionBuilder::new(definition.card.id, "");
+            for keyword in shape.keywords { keywords = apply_standard_token_keyword(keywords, keyword); }
+            definition.abilities.extend(keywords.abilities);
+            Some(definition)
+        }
         TokenDefinitionSpec::Vehicle(vehicle) => build_vehicle_token_definition(vehicle),
         TokenDefinitionSpec::Artifact(artifact) => build_artifact_token_definition(artifact),
         TokenDefinitionSpec::Enchantment(shape) => {

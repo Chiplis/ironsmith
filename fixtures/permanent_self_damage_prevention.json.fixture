@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Argothian Pixies",
+    "oracle_id": "bbf183bc-d502-4432-8202-f29f60c08396",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Faerie",
+    "oracle_text": "This creature can't be blocked by artifact creatures.\nPrevent all damage that would be dealt to this creature by artifact creatures.",
+    "power": "2",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/chr/57/argothian-pixies?utm_source=api"
+  },
+  {
+    "name": "Argothian Treefolk",
+    "oracle_id": "f3aaef18-dc32-40d6-b48c-f957aa31247f",
+    "mana_cost": "{3}{G}{G}",
+    "type_line": "Creature — Treefolk",
+    "oracle_text": "Prevent all damage that would be dealt to this creature by artifact sources.",
+    "power": "3",
+    "toughness": "5",
+    "scryfall_uri": "https://scryfall.com/card/atq/30/argothian-treefolk?utm_source=api"
+  },
+  {
+    "name": "Dawn Elemental",
+    "oracle_id": "307421ed-aa59-4518-a0eb-689c60d7b709",
+    "mana_cost": "{W}{W}{W}{W}",
+    "type_line": "Creature — Elemental",
+    "oracle_text": "Flying\nPrevent all damage that would be dealt to this creature.",
+    "power": "3",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/scg/7/dawn-elemental?utm_source=api"
+  },
+  {
+    "name": "Desert Nomads",
+    "oracle_id": "3247fca3-7458-47ee-875b-c55f2a3e2962",
+    "mana_cost": "{2}{R}",
+    "type_line": "Creature — Human Nomad",
+    "oracle_text": "Desertwalk\nPrevent all damage that would be dealt to this creature by Deserts.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/arn/38/desert-nomads?utm_source=api"
+  },
+  {
+    "name": "Tresserhorn Skyknight",
+    "oracle_id": "df344469-1177-4168-91af-3621b2a65182",
+    "mana_cost": "{5}{B}{B}",
+    "type_line": "Creature — Zombie Knight",
+    "oracle_text": "Flying\nPrevent all damage that would be dealt to this creature by creatures with first strike.",
+    "power": "5",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/csp/73/tresserhorn-skyknight?utm_source=api"
+  },
+  {
+    "name": "Wall of Putrid Flesh",
+    "oracle_id": "e31d4be7-cd24-4287-b8ca-66f8612731a6",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Wall",
+    "oracle_text": "Defender (This creature can't attack.)\nProtection from white\nPrevent all damage that would be dealt to this creature by enchanted creatures.",
+    "power": "2",
+    "toughness": "4",
+    "scryfall_uri": "https://scryfall.com/card/leg/127/wall-of-putrid-flesh?utm_source=api"
+  }
+]

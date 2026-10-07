@@ -1,0 +1,102 @@
+[
+  {
+    "id": "29739dd4-5775-4491-8245-ca2dc38a686e",
+    "oracle_id": "3479a4e6-c67d-4958-8a47-43d3a2f69bb1",
+    "name": "Ghostfire",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Ghostfire is colorless.\nGhostfire deals 3 damage to any target.",
+    "power": null,
+    "toughness": null,
+    "colors": [],
+    "color_identity": [
+      "R"
+    ],
+    "color_indicator": null,
+    "baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+    "source_dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "baseline_parse_status": "parse_failed",
+    "baseline_parse_error": "parser does not yet support line family: 'Ghostfire is colorless.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Ghostfire is colorless.' [rule-path=unsupported-line-family]"
+  },
+  {
+    "id": "8deb050a-8022-4a18-8ae1-5d4df75f4762",
+    "oracle_id": "cb7d65f7-003f-46db-af71-7b575c713c6b",
+    "name": "Ghostflame Sliver",
+    "mana_cost": "{B}{R}",
+    "type_line": "Creature — Sliver",
+    "oracle_text": "All Slivers are colorless.",
+    "power": "2",
+    "toughness": "2",
+    "colors": [
+      "B",
+      "R"
+    ],
+    "color_identity": [
+      "B",
+      "R"
+    ],
+    "color_indicator": null,
+    "baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+    "source_dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "baseline_parse_status": "parse_failed",
+    "baseline_parse_error": "parser does not yet support line family: 'All Slivers are colorless.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'All Slivers are colorless.' [rule-path=unsupported-line-family]"
+  },
+  {
+    "id": "2496ab15-2a88-43fd-8d79-74758879157b",
+    "oracle_id": "86f94f8e-f45e-42fc-8ad6-e9bdfaaa997d",
+    "name": "Transguild Courier",
+    "mana_cost": "{4}",
+    "type_line": "Artifact Creature — Golem",
+    "oracle_text": "Transguild Courier is all colors.",
+    "power": "3",
+    "toughness": "3",
+    "colors": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_indicator": null,
+    "baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+    "source_dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "baseline_parse_status": "parse_failed",
+    "baseline_parse_error": "parser does not yet support line family: 'Transguild Courier is all colors.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Transguild Courier is all colors.' [rule-path=unsupported-line-family]"
+  },
+  {
+    "id": "f31cab5f-c05e-4688-b300-33ab0dd98598",
+    "oracle_id": "5b410473-1df9-4d16-9b4d-c3ca8e4635b7",
+    "name": "Sphinx of the Guildpact",
+    "mana_cost": "{7}",
+    "type_line": "Artifact Creature — Sphinx",
+    "oracle_text": "Sphinx of the Guildpact is all colors.\nFlying\nHexproof from monocolored (This creature can't be the target of monocolored spells or abilities your opponents control.)",
+    "power": "5",
+    "toughness": "5",
+    "colors": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_identity": [
+      "B",
+      "G",
+      "R",
+      "U",
+      "W"
+    ],
+    "color_indicator": null,
+    "baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+    "source_dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "baseline_parse_status": "parse_failed",
+    "baseline_parse_error": "parser does not yet support line family: 'Sphinx of the Guildpact is all colors.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Sphinx of the Guildpact is all colors.' [rule-path=unsupported-line-family]"
+  }
+]

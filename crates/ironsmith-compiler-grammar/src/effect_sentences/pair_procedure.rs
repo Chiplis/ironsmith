@@ -43,9 +43,26 @@ use crate::registry::{
 mod kinds;
 #[path = "pair_procedure/life_gain.rs"]
 mod life_gain;
+#[path = "pair_procedure/keyword_replacement.rs"]
+mod keyword_replacement;
+#[path = "pair_procedure/discard_replacement.rs"]
+mod discard_replacement;
+#[path = "pair_procedure/targeted_random_partition.rs"]
+mod targeted_random_partition;
+#[path = "pair_procedure/named_random_reveal.rs"]
+mod named_random_reveal;
+#[path = "pair_procedure/counter_total_limit.rs"]
+mod counter_total_limit;
+#[path = "pair_procedure/collect_mana_payments.rs"]
+mod collect_mana_payments;
 
-pub(super) fn recognizes_life_gain_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
+pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
+        || keyword_replacement::recognizes_replacement_sentence(tokens)
+        || discard_replacement::recognizes_replacement_sentence(tokens)
+}
+pub(super) fn validate_discard_replacements(tokens: &[crate::lexer::OwnedLexToken]) -> Result<(), CardTextError> {
+    discard_replacement::validate(tokens)
 }
 #[path = "pair_procedure/shapes.rs"]
 mod shapes;
@@ -142,6 +159,50 @@ struct Shape {
 /// document's, as the registry kept the rule consuming the longest program,
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("counter-placement-ability-total-limit"),
+        head: HeadDiscriminator::words(&["put"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, counter_total_limit::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("collect-mana-payments-with-total"),
+        head: HeadDiscriminator::words(&["starting", "join"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, collect_mana_payments::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("conditional-discard-self-replacement"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, discard_replacement::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("random-hand-reveal-named-subset-discard"),
+        head: HeadDiscriminator::words(&["target", "you", "opponent", "that"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index,
+            named_random_reveal::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("declared-graveyard-random-return-complement"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index,
+            targeted_random_partition::read(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("next-spell-timing-with-incarnation-riders"),
+        head: HeadDiscriminator::words(&["the"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, kinds::open_next_spell_riders(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("flashback-conditional-price-replacement"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 3,
+        read: |sentences, index| statements(sentences, index, kinds::open_flashback_price_replacement(sentences, index)),
+    },
     Shape {
         id: RuleId::new("top-zone-choice-complement"),
         head: HeadDiscriminator::words(&["target", "you"]),
@@ -690,6 +751,14 @@ const PAIR_SHAPES: &[Shape] = &[
                 sentence_idx,
                 kinds::open_copy_next_spell_retarget(sentences, sentence_idx),
             )
+        },
+    },
+    Shape {
+        id: RuleId::new("conditional-keyword-action-self-replacement"),
+        head: HeadDiscriminator::words(&["investigate", "amass"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, keyword_replacement::read(sentences, sentence_idx))
         },
     },
     Shape {

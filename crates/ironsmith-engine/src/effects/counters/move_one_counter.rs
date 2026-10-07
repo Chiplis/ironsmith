@@ -109,9 +109,9 @@ impl EffectExecutor for MoveOneCounterEffect {
                 ))
             },
         );
-        // Preserve the authored adapter's existing neutral suspension policy.
-        // The shared transaction owns restoration of the complete action.
-        if ctx.decision_maker.awaiting_choice() {
+        // A genuine failure takes precedence over a simultaneously pending
+        // choice. The transaction already restored the complete action.
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
             return Ok(CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));

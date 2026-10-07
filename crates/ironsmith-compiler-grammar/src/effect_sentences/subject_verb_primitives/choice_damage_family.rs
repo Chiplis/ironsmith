@@ -577,7 +577,7 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
                             target_tag.into(),
                         )),
                     ),
-                    count: ChoiceCount::exactly(1).at_random(),
+                    count: shape.count.at_random(),
                     count_value: None,
                     player: PlayerAst::ItsController,
                     tag: crate::tag::TagRef::of(revealed_tag.clone()),
@@ -629,7 +629,7 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
     Ok(Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter,
-            count: ChoiceCount::exactly(1).at_random(),
+            count: shape.count.at_random(),
             count_value: None,
             player,
             tag: crate::tag::TagRef::of(tag.clone()),

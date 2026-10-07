@@ -1,0 +1,112 @@
+{
+  "family": "waterbend-payment-bodies",
+  "source": "fixtures/card-failure-campaign/cards-20261003.json.xz",
+  "baseline": "fixtures/card-failure-campaign/baseline-e8740178.snapshot.json.gz",
+  "status": "authored_not_executed",
+  "frozen_failure_count": 6,
+  "cards": [
+    {
+      "name": "Benevolent River Spirit",
+      "oracle_id": "12d91743-1ccb-4f2b-b2a9-1c2b34f7c8eb",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{U}{U}",
+      "type_line": "Creature — Spirit",
+      "power": "4",
+      "toughness": "5",
+      "oracle_text": "As an additional cost to cast this spell, waterbend {5}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)\nFlying, ward {2} (Whenever this creature becomes the target of a spell or ability an opponent controls, counter it unless that player pays {2}.)\nWhen this creature enters, scry 2.",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Crashing Wave",
+      "oracle_id": "c8d3936f-4c08-4ffe-83c9-7ed26fb8f9cd",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{U}{U}",
+      "type_line": "Sorcery",
+      "oracle_text": "As an additional cost to cast this spell, waterbend {X}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)\nTap up to X target creatures, then distribute three stun counters among any number of tapped creatures your opponents control. (If a permanent with a stun counter would become untapped, remove one from it instead.)",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Foggy Swamp Visions",
+      "oracle_id": "16af0a22-833e-47c6-ac27-002702194595",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{1}{B}{B}",
+      "type_line": "Sorcery",
+      "oracle_text": "As an additional cost to cast this spell, waterbend {X}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)\nExile X target creature cards from graveyards. For each creature card exiled this way, create a token that's a copy of it. At the beginning of your next end step, sacrifice those tokens.",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Water Whip",
+      "oracle_id": "2015f455-988e-444c-93df-23fab179ef87",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{U}{U}",
+      "type_line": "Sorcery — Lesson",
+      "oracle_text": "As an additional cost to cast this spell, waterbend {5}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)\nReturn up to two target creatures to their owners' hands. Draw two cards.",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Waterbender's Restoration",
+      "oracle_id": "285046f6-b3c4-4eb7-8712-9dffebabc762",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{U}{U}",
+      "type_line": "Instant — Lesson",
+      "oracle_text": "As an additional cost to cast this spell, waterbend {X}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)\nExile X target creatures you control. Return those cards to the battlefield under their owner's control at the beginning of the next end step.",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Waterbending Lesson",
+      "oracle_id": "3d28886c-46bf-4d2e-a257-cb9016cc3573",
+      "baseline_category": "parser_failure",
+      "counts_as_recovery": true,
+      "mana_cost": "{3}{U}",
+      "type_line": "Sorcery — Lesson",
+      "oracle_text": "Draw three cards. Then discard a card unless you waterbend {2}. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)",
+      "counts_as_source_proposal": true,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "implemented_pending_full_corpus_validation"
+    },
+    {
+      "name": "Katara, Water Tribe's Hope",
+      "oracle_id": "234fb291-0b62-4092-9071-81311c71bd53",
+      "baseline_category": "strict_compiled",
+      "counts_as_recovery": false,
+      "mana_cost": "{2}{W}{U}{U}",
+      "type_line": "Legendary Creature — Human Warrior Ally",
+      "power": "3",
+      "toughness": "3",
+      "oracle_text": "Vigilance\nWhen Katara enters, create a 1/1 white Ally creature token.\nWaterbend {X}: Creatures you control have base power and toughness X/X until end of turn. X can't be 0. Activate only during your turn. (While paying a waterbend cost, you can tap your artifacts and creatures to help. Each one pays for {1}.)",
+      "counts_as_source_proposal": false,
+      "verified_compile_recovery": false,
+      "source_coverage_status": "previously_supported_regression_only"
+    }
+  ],
+  "scenario_contracts": [
+    "Every frozen body independently uses strict runtime compilation and serialized artifact materialization; no same-result route aliases.",
+    "Native legal casts pay combined printed and mandatory additional costs; zero X remains an accepted obligation.",
+    "Mana plus controlled untapped artifact/creature taps, including newly cast creatures; tapped, opposing, phased and noneligible permanents rejected.",
+    "Multiple obligations remain distinct; ordinary printed or added generic mana and colored pips cannot be replaced by waterbend taps.",
+    "Water Whip zero, one and two targets; complete bounce and draw tail; Spirit flying, ward and actual enters scry.",
+    "Crashing Wave zero and nonzero X; distribution recomputes current tapped opponents after its tap instruction.",
+    "Foggy Swamp Visions actual graveyard producers, partial invalidity, exact copy counts and own-next-end-step sacrifice.",
+    "Restoration exact exiled references, opponent next end step, moved-away cards and owner control on return.",
+    "Lesson draws before pay-or-discard, paid, declined and insufficient payment branches.",
+    "Native payment pending, cancellation after a manual mana activation, rejected response and stale-plan rollback.",
+    "Katara migration only: nonzero X, own turn, all current creatures and cleanup of base power/toughness."
+  ],
+  "source_review_commit": "0f91bf03a",
+  "integrated_source_review_commit": "446bc917607db4ba1781a47cd2cc1a958b92314f"
+}

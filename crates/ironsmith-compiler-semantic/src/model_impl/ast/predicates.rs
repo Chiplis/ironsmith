@@ -52,6 +52,8 @@ pub enum PredicateAst {
     ItMatchedLastKnown(ObjectFilter),
     TargetMatches(ObjectFilter),
     TaggedMatches(TagRef, ObjectFilter),
+    /// Explicit tagged object, evaluated exclusively from retained pre-move evidence.
+    TaggedMatchedLastKnown(TagRef, ObjectFilter),
     TaggedWasCast(TagRef),
     EnchantedPermanentAttackedThisTurn,
     EnchantedPermanentAttackedOrBlockedSinceLastUpkeep,
@@ -181,6 +183,7 @@ pub enum PredicateAst {
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
     ThisSpellWasCastFromNonHand,
+    ThisSpellWasForetold,
     TurnHistory(TurnHistoryPredicateAst),
     ValueComparison {
         left: Value,
@@ -325,6 +328,7 @@ impl PredicateAst {
             | PredicateAst::Source(SourcePredicateAst::SourceSuspected)
             | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
+            | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat)
             | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
                 ..
             })
@@ -336,6 +340,7 @@ impl PredicateAst {
             | PredicateAst::ThisSpellPaidLabel(_)
             | PredicateAst::ThisSpellWasCastFromZone(_)
             | PredicateAst::ThisSpellWasCastFromNonHand
+            | PredicateAst::ThisSpellWasForetold
             | PredicateAst::TurnHistory(
                 TurnHistoryPredicateAst::SourceCrewedByAtLeast { .. }
                 | TurnHistoryPredicateAst::SourceWasCast { .. }

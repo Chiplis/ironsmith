@@ -59,6 +59,12 @@ pub enum SimultaneousTriggerKey {
     ObjectLeavesGameBatch,
     /// All counters one instruction puts on one or more objects.
     CounterBatch,
+    /// All matching counter kinds one instruction puts on one singular
+    /// recipient. An authored actor subject keeps different actors separate.
+    CounterRecipient {
+        recipient: crate::game_state::Target,
+        actor: Option<PlayerId>,
+    },
     /// All dice one instruction rolls ("whenever you roll one or more dice").
     DieRollBatch,
     /// Every object and player one spell or ability targets as it's put on
@@ -71,6 +77,8 @@ pub enum SimultaneousTriggerKey {
     DamageTarget(DamageTarget),
     /// A single damaging source and a single recipient, independently of other assignments.
     DamageSourceTarget(ObjectId, DamageTarget),
+    /// Singular source-controller quantifier, optionally per recipient.
+    DamageSourceController(PlayerId, Option<DamageTarget>),
     /// A player's grouped dice remain distinct from another player's rolls.
     PlayerDieRollBatch(PlayerId),
     BecomesBlockedBatch,
@@ -122,6 +130,18 @@ impl<'a> TriggerContext<'a> {
 
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
+        self.filter_ctx.source_number_owner = if let Some(snapshot)=self.filter_ctx.source_snapshot.as_ref() {
+            snapshot.abilities.get(ability_index).and_then(|ability|
+                crate::source_numbers::capture(self.source_id,crate::source_numbers::ability_pair(ability),
+                    snapshot.ability_origins.as_ref().and_then(|origins|origins.get(ability_index))))
+        } else {
+            match self.game.try_current_characteristics(self.source_id) {
+                Ok(Some(chars))=>chars.abilities.get(ability_index).and_then(|ability|
+                    crate::source_numbers::capture(self.source_id,crate::source_numbers::ability_pair(ability),chars.abilities.origin(ability_index))),
+                Ok(None)=>None,
+                Err(error)=>{self.game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));None}
+            }
+        };
         self
     }
 

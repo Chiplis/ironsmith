@@ -206,3 +206,26 @@ fn opponent_target_declaration_is_distinct_from_resolution_choice() {
     let tokens = lex_line("An opponent chooses a creature they control.", 0).unwrap();
     assert!(parse_choose_target_shape(&tokens).is_none());
 }
+
+#[test]
+fn ordinary_face_down_shapes_preserve_source_and_target_cardinality() {
+    for (text, expected) in [
+        ("Turn this creature face down.", "this creature"),
+        ("Turn this enchantment face down.", "this enchantment"),
+        ("Turn target creature with a morph ability face down.", "target creature with a morph ability"),
+        ("Turn any number of target creatures with morph abilities other than this creature face down.",
+         "any number of target creatures with morph abilities other than this creature"),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let shape = parse_turn_face_down_shape(&tokens).expect("ordinary orientation instruction");
+        assert_eq!(TokenWordView::new(shape.target_tokens).to_word_refs().join(" "), expected);
+    }
+    for text in [
+        "Turn target creature face down. It becomes a 3/3 Cyberman artifact creature.",
+        "Return it to the battlefield face down.",
+        "Turn this creature face up.",
+        "Turn this creature face down until end of turn.",
+    ] {
+        assert!(parse_turn_face_down_shape(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
+}

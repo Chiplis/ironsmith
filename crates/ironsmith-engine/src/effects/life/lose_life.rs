@@ -91,6 +91,9 @@ impl EffectExecutor for LoseLifeEffect {
         Ok(Some(self.prepare_proposal(game, ctx)?.event(ctx)))
     }
 
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        self.player.mentions_player_filter(needle)
+    }
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

@@ -331,7 +331,8 @@ impl Auditor {
             | "TriggeringSpellSnowManaOfAnySpellColorSpentToCast"
             | "TriggeringSpellWasKicked"
             | "AnotherOpponentControlsPotentialTarget" => scope.cast_event,
-            "TriggeringEventCausedBy"
+            "CombatParticipant"
+            | "TriggeringEventCausedBy"
             | "TriggeringObjectWasEnchanted"
             | "TriggeringObjectHadCounters"
             | "EvolveEnteringCreatureIsLarger"
@@ -602,6 +603,7 @@ impl Auditor {
                 }
             }
             "TaggedEffect"
+            | "CollectManaPaymentsEffect"
             | "SequenceEffect"
             | "ManaRetainedEffect"
             | "ExecuteWithSourceEffect" => {
@@ -1448,6 +1450,7 @@ fn same_scope_effect(kind: &str) -> bool {
             | "ChooseNumberEffect"
             | "ChooseNumberAtRandomEffect"
             | "ChooseCardNameEffect"
+            | "ChangeTextEffect"
             | "ChooseColorEffect"
             | "DrawForEachTaggedMatchingEffect"
             | "FlipCoinEffect"

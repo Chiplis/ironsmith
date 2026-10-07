@@ -1,0 +1,29 @@
+# Recovered next-play and flashback owners
+
+Base: a2876a804 on merged main. This source reconstruction covers the frozen 2026-10-03 complete bodies of Progenitor's Icon, Quicken, Ride the Avalanche, Savage Summoning, Scout's Warning, Archmage's Newt, The Fugitive Doctor, and Viral Spawning. The fixture retains the eight exact Scryfall/oracle IDs, original full text, and original e8740178 parser-failure identities. No campaign matrix rows are changed here. Historical a05b7508 review is background, not fresh clearance.
+
+## Timing and consumption
+
+`GrantNextSpellAbilityEffect` retains its existing ability mode and appends a typed mode field for cast timing, play timing, and noncopiable incarnation riders. The parser distinguishes `cast ... can be cast` from `play ... can be played`. Timing is a permission, so it does not add the flash keyword to the resulting spell or permanent. The prospective selected face supplies its actual type and subtype. Origin, payment, priority, prohibitions, land drops, and own-turn rules stay with the existing cast/land owners.
+
+Each timing grant captures its beneficiary, selector, turn and one-shot budget when it resolves. Icon's chosen subtype is frozen from the exact source or its retained departure choice, never inferred from a same-name permanent or future spell. Source departure does not revoke a timed grant. Missing required choice evidence errors rather than widening the filter.
+
+Every matching completed cast consumes every cast/play timing budget, even when a different casting route, price, or timing permission was used. A pending proposal does not complete that event. Existing cast checkpoints restore reservations and riders when the cast fails or is canceled.
+
+Scout's frozen `next creature card you play` includes a creature-land face. Its timing permits a legal own-turn land play outside an empty main phase, while priority, own-turn, origin, prohibition and remaining-drop checks remain mandatory. Direct, priority, and effect-driven tagged land owners reserve every matching play budget against the actual selected face before entry processing or any captured entry additions. Tagged copies reserve against their provisional copied face. The direct and priority owners first choose their origin permission; tagged plays retain the resolving effect's authorization. Their transaction checkpoints restore these reservations on pending/error paths. An entry addition can create a new permission; the original play cannot consume that later grant. Land plays do not consume cast-only grants or another player's grants.
+
+Savage's uncounterable and additional-entry-counter riders are attached to the actual selected spell incarnation at proposal time, before announcement, final cast capture and triggers. They are noncopiable and survive its resolving Stack-to-Battlefield transition, including across turn boundaries while pending on the stack. A later zone-change incarnation does not inherit them. Ride's next-cast instruction stays an independent one-shot delayed trigger, with its own later target announcement and the triggering spell's announced mana value.
+
+## Flashback
+
+A cost-bearing grant uses the same typed Flashback alternative and total-cost parser as a printed keyword. Doctor's existing optional sacrifice/result owner creates the later target-bearing reflexive trigger only from its own successful Clue sacrifice. The enter/investigate ability is retained.
+
+Newt's three-sentence instruction becomes one explicit announced card reference and one resolution-time conditional with mutually exclusive fixed and derived prices. It reads the live source's saddled designation or the exact departure receipt, never a new incarnation or an earlier trigger-time snapshot. ObjectSnapshot appends an optional saddle designation; synthetic, legacy and public snapshots retain unknown rather than false. Required absent designation evidence raises IncompleteEvidence through the checked effect owner.
+
+Savage's fixed uncounterable continuation and Newt's `that card` replacement subject require complete token shapes. Symbols and punctuation inside these clauses produce diagnostics instead of disappearing through a word projection. The shorter two-sentence flashback grant defers to the replacement owner's diagnostics.
+
+Viral's fixed flashback static grant is source/graveyard scoped and retains the live compound predicate. The opponent threshold is existential and uses actual opponents, excluding teammates and summed poison on separate opponents. Its complete token body retains green, 3/3, Phyrexian Beast and toxic 1.
+
+## Verification status
+
+UNRUN. No builds, tests, compiler probes, formatters or corpus runs were performed. The source-authored scenarios include independent direct compilation, serialized artifact materialization, native definition/effect recovery, exact full bodies and secondary abilities; overlapping budgets; independent origin/price; selected-incarnation riders; source loss; future target/X binding; invalid target reincarnation; live/exact-departure/unknown saddle evidence; actual optional sacrifice/reflexive timing; live team-aware poison; pending cast cancellation; pending direct/priority land entry; and pre-entry budget reservation with later entry additions and rollback. Tagged ordinary/copy scenarios cover selected-face eligibility, nonmatching lands, overlapping Scout budgets, retained cast-only/other-player grants, new addition grants, and pending/error restoration of budgets, objects, land drops, context and provisional-copy IDs. Grammar assertions retain cast/play and explicit-cost/duration boundaries and reject malformed symbols/punctuation through the live three-sentence reader. Fresh source review is still required before campaign coverage can change; these scenarios do not establish measured execution success.

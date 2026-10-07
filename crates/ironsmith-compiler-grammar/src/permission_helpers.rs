@@ -16,7 +16,7 @@ use super::token_primitives::{TurnDurationPhrase, parse_turn_duration_suffix};
 use super::util::{parse_target_phrase, strip_leading_token_words_any, trim_commas};
 use crate::cards::builders::ForEachEffectAst;
 use crate::cards::builders::GrantedAbilityAst;
-use crate::cards::builders::{GrantActionAst, SubjectVerbActionAst};
+use crate::cards::builders::{GrantActionAst, SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::grammar::shared_util::value_semantics::{
     parse_value_prefix_lexed, starts_explicit_ordered_comparison,
@@ -40,6 +40,7 @@ pub enum PermissionLifetime {
     UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
+    ForAsLongAsSourceOnBattlefield,
     Static,
 }
 
@@ -259,6 +260,7 @@ fn permission_lifetime_from_tagged_fact(
         permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsYouControlSource => {
             PermissionLifetime::ForAsLongAsYouControlSource
         }
+        permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsSourceOnBattlefield => PermissionLifetime::ForAsLongAsSourceOnBattlefield,
         permission_tagged_facts::PermissionLifetimeFact::Static => PermissionLifetime::Static,
     }
 }
@@ -284,6 +286,7 @@ fn permission_lifetime_to_tagged_fact(
         PermissionLifetime::ForAsLongAsYouControlSource => {
             permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsYouControlSource
         }
+        PermissionLifetime::ForAsLongAsSourceOnBattlefield => permission_tagged_facts::PermissionLifetimeFact::ForAsLongAsSourceOnBattlefield,
         PermissionLifetime::Static => permission_tagged_facts::PermissionLifetimeFact::Static,
     }
 }
@@ -1071,6 +1074,24 @@ fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
     })
 }
 
+/// A complete resolving free-cast rule for the hand, with its duration
+/// between the origin and price. Reuse the static hand permission's filter
+/// and alternative-cost model; only the grant lifetime changes.
+fn parse_this_turn_hand_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let words = crate::lexer::TokenWordView::new(tokens).word_refs();
+    if words != ["you", "may", "cast", "spells", "from", "your", "hand", "this", "turn", "without", "paying", "their", "mana", "costs"] {
+        return Ok(None);
+    }
+    if tokens.len() != words.len() || !tokens.iter().zip(&words).all(|(token, word)| token.is_word(word)) {
+        return Err(CardTextError::ParseError("unexpected symbol or punctuation in temporary hand permission".into()));
+    }
+    let mut rest = tokens[3..7].to_vec();
+    rest.extend_from_slice(&tokens[9..]);
+    let spec = parse_hand_free_cast_grant_spec_from_rest(&rest, false)?.ok_or_else(||
+        CardTextError::ParseError("temporary hand permission has no complete alternative cost".into()))?;
+    Ok(Some(PermissionClauseSpec::GrantBySpec { player: PlayerAst::You, spec, lifetime: PermissionLifetime::ThisTurn }))
+}
+
 pub fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
@@ -1087,6 +1108,7 @@ pub fn parse_permission_clause_spec_lexed(
     if clause_refs.is_empty() {
         return Ok(None);
     }
+    if let Some(spec) = parse_this_turn_hand_free_cast(tokens)? { return Ok(Some(spec)); }
 
     if let Some(spec) = graveyard_turn_permissions::parse_permanent_permission_rider(tokens)? {
         return Ok(Some(spec));
@@ -1201,6 +1223,7 @@ pub fn parse_permission_clause_spec_lexed(
             Zone::Exile,
         )
         .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            mana_rider: None,
             source: parsed.reference.surface,
             plural_spell_subject: true,
             generic_card_pool: true,
@@ -1305,6 +1328,7 @@ pub fn parse_permission_clause_spec_lexed(
                 | PermissionLifetime::UntilYourNextEndStep
                 | PermissionLifetime::ForAsLongAsExiled
                 | PermissionLifetime::ForAsLongAsYouControlSource
+                | PermissionLifetime::ForAsLongAsSourceOnBattlefield
         ) && target_ref.as_copy
         {
             let label = match lifetime {
@@ -1374,12 +1398,16 @@ pub fn parse_permission_clause_spec_lexed(
         let leading_duration = prefixed_lifetime.is_some();
         let surface = (leading_duration
             || target_surface.is_some()
-            || lifetime == PermissionLifetime::ForAsLongAsYouControlSource)
+            || matches!(lifetime, PermissionLifetime::ForAsLongAsYouControlSource | PermissionLifetime::ForAsLongAsSourceOnBattlefield))
             .then(|| {
                 let mut surface = ironsmith_core::GrantPlayTaggedSurface::default()
                     .with_leading_duration(leading_duration);
                 if let Some(object) = target_surface {
                     surface = surface.with_object(object);
+                }
+                if lifetime == PermissionLifetime::ForAsLongAsSourceOnBattlefield {
+                    surface.battlefield_source = permission_tagged_facts::parse_source_battlefield_permission_tail_tokens(tail_tokens)
+                        .map(|(_, source)| source);
                 }
                 if lifetime == PermissionLifetime::ForAsLongAsYouControlSource {
                     surface = surface.with_control_source(
@@ -2240,6 +2268,15 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
 #[path = "permission_helpers/tagged_permission_readings.rs"]
 mod tagged_permission_readings;
 
+pub fn parse_look_tagged_exile_permission(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if permission_tagged_facts::parse_look_tagged_while_exiled_tokens(tokens).is_none() { return Ok(None); }
+    Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+        SubjectVerbActionAst::RevealLook(crate::cards::builders::RevealLookActionAst::LookAtObjects {
+            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile),
+            permit_while_exiled: true,
+        }))))
+}
+
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -2598,6 +2635,17 @@ pub fn parse_cast_or_play_tagged_clause(
             }
             Ok(Some(effect))
         }
+        Some(PermissionClauseSpec::Tagged {
+            tag, player, allow_land, as_copy: false, without_paying_mana_cost,
+            lifetime: PermissionLifetime::ForAsLongAsSourceOnBattlefield,
+            filter: None, surface, max_plays: None,
+        }) if matches!(player, PlayerAst::Implicit | PlayerAst::You)
+            && mana_spend_mode == ironsmith_core::value_model::ManaSpendMode::Normal => Ok(Some(
+                EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield {
+                        tag: crate::tag::TagRef::of(tag), player, allow_land, without_paying_mana_cost, surface,
+                    })),
+            )),
         Some(PermissionClauseSpec::Tagged {
             tag,
             player,

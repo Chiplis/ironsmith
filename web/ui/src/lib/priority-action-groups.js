@@ -96,7 +96,10 @@ export function buildBattlefieldFamilies(players) {
 function castingMethodPreference(action) {
   if (action?.kind !== "cast_spell") return 0;
 
-  const method = action?.action_ref?.casting_method;
+  const selectedMethod = action?.action_ref?.casting_method;
+  // An exact permission chooses the origin's grant; it does not change the
+  // origin's display preference. A separate replacement price stays distinct.
+  const method = selectedMethod?.kind === "exact_permission" ? selectedMethod.origin : selectedMethod;
   const kind = String(method?.kind || "");
   if (kind === "normal") return 0;
   if (kind === "play_from" && method?.use_alternative == null) return 0;

@@ -1,0 +1,78 @@
+[
+  {
+    "name": "Agency Coroner",
+    "id": "d63f2c23-e877-42e3-9362-5d003a173c6d",
+    "oracle_id": "3686fd97-49ff-4a92-9cb2-7d8e9438d945",
+    "mana_cost": "{4}{B}",
+    "type_line": "Creature — Ogre Cleric",
+    "oracle_text": "{2}{B}, Sacrifice another creature: Draw a card. If the sacrificed creature was suspected, draw two cards instead.",
+    "power": "3",
+    "toughness": "6",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "unsupported target phrase (clause: 'suspected') [rule-path=additional-cost-object-state-predicate > predicate-registry-reading] [rule-path=conditional-sentence-family > legacy-document-registry-reading]; oracle-only fallback also failed: unsupported target phrase (clause: 'suspected') [rule-path=additional-cost-object-state-predicate > predicate-registry-reading] [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+  },
+  {
+    "name": "Airtight Alibi",
+    "id": "bffbbe21-0a1d-48b9-903e-81c109aa11de",
+    "oracle_id": "cb666ea8-55e3-4e27-ae6d-806677dfc17a",
+    "mana_cost": "{2}{G}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Flash\nEnchant creature\nWhen this Aura enters, untap enchanted creature. It gains hexproof until end of turn. If it's suspected, it's no longer suspected.\nEnchanted creature gets +2/+2 and can't become suspected.",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "could not find verb in effect clause (clause: 'its no longer suspected'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'its no longer suspected'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+  },
+  {
+    "name": "Deadly Complication",
+    "id": "3f1aaebc-105a-4867-9727-24b8d7899e28",
+    "oracle_id": "c53c75a0-c248-4e76-8d28-f7e53b2dcc49",
+    "mana_cost": "{1}{B}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Choose one or both —\n• Destroy target creature.\n• Put a +1/+1 counter on target suspected creature you control. You may have it become no longer suspected.",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "unsupported become clause (clause: 'no longer suspected') [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading]; oracle-only fallback also failed: unsupported become clause (clause: 'no longer suspected') [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading]",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+  },
+  {
+    "name": "Eliminate the Impossible",
+    "id": "486f1cc2-c162-448e-91a9-577d7d796584",
+    "oracle_id": "c78d4cec-6764-4cce-96d2-a2d85a57b218",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "parser does not yet support line family: 'Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Investigate. Creatures your opponents control get -2/-0 until end of turn. If any of them are suspected, they're no longer suspected.' [rule-path=unsupported-line-family]",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "29c6b38304fb5a7f7d10347620d7bf561d52abfd"
+  },
+  {
+    "name": "Frantic Scapegoat",
+    "id": "3ae07b33-dcee-41aa-9886-38336d2aff7a",
+    "oracle_id": "d181310f-404b-4f26-8024-b7b537d1fd90",
+    "mana_cost": "{R}",
+    "type_line": "Creature — Goat",
+    "oracle_text": "Haste\nWhen this creature enters, suspect it. (It has menace and can't block.)\nWhenever one or more other creatures you control enter, if this creature is suspected, you may suspect one of the other creatures. If you do, this creature is no longer suspected.",
+    "power": "1",
+    "toughness": "1",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "could not find verb in effect clause (clause: 'this creature is no longer suspected'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'this creature is no longer suspected'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]"
+  },
+  {
+    "name": "Hot Pursuit",
+    "id": "95b38896-4568-4764-af81-74d932ac500f",
+    "oracle_id": "00bf9859-d5bf-455a-a4be-965ea4250c7e",
+    "mana_cost": "{1}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, suspect target creature an opponent controls. As long as this enchantment remains on the battlefield, that creature is also goaded.\nAt the beginning of combat on your turn, if two or more players have lost the game, gain control of all goaded and/or suspected creatures until end of turn. Untap them. They gain haste until end of turn.",
+    "baseline_category": "parser_failure",
+    "baseline_parse_error": "could not find verb in effect clause (clause: 'as long as this enchantment remains on the battlefield'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'as long as this enchantment remains on the battlefield'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > triggered-line]"
+  }
+]

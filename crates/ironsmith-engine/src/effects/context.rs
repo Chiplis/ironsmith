@@ -83,6 +83,9 @@ pub enum ExecutionError {
         player: PlayerId,
         decision: &'static str,
     },
+    /// Required retained facts are absent or inconsistent. Boolean queries
+    /// must preserve this as incomplete execution, never infer false or zero.
+    IncompleteEvidence(String),
 }
 
 impl ExecutionError {
@@ -98,7 +101,9 @@ impl ExecutionError {
         self.is_resource_exhaustion()
             || matches!(
                 self,
-                Self::ContinuousDiscovery(_) | Self::UnresolvedPlayerDecision { .. }
+                Self::ContinuousDiscovery(_)
+                    | Self::UnresolvedPlayerDecision { .. }
+                    | Self::IncompleteEvidence(_)
             )
     }
 }
@@ -126,6 +131,9 @@ impl std::fmt::Display for ExecutionError {
                 "Incomplete calculation: {decision} requires a decision from player {:?}",
                 player
             ),
+            ExecutionError::IncompleteEvidence(message) => {
+                write!(f, "Incomplete retained evidence: {message}")
+            }
             ExecutionError::InvalidTarget => write!(f, "Invalid target"),
             ExecutionError::OutOfRange => write!(f, "Subject is outside range of influence"),
             ExecutionError::UnresolvableValue(msg) => write!(f, "Cannot resolve value: {}", msg),
@@ -256,6 +264,7 @@ pub struct CombatExecutionContext {
     pub last_added_combat_order: Option<u64>,
     /// The defending player for combat triggers.
     pub defending_player: Option<PlayerId>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     /// The attacking player for combat triggers.
     pub attacking_player: Option<PlayerId>,
     /// The chosen player linked to this source, if one was captured earlier.
@@ -306,6 +315,9 @@ pub struct ManaExecutionContext {
 /// Ephemeral replacement effects scoped to the current resolution path.
 #[derive(Debug, Clone)]
 pub struct ReplacementExecutionContext {
+    /// The unresolved zone proposal whose program is executing. This is not
+    /// a completed zone-change trigger and cannot impose its destination zone.
+    pub original_zone_event: Option<Box<crate::events::ZoneChangeEvent>>,
     /// Source counter additions being proposed during battlefield entry.
     /// Their replacements run on the combined ETB event, not the source-zone card.
     pub entry_counter_source: Option<ObjectId>,
@@ -326,6 +338,7 @@ pub struct ReplacementExecutionContext {
 impl Default for ReplacementExecutionContext {
     fn default() -> Self {
         Self {
+            original_zone_event: None,
             entry_counter_source: None,
             entry_event: None,
             entry_reserved_objects: HashSet::new(),
@@ -337,10 +350,21 @@ impl Default for ReplacementExecutionContext {
     }
 }
 
+/// Resolution-level control flow, independent of an instruction's result.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ResolutionControl {
+    #[default]
+    Continue,
+    Stop,
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
     pub source: ObjectId,
+    /// Linked pair and rules-text acquisition captured when the ability was admitted.
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     /// The controller of the source.
     pub controller: PlayerId,
     /// Resolved targets for the effect.
@@ -350,6 +374,8 @@ pub struct ExecutionContext<'a> {
     /// True when `targets` carries preselected cost-payment choices rather than
     /// spell or ability targets.
     pub targets_are_cost_choices: bool,
+    /// Internal cloned cost-admission simulation; never a completed payment.
+    pub(crate) prospective_cost_payment: bool,
     /// Active target requirement assignments for the current execution scope.
     pub target_assignments: Vec<TargetAssignment>,
     /// Announced divisions not yet consumed by their resolving effects.
@@ -429,6 +455,9 @@ pub struct ExecutionContext<'a> {
     pub do_this_limit: Option<DoThisLimit>,
     /// Index of the resolving activated ability on its source object, when available.
     pub ability_index: Option<usize>,
+    /// Exact admitted acquisition; copies retain it and never count as activations.
+    pub activation_origin: Option<crate::continuous::AbilityOrigin>,
+    pub activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     /// Pre-chosen modes for modal spells (set during casting per MTG rule 601.2b).
     /// If Some, ChooseModeEffect should use these instead of prompting.
     pub chosen_modes: Option<Vec<usize>>,
@@ -454,6 +483,7 @@ pub struct ExecutionContext<'a> {
     /// This resolution restarted the game (CR 726): its later battlefield
     /// entries are deferred until the new game's first untap step.
     pub(crate) restarted_game: bool,
+    pub(crate) resolution_control: ResolutionControl,
     /// The first object id allocated after this stack entry began resolving.
     ///
     /// Objects with an id at or above it were moved into their current zone
@@ -507,6 +537,21 @@ macro_rules! execution_context_checkpoint {
 }
 
 impl ExecutionContextCheckpoint {
+    pub(crate) fn resolution_stopped(&self) -> bool {
+        self.resolution_control == ResolutionControl::Stop
+    }
+    /// Restore an execution frame within the same successful resolution.
+    /// Transaction/query rollback must keep using the ordinary restore methods.
+    pub(crate) fn restore_ref_preserving_resolution_control(&self, ctx: &mut ExecutionContext<'_>) {
+        let stopped = ctx.resolution_stopped() || self.resolution_stopped();
+        self.restore_ref(ctx);
+        if stopped { ctx.stop_resolution(); }
+    }
+    pub(crate) fn restore_preserving_resolution_control(self, ctx: &mut ExecutionContext<'_>) {
+        let stopped = ctx.resolution_stopped() || self.resolution_stopped();
+        self.restore(ctx);
+        if stopped { ctx.stop_resolution(); }
+    }
     pub(crate) fn replacement_scope(&self) -> &ReplacementExecutionContext {
         &self.replacement
     }
@@ -526,10 +571,13 @@ impl ExecutionContextCheckpoint {
 
 execution_context_checkpoint! {
     source: ObjectId,
+    linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
     targets_are_cost_choices: bool,
+    prospective_cost_payment: bool,
     target_assignments: Vec<TargetAssignment>,
     target_distributions: Vec<TargetDistribution>,
     announced_target_assignments: Vec<TargetAssignment>,
@@ -556,6 +604,8 @@ execution_context_checkpoint! {
     trigger_identity: Option<crate::triggers::TriggerIdentity>,
     do_this_limit: Option<DoThisLimit>,
     ability_index: Option<usize>,
+    activation_origin: Option<crate::continuous::AbilityOrigin>,
+    activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
     chosen_modes: Option<Vec<usize>>,
     cause: EventCause,
     provenance: ProvNodeId,
@@ -565,6 +615,7 @@ execution_context_checkpoint! {
     shared_team_structure_operations: HashSet<(usize, usize, &'static str)>,
     created_extra_turn_index: Option<usize>,
     restarted_game: bool,
+    resolution_control: ResolutionControl,
     resolution_object_id_floor: Option<ObjectId>,
     public_search_reveal_tag: Option<TagKey>,
     pending_entry_attachment: Option<crate::target::ChooseSpec>,
@@ -597,6 +648,11 @@ macro_rules! payment_execution_inputs {
 
 payment_execution_inputs! {
     inherited {
+        linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+        source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
+        activation_origin: Option<crate::continuous::AbilityOrigin>,
+        activation_definition: Option<ironsmith_core::LinkedExileDefinition>,
+        prospective_cost_payment: bool,
         all_targets_legal: bool,
         announced_target_assignments: Vec<TargetAssignment>,
         vote_results: HashMap<ObjectId, VoteResult>,
@@ -623,7 +679,7 @@ payment_execution_inputs! {
         optional_action, source_snapshot, tagged_objects, optional_identity_guard,
         do_this_limit, chosen_modes, cause, provenance, replacement,
         executing_effect, shared_team_structure_operations, created_extra_turn_index,
-        restarted_game, public_search_reveal_tag, pending_entry_attachment,
+        restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment,
         created_continuous_effects,
     }
 }
@@ -678,6 +734,9 @@ impl std::fmt::Debug for ExecutionContext<'_> {
 }
 
 impl<'a> ExecutionContext<'a> {
+    pub(crate) fn stop_resolution(&mut self) { self.resolution_control = ResolutionControl::Stop; }
+    pub(crate) fn resolution_stopped(&self) -> bool { self.resolution_control == ResolutionControl::Stop }
+
     /// A speculative query may construct temporary bindings, but it cannot
     /// publish them into the instruction that asked the question. Restore on
     /// every return, including failed candidates and early query errors.
@@ -696,10 +755,13 @@ impl<'a> ExecutionContext<'a> {
     ) -> Self {
         Self {
             source,
+            linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
             targets_are_cost_choices: false,
+            prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
@@ -727,6 +789,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -736,6 +800,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: HashSet::new(),
             created_extra_turn_index: None,
             restarted_game: false,
+            resolution_control: ResolutionControl::Continue,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
@@ -758,10 +823,13 @@ impl<'a> ExecutionContext<'a> {
             Box::leak(Box::new(crate::decision::SelectFirstDecisionMaker));
         ExecutionContext {
             source,
+            linked_exile_owner: None,
+            source_number_owner: None,
             controller,
             targets: Vec::new(),
             announced_targets: None,
             targets_are_cost_choices: false,
+            prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
@@ -789,6 +857,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
+            activation_origin: None,
+            activation_definition: None,
             chosen_modes: None,
             cause: EventCause::from_effect(source, controller),
             provenance: ProvNodeId::default(),
@@ -798,6 +868,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: HashSet::new(),
             created_extra_turn_index: None,
             restarted_game: false,
+            resolution_control: ResolutionControl::Continue,
             resolution_object_id_floor: None,
             public_search_reveal_tag: None,
             pending_entry_attachment: None,
@@ -810,10 +881,13 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_decision_maker<'b>(self, dm: &'b mut dyn DecisionMaker) -> ExecutionContext<'b> {
         ExecutionContext {
             source: self.source,
+            linked_exile_owner: self.linked_exile_owner,
+            source_number_owner: self.source_number_owner,
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
             targets_are_cost_choices: self.targets_are_cost_choices,
+            prospective_cost_payment: self.prospective_cost_payment,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,
             announced_target_assignments: self.announced_target_assignments,
@@ -841,6 +915,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_identity: self.trigger_identity,
             do_this_limit: self.do_this_limit,
             ability_index: self.ability_index,
+            activation_origin: self.activation_origin.clone(),
+            activation_definition: self.activation_definition,
             chosen_modes: self.chosen_modes,
             cause: self.cause,
             provenance: self.provenance,
@@ -850,6 +926,7 @@ impl<'a> ExecutionContext<'a> {
             shared_team_structure_operations: self.shared_team_structure_operations,
             created_extra_turn_index: self.created_extra_turn_index,
             restarted_game: self.restarted_game,
+            resolution_control: self.resolution_control,
             resolution_object_id_floor: self.resolution_object_id_floor,
             public_search_reveal_tag: self.public_search_reveal_tag,
             pending_entry_attachment: self.pending_entry_attachment,
@@ -946,6 +1023,17 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
+    /// Retain the exact linked rules acquisition in this execution.
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
+        self
+    }
+
+    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.source_number_owner = owner;
+        self
+    }
+
     /// Set provenance parent for emitted events.
     pub fn with_provenance(mut self, provenance: ProvNodeId) -> Self {
         self.provenance = provenance;
@@ -955,32 +1043,31 @@ impl<'a> ExecutionContext<'a> {
     /// Snapshot all object targets for "last known information".
     /// Call this before executing effects that may exile/destroy targets.
     pub fn snapshot_targets(&mut self, game: &GameState) {
+        if let Err(error) = self.try_snapshot_targets(game) {
+            game.record_token_resource_failure(&error);
+        }
+    }
+
+    pub fn try_snapshot_targets(&mut self, game: &GameState) -> Result<(), super::ExecutionError> {
+        let mut snapshots = self.target_snapshots.clone();
         for target in &self.targets {
-            let ResolvedTarget::Object(obj_id) = target else {
-                continue;
-            };
+            let ResolvedTarget::Object(obj_id) = target else { continue; };
             if let Some(obj) = game.object(*obj_id) {
-                self.target_snapshots.insert(
-                    *obj_id,
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game),
-                );
+                snapshots.insert(*obj_id,
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(obj, game)?);
             } else if let Some(entry) = game.stack_ability_entry(*obj_id) {
-                // An ability on the stack, named by its own stack id: its
-                // last known information is its source's, controlled by the
-                // ability's controller ("its controller", CR 113.8).
-                let snapshot = game
-                    .object(entry.object_id)
-                    .map(|source| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(source, game)
-                    })
-                    .or_else(|| entry.source_snapshot.clone());
+                let snapshot = game.object(entry.object_id).map(|source|
+                    ObjectSnapshot::try_from_object_with_calculated_characteristics(source, game)
+                ).transpose()?.or_else(|| entry.source_snapshot.clone());
                 if let Some(mut snapshot) = snapshot {
                     snapshot.controller = entry.controller;
                     snapshot.zone = crate::zone::Zone::Stack;
-                    self.target_snapshots.insert(*obj_id, snapshot);
+                    snapshots.insert(*obj_id, snapshot);
                 }
             }
         }
+        self.target_snapshots = snapshots;
+        Ok(())
     }
 
     /// Refresh target LKI when a target object is about to leave its expected zone.
@@ -1013,6 +1100,54 @@ impl<'a> ExecutionContext<'a> {
     pub fn with_attacking_player(mut self, player: PlayerId) -> Self {
         self.combat.attacking_player = Some(player);
         self
+    }
+
+    /// Bind only when an instruction actually uses the role. Native choices
+    /// and the existing enclosing checkpoint own suspension and rollback.
+    pub(crate) fn bind_defending_player(&mut self, game: &GameState) -> Result<bool, ExecutionError> {
+        let reference = self.combat.defending_player_reference.or_else(|| {
+            self.combat.defending_player.is_none().then(|| self.triggering_event.as_ref()
+                .and_then(|event| game.defending_reference_for_event(event))).flatten()
+        });
+        if matches!(reference, Some(crate::combat_state::DefendingPlayerReference::Selected(_)
+            | crate::combat_state::DefendingPlayerReference::KnownAbsent)) { return Ok(true); }
+        let players = if let Some(reference) = reference {
+            game.defending_player_candidates(reference)?
+        } else if let Some(player) = self.combat.defending_player {
+            vec![player]
+        } else { return Err(ExecutionError::IncompleteEvidence(
+            "defending player has no combat reference or selected actor".into())); };
+        let chosen = match players.as_slice() {
+            [] => {
+                self.combat.defending_player = None;
+                self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::KnownAbsent);
+                return Ok(true);
+            }
+            [player] => *player,
+            _ => {
+                let options = players.iter().filter_map(|id|
+                    game.player(*id).map(|player| (player.name.to_string(), *id))).collect::<Vec<_>>();
+                let choice = crate::decisions::ask_choose_one(game, &mut self.decision_maker,
+                    self.controller, self.source, &options);
+                if self.decision_maker.awaiting_choice() { return Ok(false); }
+                choice.ok_or(ExecutionError::UnresolvedPlayerDecision {
+                    player: self.controller, decision: "choose the defending player",
+                })?
+            }
+        };
+        self.combat.defending_player = Some(chosen);
+        self.combat.defending_player_reference = Some(crate::combat_state::DefendingPlayerReference::Selected(chosen));
+        Ok(true)
+    }
+
+    pub(crate) fn defending_players(&self, game: &GameState) -> Result<Vec<PlayerId>, ExecutionError> {
+        if let Some(reference) = self.combat.defending_player_reference {
+            return game.defending_player_candidates(reference);
+        }
+        self.combat.defending_player.map(|player| {
+            if game.player(player).is_some_and(|player| player.is_in_game()) { vec![player] } else { Vec::new() }
+        }).ok_or_else(|| ExecutionError::IncompleteEvidence(
+            "defending player has no combat reference or selected actor".into()))
     }
 
     /// Set the X value.
@@ -1241,6 +1376,9 @@ impl<'a> ExecutionContext<'a> {
     /// voted with Bob, not players who voted with Alice.
     pub fn with_triggering_event(mut self, event: crate::triggers::TriggerEvent) -> Self {
         self.provenance = event.provenance();
+        if self.combat.defending_player.is_none() && self.combat.defending_player_reference.is_none() {
+            self.combat.defending_player_reference = event.defending_player_reference();
+        }
         if let Some(attack) = event.downcast::<crate::events::PlayerAttackDeclarationEvent>() {
             self.combat.attacking_player = Some(attack.attacker);
             self.combat.defending_player = Some(attack.defender);
@@ -1265,6 +1403,12 @@ impl<'a> ExecutionContext<'a> {
 
         for (tag, players) in event.player_tags() {
             self.set_tagged_players(tag.clone(), players.clone());
+        }
+        if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
+            && let Some(snapshot) = event.source_snapshot().filter(|snapshot| snapshot.object_id == damage.source)
+        {
+            self.set_tagged_players(ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG,
+                vec![snapshot.controller]);
         }
         if let Some(controller) = event.cause().and_then(|cause| cause.source_controller) {
             self.set_tagged_players(
@@ -1323,7 +1467,18 @@ impl<'a> ExecutionContext<'a> {
         self
     }
 
-    /// Set the activated ability index for the resolving activated ability.
+    /// Retain the exact acquisition admitted by the activation owner.
+    pub fn with_activation_origin(mut self, origin: Option<crate::continuous::AbilityOrigin>) -> Self {
+        self.activation_origin = origin;
+        self
+    }
+
+    pub fn with_activation_definition(mut self, definition: Option<ironsmith_core::LinkedExileDefinition>) -> Self {
+        self.activation_definition = definition;
+        self
+    }
+
+    /// Legacy ordinal used for selection and existing resolution-count readers.
     pub fn with_ability_index(mut self, ability_index: usize) -> Self {
         self.ability_index = Some(ability_index);
         self
@@ -1619,9 +1774,7 @@ impl<'a> ExecutionContext<'a> {
                 .filter_map(|target| match target {
                     ResolvedTarget::Object(id) => game
                         .object(*id)
-                        .map(|obj| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                        })
+                        .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                         .or_else(|| self.target_snapshots.get(id).cloned()),
                     _ => None,
                 })
@@ -1655,16 +1808,21 @@ impl<'a> ExecutionContext<'a> {
             ironsmith_core::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into(),
             attacking,
         );
-        let source_exiled = game
-            .get_exiled_with_source_links(self.source)
+        let linked = match &self.linked_exile_owner {
+            Some(owner) => match game.linked_exile_pair_members(owner) {
+                Ok(members) => members,
+                Err(error) => { game.record_token_resource_failure(&error); &[] }
+            },
+            None => game.get_exiled_with_source_links(self.source),
+        };
+        let source_exiled = linked
             .iter()
             .filter_map(|id| {
-                game.object(*id).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(*id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             })
             .collect::<Vec<_>>();
-        if !source_exiled.is_empty() {
+        if self.linked_exile_owner.is_some() || !source_exiled.is_empty() {
+            // A known empty pair must replace any stale source-wide tag.
             tagged_objects.insert(TagKey::from(SOURCE_EXILED_TAG), source_exiled);
         }
         let mut target_objects = target_objects;
@@ -1696,11 +1854,7 @@ impl<'a> ExecutionContext<'a> {
                 }
                 target_objects.extend(entry.targets.iter().filter_map(|target| match target {
                     crate::game_state::Target::Object(target_id) => {
-                        game.object(*target_id).map(|object| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(
-                                object, game,
-                            )
-                        })
+                        game.object(*target_id).and_then(|object| ObjectSnapshot::capture_for_execution(object, game))
                     }
                     crate::game_state::Target::Player(_) => None,
                 }));
@@ -1763,14 +1917,15 @@ impl<'a> ExecutionContext<'a> {
             .with_tagged_objects(&tagged_objects)
             .with_tagged_players(&tagged_players)
             .with_effect_outcomes(&self.effect_outcomes);
+        filter_ctx.source_number_owner=self.source_number_owner.clone();
         filter_ctx.active_player = game.singular_active_player(chosen_player);
         if self.combat.defending_player.is_some() {
             filter_ctx.defending_player = self.combat.defending_player;
-            filter_ctx.defending_players = if game.shared_team_turns_enabled() {
-                game.team_players_for(self.combat.defending_player.unwrap())
-            } else {
-                Vec::new()
-            };
+            filter_ctx.defending_players.clear();
+        }
+        filter_ctx.defending_player_reference = self.combat.defending_player_reference;
+        if let Some(reference) = self.combat.defending_player_reference {
+            filter_ctx.defending_players = game.defending_player_candidates(reference).unwrap_or_default();
         }
         if self.combat.attacking_player.is_some() {
             filter_ctx.attacking_player = self.combat.attacking_player;
@@ -1803,7 +1958,7 @@ impl<'a> ExecutionContext<'a> {
         let damage = triggering_event.downcast::<crate::events::DamageEvent>()?;
         let source_snapshot = triggering_event.source_snapshot().cloned().or_else(|| {
             game.object(damage.source)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                .and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
         });
         let source_controller = game
             .object(damage.source)
@@ -1813,9 +1968,7 @@ impl<'a> ExecutionContext<'a> {
             crate::events::DamageTarget::Player(player) => (Some(player), None),
             crate::events::DamageTarget::Object(object_id) => {
                 let snapshot = damage.target_snapshot.clone().or_else(|| {
-                    game.object(object_id).map(|obj| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                    })
+                    game.object(object_id).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                 });
                 (None, snapshot)
             }
@@ -1837,14 +1990,10 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshot = blocked.blocker_snapshot.clone().or_else(|| {
-                game.object(blocked.blocker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             return Some(BlockEventContext {
                 attacker: blocked.attacker,
@@ -1858,18 +2007,14 @@ impl<'a> ExecutionContext<'a> {
             triggering_event.downcast::<crate::events::combat::CreatureBecameBlockedEvent>()
         {
             let attacker_snapshot = blocked.attacker_snapshot.clone().or_else(|| {
-                game.object(blocked.attacker).map(|obj| {
-                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                })
+                game.object(blocked.attacker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
             });
             let blocker_snapshots = if blocked.blocker_snapshots.is_empty() {
                 blocked
                     .blockers
                     .iter()
                     .filter_map(|blocker| {
-                        game.object(*blocker).map(|obj| {
-                            ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                        })
+                        game.object(*blocker).and_then(|obj| ObjectSnapshot::capture_for_execution(obj, game))
                     })
                     .collect()
             } else {

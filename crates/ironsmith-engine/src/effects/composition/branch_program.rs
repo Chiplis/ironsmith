@@ -98,12 +98,17 @@ impl std::fmt::Debug for SelectedBranchCursor {
     }
 }
 impl ActionProgramCursor for SelectedBranchCursor {
+    fn finish_stopped(mut self: Box<Self>, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<ProgramCompletion, ExecutionError> {
+        self.pending_child = None;
+        self.finish()
+    }
     fn next_action(
         &mut self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<ProgramAction>, ExecutionError> {
-        if ctx.decision_maker.awaiting_choice() {
+        if ctx.decision_maker.awaiting_choice() || ctx.resolution_stopped() {
             return Ok(None);
         }
         loop {
@@ -136,7 +141,7 @@ impl ActionProgramCursor for SelectedBranchCursor {
                         self.outcomes
                             .iter()
                             .flat_map(|outcome| outcome.events.iter()),
-                    );
+                    )?;
                     Ok(())
                 })?;
             }

@@ -27,6 +27,14 @@ pub use ironsmith_core::RemoveCountersEffect;
 /// );
 /// ```
 impl EffectExecutor for RemoveCountersEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        crate::effects::replacement::prepare_native_draw_continuation_with_outputs(self, game, ctx)
+    }
+
     fn supports_simultaneous_player_action(&self) -> bool {
         true
     }
@@ -80,7 +88,7 @@ impl EffectExecutor for RemoveCountersEffect {
         );
         // Preserve the authored adapter's existing neutral suspension policy.
         // The shared transaction owns restoration of the complete action.
-        if ctx.decision_maker.awaiting_choice() {
+        if result.is_ok() && ctx.decision_maker.awaiting_choice() {
             return Ok(CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
@@ -97,6 +105,10 @@ impl EffectExecutor for RemoveCountersEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
+            if *kind == self.counter_type && spec.base() == self.target.base()) {
+            return Some(format!("Remove all {} counters from that permanent", self.counter_type.description()));
+        }
         if matches!(self.target.base(), ChooseSpec::Source)
             && let Some(count) = self.count.constant_integer()
         {
@@ -411,6 +423,28 @@ struct CounterRemovalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for CounterRemovalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        // A retained replacement original is already stopped at its real draw.
+        if self.original.is_some() {
+            return Ok(crate::effects::SimultaneousEffectCommit {
+                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(original),
+                completion: Some(self),
+            });
+        }
+        let programs = self.programs.into_iter().map(|program| {
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: removal_bindings(&program.context)?, object_tags: Vec::new(),
+            };
+            Ok((program, bindings))
+        }).collect::<Result<Vec<_>, ExecutionError>>()?;
+        crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
+            game, ctx, original, programs, &[],
+        )
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -1123,6 +1157,46 @@ pub(crate) fn counter_cost_x_from_outcome(
     })
 }
 
+/// Both validation and captured payment bind the same exact object and kind.
+fn counter_removal_cost_input(
+    effect: &RemoveCountersEffect,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> Result<(crate::ids::ObjectId, u32), ExecutionError> {
+    let target = match effect.target.base() {
+        ChooseSpec::Source => source,
+        ChooseSpec::SpecificObject(id) => {
+            if !game.battlefield.contains(id)
+                || !game.object(*id).is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                || game.is_phased_out(*id)
+            {
+                return Err(ExecutionError::Impossible("counter-cost object is unavailable".into()));
+            }
+            *id
+        }
+        _ => return Err(ExecutionError::Impossible("counter cost requires an exact source or granting object".into())),
+    };
+    let available = game.counter_count(target, effect.counter_type);
+    let count = if matches!(effect.count.unhinted(), Value::CountersOn(spec, Some(kind))
+        if *kind == effect.counter_type && spec.base() == effect.target.base())
+    {
+        available
+    } else {
+        let quantity = effect.count.constant_integer().ok_or_else(|| ExecutionError::Impossible(
+            "counter cost requires fixed arithmetic or its exact object's matching counters".into(),
+        ))?;
+        u32::try_from(quantity.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
+            resource: "counter-cost quantity",
+            requested: quantity.max(0) as u128,
+            maximum: u32::MAX as u128,
+        })?
+    };
+    if available < count {
+        return Err(ExecutionError::Impossible("not enough counters".into()));
+    }
+    Ok((target, count))
+}
+
 impl CostExecutableEffect for RemoveCountersEffect {
     fn payment_x_from_prepared_payment(
         &self,
@@ -1133,11 +1207,11 @@ impl CostExecutableEffect for RemoveCountersEffect {
     }
 
     fn supports_prepared_payment(&self) -> bool {
-        matches!(self.target.base(), ChooseSpec::Source)
-            && self
-                .count
-                .constant_integer()
+        matches!(self.target.base(), ChooseSpec::Source | ChooseSpec::SpecificObject(_))
+            && (self.count.constant_integer()
                 .is_some_and(|quantity| u32::try_from(quantity.max(0)).is_ok())
+                || matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
+                    if *kind == self.counter_type && spec.base() == self.target.base()))
     }
 
     fn prepare_simultaneous_payment(
@@ -1145,15 +1219,8 @@ impl CostExecutableEffect for RemoveCountersEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        CostExecutableEffect::can_execute_as_cost(self, game, ctx.source, ctx.controller)
-            .map_err(|error| ExecutionError::Impossible(format!("{error:?}")))?;
-        let quantity = self.count.constant_integer().ok_or_else(|| {
-            ExecutionError::Impossible("counter cost requires constant integer arithmetic".into())
-        })?;
-        let count = u32::try_from(quantity.max(0)).map_err(|_| {
-            ExecutionError::Impossible("counter cost exceeds the unsigned counter range".into())
-        })?;
-        let event = crate::events::Event::remove_counters(ctx.source, self.counter_type, count)
+        let (target, count) = counter_removal_cost_input(self, game, ctx.source)?;
+        let event = crate::events::Event::remove_counters(target, self.counter_type, count)
             .with_provenance(ctx.provenance);
         super::capture_counter_payment_with_quantity(game, ctx, vec![event])
     }
@@ -1190,28 +1257,10 @@ impl CostExecutableEffect for RemoveCountersEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if !matches!(self.target.base(), ChooseSpec::Source) {
-            return Err(crate::effects::CostValidationError::Other(
-                "remove-counters cost supports only source".to_string(),
-            ));
-        }
-        let quantity = self.count.constant_integer().ok_or_else(|| {
-            crate::effects::CostValidationError::Other(
-                "remove-counters cost requires representable constant integer arithmetic"
-                    .to_string(),
-            )
-        })?;
-        let count = u32::try_from(quantity.max(0)).map_err(|_| {
-            crate::effects::CostValidationError::Other(
-                "remove-counters cost exceeds the unsigned counter range".to_string(),
-            )
-        })?;
-        if game.counter_count(source, self.counter_type) < count {
-            return Err(crate::effects::CostValidationError::Other(
-                "not enough counters".to_string(),
-            ));
-        }
-        Ok(())
+        counter_removal_cost_input(self, game, source).map(|_| ()).map_err(|error| match error {
+            ExecutionError::Impossible(message) => crate::effects::CostValidationError::Other(message),
+            error => crate::effects::CostValidationError::ExecutionFailed(error),
+        })
     }
 }
 

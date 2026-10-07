@@ -1076,6 +1076,7 @@ mod tests {
             false,
         ));
         let producer = Effect::new(crate::effects::MayEffect {
+            pay_as_cost: false,
             decider: Some(crate::target::PlayerFilter::You),
             effects: vec![Effect::new(crate::effects::ForEachTaggedEffect {
                 tag: tag.clone().into(),

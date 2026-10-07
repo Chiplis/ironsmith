@@ -1,5 +1,5 @@
 use crate::cards::builders::{CardTextError, PlayerAst, TagKey, TargetAst};
-use crate::effect::{EventValueSpec, Restriction, Value};
+use crate::effect::{EffectId, EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
@@ -1612,6 +1612,7 @@ pub fn resolve_restriction_it_tag(
             )
         }
         Restriction::MustAttack(filter) => Restriction::must_attack(resolve_it_tag(filter, refs)?),
+        Restriction::MustBlock(filter) => Restriction::must_block(resolve_it_tag(filter, refs)?),
         Restriction::MustBeBlocked(filter) => {
             Restriction::must_be_blocked(resolve_it_tag(filter, refs)?)
         }
@@ -1635,6 +1636,13 @@ pub fn resolve_restriction_it_tag(
                 cause,
             }
         }
+        Restriction::MaximumBlockers { filter, maximum } => Restriction::MaximumBlockers {
+            filter: resolve_it_tag(filter, refs)?,
+            maximum: *maximum,
+        },
+        Restriction::BecomeSuspected(filter) => {
+            Restriction::BecomeSuspected(resolve_it_tag(filter, refs)?)
+        }
         Restriction::BeSacrificed(filter) => {
             Restriction::be_sacrificed(resolve_it_tag(filter, refs)?)
         }
@@ -1654,6 +1662,12 @@ pub fn resolve_restriction_it_tag(
         }
         Restriction::BeTargetedPlayerFrom(player, source_filter) => {
             Restriction::be_targeted_player_from(
+                resolve_contextual_player_filter(player, refs)?,
+                resolve_it_tag(source_filter, refs)?,
+            )
+        }
+        Restriction::PlayerHexproofFrom(player, source_filter) => {
+            Restriction::player_hexproof_from(
                 resolve_contextual_player_filter(player, refs)?,
                 resolve_it_tag(source_filter, refs)?,
             )
@@ -1943,7 +1957,12 @@ pub fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     refs: &ReferenceEnv,
 ) -> Result<ChooseSpec, CardTextError> {
-    resolve_choose_spec_it_tag_preserving_selection(spec, refs, false)
+    let resolved = resolve_choose_spec_it_tag_preserving_selection(spec, refs, false)?;
+    if resolved.is_target() && super::reference_resolution::target_reads_unpaid_counter_cost(&resolved)
+        && !(refs.counter_removal_cost.is_some_and(|producer| producer.can_announce_quantity) && resolved.is_activation_counter_power_bound()) {
+        return Err(CardTextError::ParseError("counter-cost target quantity requires prospective announcement admission".into()));
+    }
+    Ok(resolved)
 }
 
 fn resolve_choose_spec_it_tag_preserving_selection(
@@ -2565,6 +2584,10 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             })
         }
         Value::PendingPriorEffectMetric(query) => {
+            if refs.known_last_effect_id() == Some(EffectId::ACTIVATION_COUNTER_COST) {
+                return super::reference_resolution::bind_counter_cost_quantity(query, refs.counter_removal_cost);
+            }
+
             if refs.known_last_effect_id().is_none()
                 && let Some(value) =
                     super::reference_resolution::resolve_cost_quantity_query(query, refs)
@@ -2572,6 +2595,14 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 return Ok(value);
             }
 
+            if let Some(result) = super::reference_resolution::resolve_choice_quantity_query(query, refs) {
+                return result;
+            }
+            if let Some(result) =
+                super::reference_resolution::resolve_coin_quantity_query(query, refs)
+            {
+                return result;
+            }
             if let Some(result) =
                 super::reference_resolution::resolve_dice_quantity_query(query, refs)
             {

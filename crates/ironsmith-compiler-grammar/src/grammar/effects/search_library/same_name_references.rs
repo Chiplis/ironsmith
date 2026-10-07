@@ -53,6 +53,12 @@ fn same_name_that_reference<'a>(input: &mut primitives::WordSliceInput<'a>) -> M
         )
             .void(),
         (
+            primitives::word_slice_exact("the"),
+            primitives::word_slice_exact("chosen"),
+            same_name_reference_noun,
+        )
+            .void(),
+        (
             primitives::word_slice_exact("those"),
             plural_same_name_reference_noun,
         )

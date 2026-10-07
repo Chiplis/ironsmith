@@ -23,6 +23,8 @@ pub struct GrantPlayTaggedEffect {
     pub surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     pub allow_land: bool,
     pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    /// Require exact selected-grant authority for this casting conversion.
+    pub permission_bound_mana: bool,
     /// Compatibility predicate for older compiled-text pattern matchers.
     /// True for both `AnyColor` and `AnyType`.
     pub allow_any_color_for_cast: bool,
@@ -67,6 +69,7 @@ impl GrantPlayTaggedEffect {
             surface: None,
             allow_land,
             mana_spend_mode,
+            permission_bound_mana: false,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
@@ -230,6 +233,7 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
+            GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield => u32::MAX,
         }
     }
 }
@@ -250,6 +254,19 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             || cost.as_all().is_some_and(|components| components.iter().any(|cost| cost.dynamic_mana_cost_ref().is_some()))) {
             return Err(ExecutionError::InternalError("temporary casting price requires an announced flat cost".into()));
         }
+        if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
+            if self.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+                || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
+            { return Err(ExecutionError::IncompleteEvidence("unsupported extra source-lifetime permission scope".into())); }
+            if !game.object(ctx.source).is_some_and(|source| source.zone == crate::zone::Zone::Battlefield)
+                || game.is_phased_out(ctx.source)
+            { return Ok(EffectOutcome::count(0)); }
+        }
+        if self.permission_bound_mana && (!self.mana_spend_mode.allows_any_color()
+            || self.alternative_cost.is_some() || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
+            || matches!(self.duration, GrantPlayTaggedDuration::UntilSourceExilesAnother
+                | GrantPlayTaggedDuration::ForAsLongAsYouControlSource | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
+        { return Err(ExecutionError::IncompleteEvidence("unsupported marked tagged-permission scope".into())); }
         let player_is_each_tagged_owner = matches!(
             &self.player,
             PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
@@ -261,7 +278,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         } else {
             Some(resolve_player_filter(game, &self.player, ctx)?)
         };
+        if (self.permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield)
+            && (self.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG || ctx.get_tagged_all(self.tag.as_str()).is_none())
+        { return Err(ExecutionError::IncompleteEvidence("source-lifetime permission lost its exact exile antecedent".into())); }
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
+            if self.permission_bound_mana || self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield { return None; }
+
             (self.tag.as_str() == "__source_exiled__").then(|| {
                 let linked = game
                     .get_exiled_with_source_links(ctx.source)
@@ -289,6 +311,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             return Ok(EffectOutcome::count(0));
         };
 
+        let first_grant = game.effect_store.grant_registry.grants.len();
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
         let mut shared_usage_by_player = std::collections::HashMap::new();
@@ -299,7 +322,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             // An open-ended exile permission names this exile incarnation.
             // Leaving and later reentering exile must not revive it, and a
             // card that left before this instruction resolves gets no grant.
-            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
+            if (self.permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                 && (snapshot.zone != crate::zone::Zone::Exile
                     || !game.object(snapshot.object_id).is_some_and(|object|
                         object.zone == crate::zone::Zone::Exile))
@@ -352,7 +375,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let player_id = fixed_player_id.unwrap_or(object_owner);
             let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
 
-            if self.mana_spend_mode.allows_any_color() && !object_is_land {
+            if !self.permission_bound_mana && self.mana_spend_mode.allows_any_color() && !object_is_land {
                 mana_permission_stable_ids
                     .entry(player_id)
                     .or_default()
@@ -372,6 +395,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     player: object_owner,
                     library_top_revision: game.library_top_revision(object_owner),
                 }
+            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
+                GrantSource::EffectWhileSourceOnBattlefield { source_id: ctx.source }
             } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
@@ -403,6 +428,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 spell_cost_reduction: self.spell_cost_reduction.clone(),
                 lands_enter_tapped: self.lands_enter_tapped,
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
+                cast_mana_spend_mode: if self.permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
                 *shared_usage_by_player.entry(player_id).or_insert_with(|| {
@@ -444,7 +470,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             }
             if let Some(shared_usage_id) = shared_usage_id {
                 let target_stable_id = ((constraints != PlayFromConstraints::default()
-                    && self.duration != GrantPlayTaggedDuration::ForAsLongAsExiled)
+                    && !self.permission_bound_mana
+                    && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                     || self.during_turns_counter_put_on_source.is_some())
                 .then_some(object_stable_id);
                 game.effect_store
@@ -459,7 +486,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                         shared_usage_id,
                     );
             } else if constraints != PlayFromConstraints::default() {
-                if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+                if self.permission_bound_mana || matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                     game.effect_store.grant_registry.grant_play_from_to_card(
                         object_id,
                         object_zone,
@@ -479,7 +506,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                             source,
                         );
                 }
-            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+            } else if matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield) {
                 game.effect_store.grant_registry.grant_to_card(
                     object_id,
                     object_zone,
@@ -536,8 +563,11 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     )
                 }
             };
+            let play_permission_identities = game.effect_store.grant_registry.grants[first_grant..].iter()
+                .filter(|grant| grant.player == player_id).filter_map(|grant| grant.permission_identity.clone()).collect();
             game.effect_store.mana_spend_effects.permissions.push(
                 crate::game_state::ActiveManaSpendPermission {
+                    play_permission_identities: Some(play_permission_identities),
                     permission,
                     controller: player_id,
                     source: crate::game_state::ManaSpendPermissionSource::Effect {
@@ -562,6 +592,39 @@ mod tests {
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
     use std::collections::HashSet;
+
+    #[test]
+    fn marked_tagged_conversion_is_one_exact_grant_and_has_no_stable_card_mana_side_effect() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let player = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(70), "Marked member").build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let member = game.create_object_from_card(&card, player, Zone::Exile);
+        let snapshot = ObjectSnapshot::from_object(game.object(member).unwrap(), &game);
+        let mut effect = GrantPlayTaggedEffect::new("exact", PlayerFilter::You,
+            GrantPlayTaggedDuration::ForAsLongAsExiled, true, ironsmith_core::value_model::ManaSpendMode::AnyColor);
+        effect.permission_bound_mana = true;
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, player, &mut dm).with_tagged_objects(
+            std::collections::HashMap::from([(TagKey::from("exact"), vec![snapshot.clone()])]));
+        effect.execute(&mut game, &mut ctx).unwrap();
+        let grant = game.effect_store.grant_registry.grants.last().unwrap();
+        assert_eq!(grant.target_id, Some(member)); assert!(grant.target_stable_id.is_none());
+        assert_eq!(grant.play_from_constraints.cast_mana_spend_mode, ironsmith_core::value_model::ManaSpendMode::AnyColor);
+        assert!(game.effect_store.mana_spend_effects.permissions.is_empty());
+        let hand = game.move_object_by_game_rule(member, Zone::Hand).unwrap();
+        let returned = game.move_object_by_game_rule(hand, Zone::Exile).unwrap();
+        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(&game, returned, Zone::Exile, player));
+        let before = game.effect_store.grant_registry.grants.len();
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.effect_store.grant_registry.grants.len(), before, "stale snapshot cannot follow a stable card");
+        ctx.tagged_objects.insert(TagKey::from("exact"), vec![]);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(game.effect_store.grant_registry.grants.len(), before, "known-empty antecedent creates no authority");
+        ctx.tagged_objects.remove(&TagKey::from("exact"));
+        assert!(matches!(effect.execute(&mut game, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+        assert_eq!(game.effect_store.grant_registry.grants.len(), before);
+    }
 
     #[test]
     fn grant_play_tagged_until_your_next_turn_applies_to_tagged_exile_cards() {

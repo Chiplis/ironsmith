@@ -60,3 +60,15 @@ fn attached_action_restriction_lists_preserve_actions_and_decline_other_clauses(
         );
     }
 }
+
+#[test]
+fn complete_control_subject_retains_enchantment_and_artifact_creature_nouns() {
+    for (text, expected) in [
+        ("You control enchanted artifact creature.", AttachedSubject::EnchantedArtifactCreature),
+        ("You control enchanted enchantment.", AttachedSubject::EnchantedEnchantment),
+    ] {
+        assert_eq!(parse_you_control_attached_tokens(&lex_line(text, 0).unwrap()), Some(expected));
+        let incomplete = text.trim_end_matches('.').to_string() + " and draw a card.";
+        assert!(parse_you_control_attached_tokens(&lex_line(&incomplete, 0).unwrap()).is_none());
+    }
+}

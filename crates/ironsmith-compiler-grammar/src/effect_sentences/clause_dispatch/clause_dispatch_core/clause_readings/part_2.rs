@@ -205,6 +205,21 @@ pub(super) fn read_for_each_counter_group_removed_this_way(
     }
     Ok(None)
 }
+pub(super) fn read_turn_face_down(
+    input: &Clause<'_>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(shape) = clause_grammar::parse_turn_face_down_shape(input.tokens) else {
+        return Ok(None);
+    };
+    Ok(Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::You,
+        SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
+            target: parse_target_phrase(shape.target_tokens)?,
+        }),
+    )))
+}
+
 pub(super) fn read_turn_target_face_up(
     input: &Clause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {

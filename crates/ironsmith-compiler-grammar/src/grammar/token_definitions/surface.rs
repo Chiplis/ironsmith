@@ -4,7 +4,7 @@ use crate::model::token_definition::{
     ArtifactTokenShape, AstartesWarriorTokenShape, BuiltinTokenShape,
     ConstructArtifactScalingShape, ConstructTokenShape, CreatureTokenInlineRuleKind,
     CreatureTokenInlineRulePresentation, CreatureTokenRulesShape, CreatureTokenShape,
-    EnchantmentTokenShape, ShapeshifterTokenShape, TokenCombatRestrictionShape,
+    EnchantmentTokenShape, ModifiedBuiltinTokenShape, ShapeshifterTokenShape, TokenCombatRestrictionShape,
     TokenDefinitionSpec, TokenKeywordShape, TokenPowerAsThoughGreaterShape, VehicleTokenShape,
 };
 use crate::target::SourceReferenceSurface;
@@ -18,6 +18,36 @@ use super::common;
 use super::equipment;
 use super::names;
 use super::rules;
+
+struct TokenDescriptionScope {
+    outer: Vec<OwnedLexToken>,
+    rule_source: Vec<OwnedLexToken>,
+    name: Option<String>,
+    complete_quotes: bool,
+}
+
+fn token_description_scope(tokens: &[OwnedLexToken]) -> TokenDescriptionScope {
+    let projection = common::token_description_projection(tokens);
+    let appositive = names::leading_appositive_token_parts(&projection.outer);
+    let descriptor = appositive.as_ref().map_or(projection.outer.as_slice(), |(_, descriptor)| *descriptor);
+    let start = descriptor.first().map(|token| token.span.start);
+    let named = names::named_card_name_parts(descriptor);
+    let outside_name = |token: &&OwnedLexToken| named.as_ref().is_none_or(|(_, span)|
+        token.span.end <= span.start || token.span.start >= span.end);
+    let outer = descriptor.iter().filter(|token| outside_name(token)).cloned().collect();
+    let rule_source = tokens.iter().filter(|token| start.is_none_or(|start| token.span.start >= start))
+        .filter(|token| outside_name(token)).cloned().collect();
+    let name = named.map(|(name, _)| name).or_else(|| appositive.map(|(name, _)| name));
+    TokenDescriptionScope { outer, rule_source, name, complete_quotes: projection.complete_quotes }
+}
+
+pub fn token_definition_outer_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    token_description_scope(tokens).outer
+}
+
+pub fn token_definition_rule_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    token_description_scope(tokens).rule_source
+}
 
 fn token_pt(words: &[&str]) -> Option<(i32, i32)> {
     for word in words {
@@ -96,6 +126,7 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
                 | "gain"
                 | "gets"
                 | "get"
+                | "named"
         ) {
             scan_end = idx;
             break;
@@ -176,22 +207,23 @@ fn protection_colors(words: &[&str]) -> Option<ColorSet> {
 }
 
 fn token_colors(words: &[&str]) -> ColorSet {
-    let protection_positions = protection_color_word_positions(words);
-    let own_words: Vec<&str> = words
-        .iter()
-        .enumerate()
-        .filter(|(idx, _)| !protection_positions.contains(idx))
-        .map(|(_, word)| *word)
-        .collect();
-    let words = own_words.as_slice();
+    token_color_words(words).0
+}
+
+fn token_color_words(words: &[&str]) -> (ColorSet, ironsmith_core::TokenWordRole) {
+    // The descriptor ends before the token noun, explicit name or abilities.
+    // Postnominal colors have their own exact suffix parser below.
+    let end = words.iter().position(|word| matches!(*word, "token" | "tokens" | "named" | "with" | "when" | "whenever" | "has" | "gains"))
+        .unwrap_or(words.len());
+    let words = &words[..end];
     if common::phrase_present(words, &["all", "colors"])
         || common::phrase_present(words, &["all", "colours"])
     {
-        return ColorSet::WHITE
+        return (ColorSet::WHITE
             .union(ColorSet::BLUE)
             .union(ColorSet::BLACK)
             .union(ColorSet::RED)
-            .union(ColorSet::GREEN);
+            .union(ColorSet::GREEN), ironsmith_core::TokenWordRole::RulesImplied);
     }
     let mut colors = ColorSet::new();
     for (word, color) in [
@@ -205,7 +237,7 @@ fn token_colors(words: &[&str]) -> ColorSet {
             colors = colors.union(color);
         }
     }
-    colors
+    (colors, ironsmith_core::TokenWordRole::Authored)
 }
 
 /// Parse the postnominal color surface used after a token noun, as in
@@ -213,6 +245,10 @@ fn token_colors(words: &[&str]) -> ColorSet {
 /// identity normally appears before `token(s)`, so this suffix is not part of
 /// the definition slice passed to the ordinary token-shape parser.
 pub fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
+    parse_postnominal_token_color_words_tokens(tokens).map(|(colors, _)| colors)
+}
+
+pub fn parse_postnominal_token_color_words_tokens(tokens: &[OwnedLexToken]) -> Option<(ColorSet, ironsmith_core::TokenWordRole)> {
     let words = parser_token_word_refs(tokens);
     let color_start = if crate::word_primitives::parse_any_sequence_prefix(
         &words,
@@ -228,13 +264,13 @@ pub fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option
         &words[color_start..],
         &[&["all", "colors"], &["all", "colours"]],
     ) {
-        return Some(
+        return Some((
             ColorSet::WHITE
                 .union(ColorSet::BLUE)
                 .union(ColorSet::BLACK)
                 .union(ColorSet::RED)
-                .union(ColorSet::GREEN),
-        );
+                .union(ColorSet::GREEN), ironsmith_core::TokenWordRole::RulesImplied,
+        ));
     }
     let mut colors = ColorSet::new();
     for word in &words[color_start..] {
@@ -249,7 +285,7 @@ pub fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option
         };
         colors = colors.union(color);
     }
-    (!colors.is_empty()).then_some(colors)
+    (!colors.is_empty()).then_some((colors, ironsmith_core::TokenWordRole::Authored))
 }
 
 pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
@@ -311,26 +347,7 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
 }
 
 fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
-    let mut bodies = Vec::new();
-    let mut open = None;
-    for (index, token) in tokens.iter().enumerate() {
-        if !token.is_quote() {
-            continue;
-        }
-        if let Some(start) = open.take() {
-            if start < index {
-                bodies.push(&tokens[start..index]);
-            }
-        } else {
-            open = Some(index + 1);
-        }
-    }
-    if let Some(start) = open
-        && start < tokens.len()
-    {
-        bodies.push(&tokens[start..]);
-    }
-    bodies
+    common::token_description_projection(tokens).quoted_rules
 }
 
 fn inline_rule_self_surface(
@@ -370,7 +387,7 @@ pub fn authored_inline_rule_presentations(
         // quoted ability. It sees no quote delimiters, so this recursion
         // terminates immediately while keeping presentation classification
         // aligned with the executable fields.
-        let rules = creature_rules(rule_tokens, &words, named_token);
+        let rules = creature_rules(rule_tokens, &words, &words, named_token);
         let mut kinds = Vec::new();
         if rules.combat_restriction.is_some() {
             let position = crate::slice_primitives::select_position(&words, |word| {
@@ -402,6 +419,7 @@ pub fn authored_inline_rule_presentations(
 pub(super) fn creature_rules(
     source_tokens: &[OwnedLexToken],
     words: &[&str],
+    intrinsic_words: &[&str],
     named_card: Option<&str>,
 ) -> CreatureTokenRulesShape {
     let all = |expected: &[&str]| common::all_words_present(words, expected);
@@ -526,16 +544,16 @@ pub(super) fn creature_rules(
     CreatureTokenRulesShape {
         token_rules,
         authored_inline_rules: authored_inline_rule_presentations(source_tokens, named_card),
-        cumulative_upkeep_mana_symbols: rules::cumulative_upkeep_mana_symbols(words),
+        cumulative_upkeep_mana_symbols: rules::cumulative_upkeep_mana_symbols(intrinsic_words),
         tap_mana_ability: rules::parse_token_tap_mana_ability_tokens(source_tokens),
         saddle_crew_power_bonus: power_bonus,
-        banding: common::word_present(words, "banding"),
-        hexproof: common::word_present(words, "hexproof"),
-        indestructible: common::word_present(words, "indestructible"),
+        banding: common::word_present(intrinsic_words, "banding"),
+        hexproof: common::word_present(intrinsic_words, "hexproof"),
+        indestructible: common::word_present(intrinsic_words, "indestructible"),
         copies_exiled_triggered_abilities: all(&["all", "triggered", "abilities"])
             && common::word_present(words, "exiled")
             && common::word_present(words, "cards"),
-        toxic_amount: rules::toxic_amount(words),
+        toxic_amount: rules::toxic_amount(intrinsic_words),
         sacrifice_return: sacrifice_return_pattern
             .then(|| rules::sacrifice_return_shape(words, named_card))
             .flatten(),
@@ -565,8 +583,8 @@ pub(super) fn creature_rules(
         leaves_return_named_to_hand: leaves_return_named,
         pest_dies_gain_life: common::word_present(words, "pest")
             && all(&["when", "token", "dies", "gain", "1", "life"]),
-        first_strike: all(&["first", "strike"]),
-        double_strike: all(&["double", "strike"]),
+        first_strike: common::all_words_present(intrinsic_words, &["first", "strike"]),
+        double_strike: common::all_words_present(intrinsic_words, &["double", "strike"]),
         mercenary_pump: common::word_present(words, "mercenary")
             && all(&["creature", "1/1", "red"]),
         combat_restriction,
@@ -582,7 +600,7 @@ pub(super) fn creature_rules(
             "pays",
             "1",
         ]),
-        changeling: common::word_present(words, "changeling"),
+        changeling: common::word_present(intrinsic_words, "changeling"),
         graveyard_anthem_card_name,
         landfall_pump,
     }

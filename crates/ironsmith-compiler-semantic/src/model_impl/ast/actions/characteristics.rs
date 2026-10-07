@@ -4,6 +4,11 @@ use super::*;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum CharacteristicActionAst {
+    ChangeText {
+        target: TargetAst,
+        selection: ironsmith_core::TextChangeSelection,
+        duration: Until,
+    },
     SetBasePowerToughness {
         power: Value,
         toughness: Value,

@@ -581,6 +581,17 @@ impl crate::effects::SimultaneousEffectProposal for UnlessPaysProposal {
             .unwrap_or_default()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            inner.prepare_selection(game, ctx)?;
+        }
+        Ok(())
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,

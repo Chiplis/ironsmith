@@ -12,6 +12,7 @@ use crate::model::ast::{DieNoun, DieSurface};
 pub struct RollDieShape {
     pub sides: u32,
     pub surface: Option<DieSurface>,
+    pub consumed: usize,
 }
 
 fn compact_die_size(input: &mut &str) -> WResult<u32> {
@@ -45,6 +46,12 @@ fn die_noun(token: &OwnedLexToken) -> Option<DieNoun> {
 }
 
 pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
+    let shape = parse_roll_die_prefix_tokens(tokens)?;
+    (shape.consumed == tokens.len()).then_some(shape)
+}
+
+pub fn parse_roll_die_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
+    let article = usize::from(tokens.first().is_some_and(|token| token.is_word("a") || token.is_word("an")));
     let tokens = if tokens
         .first()
         .is_some_and(|token| token.is_word("a") || token.is_word("an"))
@@ -58,6 +65,7 @@ pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
         return Some(RollDieShape {
             sides,
             surface: None,
+            consumed: article + 1,
         });
     }
     if let Some(noun) = tokens.get(1).and_then(die_noun)
@@ -66,6 +74,7 @@ pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
         return Some(RollDieShape {
             sides,
             surface: Some(DieSurface::Sided(noun)),
+            consumed: article + 2,
         });
     }
     if tokens.get(1).is_some_and(|token| token.is_word("sided"))
@@ -75,7 +84,27 @@ pub fn parse_roll_die_tokens(tokens: &[OwnedLexToken]) -> Option<RollDieShape> {
         return Some(RollDieShape {
             sides,
             surface: Some(DieSurface::Sided(noun)),
+            consumed: article + 3,
         });
     }
     None
+}
+
+#[cfg(test)]
+mod complete_token_tests {
+    use super::*;
+    #[test]
+    fn die_leaf_requires_complete_surface_and_prefix_reports_exact_consumption() {
+        for text in ["a d20", "a six-sided die", "a six sided die"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let parsed = parse_roll_die_tokens(&tokens).unwrap();
+            assert_eq!(parsed.consumed, tokens.len());
+        }
+        for text in ["a d20 banana", "a six-sided die banana", "a six sided die banana", "a d20 and add three"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(parse_roll_die_tokens(&tokens).is_none(), "{text}");
+            let prefix = parse_roll_die_prefix_tokens(&tokens).unwrap();
+            assert!(prefix.consumed < tokens.len());
+        }
+    }
 }

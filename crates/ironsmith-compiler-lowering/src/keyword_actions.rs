@@ -98,9 +98,10 @@ pub fn apply_keyword_action(
         KeywordAction::Renown(amount) => builder.renown(amount),
         KeywordAction::Myriad => builder.myriad(),
         KeywordAction::Mobilize(amount) => builder.mobilize(amount),
+        KeywordAction::MobilizeValue { amount, .. } => builder.mobilize_value(amount),
         KeywordAction::Impending { time, cost } => builder.impending(time, cost),
         KeywordAction::Cipher => builder.cipher(),
-        KeywordAction::Suspend { time, cost } => builder.suspend(time, cost),
+        KeywordAction::Suspend { time, cost } => builder.suspend_with_time(time, cost),
         KeywordAction::Overload(cost) => builder.overload(cost),
         KeywordAction::Cleave(cost) => builder.cleave(cost),
         KeywordAction::Awaken { amount, cost } => builder.awaken(amount, cost),
@@ -184,6 +185,16 @@ pub fn apply_keyword_action(
         KeywordAction::Bushido(amount) => builder.bushido(amount),
         KeywordAction::Frenzy(amount) => builder.frenzy(amount),
         KeywordAction::ProtectionFrom(colors) => builder.protection_from(colors),
+        KeywordAction::ProtectionFromOwnColors => builder.with_ability(
+            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::protection(
+                crate::ability::ProtectionFrom::OwnColors,
+            )),
+        ),
+        KeywordAction::ProtectionFromColorsAmong(filter) => builder.with_ability(
+            crate::ability::Ability::static_ability(crate::static_abilities::StaticAbility::protection(
+                crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
+            )),
+        ),
         KeywordAction::ProtectionFromAllColors => {
             builder.with_ability(crate::ability::Ability::static_ability(
                 crate::static_abilities::StaticAbility::protection(
@@ -257,6 +268,15 @@ pub fn apply_keyword_action(
         } => builder.alternative_cast(
             crate::alternative_cast::AlternativeCastingMethod::prototype(cost, power_toughness),
         ),
+        KeywordAction::BolsterValue { amount, .. }
+            if builder.card_builder.card_types_ref().iter()
+                .any(|kind| matches!(kind, CardType::Instant | CardType::Sorcery)) =>
+        {
+            let effect = crate::effect::Effect::bolster_value(amount);
+            if let Some(existing) = &mut builder.spell_effect { existing.push(effect); }
+            else { builder.spell_effect = Some(crate::resolution::ResolutionProgram::from_effects(vec![effect])); }
+            builder
+        }
         KeywordAction::Bolster(amount)
             if builder
                 .card_builder

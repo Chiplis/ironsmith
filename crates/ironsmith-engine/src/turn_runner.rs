@@ -14,12 +14,12 @@ use crate::game_loop::{
     apply_attack_mana_ability_window_response, apply_attacker_declarations_with_dm,
     apply_blocker_mana_ability_window_response, attack_mana_ability_window_context,
     begin_attack_declaration_transaction, begin_blocker_declaration_transaction,
-    blocker_mana_ability_window_context, drain_pending_trigger_events,
+    blocker_mana_ability_window_context, try_drain_pending_trigger_events,
     finish_attack_declaration_transaction,
     finish_blocker_declaration_transaction_deferring_triggers, generate_and_queue_step_triggers,
     get_declare_attackers_decision, get_declare_blockers_decision,
     preview_attack_cost_needs_mana_window, preview_optional_attack_cost_prompts,
-    queue_block_declaration_events, queue_combat_damage_triggers,
+    queue_block_declaration_events, try_queue_combat_damage_triggers,
 };
 use crate::game_state::{
     AddedStepPlacement, GameState, Phase, ScheduledStep, Step, TurnScheduleDestination,
@@ -270,7 +270,6 @@ struct PendingCleanupDiscard {
 struct PendingTurnDraw {
     player: PlayerId,
     count: usize,
-    previous_draws: u32,
     choices: PendingUntapChoices,
 }
 
@@ -936,6 +935,23 @@ impl TurnRunner {
         game: &mut GameState,
         tq: &mut TriggerQueue,
     ) -> Result<TurnAction, GameLoopError> {
+        let runner_checkpoint = self.clone();
+        let game_checkpoint = game.clone();
+        let queue_checkpoint = tq.clone();
+        let result = self.advance_inner(game, tq);
+        if matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution()) {
+            *self = runner_checkpoint;
+            game.restore_execution_checkpoint(game_checkpoint, false);
+            *tq = queue_checkpoint;
+        }
+        result
+    }
+
+    fn advance_inner(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+    ) -> Result<TurnAction, GameLoopError> {
         if game.turn_store.end_combat_phase_procedure_pending {
             // CR 724.2a: external entries triggered before the procedure cease
             // to exist. Events produced during stack exile remain staged in
@@ -1091,6 +1107,8 @@ impl TurnRunner {
                     return Ok(TurnAction::Decision(prompt));
                 }
                 if phase == Phase::Combat {
+                    self.sync_combat_from_game(game);
+                    game.retain_ending_combat(&self.combat);
                     crate::combat_state::end_combat(&mut self.combat);
                     game.combat = Some(self.combat.clone());
                     game.cleanup_effects_end_of_combat();
@@ -1132,7 +1150,7 @@ impl TurnRunner {
                     game.mark_upkeep_began(player);
                 }
                 game.reset_priority_for_new_window();
-                drain_pending_trigger_events(game, tq);
+                try_drain_pending_trigger_events(game, tq)?;
                 generate_and_queue_step_triggers(game, tq);
 
                 self.state = TurnState::UpkeepPriority;
@@ -1186,7 +1204,7 @@ impl TurnRunner {
                     RunnerProgress::Complete(draw_events) => draw_events,
                     RunnerProgress::NeedsDecision(ctx) => return Ok(TurnAction::Decision(ctx)),
                 };
-                crate::game_loop::drain_pending_trigger_events(game, tq);
+                crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
                 generate_and_queue_step_triggers(game, tq);
 
                 // Queue triggers for each drawn card (Miracle, etc.)
@@ -1544,7 +1562,7 @@ impl TurnRunner {
                 if let Some(bands) = self.pending_attacking_bands.take() {
                     record_declared_attacking_bands(&mut self.combat, bands);
                 }
-                crate::game_loop::drain_pending_trigger_events(game, tq);
+                crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
                 // The caller's priority loop puts these triggers on the stack
                 // with its interactive decision maker. Stacking here with the
                 // default chooser silently selects modes, targets, and order.
@@ -1901,6 +1919,8 @@ impl TurnRunner {
                 if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
+                self.sync_combat_from_game(game);
+                game.retain_ending_combat(&self.combat);
                 crate::combat_state::end_combat(&mut self.combat);
                 game.combat = Some(self.combat.clone());
                 game.mark_continuous_state_dirty();
@@ -1929,6 +1949,8 @@ impl TurnRunner {
                         if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                             return Ok(TurnAction::Decision(prompt));
                         }
+                        self.sync_combat_from_game(game);
+                        game.retain_ending_combat(&self.combat);
                         crate::combat_state::end_combat(&mut self.combat);
                         game.combat = Some(self.combat.clone());
                         game.cleanup_effects_end_of_combat();
@@ -2022,6 +2044,8 @@ impl TurnRunner {
                         if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                             return Ok(TurnAction::Decision(prompt));
                         }
+                        self.sync_combat_from_game(game);
+                        game.retain_ending_combat(&self.combat);
                         crate::combat_state::end_combat(&mut self.combat);
                         if let Some(combat) = game.combat.as_mut() {
                             crate::combat_state::end_combat(combat);
@@ -2069,14 +2093,14 @@ impl TurnRunner {
                 // CR 603.2: the cleanup discard triggers against the game
                 // before damage is removed and "until end of turn" effects
                 // end (CR 514.2).
-                drain_pending_trigger_events(game, tq);
+                try_drain_pending_trigger_events(game, tq)?;
                 execute_cleanup_step(game);
                 self.state = TurnState::CleanupRecursiveCheck;
                 Ok(TurnAction::Continue)
             }
 
             TurnState::CleanupRecursiveCheck => {
-                drain_pending_trigger_events(game, tq);
+                try_drain_pending_trigger_events(game, tq)?;
                 let triggers_fired = !tq.is_empty();
                 let sbas_happened = !check_state_based_actions(game).is_empty();
 
@@ -2687,8 +2711,10 @@ impl TurnRunner {
             return Ok(Some(prompt));
         }
         let events = result.map_err(|error| GameLoopError::InvalidState(error.to_string()))?;
+        let mut hypothetical_triggers = tq.clone();
+        try_queue_combat_damage_triggers(&mut hypothetical, &events, &mut hypothetical_triggers)?;
         *game = hypothetical;
-        queue_combat_damage_triggers(game, &events, tq);
+        *tq = hypothetical_triggers;
         Ok(None)
     }
 
@@ -2907,11 +2933,9 @@ impl TurnRunner {
         {
             return Ok(RunnerProgress::Complete(Vec::new()));
         }
-        let previous_draws = game
-            .turn_store
-            .turn_history
-            .cards_drawn_by_player(active_player);
-        if !game.can_draw_extra_cards(active_player) && previous_draws > 0 {
+        let has_drawn = game.turn_store.turn_history.has_drawn_cards_this_turn(active_player)
+            .map_err(GameLoopError::ExecutionFailed)?;
+        if !game.can_draw_extra_cards(active_player) && has_drawn {
             return Ok(RunnerProgress::Complete(Vec::new()));
         }
         self.run_turn_draw_with_choices(
@@ -2919,7 +2943,6 @@ impl TurnRunner {
             PendingTurnDraw {
                 player: active_player,
                 count: 1,
-                previous_draws,
                 choices: PendingUntapChoices {
                     answers: Vec::new(),
                     prompt: None,
@@ -2959,7 +2982,7 @@ impl TurnRunner {
                 pending.player,
             )
         }
-        .map_err(|error| GameLoopError::ResolutionFailed(error.to_string()))?;
+        .map_err(GameLoopError::ExecutionFailed)?;
         if let Some(prompt) = dm.pending_prompt.take() {
             pending.choices.prompt = Some(prompt.clone());
             self.pending_turn_draw = Some(pending);
@@ -2979,7 +3002,7 @@ impl TurnRunner {
         active_player: PlayerId,
         drawn: Vec<ObjectId>,
         current_draws: u32,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         if !drawn.is_empty() {
             let draw_event_provenance = game
                 .provenance_graph_mut()
@@ -2989,7 +3012,7 @@ impl TurnRunner {
                 active_player,
                 &drawn,
                 current_draws,
-            );
+            ).map_err(GameLoopError::ExecutionFailed)?;
             return self.finish_pending_draw_reveal_choices(
                 game,
                 PendingDrawRevealChoice {
@@ -3005,7 +3028,7 @@ impl TurnRunner {
         }
 
         game.reset_priority_for_new_window();
-        RunnerProgress::Complete(Vec::new())
+        Ok(RunnerProgress::Complete(Vec::new()))
     }
 
     /// Apply a restart's deferred battlefield entries (CR 726.4) on a clone
@@ -3154,7 +3177,7 @@ impl TurnRunner {
         &mut self,
         game: &mut GameState,
         mut pending: PendingDrawRevealChoice,
-    ) -> RunnerProgress<Vec<crate::triggers::TriggerEvent>> {
+    ) -> Result<RunnerProgress<Vec<crate::triggers::TriggerEvent>>, GameLoopError> {
         use crate::events::other::CardsDrawnEvent;
 
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
@@ -3181,9 +3204,9 @@ impl TurnRunner {
                     answer
                 } else {
                     self.pending_draw_reveal = Some(pending);
-                    return RunnerProgress::NeedsDecision(DecisionContext::Boolean(
+                    return Ok(RunnerProgress::NeedsDecision(DecisionContext::Boolean(
                         crate::effects::cards::automatic_draw_reveal_boolean_context(&candidate),
-                    ));
+                    )));
                 }
             } else {
                 true
@@ -3229,7 +3252,7 @@ impl TurnRunner {
         }
 
         game.reset_priority_for_new_window();
-        RunnerProgress::Complete(draw_events)
+        Ok(RunnerProgress::Complete(draw_events))
     }
 
     /// CR 509.1: queue every defending player's block events as the one
@@ -3258,7 +3281,7 @@ impl TurnRunner {
             // removing loyalty counters, the previous check's actions) trigger
             // against the game as it was then. Match them before this check's
             // actions put anything into a graveyard.
-            crate::game_loop::drain_pending_trigger_events(game, tq);
+            crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
             // Every applied SBA can change which static effects exist. Refresh
             // at the fixed-point boundary; this is a no-op while state is clean.
             game.refresh_continuous_state()
@@ -3318,7 +3341,7 @@ impl TurnRunner {
                         &pending.creatures,
                         &pending.choices,
                     );
-                    crate::game_loop::drain_pending_trigger_events(game, tq);
+                    crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
                     continue;
                 }
 
@@ -3453,7 +3476,7 @@ impl TurnRunner {
                 // since the previous one (regeneration / umbra armor survivors
                 // must not be destroyed again by the next pass).
                 game.clear_deathtouch_damage_since_sba();
-                crate::game_loop::drain_pending_trigger_events(game, tq);
+                crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
                 if !applied {
                     self.pending_boolean = None;
                     self.pending_commander_choice = None;
@@ -3488,7 +3511,7 @@ impl TurnRunner {
                     } else {
                         game.decline_commander_command_zone_move(obj_id);
                     }
-                    crate::game_loop::drain_pending_trigger_events(game, tq);
+                    crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
                     continue;
                 }
                 Some(other) => {
@@ -4019,6 +4042,7 @@ mod tests {
             .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
                     effects: crate::resolution::ResolutionProgram::default(),
                     choices: vec![],
@@ -6196,7 +6220,7 @@ mod tests {
         );
         let result = runner.advance(&mut game, &mut queue);
         assert!(
-            matches!(result, Err(GameLoopError::ResolutionFailed(_))),
+            matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(_)))),
             "a draw-step replacement failure must not become a successful priority window"
         );
         assert_eq!(game.player(alice).unwrap().life, 20);
@@ -6519,7 +6543,7 @@ mod tests {
                     .is_none()
             );
         } else {
-            assert!(matches!(action, Err(GameLoopError::ResolutionFailed(_))));
+            assert!(matches!(action, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(_)))));
             assert!(matches!(runner.state(), TurnState::Draw));
         }
     }
@@ -6568,7 +6592,7 @@ mod tests {
         runner.respond_options(vec![usize::MAX]);
         let result = runner.advance(&mut game, &mut queue);
         assert!(
-            matches!(result, Err(GameLoopError::ResolutionFailed(_))),
+            matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::InternalError(_)))),
             "an invalid answer must not select the first offered replacement"
         );
         assert_eq!(
@@ -6849,7 +6873,7 @@ mod replacement_turn_draw_expansion_contract_tests {
             Ok(_) => panic!("added draw error must propagate"),
         };
         assert!(
-            matches!(&error, GameLoopError::ResolutionFailed(message) if message.contains("Cannot resolve value"))
+            matches!(&error, GameLoopError::ExecutionFailed(crate::effects::ExecutionError::UnresolvableValue(_)))
         );
         assert!(game.player(alice).unwrap().hand.is_empty());
         assert_eq!(

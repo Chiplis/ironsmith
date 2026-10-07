@@ -14,6 +14,8 @@ const CARA: PlayerId = PlayerId(2);
 
 fn coin_flip(player: PlayerId, won: bool) -> CoinFlippedEvent {
     CoinFlippedEvent {
+        turn_ordinal: 0,
+        instruction_ordinal: 0,
         player,
         source: ObjectId::from_raw(99),
         face: ironsmith_core::CoinFace::Heads,

@@ -641,10 +641,10 @@ pub(super) fn parse_triggered_ability_line_impl(
     // it is not part of the restriction after the comma. Prepared trigger
     // rewrites can otherwise split at `this` and feed `card while ...` into
     // the effect parser, producing an unrelated object-filter union.
-    let exiled_last_counter = parse_exiled_last_counter_triggered_line(authored_raw_tokens)?.or(
-        parse_exiled_last_counter_triggered_line(source_text_tokens)?,
+    let exiled_counter_removed = parse_exiled_counter_removed_triggered_line(authored_raw_tokens)?.or(
+        parse_exiled_counter_removed_triggered_line(source_text_tokens)?,
     );
-    if let Some(chunk) = exiled_last_counter {
+    if let Some(chunk) = exiled_counter_removed {
         return apply_chosen_option_to_triggered_chunk(
             apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
             trigger_facts,

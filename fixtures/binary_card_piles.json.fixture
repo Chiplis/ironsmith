@@ -1,0 +1,69 @@
+[
+  {
+    "name": "Atris, Oracle of Half-Truths",
+    "oracle_id": "8b2b00ab-f1c5-4057-9957-d7daac95a847",
+    "mana_cost": "{2}{U}{B}",
+    "type_line": "Legendary Creature \u2014 Human Advisor",
+    "oracle_text": "Menace\nWhen Atris enters, target opponent looks at the top three cards of your library and separates them into a face-down pile and a face-up pile. Put one pile into your hand and the other into your graveyard.",
+    "power": "3",
+    "toughness": "2"
+  },
+  {
+    "name": "Curator of Destinies",
+    "oracle_id": "9938d178-0ce6-45c0-b317-fd5c54231579",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Creature \u2014 Sphinx",
+    "oracle_text": "This spell can't be countered.\nFlying\nWhen this creature enters, look at the top five cards of your library and separate them into a face-down pile and a face-up pile. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard.",
+    "power": "5",
+    "toughness": "5"
+  },
+  {
+    "name": "Epiphany at the Drownyard",
+    "oracle_id": "33befbd6-56ac-45a7-a4d0-448167162707",
+    "mana_cost": "{X}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Reveal the top X plus one cards of your library and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+  },
+  {
+    "name": "Fortune's Favor",
+    "oracle_id": "9baff93e-4ef9-404d-884b-f651a11f3742",
+    "mana_cost": "{3}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Target opponent looks at the top four cards of your library and separates them into a face-down pile and a face-up pile. Put one pile into your hand and the other into your graveyard."
+  },
+  {
+    "name": "Hostile Negotiations",
+    "oracle_id": "c5cbd852-c42f-4592-a0bb-a8bffa2dd2f4",
+    "mana_cost": "{3}{B}",
+    "type_line": "Instant",
+    "oracle_text": "Exile the top three cards of your library in a face-down pile, then exile the top three cards of your library in another face-down pile. Look at the cards in each pile, then turn a pile of your choice face up. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard. You lose 3 life."
+  },
+  {
+    "name": "Intrude on the Mind",
+    "oracle_id": "eedb1527-548a-435a-a3e1-8ad7d9d6d8a9",
+    "mana_cost": "{3}{U}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Reveal the top five cards of your library and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard. Create a 0/0 colorless Thopter artifact creature token with flying, then put a +1/+1 counter on it for each card put into your graveyard this way."
+  },
+  {
+    "name": "Riddles in the Dark",
+    "oracle_id": "78bed291-0ec7-466f-bc7a-9dae7d0b56ae",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Look at the top four cards of your library and separate them into a face-down pile and a face-up pile. An opponent chooses one of the piles. Put that pile into your hand and the other into your graveyard."
+  },
+  {
+    "name": "Steam Augury",
+    "oracle_id": "0aa556a6-66aa-42f1-ba41-0001e10c20a4",
+    "mana_cost": "{2}{U}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Reveal the top five cards of your library and separate them into two piles. An opponent chooses one of those piles. Put that pile into your hand and the other into your graveyard."
+  },
+  {
+    "name": "Truth or Tale",
+    "oracle_id": "10674c2f-7920-4505-b8d5-e96f3da1cda3",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Reveal the top five cards of your library and separate them into two piles. An opponent chooses one of those piles. Put a card from the chosen pile into your hand, then put all other cards revealed this way on the bottom of your library in any order."
+  }
+]

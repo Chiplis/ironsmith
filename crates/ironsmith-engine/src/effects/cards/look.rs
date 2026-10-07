@@ -18,14 +18,18 @@ pub(crate) fn look_at_cards(
     cards: &[ObjectId],
     description: impl Into<String>,
 ) -> EffectOutcome {
+    let description = description.into();
+    for entitled_viewer in game.private_information_viewers_for(viewer, zone) {
     let view = crate::decisions::context::ViewCardsContext::new(
-        viewer,
+        entitled_viewer,
         subject,
         Some(ctx.source),
         zone,
-        description.into(),
+        description.clone(),
     );
-    ctx.decision_maker.view_cards(game, viewer, cards, &view);
+    ctx.decision_maker.view_cards(game, entitled_viewer, cards, &view);
+    if ctx.decision_maker.awaiting_choice() { return EffectOutcome::count(0); }
+    }
     let snapshots = cards
         .iter()
         .filter_map(|id| ObjectSnapshot::from_object_id(game, *id))

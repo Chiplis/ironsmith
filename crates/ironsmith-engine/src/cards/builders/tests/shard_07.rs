@@ -944,7 +944,7 @@ pub(super) fn officious_interrogation_runtime_counts_only_the_targeted_players_c
     assert_eq!(
         game.battlefield
             .iter()
-            .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Clue"))
+            .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Clue Token"))
             .count(),
         2,
         "Alice's untargeted creature must not contribute to the investigate count"

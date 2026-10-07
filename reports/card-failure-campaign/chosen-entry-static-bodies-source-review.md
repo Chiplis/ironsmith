@@ -1,0 +1,15 @@
+# Collective Inferno and Displaced Dinosaurs: source checkpoint
+
+Stacked after `7f58016ce656c5bd6d43a0e03b5d2d0e88598b14`; prior seven-body checkpoints remain intact.
+
+**Collective Inferno:** Both exact chosen-type and general damage-multiplier readers now return the same canonical typed multiplier. The affected-source filter means sources controlled by the replacement's controller with the replacement source's chosen creature type; it does not require a creature permanent or battlefield zone. This uses the existing generic multiplier runtime, including damage-source last-known characteristics, instead of the legacy bespoke live-object-only matcher. The complete frozen body keeps Convoke and the actual as-entry creature-type choice. Direct/artifact native scenarios pay all five mana through real Convoke, choose Dinosaur, compare combat/noncombat damage, test permanent and Kindred-spell sources, target players and creatures, retain departed-source LKI, and vary type, controller, replacement-source controller, phasing and departure.
+
+**Displaced Dinosaurs:** A successful complete as-entry characteristic owner excludes the broad granted-keyword reader's descriptor-only reading. The existing typed entry replacement retains the historic/control filter, added creature and Dinosaur types, and 7/7 base characteristics. Direct/artifact native scenarios cover artifacts, legendaries, Sagas, an artifact creature with existing subtype/ability, nonhistoric and opponent negative controls, existing-versus-new permanents, source phasing/control/departure, permanence of the entry modification, and reset on a new zone incarnation.
+
+Two complete raw frozen fixtures and independent direct/runtime and serialized-artifact routes are in `chosen_entry_static_bodies.rs`; parser assertions inspect exact typed payloads and equivalent competing readings.
+
+No builds, tests, compiler probes, formatters, corpus execution, matrix edits, or publication occurred. These are source-review candidates with authored unexecuted scenarios, not verified compile/runtime recovery. Lavabrink Venturer, Avatar Destiny, and Aminatou remain unclaimed by this checkpoint.
+
+## Independent-review correction: unknown damage-source evidence
+
+The reviewer identified that the generic multiplier previously treated a missing live damage source plus missing/mismatched exact source LKI as a known nonmatch. The producer accepts a missing source snapshot, so that evidence is not guaranteed. `DamageAmountReplacementMatcher::source_matches` now records `IncompleteEvidence` through the existing checked-execution failure latch. Known recipient/amount nonmatches are evaluated first; unconstrained/exact-ID-only source predicates still require no characteristic evidence. Checked execution rolls back the whole operation when the filtered source cannot be established. Added native direct/artifact scenarios distinguish absent and wrong-identity LKI from exact nonmatching Elf LKI and assert rollback of prior life gain, damage, and published pending events. Execution remains deferred.

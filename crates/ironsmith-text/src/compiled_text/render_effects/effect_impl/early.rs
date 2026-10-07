@@ -1,4 +1,29 @@
 {
+    if let Some(change) = effect.downcast_ref::<crate::effects::ChangeTextEffect>() {
+        use ironsmith_core::TextChangeSelection;
+        let replacement = match &change.selection {
+            TextChangeSelection::Color => "one color word with another".to_string(),
+            TextChangeSelection::BasicLand => "one basic land type with another".to_string(),
+            TextChangeSelection::ColorOrBasicLand => "one color word with another or one basic land type with another".to_string(),
+            TextChangeSelection::Creature { .. } => "one creature type with another".to_string(),
+            TextChangeSelection::CreatureTo(subtype) => format!("one creature type with {subtype}"),
+        };
+        let duration = if change.duration == Until::Forever { String::new() }
+            else { format!(" {}", describe_until(&change.duration)) };
+        let mut text = format!("Change the text of {} by replacing all instances of {replacement}{duration}",
+            describe_choose_spec(&change.target));
+        if let TextChangeSelection::Creature { excluded_new } = &change.selection {
+            if !excluded_new.is_empty() {
+                text.push_str(&format!(". The new creature type can't be {}",
+                    excluded_new.iter().map(ToString::to_string).collect::<Vec<_>>().join(" or ")));
+            }
+        }
+        return text;
+    }
+    if let Some(payments) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
+        let body = payments.effects.iter().map(describe_effect).collect::<Vec<_>>().join(". ");
+        return format!("Starting with you, each player may pay any amount of mana. {}, where X is the total amount of mana paid this way", body.trim_end_matches('.'));
+    }
     if let Some(grant) = effect.downcast_ref::<
         crate::effects::GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     >() && grant.player == PlayerFilter::You
@@ -1549,7 +1574,11 @@
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseNumberEffect>() {
         let chooser = describe_player_filter(&choose.chooser);
-        return format!("{chooser} {} a number between {} and {}", player_verb(&chooser, "choose", "chooses"), choose.min, choose.max);
+        return match choose.max {
+            Some(max) => format!("{chooser} {} a number between {} and {max}", player_verb(&chooser, "choose", "chooses"), choose.min),
+            None if choose.min > 0 => format!("{chooser} {} a number greater than {}", player_verb(&chooser, "choose", "chooses"), choose.min - 1),
+            None => format!("{chooser} {} a number", player_verb(&chooser, "choose", "chooses")),
+        };
     }
     if let Some(choose_named_option) =
         effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
@@ -1812,7 +1841,7 @@
         }
         let order_suffix = match move_to_zone.library_order.as_ref() {
             Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) => " in any order",
             None => "",
         };
         let target = if move_to_zone.zone == Zone::Battlefield
@@ -3491,6 +3520,8 @@
                 ("exile", "exiles", rest)
             } else if let Some(rest) = payment.strip_prefix("Mill ") {
                 ("mill", "mills", rest)
+            } else if let Some(rest) = payment.strip_prefix("Waterbend ") {
+                ("waterbend", "waterbends", rest)
             } else {
                 return None;
             };
@@ -3709,6 +3740,16 @@
         return format!("{} unless {}", inner_text, unless_clause);
     }
     if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+        if let Some(maximum) = put_counters.maximum_total {
+            let mut uncapped = put_counters.clone();
+            uncapped.maximum_total = None;
+            let target = describe_choose_spec(&put_counters.target);
+            return format!(
+                "{}. This ability can't cause the total number of {} counters on {} to be greater than {}",
+                describe_effect(&crate::effect::Effect::new(uncapped)),
+                describe_counter_type(put_counters.counter_type), target, maximum,
+            );
+        }
         if put_counters.completion_action == Some(crate::events::KeywordActionKind::Blight)
             && put_counters.counter_type == CounterType::MinusOneMinusOne
             && put_counters.target == ChooseSpec::Object(ObjectFilter::creature().you_control())
@@ -6018,6 +6059,9 @@
         return format!("Look at {owner} hand");
     }
     if let Some(look_at_objects) = effect.downcast_ref::<crate::effects::LookAtObjectsEffect>() {
+        if look_at_objects.permit_while_exiled {
+            return format!("{} may look at that card for as long as it remains exiled", describe_player_filter(&look_at_objects.viewer));
+        }
         // "Look at any face-down creatures they control" — a target-player
         // face-down creature scope reads as a pronoun back-reference.
         let targets_player_face_down = look_at_objects.filter.face_down == Some(true)
@@ -6513,11 +6557,18 @@
                 .map(|number| format!("{number}-sided die"))
                 .unwrap_or(die_text)
         } else { die_text };
+        let arithmetic = roll_die.result_modifier.as_ref().map(|modifier| {
+            let operation = match modifier {
+                ironsmith_core::effect::DieResultModifier::Add(_) => "add",
+                ironsmith_core::effect::DieResultModifier::Subtract(_) => "subtract",
+            };
+            format!(" and {operation} {}", describe_value(modifier.value()))
+        }).unwrap_or_default();
         if player == "you" {
-            return format!("Roll a {die_text}");
+            return format!("Roll a {die_text}{arithmetic}");
         }
         return format!(
-            "{player} {} a {die_text}",
+            "{player} {} a {die_text}{arithmetic}",
             player_verb(&player, "roll", "rolls"),
         );
     }
@@ -6542,13 +6593,27 @@
     }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
-        if flip_coin.count != 1 {
-            return format!("{} {} coins", if player == "you" { "Flip".to_string() } else { format!("{player} flips") }, flip_coin.count);
+        let (actor, pronoun) = if player == "you" { ("Flip".to_string(), "you") } else { (format!("{player} flips"), "they") };
+        let mut instruction = if flip_coin.opponent_results.is_some() {
+            if player == "you" { "Flip a coin for each opponent you have".into() }
+                else { format!("{player} flips a coin for each opponent they have") }
+        } else if flip_coin.repeat_until_loss {
+            match flip_coin.stop_condition {
+                Some(ironsmith_core::CoinFlipStopCondition::ChooseToStop) => format!("{actor} a coin until {pronoun} lose a flip or choose to stop flipping"),
+                Some(ironsmith_core::CoinFlipStopCondition::CountReached) => format!("{actor} a coin {} times or until {pronoun} lose a flip, whichever comes first", flip_coin.count_value.as_ref().map(describe_value).unwrap_or_else(|| flip_coin.count.to_string())),
+                None => format!("{actor} a coin until {pronoun} lose a flip"),
+            }
+        } else if let Some(count) = &flip_coin.count_value {
+            format!("{actor} {} coins", describe_value(count))
+        } else if flip_coin.count != 1 {
+            format!("{actor} {} coins", flip_coin.count)
+        } else {
+            format!("{actor} a coin")
+        };
+        if flip_coin.loss_action == Some(ironsmith_core::CoinFlipLossAction::StopResolution) {
+            instruction.push_str(&format!(". If {pronoun} lose a flip, this spell has no effect"));
         }
-        if player == "you" {
-            return "Flip a coin".to_string();
-        }
-        return format!("{player} flips a coin");
+        return instruction;
     }
     if effect
         .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
@@ -6619,6 +6684,9 @@
     }
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
         return prompt.description().to_string();
+    }
+    if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
+        return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));
     }
     if let Some(turn_face_up) = effect.downcast_ref::<crate::effects::TurnFaceUpEffect>() {
         if matches!(&turn_face_up.target, ChooseSpec::SurfaceHinted { .. }) {

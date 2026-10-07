@@ -117,6 +117,10 @@ fn matching_cost_candidates(
 }
 
 impl EffectExecutor for ExileEffect {
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![self.spec.clone()]
+    }
+
     fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
         crate::effects::CostChoiceBindings::from_spec(&self.spec)
     }
@@ -141,6 +145,17 @@ impl EffectExecutor for ExileEffect {
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
+    }
+
+    fn supports_replacement_draw_continuation(&self) -> bool { true }
+    fn prepare_replacement_draw_continuation(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit, ExecutionError> {
+        self.prepare_replacement_draw_continuation_with_outputs(game, ctx)
+            .map(crate::effects::SimultaneousEffectCommit::into_aggregate)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        super::movement_instruction::prepare_movement_draw_continuation(self.clone(), game, ctx)
     }
 
     fn execute(
@@ -192,6 +207,12 @@ impl EffectExecutor for ExileEffect {
     }
 
     fn cost_description(&self) -> Option<String> {
+        if let ChooseSpec::All(filter) = self.spec.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(crate::target::PlayerFilter::You)
+        {
+            return Some(format!("Exile all {}", filter.description()));
+        }
         if matches!(self.spec.base(), ChooseSpec::Source) {
             return Some("Exile this source".to_string());
         }
@@ -275,9 +296,10 @@ impl ZoneMovementInstruction for ExileEffect {
         let snapshots = objects
             .iter()
             .filter_map(|id| {
-                ObjectSnapshot::from_object_id(game, *id).map(|snapshot| (*id, snapshot))
+                game.object(*id).map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+                    .map(|snapshot| (*id, snapshot)))
             })
-            .collect::<std::collections::HashMap<_, _>>();
+            .collect::<Result<std::collections::HashMap<_, _>, ExecutionError>>()?;
         let requests = objects
             .into_iter()
             .filter_map(|id| {
@@ -322,11 +344,15 @@ impl ZoneMovementInstruction for ExileEffect {
                     for &new_id in &change.new_object_ids {
                         if effect.face_down {
                             game.set_face_down(new_id);
-                            if let Some(viewers) = ctx.face_down_exile_viewers_for(*id) {
+                            if !effect.exclude_prior_zone_viewers
+                                && let Some(viewers) = ctx.face_down_exile_viewers_for(*id) {
                                 for &viewer in viewers {
                                     game.grant_face_down_exile_view(new_id, viewer);
                                 }
                             }
+                        }
+                        if let Some(owner) = &ctx.linked_exile_owner {
+                            game.add_linked_exile_pair_member(owner.clone(), new_id);
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
                         if effect.source_controller_may_look {
@@ -390,6 +416,15 @@ impl CostExecutableEffect for ExileEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
+        if let ChooseSpec::All(filter) = self.spec.base()
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(crate::target::PlayerFilter::You)
+        {
+            // The entire current set is the cost, including an empty set.
+            // Choosing to pay it remains distinct from declining the offer.
+            return if game.player(controller).is_some_and(|player| player.is_in_game()) { Ok(()) }
+                else { Err(crate::effects::CostValidationError::Other("payer not in game".into())) };
+        }
         if matches!(self.spec.base(), ChooseSpec::Source) && game.object(source).is_some() {
             return Ok(());
         }

@@ -5,7 +5,7 @@ use crate::cards::builders::{
     CardTextError, ConditionalEffectAst, EffectAst, GrantedAbilityAst, IfResultPredicate,
     OwnedLexToken, PermissionEffectAst, PlayerAst, PreventNextTimeDamageSourceAst,
     PreventNextTimeDamageTargetAst, RedirectNextTimeDamageDestinationAst, StackActionAst,
-    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan, Verb,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -1784,7 +1784,9 @@ pub fn parse_redirect_next_damage_sentence(
                         clause_text
                     )));
                 }
-                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
+                clause_shapes::RedirectDamageDestinationShape::SourceController
+                | clause_shapes::RedirectDamageDestinationShape::DamageSource
+                | clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported redirected-all-damage destination (clause: '{}')",
                         clause_text
@@ -1798,77 +1800,52 @@ pub fn parse_redirect_next_damage_sentence(
             )
         }
         clause_shapes::RedirectNextDamageShape::NextTime {
-            source,
-            target_tokens,
-            destination,
+            source, combat_only, target_tokens, destination,
         } => {
             let source = match source {
                 clause_shapes::DamageSourceShape::Choice => PreventNextTimeDamageSourceAst::Choice,
-                // Redirect effects do not yet expose a filtered-choice runtime
-                // shape. Keep their prior choice semantics while prevention
-                // effects preserve the filter structurally.
                 clause_shapes::DamageSourceShape::ChoiceMatching(_) => {
-                    PreventNextTimeDamageSourceAst::Choice
+                    return Err(CardTextError::ParseError("filtered source-choice redirection requires its own chooser domain".into()));
                 }
-                clause_shapes::DamageSourceShape::Target(source_tokens) => {
-                    let source_target = parse_target_phrase(source_tokens)?;
-                    let TargetAst::Object(filter, _, _) = source_target else {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported redirected damage source target (clause: '{}')",
-                            clause_text
-                        )));
-                    };
-                    PreventNextTimeDamageSourceAst::Filter(filter)
+                clause_shapes::DamageSourceShape::Target(tokens)
+                | clause_shapes::DamageSourceShape::Tagged { source_tokens: tokens, .. } => {
+                    // Exact references remain identities; an attacking target must
+                    // not become a live filter matching all attacking creatures.
+                    PreventNextTimeDamageSourceAst::Target(parse_target_phrase(tokens)?)
                 }
-                clause_shapes::DamageSourceShape::Tagged {
-                    card_type,
-                    source_tokens,
-                } => {
-                    let mut filter =
-                        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
-                    if let Some(card_type) = card_type {
-                        filter.card_types.push(card_type);
-                    }
-                    PreventNextTimeDamageSourceAst::Target(TargetAst::Object(
-                        filter,
-                        None,
-                        span_from_tokens(source_tokens),
-                    ))
+                clause_shapes::DamageSourceShape::Filter(filter) => PreventNextTimeDamageSourceAst::Filter(filter),
+            };
+            let target = if target_tokens.is_empty() {
+                None
+            } else if let Some(index) = target_tokens.iter().position(|token| token.is_word("and/or") || token.is_word("or") || token.is_word("and")) {
+                let left = &target_tokens[..index];
+                let right = &target_tokens[index + 1..];
+                let left_words = crate::lexer::TokenWordView::new(left).word_refs();
+                let right_words = crate::lexer::TokenWordView::new(right).word_refs();
+                if crate::util::is_source_reference_words(&left_words) && right_words == ["you"]
+                    || left_words == ["you"] && crate::util::is_source_reference_words(&right_words)
+                {
+                    Some(TargetAst::ObjectOrPlayer(ObjectFilter::source(), PlayerFilter::You, None))
+                } else {
+                    Some(parse_target_phrase(target_tokens)?)
                 }
-                clause_shapes::DamageSourceShape::Filter(filter) => {
-                    PreventNextTimeDamageSourceAst::Filter(filter)
+            } else {
+                Some(parse_target_phrase(target_tokens)?)
+            };
+            let (destination, destination_target) = match destination {
+                clause_shapes::RedirectDamageDestinationShape::SourceObject => (RedirectNextTimeDamageDestinationAst::SourceObject, None),
+                clause_shapes::RedirectDamageDestinationShape::Controller => (RedirectNextTimeDamageDestinationAst::Controller, None),
+                clause_shapes::RedirectDamageDestinationShape::SourceController => (RedirectNextTimeDamageDestinationAst::SourceController, None),
+                clause_shapes::RedirectDamageDestinationShape::DamageSource => (RedirectNextTimeDamageDestinationAst::DamageSource, None),
+                clause_shapes::RedirectDamageDestinationShape::Target(tokens) => (RedirectNextTimeDamageDestinationAst::TargetObject, Some(parse_target_phrase(tokens)?)),
+                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
+                    return Err(CardTextError::ParseError(format!("unsupported redirected-next-time damage destination (clause: '{}')", clause_text)));
                 }
             };
-            let target = parse_target_phrase(target_tokens)?;
-            match destination {
-                clause_shapes::RedirectDamageDestinationShape::SourceObject => {
-                    EffectAst::subject_verb_redirect_next_time_damage_to_source(
-                        source,
-                        target,
-                        RedirectNextTimeDamageDestinationAst::SourceObject,
-                    )
-                }
-                clause_shapes::RedirectDamageDestinationShape::Controller => {
-                    EffectAst::subject_verb_redirect_next_time_damage_to_source(
-                        source,
-                        target,
-                        RedirectNextTimeDamageDestinationAst::Controller,
-                    )
-                }
-                clause_shapes::RedirectDamageDestinationShape::Target(destination_tokens) => {
-                    EffectAst::subject_verb_redirect_next_time_damage_to_target(
-                        source,
-                        target,
-                        parse_target_phrase(destination_tokens)?,
-                    )
-                }
-                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported redirected-next-time damage destination (clause: '{}')",
-                        clause_text
-                    )));
-                }
-            }
+            EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+                SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
+                    source, target, combat_only, destination, destination_target, all_this_turn: false,
+                }))
         }
         clause_shapes::RedirectNextDamageShape::NextAmount {
             amount_tokens,
@@ -1920,12 +1897,16 @@ pub fn parse_redirect_next_damage_sentence(
                     effect
                 }
                 clause_shapes::RedirectDamageDestinationShape::SourceObject => {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported redirected-next-damage destination (clause: '{}')",
-                        clause_text
-                    )));
+                    EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+                        SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
+                            amount, protected_target,
+                            destination: RedirectNextTimeDamageDestinationAst::SourceObject,
+                            destination_target: None,
+                        }))
                 }
-                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
+                clause_shapes::RedirectDamageDestinationShape::SourceController
+                | clause_shapes::RedirectDamageDestinationShape::DamageSource
+                | clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported redirected-next-damage destination (clause: '{}')",
                         clause_text

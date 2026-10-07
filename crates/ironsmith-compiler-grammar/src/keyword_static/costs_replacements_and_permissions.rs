@@ -1510,10 +1510,27 @@ pub fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    Err(CardTextError::ParseError(format!(
-        "unsupported foretelling cost modifier clause (clause: '{}')",
-        clause_words.join(" ")
-    )))
+    let Some(costs_index) = tokens.iter().position(|token| token_word_is(token, "costs")) else {
+        return Ok(None);
+    };
+    let Some((Value::Fixed(amount), consumed)) = parse_cost_modifier_amount(&tokens[costs_index + 1..]) else {
+        return Err(CardTextError::ParseError("foretell special-action reduction needs a fixed generic cost".into()));
+    };
+    let prefix = &tokens[..=costs_index];
+    let mut tail = &tokens[costs_index + 1 + consumed..];
+    if tail.last().is_some_and(|token| token.is_period()) { tail = &tail[..tail.len() - 1]; }
+    let tail_words = crate::lexer::parser_token_word_refs(tail);
+    let exact_tail = matches!(tail_words.as_slice(),
+        ["less", "and", "can", "be", "done", "on", "any", "players", "turn"]
+        | ["less", "and", "can", "be", "done", "on", "any", "player", "s", "turn"]
+        | ["less", "and", "can", "be", "done", "on", "any", "player", "turn"]);
+    if amount < 0 || !prefix.iter().all(|token| token.kind == TokenKind::Word)
+        || !tail.iter().all(|token| matches!(token.kind, TokenKind::Word | TokenKind::Apostrophe))
+        || !exact_tail
+    {
+        return Err(CardTextError::ParseError("unsupported trailing or non-generic foretell special-action modifier syntax".into()));
+    }
+    Ok(Some(StaticAbility::foretell_special_action_modifier(amount as u32, true)))
 }
 
 pub fn parse_cost_modifier_amount(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
@@ -2453,7 +2470,14 @@ pub fn parse_all_creatures_are_color_line(
     let Some(fact) = type_and_color_facts::parse_subject_color_tokens(tokens) else {
         return Ok(None);
     };
-    let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+    let mut filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+    // CR 109.2: an unqualified type/subtype noun ("Slivers") means
+    // permanents. Preserve source references and explicit card/zone domains.
+    if !filter.source && filter.zone.is_none() && filter.any_of.is_empty()
+        && !filter.has_explicit_card_noun()
+    {
+        filter.zone = Some(Zone::Battlefield);
+    }
 
     Ok(Some(StaticAbility::set_colors(filter, fact.color)))
 }
@@ -2930,11 +2954,14 @@ pub fn parse_creatures_cant_block_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     if is_creatures_cant_block_line_lexed(tokens) {
-        return Ok(Some(StaticAbilityAst::GrantStaticAbility {
-            filter: ObjectFilter::creature(),
-            ability: Box::new(StaticAbilityAst::Static(StaticAbility::cant_block())),
-            condition: None,
-        }));
+        // This is a rule imposed by the source, not an ability granted to
+        // every creature. Use the same typed restriction as the complete
+        // generic reader, including its live source lifetime.
+        let Some(abilities) = parse_cant_clauses(tokens)? else { return Ok(None); };
+        let [ability]: [StaticAbility; 1] = abilities.try_into().map_err(|_| {
+            CardTextError::ParseError("a complete creatures-cant-block clause must contain one restriction".into())
+        })?;
+        return Ok(Some(StaticAbilityAst::Static(ability)));
     }
     Ok(None)
 }
@@ -4405,6 +4432,7 @@ pub fn parse_source_exiled_play_life_cost_line(
     }
     let usage_limit = during_your_turn.then_some(crate::grant::GrantUsageLimit::DuringYourTurns);
     let surface = crate::grant::SourceExiledGrantSurface {
+            mana_rider: None,
         source: reference.surface,
         plural_spell_subject: false,
         generic_card_pool: true,
@@ -4448,6 +4476,36 @@ pub fn parse_source_exiled_play_life_cost_line(
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(reference) = crate::grammar::permission_facts::source_exiled::parse_look_source_exiled_tokens(tokens) {
+        return Ok(Some(vec![StaticAbility::look_at_source_exiled_cards(reference.surface)]));
+    }
+    let inspected = crate::grammar::permission_facts::source_exiled::parse_look_and_play_source_exiled_tokens(tokens);
+    let may_look = inspected.is_some();
+    let inline = crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_inline_mana_tokens(tokens);
+    let rider_surface = if inline.is_some() { ironsmith_core::SourceExiledManaRiderSurface::InlineCastSpells }
+        else { ironsmith_core::SourceExiledManaRiderSurface::ConditionalCast };
+    let converted = inline.or_else(|| crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_with_mana_tokens(tokens));
+    let mode = converted.as_ref().map_or(ironsmith_core::value_model::ManaSpendMode::Normal, |(_, mode)| *mode);
+    if let Some(reference) = converted.map(|(reference, _)| reference).or(inspected).or_else(|| crate::grammar::permission_facts::source_exiled::
+        parse_play_lands_and_spells_from_source_exiled_tokens(tokens))
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let mut spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
+        ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            mana_rider: (!mode.is_normal()).then_some(rider_surface),
+            source: reference.surface, plural_spell_subject: true,
+            generic_card_pool: true, generic_cast_this_way_subject: true,
+        });
+        spec.requires_linked_exile_pair = true;
+        spec.may_look_at_linked_exile = may_look;
+        spec.cast_mana_spend_mode = mode;
+        return Ok(Some(vec![StaticAbility::grants(spec)]));
+    }
     // The dedicated land permission owns this exact surface. Its canonical
     // grant must not compete with the broader play-from permission parser.
     if is_play_lands_from_graveyard_line_lexed(tokens) {
@@ -4835,6 +4893,13 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
 pub fn parse_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        let parsed = super::combat_requirements::parse_combat_requirement_static_line(tokens)?;
+        return Ok(parsed.and_then(|mut abilities| {
+            (abilities.len() == 1).then(|| abilities.remove(0))
+        }));
+    }
+
     if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
         && let Some(ability) = parse_attacks_each_combat_if_able_line(&tokens[..unless])?
     {
@@ -7779,26 +7844,50 @@ pub fn parse_loyalty_abilities_any_time_line(
     let body = prefix
         .as_ref()
         .map_or(tokens, |prefix| prefix.remainder_tokens);
-    let words: Vec<&str> = body
-        .iter()
-        .filter(|token| token.as_word().is_some())
-        .map(|token| token.parser_text())
-        .collect();
+    let view = crate::lexer::TokenWordView::new(body);
+    let words = view.to_word_refs();
     const START: &[&str] = &["you", "may", "activate"];
     const END: &[&str] = &["any", "time", "you", "could", "cast", "an", "instant"];
+    const ANY_PLAYER_TURN: &[&[&str]] = &[
+        &["on", "any", "players", "turn"],
+        &["on", "any", "player", "s", "turn"],
+        &["on", "any", "player", "turn"],
+    ];
     if !crate::word_primitives::parse_sequence_prefix(&words, START)
         || !crate::word_primitives::parse_sequence_suffix(&words, END)
     {
         return Ok(None);
     }
-    let subject = &words[START.len()..words.len() - END.len()];
+    let timing_start = words.len() - END.len();
+    let subject_and_turn = &words[START.len()..timing_start];
+    // This optional clause belongs to the timing permission, not its object
+    // selector. Both forms grant the same unrestricted instant timing.
+    let subject_len = ANY_PLAYER_TURN
+        .iter()
+        .find_map(|suffix| suffix_word_start(subject_and_turn, suffix))
+        .unwrap_or(subject_and_turn.len());
+    let subject_end = START.len() + subject_len;
+    let subject = &words[START.len()..subject_end];
     let mut filter = match subject {
         ["its" | "her" | "his" | "their", "loyalty", "abilities"] => ObjectFilter::source(),
         ["loyalty", "abilities", "of", rest @ ..] if !rest.is_empty() => {
-            let view = crate::lexer::TokenWordView::new(body);
-            let first = view.token_start_indices()[START.len() + 3];
-            let end = view.token_start_indices()[words.len() - END.len()];
-            parse_object_filter(&body[first..end], false)?
+            if let Some(surface) = crate::util::source_reference_surface_for_words(rest) {
+                ObjectFilter::source_with_surface(surface)
+            } else {
+                let Some(range) = view.token_span_for_words(START.len() + 3, subject_end) else {
+                    return Ok(None);
+                };
+                // Require the complete selector grammar: the permissive
+                // filter parser can discard an unsupported turn restriction
+                // and accidentally grant permission on every turn.
+                let Some(filter) = crate::grammar::filters::parse_simple_object_filter_lexed(
+                    &body[range],
+                    false,
+                ) else {
+                    return Ok(None);
+                };
+                filter
+            }
         }
         _ => return Ok(None),
     };
@@ -7825,6 +7914,7 @@ pub fn parse_loyalty_abilities_any_time_line(
 #[cfg(test)]
 mod loyalty_timing_tests {
     use super::*;
+
     #[test]
     fn loyalty_permission_parses_scoped_and_conditional_filters() {
         for (line, is_source, entered) in [
@@ -7834,12 +7924,37 @@ mod loyalty_timing_tests {
                 false,
             ),
             (
+                "You may activate its loyalty abilities on any player's turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
+                "You may activate loyalty abilities of this on any player's turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
+                "You may activate loyalty abilities of this planeswalker on any player’s turn any time you could cast an instant.",
+                true,
+                false,
+            ),
+            (
                 "You may activate loyalty abilities of planeswalkers you control any time you could cast an instant.",
                 false,
                 false,
             ),
             (
+                "You may activate loyalty abilities of planeswalkers you control on any player's turn any time you could cast an instant.",
+                false,
+                false,
+            ),
+            (
                 "As long as this entered this turn, you may activate its loyalty abilities any time you could cast an instant.",
+                true,
+                true,
+            ),
+            (
+                "As long as this entered this turn, you may activate its loyalty abilities on any player's turn any time you could cast an instant.",
                 true,
                 true,
             ),
@@ -7858,6 +7973,84 @@ mod loyalty_timing_tests {
             if !is_source {
                 assert!(filter.card_types.contains(&CardType::Planeswalker));
                 assert_eq!(filter.controller, Some(PlayerFilter::You));
+            }
+        }
+    }
+
+    #[test]
+    fn loyalty_permission_preserves_normalized_named_source() {
+        for (name, line) in [
+            (
+                "Teferi, Master of Time",
+                "You may activate loyalty abilities of Teferi on any player's turn any time you could cast an instant.",
+            ),
+            (
+                "Chronicle Adept",
+                "You may activate loyalty abilities of Chronicle Adept on any player's turn any time you could cast an instant.",
+            ),
+        ] {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), name)
+                .card_types(vec![CardType::Planeswalker]);
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let normalized =
+                crate::document_parser::normalize_named_source_tokens_for_builder(&card, &tokens)
+                    .expect("the card's own name should become a source reference");
+            let ability = parse_loyalty_abilities_any_time_line(&normalized)
+                .unwrap()
+                .expect(line);
+            let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
+                ability.payload
+            else {
+                panic!("{line}");
+            };
+            assert!(filter.source, "{line}");
+            assert!(filter.controller.is_none(), "{line}");
+            assert!(filter.subtypes.is_empty(), "{line}");
+        }
+    }
+
+    #[test]
+    fn loyalty_permission_keeps_generic_filter_scope_before_turn_qualifier() {
+        let line = "You may activate loyalty abilities of legendary planeswalkers your opponents control on any player's turn any time you could cast an instant.";
+        let tokens = crate::lexer::lex_line(line, 0).unwrap();
+        let ability = parse_loyalty_abilities_any_time_line(&tokens)
+            .unwrap()
+            .expect(line);
+        let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } = ability.payload
+        else {
+            panic!("{line}");
+        };
+        assert!(!filter.source);
+        assert_eq!(filter.card_types, vec![CardType::Planeswalker]);
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+        assert_eq!(filter.supertypes, vec![crate::types::Supertype::Legendary]);
+    }
+
+    #[test]
+    fn loyalty_permission_rejects_unmodeled_turn_restrictions() {
+        for subject in [
+            "its loyalty abilities",
+            "loyalty abilities of this planeswalker",
+            "loyalty abilities of planeswalkers you control",
+        ] {
+            for qualifier in [
+                "on your turn",
+                "only on your turn",
+                "during your turn",
+                "on any opponent's turn",
+                "on any player's next turn",
+                "on any player's end step",
+                "on any player's turn this turn",
+                "on your turn on any player's turn",
+            ] {
+                let line = format!(
+                    "You may activate {subject} {qualifier} any time you could cast an instant."
+                );
+                let tokens = crate::lexer::lex_line(&line, 0).unwrap();
+                assert!(
+                    !matches!(parse_loyalty_abilities_any_time_line(&tokens), Ok(Some(_))),
+                    "unsupported restriction was widened: {line}"
+                );
             }
         }
     }
@@ -8106,5 +8299,56 @@ mod generic_flash_permission_tests {
                 "{text}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod foretell_special_action_modifier_tests {
+    use super::*;
+    #[test]
+    fn complete_modifier_shape_keeps_amount_and_rejects_unconsumed_syntax() {
+        for amount in [0, 1, 3] {
+            let tokens = crate::lexer::lex_line(&format!("Foretelling cards from your hand costs {{{amount}}} less and can be done on any player's turn."), 0).unwrap();
+            let parsed = parse_foretelling_cards_cost_modifier_line(&tokens).unwrap().unwrap();
+            assert!(matches!(parsed.payload, ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction, any_players_turn: true,
+            } if generic_reduction == amount));
+        }
+        for line in [
+            "Foretelling cards from your hand costs {R} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1}{R} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1}{1} less and can be done on any player's turn.",
+            "Foretelling cards from your hand costs {1} less and can be done on any player's turn if you control an Island.",
+            "Foretelling cards from your hand costs {1} less and can be done on any player's turn {R}.",
+        ] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            assert!(parse_foretelling_cards_cost_modifier_line(&tokens).is_err(), "{line}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod static_color_subject_tests {
+    use super::*;
+
+    #[test]
+    fn nominal_slivers_mean_permanents_and_literal_source_colorless_is_not_devoid() {
+        let tokens = crate::lexer::lex_line("All Slivers are colorless.", 0).unwrap();
+        let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+            panic!("literal color statement must use SetColors");
+        };
+        assert_eq!(colors, crate::color::ColorSet::COLORLESS);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.subtypes, vec![Subtype::Sliver]);
+        assert!(filter.card_types.is_empty());
+        assert!(filter.controller.is_none() && !filter.source && !filter.other);
+        let tokens = crate::lexer::lex_line("This spell is colorless.", 0).unwrap();
+        let ability = parse_all_creatures_are_color_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::SetColors { filter, colors } = ability.payload else {
+            panic!("literal colorless is not the Devoid keyword");
+        };
+        assert!(filter.is_source_only());
+        assert_eq!(colors, crate::color::ColorSet::COLORLESS);
     }
 }

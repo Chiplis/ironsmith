@@ -1,0 +1,36 @@
+[
+  {
+    "name": "Edgar, King of Figaro",
+    "oracle_id": "264efed9-65ab-40ad-877f-c6c25ca0281e",
+    "oracle_text": "When Edgar enters, draw a card for each artifact you control.\nTwo-Headed Coin — The first time you flip one or more coins each turn, those coins come up heads and you win those flips.",
+    "text": "Mana cost: {4}{U}{U}\nType: Legendary Creature — Human Artificer Noble\nPower/Toughness: 4/5\nWhen Edgar enters, draw a card for each artifact you control.\nTwo-Headed Coin — The first time you flip one or more coins each turn, those coins come up heads and you win those flips.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "parser does not yet support line family: 'Two-Headed Coin — The first time you flip one or more coins each turn, those coins come up heads and you win those flips.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Two-Headed Coin — The first time you flip one or more coins each turn, those coins come up heads and you win those flips.' [rule-path=unsupported-line-family]",
+    "baseline_content_hash": "541f5c1db7335ce23c88948d1e3cfe491ebf53407cf549ce34df2cda2dc7c0c0",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Krark's Thumb",
+    "oracle_id": "a97c8482-775c-4f11-9872-25b4f9bfcb1a",
+    "oracle_text": "If you would flip a coin, instead flip two coins and ignore one.",
+    "text": "Mana cost: {2}\nType: Legendary Artifact\nIf you would flip a coin, instead flip two coins and ignore one.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported complete object filter: two coins and ignore one [rule-path=conditional-sentence-family > sentence-reading] [rule-path=statement-line]; oracle-only fallback also failed: unsupported complete object filter: two coins and ignore one [rule-path=conditional-sentence-family > sentence-reading] [rule-path=statement-line]",
+    "baseline_content_hash": "852d67d66085e7ef3fc0434ff8f7de63d68df1170adf5d812a4ed72d583bb7b1",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun"
+  },
+  {
+    "name": "Krark's Thumb // Krark's Thumb",
+    "oracle_id": "a97c8482-775c-4f11-9872-25b4f9bfcb1a",
+    "oracle_text": "If you would flip a coin, instead flip two coins and ignore one.",
+    "text": "Mana cost: {2}\nType: Legendary Artifact\nIf you would flip a coin, instead flip two coins and ignore one.",
+    "baseline_category": "parser_failure",
+    "baseline_error": "unsupported complete object filter: two coins and ignore one [rule-path=conditional-sentence-family > sentence-reading] [rule-path=statement-line]; oracle-only fallback also failed: unsupported complete object filter: two coins and ignore one [rule-path=conditional-sentence-family > sentence-reading] [rule-path=statement-line]",
+    "baseline_content_hash": "3361c979941f2e2dcce6fe51f7f126549641dc54209ad34e21d75c6a297d28cd",
+    "proposed_complete": true,
+    "status": "UNVALIDATED source proposal; native scenarios authored and unrun",
+    "source_face": "Krark's Thumb"
+  }
+]

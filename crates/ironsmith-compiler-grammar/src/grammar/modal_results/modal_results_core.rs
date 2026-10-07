@@ -185,6 +185,11 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         // Player recipients have their own result predicate below.
         parse_prior_result_object_filter(&tokens[..copula_idx])?;
         PriorEffectAction::DealtDamage
+    } else if after == ["moved", "this", "way"] {
+        let subject = crate::grammar::primitives::strip_lexed_prefix_phrase(
+            &tokens[..copula_idx], &["one", "or", "more"])?;
+        let kind_tokens = crate::grammar::primitives::strip_lexed_suffix_phrase(subject, &["counters"])?;
+        PriorEffectAction::CountersMoved(crate::util::parse_counter_type_from_tokens(kind_tokens)?)
     } else if after.first() == Some(&"removed") {
         PriorEffectAction::Removed
     } else if after.first() == Some(&"prevented") {

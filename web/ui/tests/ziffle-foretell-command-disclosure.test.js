@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { actionRefObjectId } from '../src/lib/sync-object-identity.js';
+import { castingMethodOrigin } from '../src/lib/sync-commands.js';
 
 const source = readFileSync(new URL('../src/hooks/peer-lobby/shared.js', import.meta.url), 'utf8');
 function declaration(name) {
@@ -10,9 +11,9 @@ function declaration(name) {
   const end = source.indexOf('\nexport ', start + 1);
   return source.slice(start, end).replace(/^export /, '');
 }
-const collect = new Function('actionRefObjectId', [
+const collect = new Function('actionRefObjectId', 'castingMethodOrigin', [
   'isFaceDownCastCommand', 'isForetellCommand', 'collectCommandObjectIds',
-].map(declaration).join('\n') + '\nreturn collectCommandObjectIds;')(actionRefObjectId);
+].map(declaration).join('\n') + '\nreturn collectCommandObjectIds;')(actionRefObjectId, castingMethodOrigin);
 const command = action_ref => ({ type: 'priority_action', action_ref, object_id: 13 });
 
 test('foretell keeps its command-referenced hand card private', () => {

@@ -257,14 +257,11 @@ pub fn parse_resource_note_life_total_shape(tokens: &[OwnedLexToken]) -> bool {
     exact_unit(tokens, note_life_total)
 }
 
-fn take_extra_turn<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    primitives::phrase(&["an", "extra", "turn", "after", "this", "one"])
-        .void()
-        .parse_next(input)
-}
-
-pub fn parse_resource_take_extra_turn_shape(tokens: &[OwnedLexToken]) -> bool {
-    exact_unit(tokens, take_extra_turn)
+pub fn parse_resource_take_extra_turn_shape(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Option<super::ExtraTurnShape> {
+    super::parse_extra_turn_tail_shape(tokens, player)
 }
 
 fn proliferate_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -297,6 +294,14 @@ fn it_or_them<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((primitives::kw("it"), primitives::kw("them")))
         .void()
         .parse_next(input)
+}
+
+fn suspect_triggering_group_choice<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["one", "of", "the", "other", "creatures"]).parse_next(input)
+}
+
+pub fn parse_suspect_triggering_group_choice_shape(tokens: &[OwnedLexToken]) -> bool {
+    exact_unit(tokens, suspect_triggering_group_choice)
 }
 
 pub fn parse_resource_tagged_reference_shape(tokens: &[OwnedLexToken]) -> bool {

@@ -313,7 +313,7 @@ impl FaceDownCastPermission {
 /// put on the stack: the owner reveals the card publicly (the peer front end
 /// opens it on every peer before replaying the answer) and only then is the
 /// reveal event emitted and its triggers checked, identically on every peer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PendingAutomaticDrawReveal {
     pub player: PlayerId,
     pub card: ObjectId,
@@ -321,6 +321,8 @@ pub struct PendingAutomaticDrawReveal {
     pub source: ObjectId,
     /// "You may reveal ..." (the owner may decline).
     pub optional: bool,
+    pub occurrence: crate::events::other::FirstDrawRevealOccurrence,
+    pub source_snapshot: crate::snapshot::ObjectSnapshot,
 }
 
 /// Late discovery from an opened card observes the original draw, rather than
@@ -335,7 +337,7 @@ pub(crate) struct PendingDrawReveal {
 /// A pending disclosure retains the observation policy of the action that
 /// scheduled it. Opening a hidden identity remains necessary even when setup
 /// suppresses history and triggers; postponement must not change that policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct DeferredAutomaticDrawReveal {
     pub reveal: PendingAutomaticDrawReveal,
     pub parent_provenance: crate::provenance::ProvNodeId,
@@ -369,11 +371,40 @@ pub(crate) fn identity_free_filter(filter: &ObjectFilter) -> ObjectFilter {
     generic
 }
 
+/// Receipt equality is public evidence; a native graph allocation ordinal is
+/// not. One claim context shares these labels across all of its outcomes and
+/// recursive original results. Traversal order, rather than native allocation
+/// order or HashMap iteration, determines the public first-occurrence labels.
+#[derive(Default)]
+struct PublicClaimReceiptIds {
+    native_to_public: std::collections::HashMap<crate::provenance::ProvNodeId, crate::provenance::ProvNodeId>,
+    // This private scratch allocator only constructs opaque representable IDs.
+    // Its nodes never enter the game's graph or any serialized gameplay state.
+    labels: crate::provenance::ProvenanceGraph,
+}
+
+impl PublicClaimReceiptIds {
+    fn project(&mut self, native: crate::provenance::ProvNodeId) -> crate::provenance::ProvNodeId {
+        // Preserve the unavailable/default sentinel; it is not evidence of a
+        // newly identified receipt. Missing facts are never manufactured here.
+        if native == crate::provenance::ProvNodeId::default() {
+            return native;
+        }
+        if let Some(public) = self.native_to_public.get(&native) {
+            return *public;
+        }
+        let public = self.labels.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        self.native_to_public.insert(native, public);
+        public
+    }
+}
+
 /// An effect outcome in public claim form (see
 /// `GameState::public_claim_filter_context`).
 fn public_claim_outcome(
     outcome: &crate::effect::EffectOutcome,
     hidden_match: bool,
+    receipt_ids: &mut PublicClaimReceiptIds,
 ) -> crate::effect::EffectOutcome {
     use crate::effect::ExecutionFact;
     fn public_snapshot(
@@ -424,6 +455,10 @@ fn public_claim_outcome(
         .execution_facts
         .iter()
         .map(|fact| match fact {
+            ExecutionFact::PreventedDamageReceipt { receipt, amount } => ExecutionFact::PreventedDamageReceipt {
+                receipt: receipt_ids.project(*receipt),
+                amount: *amount,
+            },
             ExecutionFact::ResultObjectMemory(memories) => {
                 ExecutionFact::ResultObjectMemory(memories.iter().map(memory).collect())
             }
@@ -432,6 +467,15 @@ fn public_claim_outcome(
             }
             ExecutionFact::AffectedObjectMemory(memories) => {
                 ExecutionFact::AffectedObjectMemory(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::OriginalSacrificeObjects(memories) => {
+                ExecutionFact::OriginalSacrificeObjects(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::OriginalZoneMoveCards(memories) => {
+                ExecutionFact::OriginalZoneMoveCards(memories.iter().map(memory).collect())
+            }
+            ExecutionFact::RevealedCards(memories) => {
+                ExecutionFact::RevealedCards(memories.iter().map(memory).collect())
             }
             ExecutionFact::PlayerAffectedObjectMemory(entries) => {
                 ExecutionFact::PlayerAffectedObjectMemory(
@@ -463,7 +507,7 @@ fn public_claim_outcome(
         events: Vec::new(),
         execution_facts,
         instruction_result: outcome.instruction_result.as_deref().map(|original|
-            Box::new(public_claim_outcome(original, hidden_match))),
+            Box::new(public_claim_outcome(original, hidden_match, receipt_ids))),
     }
 }
 
@@ -606,7 +650,9 @@ impl GameState {
     ///   identically on every peer.
     /// * Effect outcomes keep their status, value and execution facts; events
     ///   are dropped and object memories of hidden-zone objects are reduced
-    ///   to identity, ownership and zone.
+    ///   to identity, ownership and zone. Prevention receipt IDs become
+    ///   context-local first-occurrence labels, preserving aliases across
+    ///   sorted effect outcomes and recursive original results.
     ///
     /// Outside peer matches (no hidden cards) nothing is ever recorded, so
     /// this never runs there.
@@ -637,10 +683,11 @@ impl GameState {
                 )
             })
             .collect();
-        public.effect_outcomes = ctx
-            .effect_outcomes
-            .iter()
-            .map(|(id, outcome)| (*id, public_claim_outcome(outcome, hidden_match)))
+        let mut outcomes = ctx.effect_outcomes.iter().collect::<Vec<_>>();
+        outcomes.sort_unstable_by_key(|(id, _)| id.0);
+        let mut receipt_ids = PublicClaimReceiptIds::default();
+        public.effect_outcomes = outcomes.into_iter()
+            .map(|(id, outcome)| (*id, public_claim_outcome(outcome, hidden_match, &mut receipt_ids)))
             .collect();
         public
     }
@@ -1036,6 +1083,48 @@ impl GameState {
             .insert(id, kind);
     }
 
+    /// Identity-free public declarations offered after an exact blind intent.
+    /// Printed kinds are declarations, never a query of the unopened abilities.
+    pub(crate) fn blind_face_down_cast_kinds(&self, player: PlayerId) -> Vec<FaceDownCastKind> {
+        let mut kinds = vec![FaceDownCastKind::Morph, FaceDownCastKind::Megamorph, FaceDownCastKind::Disguise];
+        for permission in self.face_down_cast_permissions() {
+            if self.active_face_down_cast_permission(permission.source, player, Zone::Exile).is_some() {
+                let kind = FaceDownCastKind::Permission { source: permission.source };
+                if !kinds.contains(&kind) { kinds.push(kind); }
+            }
+        }
+        kinds
+    }
+
+    /// The blind intent owner has already checked the exact card, actor and
+    /// unqualified play permission. Tracked cards use the existing public claim
+    /// ledger and authenticated opening obligation; untracked native cards can
+    /// validate the one explicitly declared rule immediately without disclosing
+    /// a face or offering any other private rule.
+    pub(crate) fn declare_blind_face_down_cast(
+        &mut self, id: ObjectId, player: PlayerId, kind: FaceDownCastKind,
+        incarnation: Option<u64>, permission: &crate::alternative_cast::GrantSelection,
+    ) -> bool {
+        let Some(object) = self.object(id).filter(|object| object.zone == Zone::Exile) else { return false; };
+        let tracked = self.hidden_card_info(id).is_some();
+        let permitted = match kind {
+            FaceDownCastKind::Permission { source } => self.active_face_down_cast_permission(source, player, Zone::Exile)
+                .is_some_and(|permission| tracked || permission.filter.matches(object, &permission.filter_context(), self)),
+            _ => tracked || kind.is_allowed_by(&object.abilities),
+        };
+        if !permitted { return false; }
+        let tracking = self.auxiliary_tracking_mut();
+        tracking.hidden_face_down_cast_claims.insert(id, kind);
+        tracking.blind_face_down_declarations.insert(id, crate::alternative_cast::blind_play::BlindFaceDownDeclaration {
+            player, incarnation, permission: permission.clone(), kind,
+        });
+        true
+    }
+
+    pub(crate) fn blind_face_down_declaration(&self, id: ObjectId) -> Option<&crate::alternative_cast::blind_play::BlindFaceDownDeclaration> {
+        self.auxiliary_tracking.blind_face_down_declarations.get(&id)
+    }
+
     /// Hidden face-down cast claims.
     pub fn hidden_face_down_cast_claims(&self) -> Vec<(ObjectId, FaceDownCastKind)> {
         let mut claims: Vec<_> = self
@@ -1114,13 +1203,23 @@ impl GameState {
     /// A permission from the same source for the same player and zone is
     /// replaced.
     pub fn grant_face_down_cast_permission(&mut self, permission: FaceDownCastPermission) {
+        let public_id = self.object(permission.source).map(|source| source.stable_id);
         let tracking = self.auxiliary_tracking_mut();
+        if let Some(public_id) = public_id {
+            tracking.face_down_permission_source_public_ids.insert(permission.source, public_id);
+        }
         tracking.face_down_cast_permissions.retain(|existing| {
             !(existing.source == permission.source
                 && existing.player == permission.player
                 && existing.zone == permission.zone)
         });
         tracking.face_down_cast_permissions.push(permission);
+    }
+
+    /// Exact-keyed public evidence survives source departure and native recovery.
+    /// Absence is incomplete evidence, never a lookup of a later stable card.
+    pub(crate) fn face_down_permission_source_public_id(&self, source: ObjectId) -> Option<StableId> {
+        self.auxiliary_tracking.face_down_permission_source_public_ids.get(&source).copied()
     }
 
     /// Remove every face-down cast permission granted by `source`.
@@ -1235,6 +1334,9 @@ impl GameState {
     }
 
     pub(crate) fn clear_hidden_face_down_cast_claim(&mut self, id: ObjectId) {
+        if self.auxiliary_tracking.blind_face_down_declarations.contains_key(&id) {
+            self.auxiliary_tracking_mut().blind_face_down_declarations.remove(&id);
+        }
         if self
             .auxiliary_tracking
             .hidden_face_down_cast_claims
@@ -1480,6 +1582,7 @@ impl GameState {
             // The card may still sit at the anchored ciphertext (drawn back
             // without a reshuffle): one opening settles both entries.
             let anchor_info = super::HiddenCardInfo {
+                incarnation: None,
                 owner: anchor.owner,
                 zone: Zone::Library,
                 slot: anchor.slot,
@@ -1607,14 +1710,16 @@ impl GameState {
             .contains(&id)
     }
 
-    /// Whether the identity of this hidden-zone card is known to its owner
-    /// only (some peer holds a placeholder for it). Symmetric across peers.
+    /// Whether this tracked identity still requires a public opening. A
+    /// face-down exiled card is private even though Exile is a public zone.
+    /// This test is symmetric across peers, including the owner with a face.
     pub(crate) fn hidden_identity_is_private(&self, id: ObjectId) -> bool {
         self.hidden_card_info(id).is_some()
             && !self.is_publicly_revealed_hidden_card(id)
             && self
                 .object(id)
-                .is_some_and(|object| object.zone.is_hidden())
+                .is_some_and(|object| object.zone.is_hidden()
+                    || (object.zone == Zone::Exile && self.is_face_down(id)))
     }
 
     /// Record that `ids` were opened publicly on every peer. Only cards the
@@ -1728,6 +1833,9 @@ impl GameState {
         let Some(drawn) = event.downcast::<crate::events::other::CardsDrawnEvent>() else {
             return;
         };
+        // The native draw owner already answered this exact reveal window.
+        // Do not expose the card again or infer a different Miracle instance.
+        if drawn.miracle.is_some() { return; }
         if !drawn.is_first_this_turn
             || !self
                 .auxiliary_tracking
@@ -1826,7 +1934,7 @@ impl GameState {
                 .auxiliary_tracking
                 .pending_hidden_automatic_draw_reveals
                 .first()
-                .copied()?;
+                .cloned()?;
             let in_hand = self
                 .object(next.reveal.card)
                 .is_some_and(|object| {
@@ -1856,7 +1964,7 @@ impl GameState {
         self.auxiliary_tracking
             .pending_hidden_automatic_draw_reveals
             .iter()
-            .map(|entry| entry.reveal)
+            .map(|entry| entry.reveal.clone())
             .collect()
     }
 
@@ -2067,6 +2175,33 @@ impl GameState {
         description: &str,
         optional: bool,
     ) -> Option<Vec<ObjectId>> {
+        self.reveal_private_hidden_cards_publicly_with_payment(decision_maker, owner, source, cards, description, optional, None, false)
+    }
+
+    pub(crate) fn reveal_private_hidden_cards_publicly_as_cost(
+        &mut self,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        owner: PlayerId,
+        source: ObjectId,
+        cards: &[ObjectId],
+        description: &str,
+        prospective: bool,
+    ) -> Option<Vec<ObjectId>> {
+        self.reveal_private_hidden_cards_publicly_with_payment(decision_maker, owner, source, cards, description, false,
+            Some(crate::decisions::context::CostPaymentIdentity { source, payer: owner }), prospective)
+    }
+
+    fn reveal_private_hidden_cards_publicly_with_payment(
+        &mut self,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+        owner: PlayerId,
+        source: ObjectId,
+        cards: &[ObjectId],
+        description: &str,
+        optional: bool,
+        payment: Option<crate::decisions::context::CostPaymentIdentity>,
+        prospective: bool,
+    ) -> Option<Vec<ObjectId>> {
         use crate::decisions::context::SelectionRevealPolicy;
         use crate::decisions::{make_decision, specs::ChooseObjectsSpec};
 
@@ -2092,8 +2227,16 @@ impl GameState {
         )
         .require_explicit_choice()
         .with_selection_reveal_policy(SelectionRevealPolicy::Public);
+        let spec = if let Some(payment) = payment {
+            spec.with_cost_payment(payment.source, payment.payer)
+        } else { spec };
         let chosen: Vec<ObjectId> = make_decision(self, decision_maker, owner, Some(source), spec);
         if decision_maker.awaiting_choice() {
+            return None;
+        }
+        if payment.is_some() && (chosen.len() != required
+            || chosen.iter().enumerate().any(|(index, id)| !private.contains(id)
+                || chosen[..index].contains(id) || (!prospective && self.is_hidden_card_placeholder(*id)))) {
             return None;
         }
         let mut revealed = Vec::new();
@@ -2140,9 +2283,11 @@ mod replacement_public_claim_contract_tests {
             snapshot
         };
         let outcome = EffectOutcome::aggregate_replacement_outcomes(
-            EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()]),
+            EffectOutcome::count(1).with_affected_object_memory(vec![memory.clone()])
+                .with_execution_fact(crate::effect::ExecutionFact::CardsPutIntoHand { player, cards: vec![memory.clone()] })
+                .with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveCards(vec![memory.clone()])),
             [EffectOutcome::count(2).with_chosen_object_memory(vec![memory])]);
-        let claim = public_claim_outcome(&outcome, true);
+        let claim = public_claim_outcome(&outcome, true, &mut PublicClaimReceiptIds::default());
         assert!(claim.instruction_result.is_some());
         let original = &claim.affected_object_memory().unwrap()[0];
         assert_eq!(original.object_id, id);
@@ -2157,9 +2302,123 @@ mod replacement_public_claim_contract_tests {
                 assert_eq!(memories[0].mana_value(), 0);
             }
         }
+        for receipt in [&claim, claim.instruction_result()] {
+            for fact in &receipt.execution_facts {
+                let memories = match fact {
+                    crate::effect::ExecutionFact::CardsPutIntoHand { cards, .. }
+                    | crate::effect::ExecutionFact::OriginalZoneMoveCards(cards) => cards,
+                    _ => continue,
+                };
+                assert_eq!(memories.len(), 1);
+                assert_eq!(memories[0].object_id, id);
+                assert!(memories[0].name.is_empty());
+                assert!(memories[0].card_types.is_empty());
+                assert_eq!(memories[0].mana_value(), 0);
+            }
+        }
         assert!(claim.events.is_empty());
         assert!(claim.instruction_result().events.is_empty());
-        let visible = public_claim_outcome(&outcome, false);
+        let visible = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
         assert_eq!(visible.affected_object_memory().unwrap()[0].name, "Private card identity");
+    }
+}
+
+#[cfg(test)]
+mod public_prevention_receipt_identity_tests {
+    use super::*;
+    use crate::effect::{EffectId, EffectOutcome, ExecutionFact};
+    use crate::provenance::{ProvNodeId, ProvenanceGraph};
+
+    fn fact(receipt: ProvNodeId, amount: u32) -> ExecutionFact {
+        ExecutionFact::PreventedDamageReceipt { receipt, amount }
+    }
+
+    fn receipts(outcome: &EffectOutcome) -> Vec<(u64, u32)> {
+        outcome.execution_facts.iter().filter_map(|fact| match fact {
+            ExecutionFact::PreventedDamageReceipt { receipt, amount } => Some((receipt.raw(), *amount)),
+            _ => None,
+        }).collect()
+    }
+
+    // Authored only: public labels preserve equality, including nested original aliases.
+    #[test]
+    fn public_receipt_labels_preserve_recursive_aliases_and_distinct_events() {
+        let mut graph = ProvenanceGraph::new();
+        graph.alloc_root_event(crate::events::EventKind::Damage);
+        let first = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let second = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let mut outcome = EffectOutcome::count(0).with_execution_facts([
+            fact(first, 3), fact(first, 3), fact(second, 3),
+        ]);
+        outcome.instruction_result = Some(Box::new(EffectOutcome::count(0)
+            .with_execution_facts([fact(second, 3), fact(first, 3)])));
+        let public = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
+        assert_eq!(receipts(&public), vec![(1, 3), (1, 3), (2, 3)]);
+        assert_eq!(receipts(public.instruction_result.as_ref().unwrap()), vec![(2, 3), (1, 3)]);
+        assert!(public.events.is_empty());
+        assert!(public.instruction_result.as_ref().unwrap().events.is_empty());
+        assert_eq!(receipts(&outcome), vec![(first.raw(), 3), (first.raw(), 3), (second.raw(), 3)]);
+    }
+
+    fn context(first: ProvNodeId, second: ProvNodeId, reverse_insertion: bool) -> FilterContext {
+        let mut context = FilterContext::new(PlayerId::from_index(0));
+        let earlier = EffectOutcome::count(0).with_execution_facts([fact(first, 2), fact(second, 5)]);
+        let later = EffectOutcome::count(0).with_execution_fact(fact(second, 5));
+        if reverse_insertion {
+            context.effect_outcomes.insert(EffectId(20), later);
+            context.effect_outcomes.insert(EffectId(3), earlier);
+        } else {
+            context.effect_outcomes.insert(EffectId(3), earlier);
+            context.effect_outcomes.insert(EffectId(20), later);
+        }
+        context
+    }
+
+    #[test]
+    fn public_context_is_independent_of_native_allocation_and_map_insertion_order() {
+        let game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let mut left_graph = ProvenanceGraph::new();
+        let left_first = left_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let left_second = left_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let mut right_graph = ProvenanceGraph::new();
+        for _ in 0..7 { right_graph.alloc_root_event(crate::events::EventKind::Damage); }
+        // The same semantic receipts may have opposite native allocation order.
+        let right_second = right_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let right_first = right_graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let before = game.provenance_graph().node_count();
+        let left = game.public_claim_filter_context(&context(left_first, left_second, false));
+        let right = game.public_claim_filter_context(&context(right_first, right_second, true));
+        assert_eq!(left.effect_outcomes, right.effect_outcomes);
+        assert_eq!(receipts(&left.effect_outcomes[&EffectId(3)]), vec![(1, 2), (2, 5)]);
+        assert_eq!(receipts(&left.effect_outcomes[&EffectId(20)]), vec![(2, 5)],
+            "related outcomes must share the same receipt label map");
+        assert_eq!(game.provenance_graph().node_count(), before);
+        assert_eq!(game.public_claim_filter_context(&left).effect_outcomes, left.effect_outcomes,
+            "public projection is idempotent");
+        #[cfg(feature = "serialization")]
+        {
+            let encode = |context: &FilterContext| {
+                let mut outcomes = context.effect_outcomes.iter().map(|(id, outcome)| (id.0, outcome)).collect::<Vec<_>>();
+                outcomes.sort_by_key(|(id, _)| *id);
+                serde_json::to_vec(&outcomes).unwrap()
+            };
+            assert_eq!(encode(&left), encode(&right), "claim digest input bytes must agree");
+        }
+    }
+
+    #[test]
+    fn missing_and_empty_evidence_is_not_replaced_with_a_receipt() {
+        let absent = EffectOutcome::count(0);
+        let projected = public_claim_outcome(&absent, false, &mut PublicClaimReceiptIds::default());
+        assert!(projected.execution_facts.is_empty());
+        assert!(projected.instruction_result.is_none());
+        let mut graph = ProvenanceGraph::new();
+        let actual = graph.alloc_root_event(crate::events::EventKind::DamagePrevented);
+        let outcome = EffectOutcome::count(0).with_execution_facts([
+            fact(ProvNodeId::default(), 4), fact(actual, 0),
+        ]);
+        let projected = public_claim_outcome(&outcome, false, &mut PublicClaimReceiptIds::default());
+        assert_eq!(receipts(&projected), vec![(0, 4), (1, 0)],
+            "unavailable identity and an actual zero-amount receipt stay distinct");
     }
 }

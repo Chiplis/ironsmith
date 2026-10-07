@@ -34,6 +34,7 @@ CastSourceEffect	ironsmith_core::CastSourceEffect	player
 CastTaggedEffect	ironsmith_core::CastTaggedEffect<wire::WireCost>	player
 ChooseCardNameEffect	ironsmith_core::ChooseCardNameEffect	player
 ChooseCardTypeEffect	ironsmith_core::ChooseCardTypeEffect	player
+ChangeTextEffect	ironsmith_core::ChangeTextEffect	permanent
 ChooseColorEffect	ironsmith_core::ChooseColorEffect	player
 ChooseCreatureTypeEffect	ironsmith_core::ChooseCreatureTypeEffect	player
 ChooseLandTypeEffect	ironsmith_core::ChooseLandTypeEffect	player
@@ -309,3 +310,4 @@ RegisterDamageMultiplierEffect	ironsmith_core::RegisterDamageMultiplierEffect	st
 SkipScheduledEffect	ironsmith_core::SkipScheduledEffect	player
 RippleEffect	ironsmith_core::RippleEffect	player
 RegisterDamageAdditionEffect	ironsmith_core::RegisterDamageAdditionEffect	stack-event
+CollectManaPaymentsEffect	ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>	composition-a-l

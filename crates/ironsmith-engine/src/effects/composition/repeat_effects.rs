@@ -8,6 +8,16 @@ use crate::resolve_value;
 pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 
 impl EffectExecutor for RepeatEffectsEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.effects.iter().all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         self.effects
             .iter()
@@ -63,7 +73,7 @@ impl EffectExecutor for RepeatEffectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        super::execute_transaction(
+        crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
@@ -244,6 +254,13 @@ impl std::fmt::Debug for RepetitionCursor {
     }
 }
 impl crate::effects::ActionProgramCursor for RepetitionCursor {
+    fn finish_stopped(mut self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        self.child_pending = false;
+        self.completed = None;
+        if let Some(operations) = self.previous_operations.take() { operations.leave(ctx); }
+        self.finish()
+    }
     fn next_action(
         &mut self,
         game: &mut GameState,
@@ -271,6 +288,7 @@ impl crate::effects::ActionProgramCursor for RepetitionCursor {
             }
             self.stopped = outcome.status.is_failure();
         }
+        self.stopped |= ctx.resolution_stopped();
         if self.stopped || self.next >= self.plan.len() {
             if let RepetitionPlan::DistinctPowers { choice, .. } = &self.plan {
                 ctx.set_tagged_objects(choice.tag.clone(), self.selected.clone());
@@ -289,7 +307,7 @@ impl crate::effects::ActionProgramCursor for RepetitionCursor {
                 ctx,
                 None,
                 self.events[self.reported_cursor..].iter(),
-            )
+            )?
         {
             self.reported_cursor = self.events.len();
         }

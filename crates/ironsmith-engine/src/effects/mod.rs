@@ -140,7 +140,7 @@ pub use composition::{
     CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect,
     EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     IfEffect, LifeBidStart, LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,
@@ -153,7 +153,7 @@ pub use composition::{
     UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
     VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
-pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
+pub use continuous::{ApplyContinuousEffect, ChangeTextEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
     DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
     SharedTypeConstraint,
@@ -200,7 +200,7 @@ pub use permanents::{
     PhaseOutDuration, PhaseOutEffect, PrepareEffect, PutStickerEffect, ReconfigureEffect,
     RegenerateEffect, RenownEffect, SaddleCostEffect, SetClassLevelEffect, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
-    TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UnlockRoomDoorEffect,
+    TurnFaceDownEffect, TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UnlockRoomDoorEffect,
     UntapEffect,
 };
 pub use player::{

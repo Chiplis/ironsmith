@@ -235,6 +235,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && !filter.no_abilities
         && filter.ability_markers.is_empty()
         && filter.excluded_ability_markers.is_empty()
+        && filter.has_cumulative_upkeep.is_none()
         && !filter.uses_power_or_toughness_characteristics()
         && filter.attached_to_object.is_none()
         && filter.blocked_or_was_blocked_by_this_turn.is_none()
@@ -696,6 +697,9 @@ fn evaluate_value(
                 you: Some(effect_controller),
                 source: Some(source),
                 source_snapshot: None,
+                // This history selector only calls PlayerFilterExt::matches_player;
+                // it does not evaluate a source-number value or object predicate.
+                source_number_owner: None,
                 caster: None,
                 prospective_cast: None,
                 active_player: None,
@@ -703,11 +707,13 @@ fn evaluate_value(
                 teammates: Vec::new(),
                 defending_player: None,
                 defending_players: Vec::new(),
+                defending_player_reference: None,
                 attacking_player: None,
                 attacking_players: Vec::new(),
                 your_commanders: Vec::new(),
                 iterated_player: None,
                 x_value: None,
+                counter_removal_declaration: None,
                 chosen_player: None,
                 target_players: Vec::new(),
                 target_objects: Vec::new(),
@@ -736,6 +742,9 @@ fn evaluate_value(
                 you: Some(effect_controller),
                 source: Some(source),
                 source_snapshot: None,
+                // This history selector only calls PlayerFilterExt::matches_player;
+                // it does not evaluate a source-number value or object predicate.
+                source_number_owner: None,
                 caster: None,
                 prospective_cast: None,
                 active_player: None,
@@ -743,11 +752,13 @@ fn evaluate_value(
                 teammates: Vec::new(),
                 defending_player: None,
                 defending_players: Vec::new(),
+                defending_player_reference: None,
                 attacking_player: None,
                 attacking_players: Vec::new(),
                 your_commanders: Vec::new(),
                 iterated_player: None,
                 x_value: None,
+                counter_removal_declaration: None,
                 chosen_player: None,
                 target_players: Vec::new(),
                 target_objects: Vec::new(),
@@ -1514,6 +1525,7 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
         Modification::SwitchPowerToughness => {
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
+        Modification::RewriteText(change) => crate::continuous::text_changes::apply_text_change(chars, *change, object),
         Modification::ChangeText { .. }
         | Modification::SetTextBox(_)
         | Modification::SetName(_)
@@ -1646,7 +1658,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
-        | Value::LastNotedLifeTotal
+        | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
@@ -1778,6 +1790,7 @@ fn non_pt_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &GameS
             && matches!(
                 effect.modification,
                 Modification::ChangeText { .. }
+                    | Modification::RewriteText(_)
                     | Modification::SetTextBox(_)
                     | Modification::SetName(_)
                     | Modification::InsertNameWords { .. }
@@ -2102,6 +2115,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasEnduringStory { .. }
         | C::SourceIsRingBearer { .. }
         | C::YouChoseAnotherRingBearer
+        | C::CombatParticipant(_)
         | C::PlayerRingTemptedThisGameOrMore { .. }
         | C::PlayerCommittedCrimeThisTurn { .. }
         | C::PlayerRolledResultThisTurn { .. }
@@ -2141,6 +2155,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::ThisSpellEscaped
         | C::ThisSpellWasCastFromZone(_)
         | C::ThisSpellWasCastFromNonHand
+        | C::ThisSpellWasForetold
         | C::PlayerTappedLandForManaThisTurn { .. }
         | C::PlayerGainedLifeThisTurnOrMore { .. }
         | C::PlayerHadLandEnterBattlefieldThisTurn { .. }
@@ -2192,6 +2207,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::TargetIsSoulbondPaired
         | C::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. }
         | C::PlayerOwnsCardNamedInZones { .. }
+        | C::ThisAbilityActivatedThisTurnAtLeast(_)
         | C::ThisAbilityResolvedThisTurnExactly(_)
         | C::FirstTimeThisTurn
         | C::SourceFirstCrewedThisTurn
@@ -2230,6 +2246,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::SourceCameUnderYourControlThisTurn
         | C::SourceCameUnderYourControlSinceYourLastUpkeep
         | C::SourceAttackedOrBlockedThisTurn
+        | C::SourceAttackedOrBlockedThisCombat
         | C::SourceIsUntapped
         | C::SourceIsAttacking
         | C::SourceIsBlocking
@@ -2295,7 +2312,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::DamageHistory(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
-        | Value::LastNotedLifeTotal
+        | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
@@ -2603,6 +2620,10 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
         || match modification {
             Modification::CopyOf { .. } => filter.uses_non_pt_battlefield_characteristics(),
             Modification::ChangeController(_) | Modification::ChangeControllerToEffectController => filter.controller.is_some(),
+            Modification::RewriteText(change) => {
+                filter_uses_ability_characteristics(filter)
+                    || (change.changes_type_words() && filter_uses_type_characteristics(filter))
+            }
             Modification::ChangeText { .. } | Modification::SetTextBox(_) => {
                 filter_uses_ability_characteristics(filter)
             }
@@ -2612,6 +2633,11 @@ fn modification_can_affect_filter(modification: &Modification, filter: &ObjectFi
                     || filter.name_originally_printed_in_set.is_some()
                     || filter.distinct_names
                     || filter.shares_name
+                    || filter.tagged_constraints.iter().any(|constraint| matches!(
+                        constraint.relation,
+                        crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                            | crate::filter::TaggedOpbjectRelation::DifferentNameFromTagged
+                    ))
                     || filter.characteristic_relations.iter().any(|relation| relation.characteristics.contains(&crate::ObjectCharacteristic::Name))
             }
             Modification::AddCardTypes(types) | Modification::RemoveCardTypes(types) => {
@@ -2748,12 +2774,14 @@ fn filter_uses_ability_characteristics(filter: &ObjectFilter) -> bool {
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
+        || filter.has_cumulative_upkeep.is_some()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
         || filter.sticker.is_some()
 }
 
 fn modification_can_change_type_characteristics(modification: &Modification) -> bool {
+    if let Modification::RewriteText(change) = modification { return change.changes_type_words(); }
     matches!(
         modification,
         Modification::CopyOf { .. }
@@ -3417,6 +3445,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -3436,6 +3465,10 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
+                text_change_error: None,
+                spell_effect: crate::snapshot::SpellProgramState::Absent,
+                text_changes: Vec::new(),
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -3479,6 +3512,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -3498,6 +3532,10 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
+                text_change_error: None,
+                spell_effect: crate::snapshot::SpellProgramState::Absent,
+                text_changes: Vec::new(),
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3584,6 +3622,7 @@ mod tests {
         );
         land.abilities_mut().push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::gain_life(1),
@@ -3606,6 +3645,7 @@ mod tests {
         let baseline = HashMap::from([(
             land.id,
             CalculatedCharacteristics {
+                alternate_name: land.split_other_half_name().map(str::to_string),
                 name: land.name.clone(),
                 mana_cost: land.mana_cost_owned(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -3625,6 +3665,10 @@ mod tests {
                 abilities: land.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
+                text_change_error: None,
+                spell_effect: crate::snapshot::SpellProgramState::Absent,
+                text_changes: Vec::new(),
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: land.aura_attach_filter_owned(),
                 controller: land.owner,
@@ -3787,6 +3831,7 @@ mod tests {
         let baseline = HashMap::from([(
             object.id,
             CalculatedCharacteristics {
+                alternate_name: object.split_other_half_name().map(str::to_string),
                 name: object.name.clone(),
                 mana_cost: object.mana_cost_owned(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -3812,6 +3857,10 @@ mod tests {
                 abilities: object.abilities.clone().into(),
                 static_abilities: Vec::new().into(),
                 numeric_range_error: None,
+                numeric_choice_error: None,
+                text_change_error: None,
+                spell_effect: crate::snapshot::SpellProgramState::Absent,
+                text_changes: Vec::new(),
                 ability_gain_prohibitions: Vec::new(),
                 aura_attach_filter: object.aura_attach_filter_owned(),
                 controller: object.owner,
@@ -4018,6 +4067,7 @@ mod tests {
 
     fn chars_for(object: &crate::object::Object) -> CalculatedCharacteristics {
         CalculatedCharacteristics {
+            alternate_name: object.split_other_half_name().map(str::to_string),
             name: object.name.clone(),
             mana_cost: object.mana_cost_owned(),
             linked_face_mana_value: object.linked_face_mana_value(),
@@ -4043,6 +4093,10 @@ mod tests {
             abilities: object.abilities.clone().into(),
             static_abilities: Vec::new().into(),
             numeric_range_error: None,
+                numeric_choice_error: None,
+            text_change_error: None,
+            spell_effect: crate::snapshot::SpellProgramState::Absent,
+            text_changes: Vec::new(),
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: object.aura_attach_filter_owned(),
             controller: object.owner,

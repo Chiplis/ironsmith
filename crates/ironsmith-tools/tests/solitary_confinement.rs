@@ -178,6 +178,6 @@ fn draw_step_is_skipped() {
         Zone::Library,
     );
     assert!(game.player_skips_draw_step(alice), "Skip your draw step");
-    ironsmith::turn::execute_draw_step(&mut game);
+    ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert!(game.player(alice).unwrap().hand.is_empty(), "no draw");
 }

@@ -77,6 +77,8 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::Soulbond
         | KeywordAction::Soulshift(_)
         | KeywordAction::SoulshiftValue(_)
+        | KeywordAction::Mobilize(_)
+        | KeywordAction::MobilizeValue { .. }
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
         | KeywordAction::Encore(_)
@@ -121,6 +123,12 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::Changeling => Some(CompilerStaticAbility::changeling()),
         KeywordAction::ProtectionFrom(colors) => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::Color(colors),
+        )),
+        KeywordAction::ProtectionFromOwnColors => Some(CompilerStaticAbility::protection(
+            crate::ability::ProtectionFrom::OwnColors,
+        )),
+        KeywordAction::ProtectionFromColorsAmong(filter) => Some(CompilerStaticAbility::protection(
+            crate::ability::ProtectionFrom::ColorsAmong { filter, reference_source: None },
         )),
         KeywordAction::ProtectionFromAllColors => Some(CompilerStaticAbility::protection(
             crate::ability::ProtectionFrom::AllColors,

@@ -8683,11 +8683,6 @@ pub(crate) fn describe_inline_ability_with_self_subject(
             let mut line = String::new();
             let mut pre = Vec::new();
             let mut trailing_x_definition = None;
-            let waterbend_label = activated_presentation_label(activated)
-                .filter(|label| label.starts_with("Waterbend {") && label.ends_with('}'));
-            if let Some(label) = waterbend_label {
-                pre.push(label.to_string());
-            } else {
                 let cost_text = describe_total_cost(&activated.mana_cost);
                 if !cost_text.is_empty() {
                     let (cost_text, x_definition) =
@@ -8695,7 +8690,6 @@ pub(crate) fn describe_inline_ability_with_self_subject(
                     pre.push(cost_text);
                     trailing_x_definition = x_definition;
                 }
-            }
             if !activated.choices.is_empty()
                 && !(!activated.effects.is_empty()
                     && choices_are_simple_targets(&activated.choices))

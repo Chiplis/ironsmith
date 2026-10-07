@@ -123,6 +123,17 @@ struct SourceOriginalCompletion {
 }
 
 impl crate::effects::SimultaneousEffectCompletion for SourceOriginalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, crate::effects::ExecutionError> {
+        let Self { binding, inner } = *self;
+        let mut receipt = with_source_binding(ctx, &binding, |ctx| inner.prepare_draw_boundary_with_outputs(game, ctx, original))?;
+        receipt.completion = receipt.completion.map(|inner| Box::new(Self { binding, inner })
+            as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -214,6 +225,17 @@ impl crate::effects::SimultaneousEffectProposal for SourceProposal {
             .as_ref()
             .map(|inner| inner.declared_life_payments())
             .unwrap_or_default()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        let (Some(binding), Some(inner)) = (&self.binding, &mut self.inner) else {
+            return Ok(());
+        };
+        with_source_binding(ctx, binding, |ctx| inner.prepare_selection(game, ctx))
     }
 
     fn prepare_original(
@@ -338,6 +360,16 @@ fn execute_source_program_with_outputs(
 }
 
 impl EffectExecutor for ExecuteWithSourceEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        crate::effects::replacement::replacement_effect_supported(&self.effect)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         // The mutable selection owner supports chooser-bearing source specs as
         // well as locked sources. Child capabilities still preserve domain

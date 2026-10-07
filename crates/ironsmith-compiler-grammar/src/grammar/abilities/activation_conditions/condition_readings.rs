@@ -342,6 +342,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::TargetMatches(_)
         | PredicateAst::TaggedMatches(..)
+        | PredicateAst::TaggedMatchedLastKnown(..)
         | PredicateAst::TaggedWasCast(_)
         | PredicateAst::TaggedObjectIsTopOfLibrary { .. }
         | PredicateAst::TargetWasKicked
@@ -360,6 +361,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::ThisSpellPaidLabel(_)
         | PredicateAst::ThisSpellWasCastFromZone(_)
         | PredicateAst::ThisSpellWasCastFromNonHand
+        | PredicateAst::ThisSpellWasForetold
         | PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
         | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
         | PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell

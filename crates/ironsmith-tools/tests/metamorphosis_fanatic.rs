@@ -122,7 +122,7 @@ fn first_draw_of_the_turn_can_be_cast_for_its_miracle_cost() {
         cast_for_miracle: true,
         miracle_prompts: 0,
     };
-    let events = ironsmith::turn::execute_draw_step(&mut game);
+    let events = ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert_eq!(zone_of(&game, fanatic_stable), Zone::Hand);
     assert_eq!(
         queue_and_stack(&mut game, events, &mut dm),
@@ -176,7 +176,7 @@ fn declining_the_miracle_keeps_the_card_in_hand() {
         cast_for_miracle: false,
         miracle_prompts: 0,
     };
-    let events = ironsmith::turn::execute_draw_step(&mut game);
+    let events = ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert_eq!(queue_and_stack(&mut game, events, &mut dm), 1);
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
     assert_eq!(zone_of(&game, fanatic_stable), Zone::Hand);
@@ -203,7 +203,7 @@ fn a_second_draw_in_the_turn_does_not_trigger_miracle() {
         cast_for_miracle: true,
         miracle_prompts: 0,
     };
-    let events = ironsmith::turn::execute_draw_step(&mut game);
+    let events = ironsmith::turn::execute_draw_step(&mut game).unwrap();
     assert_eq!(queue_and_stack(&mut game, events, &mut dm), 0);
 
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;

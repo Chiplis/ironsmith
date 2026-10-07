@@ -9,6 +9,9 @@
 
 pub(crate) mod prospective_references;
 
+pub(crate) mod counter_declaration;
+pub use counter_declaration::CounterRemovalDeclaration;
+
 use crate::costs::Cost;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -85,6 +88,7 @@ impl ironsmith_core::CostComponent for Cost {
         }
 
         self.effect_ref().is_some_and(|effect| {
+            let effect = effect.downcast_ref::<crate::effects::WithIdEffect>().map_or(effect, |observed| &observed.effect);
             effect
                 .downcast_ref::<crate::effects::PutCountersEffect>()
                 .is_some_and(|put| {
@@ -388,6 +392,9 @@ mod tests {
             costs: vec![("Gift a tapped Fish".into(), 1)],
             cast_at_sorcery_timing: false,
             branch_choices: Vec::new(),
+            cast_was_foretold: None,
+            cast_payment_turn: None,
+            main_phase_caster: None,
         };
 
         assert!(paid.was_paid_label("Gift"));

@@ -2,49 +2,57 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_from_spec};
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
 use crate::events::damage::matchers::{
-    DamageFromSourceMatcher, DamageSourceConstraint, DamageToPlayerOrObjectMatcher,
+    DamageSourceConstraint, DamageToPlayerOrObjectMatcher,
 };
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
 use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use super::redirect_next_damage_to_target::resolve_damage_target_for_effect;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 
-/// Matches damage events from a constrained source to a specific damage target.
+/// A protected recipient is a locked identity or a typed live set. The union
+/// is evaluated together, so one next-time registration covers both recipients.
+#[derive(Debug, Clone)]
+enum RedirectDamageRecipient {
+    Any,
+    Specific(DamageTarget),
+    Players(PlayerFilter),
+    PlayersOrObjects(PlayerFilter, ObjectFilter),
+}
+
 #[derive(Debug, Clone)]
 struct DamageSourceToSpecificTargetMatcher {
     source: DamageSourceConstraint,
-    target: DamageTarget,
-}
-
-impl DamageSourceToSpecificTargetMatcher {
-    fn new(source: DamageSourceConstraint, target: DamageTarget) -> Self {
-        Self { source, target }
-    }
+    recipient: RedirectDamageRecipient,
+    combat_only: bool,
 }
 
 impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
+    fn may_match_event_kind(&self, kind: EventKind) -> bool { kind == EventKind::Damage }
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
-        if event.event_kind() != EventKind::Damage {
-            return false;
+        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event) else { return false; };
+        if damage.amount == 0 || self.combat_only && !damage.is_combat
+            || !self.source.matches_damage_source(damage.source, ctx) { return false; }
+        match &self.recipient {
+            RedirectDamageRecipient::Any => true,
+            RedirectDamageRecipient::Specific(target) => damage.target == *target,
+            RedirectDamageRecipient::Players(filter) => matches!(damage.target, DamageTarget::Player(player)
+                if filter.matches_player(player, &ctx.filter_ctx)),
+            RedirectDamageRecipient::PlayersOrObjects(players, objects) => match damage.target {
+                DamageTarget::Player(player) => players.matches_player(player, &ctx.filter_ctx),
+                DamageTarget::Object(object) => ctx.game.object(object)
+                    .is_some_and(|object| objects.matches(object, &ctx.filter_ctx, ctx.game)),
+            },
         }
-        let Some(damage) = crate::events::downcast_event::<crate::events::DamageEvent>(event)
-        else {
-            return false;
-        };
-        if damage.target != self.target {
-            return false;
-        }
-        self.source.matches_damage_source(damage.source, ctx)
     }
 
-    fn display(&self) -> String {
-        "When the next chosen source would deal damage to that creature".to_string()
-    }
+    fn display(&self) -> String { "When the next matching damage occurrence would be dealt".into() }
 }
 
 /// How to constrain which source's damage is redirected.
@@ -61,6 +69,8 @@ pub enum RedirectNextTimeDamageDestination {
     Controller,
     SourceController,
     TargetObject,
+    /// The source of the damage being replaced, not the ability source.
+    DamageSource,
 }
 
 /// "The next time a source of your choice would deal damage to target creature this turn,
@@ -68,6 +78,7 @@ pub enum RedirectNextTimeDamageDestination {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
+    pub combat_only: bool,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
     pub destination_target: Option<ChooseSpec>,
@@ -174,6 +185,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn new(source: RedirectNextTimeDamageSource, target: ChooseSpec) -> Self {
         Self {
             source,
+            combat_only: false,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
             destination_target: None,
@@ -184,6 +196,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn from_source_target(source: ChooseSpec) -> Self {
         Self {
             source: RedirectNextTimeDamageSource::Target(source),
+            combat_only: false,
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
             destination_target: None,
@@ -193,6 +206,12 @@ impl RedirectNextTimeDamageToSourceEffect {
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_damage_source(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::DamageSource;
         self.destination_target = None;
         self
     }
@@ -226,10 +245,12 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
                 DamageSourceConstraint::Filter(filter.clone())
             }
             RedirectNextTimeDamageSource::Target(spec) => {
-                let source = resolve_objects_for_effect(game, ctx, spec)?
-                    .into_iter()
-                    .next()
-                    .ok_or(ExecutionError::InvalidTarget)?;
+                let source = if matches!(spec.base(), ChooseSpec::Source) { ctx.source } else {
+                    match resolve_damage_target_for_effect(game, ctx, spec)? {
+                        DamageTarget::Object(source) => source,
+                        DamageTarget::Player(_) => return Err(ExecutionError::InvalidTarget),
+                    }
+                };
                 DamageSourceConstraint::Specific(source)
             }
             RedirectNextTimeDamageSource::Choice => {
@@ -278,6 +299,7 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
         };
 
         let redirect_target = match self.destination {
+            RedirectNextTimeDamageDestination::DamageSource => RedirectTarget::ToSource,
             RedirectNextTimeDamageDestination::SourceObject => RedirectTarget::ToObject(ctx.source),
             RedirectNextTimeDamageDestination::Controller => {
                 RedirectTarget::ToPlayer(ctx.controller)
@@ -290,43 +312,28 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
                     .destination_target
                     .as_ref()
                     .ok_or(ExecutionError::InvalidTarget)?;
-                let redirect_target = resolve_objects_for_effect(game, ctx, target)?
-                    .into_iter()
-                    .next()
-                    .ok_or(ExecutionError::InvalidTarget)?;
-                RedirectTarget::ToObject(redirect_target)
+                match resolve_damage_target_for_effect(game, ctx, target)? {
+                    DamageTarget::Object(object) => RedirectTarget::ToObject(object),
+                    DamageTarget::Player(player) => RedirectTarget::ToPlayer(player),
+                }
             }
         };
 
-        let replacement = if let Some(target) = &self.target {
-            let protected_target = resolve_damage_target_for_effect(game, ctx, target)?;
-            ReplacementEffect::with_matcher(
-                ctx.source,
-                ctx.controller,
-                DamageSourceToSpecificTargetMatcher::new(source_constraint, protected_target),
-                ReplacementAction::Redirect {
-                    target: redirect_target,
-                    which: RedirectWhich::First,
-                },
-            )
-        } else {
-            let filter = match source_constraint {
-                DamageSourceConstraint::Specific(source) => ObjectFilter::specific(source),
-                DamageSourceConstraint::Filter(filter) => filter,
-                DamageSourceConstraint::SpecificMatching { source, .. } => {
-                    ObjectFilter::specific(source)
+        let recipient = match &self.target {
+            None => RedirectDamageRecipient::Any,
+            Some(spec) if !spec.is_target() => match spec.base() {
+                ChooseSpec::Player(players) => RedirectDamageRecipient::Players(players.clone()),
+                ChooseSpec::ObjectOrPlayer(objects, players) => {
+                    let objects = if objects.source { ObjectFilter::specific(ctx.source) } else { objects.clone() };
+                    RedirectDamageRecipient::PlayersOrObjects(players.clone(), objects)
                 }
-            };
-            ReplacementEffect::with_matcher(
-                ctx.source,
-                ctx.controller,
-                DamageFromSourceMatcher::new(filter),
-                ReplacementAction::Redirect {
-                    target: redirect_target,
-                    which: RedirectWhich::First,
-                },
-            )
+                _ => RedirectDamageRecipient::Specific(resolve_damage_target_for_effect(game, ctx, spec)?),
+            },
+            Some(spec) => RedirectDamageRecipient::Specific(resolve_damage_target_for_effect(game, ctx, spec)?),
         };
+        let replacement = ReplacementEffect::with_matcher(ctx.source, ctx.controller,
+            DamageSourceToSpecificTargetMatcher { source: source_constraint, recipient, combat_only: self.combat_only },
+            ReplacementAction::Redirect { target: redirect_target, which: RedirectWhich::First });
         if self.all_this_turn {
             game.effect_store
                 .replacement_effects
@@ -334,38 +341,31 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
         } else {
             game.effect_store
                 .replacement_effects
-                .add_one_shot_effect(replacement);
+                .add_next_damage_occurrence_effect(replacement);
         }
         Ok(EffectOutcome::resolved())
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        self.destination_target
-            .as_ref()
-            .or(self.target.as_ref())
-            .or(match &self.source {
-                RedirectNextTimeDamageSource::Target(spec) => Some(spec),
+        self.destination_target.as_ref().filter(|spec| spec.is_target())
+            .or_else(|| self.target.as_ref().filter(|spec| spec.is_target()))
+            .or_else(|| match &self.source {
+                RedirectNextTimeDamageSource::Target(spec) if spec.is_target() => Some(spec),
                 _ => None,
             })
+    }
+
+    fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        let mut specs = Vec::new();
+        if let RedirectNextTimeDamageSource::Target(source) = &self.source { specs.push(source.clone()); }
+        specs.extend(self.target.iter().cloned());
+        specs.extend(self.destination_target.iter().cloned());
+        specs
     }
 
     fn target_description(&self) -> &'static str {
         "damage source or protected target for redirection"
     }
-}
-
-fn resolve_damage_target_for_effect(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    spec: &ChooseSpec,
-) -> Result<DamageTarget, ExecutionError> {
-    if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
-        && let Some(object) = objects.into_iter().next()
-    {
-        return Ok(DamageTarget::Object(object));
-    }
-
-    resolve_player_from_spec(game, spec, ctx).map(DamageTarget::Player)
 }
 
 #[cfg(test)]

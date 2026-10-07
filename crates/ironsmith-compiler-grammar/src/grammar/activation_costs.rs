@@ -53,7 +53,7 @@ pub struct ActivationCostCst {
     pub segments: Vec<ActivationCostSegmentCst>,
     pub alternative_branches: Vec<ActivationCostCst>,
     pub is_loyalty_shorthand: bool,
-    pub waterbend_generic: Option<u32>,
+    pub waterbend_cost: Option<ManaCost>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +186,7 @@ pub enum ActivationCostSegmentCst {
         display_x: bool,
         dynamic: bool,
         single_object: bool,
+        remove_all: bool,
     },
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,

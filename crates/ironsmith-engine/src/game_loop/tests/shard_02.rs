@@ -2986,6 +2986,7 @@ pub(super) fn test_generate_damage_triggers_emits_life_loss_for_player_damage() 
     let mut trigger_queue = TriggerQueue::new();
 
     let events = vec![CombatDamageEvent {
+        defending_player_reference: None,
         damage_receipt: None,
         source_snapshot: None,
         target_snapshot: None,

@@ -153,11 +153,16 @@ impl EffectExecutor for RedirectNextDamageToTargetEffect {
     }
 }
 
-fn resolve_damage_target_for_effect(
+pub(super) fn resolve_damage_target_for_effect(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
 ) -> Result<DamageTarget, ExecutionError> {
+    // An ability can resolve after its source left; the redirect's destination
+    // identity still refers to that old object. The event owner determines
+    // whether damage can actually be redirected there (CR 614.9).
+    if matches!(spec.base(), ChooseSpec::Source) { return Ok(DamageTarget::Object(ctx.source)); }
+    if matches!(spec.base(), ChooseSpec::SourceController) { return Ok(DamageTarget::Player(ctx.controller)); }
     // Two targets of one instruction (protected and destination) each come
     // from the assignment declared for exactly that spec.
     if let Some(target) = ctx

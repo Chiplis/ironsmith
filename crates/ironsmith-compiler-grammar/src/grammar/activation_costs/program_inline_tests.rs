@@ -36,13 +36,13 @@ fn program_owns_loyalty_shorthand_and_preserves_full_cost_alternatives() {
 #[test]
 fn program_preserves_waterbend_generic_as_typed_cost_metadata() {
     let waterbend = parse("Waterbend {5}");
-    assert_eq!(waterbend.waterbend_generic, Some(5));
+    assert_eq!(waterbend.waterbend_cost.as_ref().map(|cost| cost.waterbend_capacity(0)), Some(5));
     assert!(matches!(
         waterbend.segments.as_slice(),
         [ActivationCostSegmentCst::Mana(_)]
     ));
 
-    assert_eq!(parse("{5}").waterbend_generic, None);
+    assert_eq!(parse("{5}").waterbend_cost, None);
 }
 
 #[test]
@@ -214,4 +214,23 @@ fn compound_keyword_costs_split_and_preserve_every_required_component() {
             "{raw}"
         );
     }
+}
+
+#[test]
+fn waterbend_segments_preserve_other_costs_in_either_order_and_multiple_obligations() {
+    for text in ["Waterbend {X}, {T}", "{T}, Waterbend {X}"] {
+        let cost = parse(text);
+        assert_eq!(cost.segments.len(), 2);
+        assert!(cost.segments.iter().any(|segment| matches!(segment, ActivationCostSegmentCst::Tap)));
+        let mana = cost.segments.iter().find_map(|segment| match segment {
+            ActivationCostSegmentCst::Mana(mana) => Some(mana), _ => None,
+        }).unwrap();
+        assert_eq!(mana.waterbend_capacity(3), 3);
+    }
+    let cost = parse("Waterbend {2}, Waterbend {X}");
+    let total = cost.segments.iter().filter_map(|segment| match segment {
+        ActivationCostSegmentCst::Mana(mana) => Some(mana), _ => None,
+    }).fold(crate::mana::ManaCost::new(), |total, mana| total.combined_with(mana));
+    assert_eq!(total.waterbend_payment_scope().unwrap().obligations.len(), 2);
+    assert_eq!(total.waterbend_capacity(3), 5);
 }

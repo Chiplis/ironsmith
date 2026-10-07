@@ -76,4 +76,6 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     SwitchPowerToughness,
     /// Ordered clearing within a compound grant; appended for wire stability.
     RemoveAllAbilities,
+    /// Checked authored-word substitution; appended for transport stability.
+    RewriteText(crate::TextChange),
 }

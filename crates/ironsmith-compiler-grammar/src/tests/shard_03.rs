@@ -1632,16 +1632,11 @@ pub(super) fn rewrite_grammar_creatures_cant_block_probe_matches_static_line() {
     let parsed = super::super::keyword_static::parse_creatures_cant_block_line(&tokens)
         .expect("cant-block static line should parse");
 
-    assert!(matches!(
-        parsed,
-        Some(crate::cards::builders::StaticAbilityAst::GrantStaticAbility { filter, ability, .. })
-            if filter == crate::filter::ObjectFilter::creature()
-                && matches!(
-                    ability.as_ref(),
-                    crate::cards::builders::StaticAbilityAst::Static(ability)
-                        if ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
-                )
-    ));
+    let canonical = super::super::activation_and_restrictions::parse_cant_clauses(&tokens)
+        .expect("complete restriction reader")
+        .expect("one restriction");
+    assert_eq!(canonical.len(), 1);
+    assert_eq!(parsed, Some(crate::cards::builders::StaticAbilityAst::Static(canonical[0].clone())));
 }
 
 #[test]

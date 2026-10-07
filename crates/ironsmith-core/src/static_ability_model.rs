@@ -1107,6 +1107,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     RevealFirstCardYouDrawEachTurn {
         optional: bool,
         your_turns_only: bool,
+        /// Exact authored reveal/trigger group (CR 607.2f).
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        linked_reveal_pair: Option<crate::LinkedExilePair>,
     },
     ExileToCounteredExileInsteadOfGraveyard {
         player: PlayerFilter,
@@ -1496,6 +1499,18 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         player: PlayerFilter,
         symbol: crate::mana::ManaSymbol,
     },
+    /// Changes the hand-to-exile action, not the later spell's foretell cost.
+    /// Appended to preserve published payload discriminants.
+    ForetellSpecialActionModifier { generic_reduction: u32, any_players_turn: bool },
+    ExtraCoinIgnoreOne { player: PlayerFilter },
+    FirstCoinBatchHeadsWin { player: PlayerFilter },
+    /// Appended to preserve all previously published payload variant ordinals.
+    /// This source's controller may inspect its exact linked exile members.
+    /// Presence with no pair is explicitly unresolved, never source-wide.
+    LookAtSourceExiledCards {
+        pair: Option<crate::LinkedExilePair>,
+        source: SourceReferenceSurface,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1579,6 +1594,7 @@ where
             FI: FnMut(IC) -> Result<IC2, Err>,
         {
             Ok(ActivatedAbility {
+                keyword: activated.keyword,
                 mana_cost: map_total_cost(activated.mana_cost, map_cost)?,
                 effects: activated.effects.try_map_effects(&mut *map_effect)?,
                 choices: activated.choices,
@@ -1812,6 +1828,11 @@ where
                     .into_iter()
                     .map(&mut *map_effect)
                     .collect::<Result<_, _>>()?,
+                requires_linked_exile_pair: spec.requires_linked_exile_pair,
+                may_look_at_linked_exile: spec.may_look_at_linked_exile,
+            cast_mana_spend_mode: spec.cast_mana_spend_mode,
+                linked_exile_pair: spec.linked_exile_pair,
+                linked_exile_class_level: spec.linked_exile_class_level,
                 source_exiled_surface: spec.source_exiled_surface,
                 filtered_zone_surface: spec.filtered_zone_surface,
                 top_card_only: spec.top_card_only,
@@ -1913,6 +1934,9 @@ where
             }
             StaticAbilityPayload::PlayerSkipsDrawStep { player } => {
                 StaticAbilityPayload::PlayerSkipsDrawStep { player }
+            }
+            StaticAbilityPayload::LookAtSourceExiledCards { pair, source } => {
+                StaticAbilityPayload::LookAtSourceExiledCards { pair, source }
             }
             StaticAbilityPayload::PlayersSkipExtraTurns { player } => {
                 StaticAbilityPayload::PlayersSkipExtraTurns { player }
@@ -2042,6 +2066,8 @@ where
             StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbilityPayload::DieRollResultAdjustment(spec)
             }
+            StaticAbilityPayload::ExtraCoinIgnoreOne { player } => StaticAbilityPayload::ExtraCoinIgnoreOne { player },
+            StaticAbilityPayload::FirstCoinBatchHeadsWin { player } => StaticAbilityPayload::FirstCoinBatchHeadsWin { player },
             StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional } => {
                 StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional }
             }
@@ -2707,9 +2733,11 @@ where
             StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair,
             } => StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair,
             },
             StaticAbilityPayload::ExileToCounteredExileInsteadOfGraveyard {
                 player,
@@ -3176,6 +3204,9 @@ where
                     map_intervening,
                 )?))
             }
+            StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn } => {
+                StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn }
+            }
             StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method } => {
                 StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method }
             }
@@ -3411,6 +3442,15 @@ impl<
         }
     }
 
+    pub fn foretell_special_action_modifier(generic_reduction: u32, any_players_turn: bool) -> Self {
+        let timing = if any_players_turn { " and can be done on any player's turn" } else { "" };
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: format!("Foretelling cards from your hand costs {{{generic_reduction}}} less{timing}."),
+            payload: StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn },
+        }
+    }
+
     pub fn native_alternative_cast_from_zone(
         zone: Zone,
         method: crate::alternative_cast_model::AlternativeCastKeyword,
@@ -3480,6 +3520,22 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMinimum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMinimum { minimum, display },
+        }
+    }
+
+    pub fn extra_coin_ignore_one(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExtraCoinIgnoreOne),
+            label: display.into(),
+            payload: StaticAbilityPayload::ExtraCoinIgnoreOne { player },
+        }
+    }
+
+    pub fn first_coin_batch_heads_win(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::FirstCoinBatchHeadsWin),
+            label: display.into(),
+            payload: StaticAbilityPayload::FirstCoinBatchHeadsWin { player },
         }
     }
 
@@ -3796,6 +3852,7 @@ impl<
             "swampwalk" => Self::landwalk(Subtype::Swamp),
             "mountainwalk" => Self::landwalk(Subtype::Mountain),
             "forestwalk" => Self::landwalk(Subtype::Forest),
+            "desertwalk" => Self::landwalk(Subtype::Desert),
             "snow plainswalk" => Self::snow_landwalk(Subtype::Plains),
             "snow islandwalk" => Self::snow_landwalk(Subtype::Island),
             "snow swampwalk" => Self::snow_landwalk(Subtype::Swamp),
@@ -5506,6 +5563,7 @@ impl<
             payload: StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
+                linked_reveal_pair: None,
             },
         }
     }
@@ -6153,6 +6211,24 @@ impl<
             payload: StaticAbilityPayload::PlayersSkipUpkeep { player },
         }
     }
+    pub fn look_at_source_exiled_cards(source: SourceReferenceSurface) -> Self {
+        Self {
+            id: Some(StaticAbilityId::LookAtSourceExiledCards),
+            label: format!("You may look at cards exiled with {}", source.display_text()),
+            payload: StaticAbilityPayload::LookAtSourceExiledCards { pair: None, source },
+        }
+    }
+
+    /// The outer option identifies a standalone inspector; an absent inner
+    /// pair is an unresolved semantic scope and requires explicit recovery.
+    pub fn source_exiled_inspection_pair(&self) -> Option<Option<crate::LinkedExilePair>> {
+        match &self.payload {
+            StaticAbilityPayload::LookAtSourceExiledCards { pair, .. } => Some(*pair),
+            StaticAbilityPayload::Conditional { ability, .. } => ability.source_exiled_inspection_pair(),
+            _ => None,
+        }
+    }
+
     pub fn player_skips_draw_step(player: PlayerFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::PlayerSkipsDrawStep),

@@ -12,7 +12,7 @@ ironsmith-card-catalog = { path = "../ironsmith-card-catalog" }
 ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false }
 ironsmith-runtime-catalog = { path = "../ironsmith-runtime-catalog", default-features = false }
 ironsmith-dynamic-compile = { path = "../ironsmith-dynamic-compile", default-features = false, optional = true }
-manabrew-protocol = { git = "https://github.com/witchesofthehill/manabrew.git" }
+manabrew-protocol = { path = "../../vendor/manabrew-protocol", version = "3.0.0" }
 rand = "0.10.1"
 rand_chacha = "0.10.0"
 serde = { version = "1.0.228", features = ["derive", "rc"] }

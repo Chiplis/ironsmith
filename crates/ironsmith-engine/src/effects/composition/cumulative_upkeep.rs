@@ -10,6 +10,9 @@ use crate::game_state::GameState;
 use crate::object::CounterType;
 use ironsmith_core::effect::UpkeepPaymentKind;
 
+#[path = "cumulative_upkeep_action_costs.rs"]
+mod action_costs;
+
 pub type CumulativeUpkeepEffect = ironsmith_core::CumulativeUpkeepEffect<Effect>;
 
 fn execute_failure(
@@ -72,6 +75,9 @@ fn payment_can_complete(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> Result<bool, ExecutionError> {
+    if let Some(action) = action_costs::ActionCost::read(effects) {
+        return action.can_pay(game, ctx, count);
+    }
     let mut simulated_game = game.clone();
     let query =
         crate::effects::tokens::resources::TokenQueryScope::new(game.token_creation_limits());
@@ -81,6 +87,7 @@ fn payment_can_complete(
         .with_decision_maker(&mut simulated_dm);
     crate::effects::ExecutionContextCheckpoint::capture(ctx).restore(&mut simulated_ctx);
     simulated_ctx.mana.payment_reason = Some(reason);
+    simulated_ctx.prospective_cost_payment = true;
 
     for _ in 0..count {
         let outcome = match super::sequence::execute_checked_payment_program_with_outputs(
@@ -108,6 +115,14 @@ fn execute_payment_atomically(
     super::compound::execute_optional_transaction(game, ctx, |game, ctx| {
         let previous_reason = ctx.mana.payment_reason;
         ctx.mana.payment_reason = Some(reason);
+        if let Some(action) = action_costs::ActionCost::read(effects) {
+            let previous_cause = ctx.cause.clone();
+            ctx.cause.cause_type = crate::events::cause::CauseType::Cost;
+            let result = action.pay(game, ctx, count);
+            ctx.cause = previous_cause;
+            ctx.mana.payment_reason = previous_reason;
+            return result.map(Some);
+        }
         let mut outcomes = Vec::new();
 
         for _ in 0..count {

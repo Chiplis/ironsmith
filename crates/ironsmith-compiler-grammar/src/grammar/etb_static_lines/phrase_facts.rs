@@ -207,12 +207,14 @@ pub fn parse_tagged_mana_value_reference_tokens(
 }
 
 pub fn etb_tokens_have_your_hand_count_value(tokens: &[OwnedLexToken]) -> bool {
-    tokens_have_word(tokens, "cards")
-        && tokens_have_word(tokens, "in")
-        && tokens_have_word(tokens, "your")
-        && tokens_have_parser(tokens, || {
-            alt((semantic_kw("hand"), semantic_kw("hands"))).void()
-        })
+    fn read<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+        primitives::phrase(&["where", "x", "is"]).parse_next(input)?;
+        opt(primitives::kw("the")).parse_next(input)?;
+        primitives::phrase(&["number", "of", "cards", "in", "your"]).parse_next(input)?;
+        alt((primitives::kw("hand"), primitives::kw("hands"))).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)
+    }
+    primitives::probe_all(tokens, read, "complete where-X hand count").is_some()
 }
 
 pub fn etb_tokens_have_common_creature_type_value(tokens: &[OwnedLexToken]) -> bool {

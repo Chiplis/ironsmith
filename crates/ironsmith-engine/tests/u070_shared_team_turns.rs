@@ -130,7 +130,7 @@ fn u070_each_active_teammate_draws_and_has_an_independent_land_play() {
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(ironsmith::Step::Draw);
 
-    let events = execute_draw_step(&mut game);
+    let events = execute_draw_step(&mut game).unwrap();
     assert_eq!(events.len(), 2);
     assert_eq!(game.player(alice).unwrap().hand.len(), 1);
     assert_eq!(game.player(bob).unwrap().hand.len(), 1);

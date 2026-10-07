@@ -253,6 +253,18 @@ fn additional_cost_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     (!tail.is_empty()).then_some(tail)
 }
 
+/// The complete mandatory/optional Waterbend component. The activation-cost
+/// grammar owns the keyword and amount; no runtime meaning comes from labels.
+pub fn parse_waterbend_additional_cost_tokens(tokens: &[OwnedLexToken]) -> Option<(bool, crate::mana::ManaCost)> {
+    let tail = additional_cost_tail(tokens)?;
+    let (optional, tail) = match primitives::parse_prefix(tail, primitives::phrase(&["you", "may"])) {
+        Some((_, tail)) => (true, tail), None => (false, tail),
+    };
+    let cost = crate::grammar::activation_costs::parse_activation_cost_tokens(tail).ok()?;
+    let [crate::grammar::activation_costs::ActivationCostSegmentCst::Mana(mana)] = cost.segments.as_slice() else { return None; };
+    mana.has_waterbend_obligation().then(|| (optional, mana.clone()))
+}
+
 pub fn parse_optional_waterbend_generic_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let tail = additional_cost_tail(tokens)?;
     let words = parser_token_word_refs(tail);

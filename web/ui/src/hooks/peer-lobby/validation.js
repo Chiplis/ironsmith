@@ -1,3 +1,4 @@
+import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand } from "../../lib/sync-object-identity.js";
 import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
 import { acceptedZiffleEpochs, assertZiffleEpochInputs, assertZiffleEpochVerification, buildZiffleInputDeck, isPrivateZiffleEpoch, ziffleEpochMaterial, ziffleInputDeckFields } from "../../lib/ziffle-private-epochs.js";
@@ -1954,7 +1955,10 @@ export function usePeerLobbyValidation(base, servicesRef) {
     if (sequence !== expectedSeq) return reject("unexpected_sequence");
 
     const liveState = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
-    const compatible = isDecisionCommandCompatible(liveState?.decision, auth.command);
+    // A peer-local ID is translated only by its frozen public incarnation.
+    // Keep the signed wire command unchanged for signature and head checks.
+    const localCommand = await localOpaqueExilePlayCommand(gameRef.current, auth.command);
+    const compatible = isDecisionCommandCompatible(liveState?.decision, localCommand);
     if (debug) {
       debug.liveDecisionKind = String(liveState?.decision?.kind || "");
       debug.liveDecisionPlayer = liveState?.decision?.player == null ? null : Number(liveState.decision.player);
@@ -2004,8 +2008,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
     let previewedRequirements = [];
     try {
-      previewedRequirements = await previewRequirementsForCommand(auth.command);
-      previewedRequirements = await previewZiffleActionRequirements(auth, previewedRequirements);
+      previewedRequirements = await previewRequirementsForCommand(localCommand);
+      previewedRequirements = await previewZiffleActionRequirements(
+        isOpaqueExilePlayCommand(auth.command) ? { ...auth, command: localCommand } : auth, previewedRequirements);
     } catch (error) {
       // A concealed card may need its owner's already-visible hand opening
       // before this peer can preview the cast. Only the visible-state fallback
@@ -2331,6 +2336,11 @@ export function usePeerLobbyValidation(base, servicesRef) {
         );
       }
       if (authorizedByAction && actionDisclosure.intent) {
+        if (message.actionAuthorization?.command?.action_ref?.kind === "open_exiled_card_for_play") {
+          const signedIntent = message.actionAuthorization.actionIntent;
+          if (!signedIntent) throw new Error("Blind exile reveal shares require the original signed action intent");
+          await servicesRef.current.pinBlindExileOpeningIntent(signedIntent);
+        }
         // Pin the sequence before any token leaves this peer.
         lockFairRandomRevealIntent(actionDisclosure.intent);
       }

@@ -319,6 +319,10 @@ fn is_subtype(word: &str) -> bool {
 }
 
 pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
+    named_card_name_parts(&common::token_description_projection(tokens).outer).map(|(name, _)| name)
+}
+
+pub(super) fn named_card_name_parts(tokens: &[OwnedLexToken]) -> Option<(String, std::ops::Range<usize>)> {
     let pieces = tokens
         .iter()
         .flat_map(|token| token.parser_word_pieces())
@@ -334,9 +338,9 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
 
     let mut end = named_idx + 1;
     while end < pieces.len()
-        && !NAMED_CARD_STOP_WORDS
+        && (end == named_idx + 1 || !NAMED_CARD_STOP_WORDS
             .iter()
-            .any(|candidate| *candidate == pieces[end].text.as_str())
+            .any(|candidate| *candidate == pieces[end].text.as_str()))
     {
         end += 1;
     }
@@ -345,6 +349,7 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
     }
 
     let name_start = pieces[named_idx + 1].span.start;
+    let clause_start = pieces[named_idx].span.start;
     let name_end = pieces[end - 1].span.end;
     let name_tokens = tokens
         .iter()
@@ -355,11 +360,11 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
         let raw_name = render_token_slice(&name_tokens);
         let titled = title_case_phrase_preserving_punctuation(raw_name.as_str());
         if !titled.is_empty() {
-            return Some(titled);
+            return Some((titled, clause_start..name_end));
         }
     }
 
-    Some(title_case_words(&piece_words[named_idx + 1..end]))
+    Some((title_case_words(&piece_words[named_idx + 1..end]), clause_start..name_end))
 }
 
 /// Parses the named-token template whose proper name precedes a comma, as in
@@ -369,6 +374,10 @@ pub(super) fn named_card_name(tokens: &[OwnedLexToken]) -> Option<String> {
 /// Preserve and title-case a proper token name that precedes its appositive
 /// definition (`Name, Epithet, a legendary ... token`).
 pub fn leading_appositive_token_name(tokens: &[OwnedLexToken]) -> Option<String> {
+    leading_appositive_token_parts(&common::token_description_projection(tokens).outer).map(|(name, _)| name)
+}
+
+pub(super) fn leading_appositive_token_parts(tokens: &[OwnedLexToken]) -> Option<(String, &[OwnedLexToken])> {
     // The separator belongs to the appositive token description, not
     // necessarily the first comma: proper token names themselves can contain
     // commas (for example, `Name, Epithet, a legendary ... token`).
@@ -388,35 +397,13 @@ pub fn leading_appositive_token_name(tokens: &[OwnedLexToken]) -> Option<String>
     let prefix = tokens.get(..comma)?;
     let words = parser_token_word_refs(prefix);
     let first = *words.first()?;
-    if matches!(first, "a" | "an")
-        || (first != "the" && explicit_name_descriptor(first))
-        || is_token_pt(first)
-        || is_card_type(first)
-    {
-        return None;
-    }
-    if words.iter().any(|word| {
-        is_token_pt(word)
-            || is_card_type(word)
-            || matches!(
-                *word,
-                "token"
-                    | "tokens"
-                    | "legendary"
-                    | "white"
-                    | "blue"
-                    | "black"
-                    | "red"
-                    | "green"
-                    | "colorless"
-            )
-    }) {
+    if matches!(first, "a" | "an") || is_token_pt(first) {
         return None;
     }
 
     let raw = render_token_slice(prefix);
     let titled = title_case_phrase_preserving_punctuation(raw.trim());
-    (!titled.is_empty()).then_some(titled)
+    (!titled.is_empty()).then_some((titled, &tokens[comma + 1..]))
 }
 
 pub(super) fn referenced_card_name(tokens: &[OwnedLexToken]) -> Option<String> {

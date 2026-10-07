@@ -722,6 +722,7 @@ fn parse_unless_put_counters_clause_as_cost(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    maximum_total: None,
                     counter_type,
                     count: Value::Fixed(count),
                     target,
@@ -922,6 +923,13 @@ pub fn try_build_unless(
     unless_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let after_clause = clause.from(unless_idx + 1).trimmed();
+    if crate::grammar::effects::parse_unless_pays_shape_tokens(after_clause.tokens())
+        .is_some_and(|shape| shape.payment_tokens.first().is_some_and(|token| token.is_word("waterbend"))) {
+        let (player, cost) = crate::effect_sentences::clause_primitives::parse_unless_pays_clause(after_clause.tokens())?;
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+            effects, player, cost, before_delayed_step: false,
+        })));
+    }
     // A proven state predicate is checked when the scheduled action resolves.
     // It is not a payment option and must remain inside the delayed wrapper.
     if let Ok(predicate) =

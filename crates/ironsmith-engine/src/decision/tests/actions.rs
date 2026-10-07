@@ -971,6 +971,7 @@ fn test_activated_ability_mana_cost_validation() {
         ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)], vec![ManaSymbol::Green]]);
     let activated_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::mana(mana_cost),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::pump(
                 2,
@@ -1072,6 +1073,7 @@ fn test_compute_legal_actions_includes_at_least_graveyard_exile_material_cost() 
     ]);
     let craft_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: craft_cost,
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::new(
@@ -1301,6 +1303,7 @@ fn test_activated_ability_cost_reduction_respects_minimum_one_mana() {
     let cost_one = ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]);
     let activated = |cost: ManaCost| Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::mana(cost),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
             choices: vec![],
@@ -1424,6 +1427,7 @@ fn test_self_hand_activated_ability_cost_reduction_counts_matching_battlefield_o
         .extend([
             Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::mana(ManaCost::from_pips(vec![vec![
                         ManaSymbol::Generic(3),
                     ]])),
@@ -1715,6 +1719,7 @@ fn test_activated_ability_sorcery_speed_timing() {
     // Add sorcery-speed activated ability (no cost, just free)
     let activated_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::free(),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::gain_life(1)]),
             choices: vec![],
@@ -1780,6 +1785,7 @@ fn test_compute_legal_actions_includes_hand_activated_ability() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::gain_life(1),
@@ -1822,6 +1828,7 @@ fn forecast_activation_requires_the_source_owners_upkeep_and_is_once_per_turn() 
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::gain_life(1),
@@ -1881,6 +1888,7 @@ fn any_player_mana_activation_uses_the_activators_turn_before_end_step() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::default(),
                 choices: vec![],

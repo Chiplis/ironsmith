@@ -1102,6 +1102,7 @@ fn pre_rule_damage_this_way_player_followup(
     {
         Some(followup_shapes::DamagedPlayerFollowupShape::CantCastNoncreatureSpellsThisTurn) => {
             vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
                 tag: crate::tag::CompilerReferenceTag::Damaged0.bind(),
                 effects: vec![EffectAst::subject_verb_cant(
                     crate::effect::Restriction::cast_spells_matching(
@@ -1944,7 +1945,30 @@ fn pre_rule_damage_life_floor(
     }))
 }
 
+fn pre_rule_text_change_destination_exclusion(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let ["the", "new", "creature", "type", "cant", "be", excluded] = words.as_slice() else { return Ok(None); };
+    let subtype = crate::util::parse_subtype_flexible(excluded).filter(|subtype| subtype.is_creature_type())
+        .ok_or_else(|| CardTextError::ParseError("text-change exclusion requires a creature type".into()))?;
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+            selection: ironsmith_core::TextChangeSelection::Creature { excluded_new }, ..
+        }), ..
+    })) = state.effects.last_mut() else {
+        return Err(CardTextError::ParseError("text-change destination exclusion has no matching preceding choice".into()));
+    };
+    if !excluded_new.contains(&subtype) { excluded_new.push(subtype); }
+    *state.carried_context = None;
+    Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("typed-text-change-destination-exclusion") }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!("typed-text-change-destination-exclusion", &["the"], pre_rule_text_change_destination_exclusion),
     pre_followup_rule!(
         "damage-life-floor",
         &["until", "damage"],

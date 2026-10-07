@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Expedition Lookout",
+    "id": "7e14dfd2-5805-46ef-bd19-dab7ac23fbce",
+    "oracle_id": "f8ad2f88-72ae-4e47-beb5-25a6dacc709b",
+    "mana_cost": "{1}{U}",
+    "type_line": "Creature — Merfolk Rogue",
+    "power": "2",
+    "toughness": "3",
+    "oracle_text": "Defender\nAs long as an opponent has eight or more cards in their graveyard, this creature can attack as though it didn't have defender and it can't be blocked."
+  },
+  {
+    "name": "Machinist's Arsenal",
+    "id": "a9b212fb-4666-40d5-bd81-ca4446561725",
+    "oracle_id": "e7fff34e-9b80-4a67-a917-fd9efddb5a1f",
+    "mana_cost": "{4}{W}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Job select (When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it.)\nEquipped creature gets +2/+2 for each artifact you control and is an Artificer in addition to its other types.\nMachina — Equip {4} ({4}: Attach to target creature you control. Equip only as a sorcery.)"
+  },
+  {
+    "name": "Nighthowler",
+    "id": "b76dab3d-1788-4ab7-8d2b-70f7787cf935",
+    "oracle_id": "57b3f7fc-1812-4134-a645-6cef48a8aa71",
+    "mana_cost": "{1}{B}{B}",
+    "type_line": "Enchantment Creature — Horror",
+    "power": "0",
+    "toughness": "0",
+    "oracle_text": "Bestow {2}{B}{B} (If you cast this card for its bestow cost, it's an Aura spell with enchant creature. It becomes a creature again if it's not attached.)\nThis creature and enchanted creature each get +X/+X, where X is the number of creature cards in all graveyards."
+  },
+  {
+    "name": "Rope",
+    "id": "daaf464b-70bf-475b-8591-1504d530cd3f",
+    "oracle_id": "a3f09898-6c77-4d68-8d10-8440c75f884c",
+    "mana_cost": "{G}",
+    "type_line": "Artifact — Clue Equipment",
+    "oracle_text": "Equipped creature gets +1/+2, has reach, and can't be blocked by more than one creature.\n{2}, Sacrifice this Equipment: Draw a card.\nEquip {3}"
+  },
+  {
+    "name": "Spire Serpent",
+    "id": "9a14e2a4-484b-46e4-a5a1-c66cb13be178",
+    "oracle_id": "6c0c5832-416f-405f-bb44-c24be6f9d081",
+    "mana_cost": "{4}{U}",
+    "type_line": "Creature — Serpent",
+    "power": "3",
+    "toughness": "5",
+    "oracle_text": "Defender\nMetalcraft — As long as you control three or more artifacts, this creature gets +2/+2 and can attack as though it didn't have defender."
+  },
+  {
+    "name": "Tek",
+    "id": "9b9f5065-503f-4ff9-9d90-5cd2a86d26e7",
+    "oracle_id": "f85aef9b-b6ad-4716-b48b-5e26b474a59d",
+    "mana_cost": "{5}",
+    "type_line": "Artifact Creature — Dragon",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "This creature gets +0/+2 as long as you control a Plains, has flying as long as you control an Island, gets +2/+0 as long as you control a Swamp, has first strike as long as you control a Mountain, and has trample as long as you control a Forest."
+  },
+  {
+    "name": "Wrecking Ball Arm",
+    "id": "c934a62e-d327-44ce-9155-7dc424daec36",
+    "oracle_id": "9f48cb32-46be-4c47-b558-2ea359efdd9b",
+    "mana_cost": "{2}",
+    "type_line": "Legendary Artifact — Equipment",
+    "oracle_text": "Equipped creature has base power and toughness 7/7 and can't be blocked by creatures with power 2 or less.\nEquip legendary creature {3}\nEquip {7}"
+  }
+]

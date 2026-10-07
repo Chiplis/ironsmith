@@ -1042,7 +1042,7 @@ pub(super) fn katara_seeking_revenge_strict_parser_and_compiled_text_regression(
             && raw.contains("Additional")
             && raw.contains("ConditionalEffect")
             && raw.contains("DiscardEffect")
-            && raw.contains("waterbend_cost_2"),
+            && raw.contains("waterbend_payment_scope"),
         "Katara, Seeking Revenge should structurally lower waterbend and unless-paid discard, got {raw}"
     );
 }
@@ -1064,56 +1064,12 @@ pub(super) fn katara_seeking_revenge_waterbend_optional_cost_has_mana_and_tap_br
         def.optional_costs[0].source_label
     );
 
-    let branches = def.optional_costs[0]
-        .cost
-        .as_one_of()
-        .expect("waterbend {2} should lower to alternative payment branches");
-    assert_eq!(
-        branches.len(),
-        3,
-        "waterbend {{2}} should have 0, 1, and 2 tap branches"
-    );
-    assert_eq!(
-        branches[0].mana_cost().map(ManaCost::to_oracle),
-        Some("{2}".to_string()),
-        "first waterbend branch should be ordinary mana"
-    );
-    assert_eq!(
-        branches[1].mana_cost().map(ManaCost::to_oracle),
-        Some("{1}".to_string()),
-        "second waterbend branch should require one remaining generic mana"
-    );
-    assert!(
-        branches[2].mana_cost().is_none(),
-        "third waterbend branch should be fully paid by tapping"
-    );
+    let mana = def.optional_costs[0].cost.mana_cost().expect("one typed payment");
+    assert_eq!(mana.to_oracle(), "{2}");
+    assert!(mana.has_waterbend_obligation());
+    assert_eq!(mana.waterbend_capacity(0), 2);
+    assert!(def.optional_costs[0].cost.as_one_of().is_none());
 
-    for (branch, expected_count) in [(&branches[1], 1), (&branches[2], 2)] {
-        let choose = branch
-            .costs()
-            .iter()
-            .filter_map(|cost| cost.effect_ref())
-            .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
-            .expect("waterbend tap branch should choose objects to tap");
-        assert_eq!(choose.count.min, expected_count);
-        assert_eq!(choose.count.max, Some(expected_count));
-        assert!(choose.filter.untapped, "waterbend choices must be untapped");
-        assert_eq!(choose.filter.controller, Some(PlayerFilter::You));
-        assert!(
-            choose
-                .filter
-                .any_of
-                .iter()
-                .any(|filter| filter.card_types.contains(&CardType::Artifact))
-                && choose
-                    .filter
-                    .any_of
-                    .iter()
-                    .any(|filter| filter.card_types.contains(&CardType::Creature)),
-            "waterbend choices should be artifacts or creatures, got {:?}",
-            choose.filter
-        );
-    }
 }
 
 #[test]
@@ -1136,10 +1092,7 @@ pub(super) fn katara_seeking_revenge_waterbend_tap_cost_taps_chosen_artifact_and
     }
 
     let def = parse_oracle_card_definition("Katara, Seeking Revenge");
-    let tap_branch = &def.optional_costs[0]
-        .cost
-        .as_one_of()
-        .expect("waterbend cost should have branches")[2];
+    let tap_branch = &def.optional_costs[0].cost;
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let source = game.create_object_from_definition(&def, alice, Zone::Stack);

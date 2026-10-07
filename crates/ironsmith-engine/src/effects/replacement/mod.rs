@@ -52,10 +52,17 @@ pub(crate) use draw_continuation::prepare_draw_continuation_with_outputs;
 
 pub(crate) use draw_continuation::{
     PreparedReplacementChild, ReplacementResume, prepare_replacement_child,
-    replacement_effect_contains_draw, resume_replacement_child_with_outputs,
+    replacement_effect_contains_draw, replacement_effect_supported, resume_replacement_child_with_outputs,
+    prepare_committed_draw_boundary, prepare_native_draw_continuation_with_outputs,
+    prepare_scoped_program_draw_boundary_with_outputs,
 };
 
 pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings_and_outputs;
 
 
 pub(crate) use execute_payload::with_replacement_child;
+
+pub(crate) use draw_continuation::{prepare_scoped_draw_continuation, prepare_scoped_draw_continuation_with_outputs};
+
+mod zone_draw_tail;
+pub(crate) use zone_draw_tail::{prepare_zone_draw_tail, prepare_zone_draw_tail_with_outputs};

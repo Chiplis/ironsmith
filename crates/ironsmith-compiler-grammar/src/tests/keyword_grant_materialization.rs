@@ -52,7 +52,7 @@ fn keyword_grant_materialization_preserves_typed_equipment_actions() {
 fn keyword_grant_materialization_does_not_accept_alternative_costs_as_static_grants() {
     assert!(
         !KeywordAction::Suspend {
-            time: 3,
+            time: ironsmith_core::SuspendTime::Fixed(3),
             cost: crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Blue]),
         }
         .lowers_to_static_ability()

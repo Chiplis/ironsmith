@@ -23,6 +23,15 @@ impl EffectExecutor for BecomeBlockedEffect {
                     }
                 }
             }
+            // The transition can enable continuous effects that immediately
+            // remove its attacker. Capture the event's role before that refresh.
+            let defending_references = changed.iter().map(|(id, _)| {
+                let reference = game.combat.as_ref().and_then(|combat|
+                    crate::combat_state::get_attack_target(combat, *id)).cloned()
+                    .map(|target| game.retain_attacking_role(*id, &target))
+                    .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
+                (*id, reference)
+            }).collect::<crate::FxMap<_, _>>();
             if !changed.is_empty() {game.mark_continuous_state_dirty();game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;}
             // All flags and role-dependent continuous effects are complete
             // before any event captures characteristics or matches observers.
@@ -40,7 +49,10 @@ impl EffectExecutor for BecomeBlockedEffect {
                         game.alloc_child_event_provenance(ctx.provenance,kind)
                     } else {game.provenance_graph_mut().alloc_root_event(kind)};
                     let event=crate::events::CreatureBecameBlockedEvent::with_target_and_blockers(id,Vec::new(),target,snapshot,Vec::new());
-                    events.push(crate::triggers::TriggerEvent::new_with_provenance(event,provenance));
+                    let reference = defending_references.get(&id).copied()
+                        .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);
+                    events.push(crate::triggers::TriggerEvent::new_with_provenance(event,provenance)
+                        .with_defending_player_reference(reference));
                 }
             }
             // A legal, already-blocked attacker is still the authored target
@@ -67,6 +79,28 @@ mod tests {
         let mut combat=CombatState::default();combat.block_declaration_complete=true;
         for id in [first,second] {combat.attackers.push(AttackerInfo{creature:id,target:AttackTarget::Player(PlayerId::from_index(1))});}
         game.combat=Some(combat);(game,first,second)
+    }
+    #[test]
+    fn blocked_event_keeps_its_role_when_the_continuous_refresh_removes_the_attacker() {
+        // UNRUN. Becoming a battle removes a combatant even while it is also
+        // a creature. The blocked condition may disappear after that removal.
+        let (mut game, attacker, _) = game();
+        let mut blocked = crate::target::ObjectFilter::creature();
+        blocked.blocked = true;
+        let card = CardBuilder::new(CardId::new(), "Role-dependent type change")
+            .card_types(vec![CardType::Enchantment]).build();
+        let mut definition = crate::cards::CardDefinition::new(card);
+        definition.abilities = vec![crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::add_card_types(blocked, vec![CardType::Battle]),
+        )];
+        let observer = game.create_object_from_definition(&definition, PlayerId(0), Zone::Battlefield);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = BecomeBlockedEffect::with_spec(ChooseSpec::SpecificObject(attacker))
+            .execute(&mut game, &mut ExecutionContext::new(observer, PlayerId(0), &mut dm)).unwrap();
+        assert_eq!(result.events.len(), 1);
+        assert!(!crate::combat_state::is_attacking(game.combat.as_ref().unwrap(), attacker));
+        let reference = result.events[0].defending_player_reference().unwrap();
+        assert_eq!(game.defending_player_candidates(reference).unwrap(), vec![PlayerId(1)]);
     }
     #[test]
     fn actual_transitions_emit_once_with_zero_blockers_and_keep_legal_repeat_references() {

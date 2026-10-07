@@ -22,10 +22,12 @@ pub(crate) enum LandPlayObservationKind {
     Played,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum LandPlayAuthorization {
     SelectedPermission {
         back_face: bool,
+        /// An already opened exile action must retain its exact unqualified grant.
+        opened_permission: Option<crate::alternative_cast::GrantSelection>,
     },
     /// The resolving instruction supplies permission to play this exact object.
     /// It does not supply another land allowance or permission on another turn.
@@ -52,12 +54,11 @@ impl LandPlayEntryReceipt {
             },
             Self::Contextual(receipt) => match receipt.outcome {
                 super::BattlefieldEntryOutcome::Moved(id) => id,
+                super::BattlefieldEntryOutcome::Redirected(ref change) => change.new_object_id?,
                 _ => return None,
             },
         };
-        game.object(id)
-            .filter(|object| object.zone == Zone::Battlefield)
-            .map(|_| id)
+        game.object(id).map(|_| id)
     }
 
     fn original_summary(&self) -> EffectOutcome {
@@ -166,8 +167,8 @@ pub(crate) fn execute_land_play_program<'a>(
         if root {
             game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
         }
-        if let LandPlayAuthorization::SelectedPermission { back_face } = authorization {
-            crate::special_actions::apply_land_play_face(game, card, back_face);
+        if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
+            crate::special_actions::apply_land_play_face(game, card, *back_face);
         }
         let checked = game
             .continuous_query_snapshot()
@@ -186,7 +187,9 @@ pub(crate) fn execute_land_play_program<'a>(
                 Ok(EffectOutcome::impossible())
             };
         }
-        let permission = if root {
+        let permission = if let LandPlayAuthorization::SelectedPermission { opened_permission: Some(permission), .. } = &authorization {
+            crate::special_actions::opened_land_play_permission(game, player, card, permission)?
+        } else if root {
             crate::special_actions::choose_land_play_permission(
                 game,
                 player,
@@ -200,6 +203,7 @@ pub(crate) fn execute_land_play_program<'a>(
             return Ok(EffectOutcome::count(0));
         }
         permission.reserve(game, player)?;
+        game.reserve_next_land_play_timing(player, card);
         let receipt = if root {
             let receipt = game
                 .move_object_with_etb_processing_with_cause_and_entry_options_and_controller(
@@ -249,14 +253,24 @@ pub(crate) fn execute_land_play_program<'a>(
         {
             game.remove_object(card);
         }
+        let from_zone = match authorization {
+            LandPlayAuthorization::ResolvingInstruction { from_zone, .. } => from_zone,
+            _ => actual_from,
+        };
+        let completed_play = receipt.subject(game).map(|subject| {
+            let destination = game.object(subject).ok_or(ExecutionError::ObjectNotFound(subject))?.zone;
+            crate::events::LandPlayedEvent::with_current_snapshot(subject, player, from_zone, destination, game)
+                .map(|event| (subject, event))
+        }).transpose()?;
         if matches!(timing, LandPlayObservationTiming::AfterHistory) {
             record_land_play(game, player);
         }
-        if let Some(subject) = receipt.subject(game) {
+        if let Some((subject, completed_play)) = completed_play {
             // The contextual entry owner already freezes and queues its ETB.
             // Root callers publish their entry here at their existing boundary.
             if let LandPlayEntryReceipt::Root(entry) = &receipt
                 && let EventOutcome::Proceed(entry) = &entry.original
+                && game.object(subject).is_some_and(|object| object.zone == Zone::Battlefield)
             {
                 let provenance = game
                     .provenance_graph_mut()
@@ -276,14 +290,10 @@ pub(crate) fn execute_land_play_program<'a>(
                     return Ok(EffectOutcome::count(0));
                 }
             }
-            let from_zone = match authorization {
-                LandPlayAuthorization::ResolvingInstruction { from_zone, .. } => from_zone,
-                _ => actual_from,
-            };
             let event = crate::effects::observe_action_completion(
                 game,
                 TriggerEvent::new_with_provenance(
-                    crate::events::LandPlayedEvent::new(subject, player, from_zone),
+                    completed_play,
                     crate::provenance::ProvNodeId::default(),
                 ),
                 if root { None } else { Some(ctx.provenance) },

@@ -264,7 +264,7 @@ fn advance_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Re
     ironsmith::turn::execute_untap_step(g);
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    for e in ironsmith::turn::execute_draw_step_with(g, dm) {
+    for e in ironsmith::turn::execute_draw_step_with(g, dm).unwrap() {
         for t in ironsmith::triggers::check_triggers(g, &e) {
             q.add(t);
         }
@@ -564,7 +564,7 @@ fn run(
     }
     actual["remaining_stack"] = json!(g.stack.len());
     Ok(
-        json!({"expected":expected,"actual":actual,"state_evidence":{"before_source_announcement":before_cast,"amount":amount,"branch":branch,"kind":kind,"resource_count":count,"optional_offered":optional_offered,"announced_optional":announced_optional,"announced_object_optional":announced_object_optional,"producers":producers,"scope":"Actual paid resources; exact optional index0 selected only if legal. OneOf remains structured; no unavailable option forced. Taps measured before source resolution."},"execution_trace":dm.trace}),
+        json!({"expected":expected,"actual":actual,"state_evidence":{"before_source_announcement":before_cast,"amount":amount,"branch":branch,"kind":kind,"resource_count":count,"optional_offered":optional_offered,"announced_optional":announced_optional,"announced_object_optional":announced_object_optional,"producers":producers,"scope":"Actual paid resources; exact optional index0 selected only if legal. Waterbend remains one scoped payment; no unavailable option forced. Taps measured before source resolution."},"execution_trace":dm.trace}),
     )
 }
 #[test]
@@ -648,7 +648,7 @@ fn report_optional_waterbend() {
                     json!({"expected":null,"actual":{"error":e}}),
                 ),
             };
-            rows.push(json!({"card":name,"scenario":{"mode":mode},"status":status,"expected":out["expected"],"actual":out["actual"],"state_evidence":out["state_evidence"],"execution_trace":out["execution_trace"],"artifact_checksum":compile.iter().find(|c|c["card"]==name).unwrap()["artifact_checksum"],"scope":"Actual optional waterbend cast with legal index0, exact structured OneOf resource/mana payment, and independent printed draw/discard, debuff/death/life, or shuffle/draw/no-hand-limit outcomes."}));
+            rows.push(json!({"card":name,"scenario":{"mode":mode},"status":status,"expected":out["expected"],"actual":out["actual"],"state_evidence":out["state_evidence"],"execution_trace":out["execution_trace"],"artifact_checksum":compile.iter().find(|c|c["card"]==name).unwrap()["artifact_checksum"],"scope":"Actual optional waterbend cast with legal index0, exact scoped resource/mana payment, and independent printed draw/discard, debuff/death/life, or shuffle/draw/no-hand-limit outcomes."}));
         }
     }
     let after: Vec<_> = paths

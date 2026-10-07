@@ -23,6 +23,7 @@ fn convert_validation_error(err: CostValidationError) -> CostPaymentError {
         CostValidationError::NotEnoughEnergy => CostPaymentError::InsufficientEnergy,
         CostValidationError::NotEnoughCards => CostPaymentError::InsufficientCardsInHand,
         CostValidationError::CannotSacrifice => CostPaymentError::NoValidSacrificeTarget,
+        CostValidationError::ExecutionFailed(error) => CostPaymentError::ExecutionFailed(error),
         CostValidationError::Other(msg) => CostPaymentError::Other(msg),
     }
 }
@@ -86,6 +87,90 @@ fn transparent_cost_effect(mut effect: &Effect) -> &Effect {
     effect
 }
 
+/// Locate the typed selected-cost binding owned by this component. Other
+/// completed cost tags in the context belong to earlier components.
+fn original_sacrifice_result_tags(mut effect: &Effect) -> Vec<crate::tag::TagKey> {
+    use ironsmith_core::tag::SacrificeCostTag;
+    let mut tags = Vec::new();
+    let mut retain = |tag: &crate::tag::TagKey| {
+        if let Some(selected @ SacrificeCostTag::Selected(_)) = SacrificeCostTag::parse(tag) {
+            let result = selected.original_result_key();
+            if !tags.contains(&result) { tags.push(result); }
+        }
+    };
+    loop {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() { retain(&tagged.tag); }
+        let Some(inner) = effect.transparent_child_effect() else { break; };
+        effect = inner;
+    }
+    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+        for constraint in &sacrifice.filter.tagged_constraints {
+            if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject { retain(&constraint.tag); }
+        }
+    }
+    if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        && let crate::target::ChooseSpec::Tagged(tag) = sacrifice.target.base() { retain(tag); }
+    tags
+}
+
+/// Cost adapters publish the same actual sacrifice binding for ordinary and
+/// prepared payments. A selected original alone does not prove it was sacrificed.
+fn retain_original_sacrifice_bindings(
+    effect: &Effect, game: &GameState, outcome: &crate::effect::EffectOutcome,
+    execution: &mut crate::effects::ExecutionContext,
+) -> Result<Option<Vec<crate::snapshot::ObjectSnapshot>>, CostPaymentError> {
+    let action = transparent_cost_effect(effect);
+    if action.downcast_ref::<crate::effects::SacrificeEffect>().is_none()
+        && action.downcast_ref::<crate::effects::SacrificeTargetEffect>().is_none()
+    {
+        return Ok(None);
+    }
+    let memory = outcome.instruction_result().execution_facts.iter().rev().find_map(|fact| match fact {
+        crate::effect::ExecutionFact::OriginalSacrificeObjects(memory) => Some(memory),
+        _ => None,
+    }).ok_or_else(|| CostPaymentError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+        "completed sacrifice cost lacks its original-action receipt".into(),
+    )))?;
+    let snapshots = memory.iter().map(|object| object.to_snapshot(game)).collect::<Vec<_>>();
+    for tag in original_sacrifice_result_tags(effect) {
+        execution.set_tagged_objects(tag, snapshots.clone());
+    }
+    Ok(Some(snapshots))
+}
+
+fn sacrifice_target_cost_object(
+    effect: &crate::effects::SacrificeTargetEffect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Result<crate::ids::ObjectId, CostPaymentError> {
+    // Source and captured-object costs name the original permanent. They
+    // must not fall back to its later incarnation or a different permanent,
+    // and only its current controller can pay by sacrificing it.
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let exec = ctx.execution_bindings().execution_context(&mut decision_maker);
+    let objects = if matches!(effect.target.base(), crate::target::ChooseSpec::Source) {
+        vec![ctx.source]
+    } else {
+        match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, &exec) {
+            Ok(objects) => objects,
+            Err(crate::effects::ExecutionError::InvalidTarget
+                | crate::effects::ExecutionError::TagNotFound(_)) => {
+                return Err(CostPaymentError::NoValidSacrificeTarget);
+            }
+            Err(error) => return Err(CostPaymentError::ExecutionFailed(error)),
+        }
+    };
+    let [id] = objects.as_slice() else {
+        return Err(CostPaymentError::NoValidSacrificeTarget);
+    };
+    game.object(*id).is_some_and(|object| {
+        object.zone == crate::zone::Zone::Battlefield
+            && game.controller_of(object) == ctx.payer
+            && !game.is_phased_out(*id)
+            && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
+    }).then_some(*id).ok_or(CostPaymentError::NoValidSacrificeTarget)
+}
+
 fn sacrifice_cost_precheck(
     effect: &Effect,
     game: &GameState,
@@ -93,12 +178,7 @@ fn sacrifice_cost_precheck(
 ) -> Option<Result<(), CostPaymentError>> {
     let effect = transparent_cost_effect(effect);
     if let Some(effect) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
-        if matches!(effect.target.base(), crate::target::ChooseSpec::Source)
-            && !game.can_be_sacrificed_with_cause(ctx.source, &ctx.event_cause())
-        {
-            return Some(Err(CostPaymentError::NoValidSacrificeTarget));
-        }
-        return None;
+        return Some(sacrifice_target_cost_object(effect, game, ctx).map(|_| ()));
     }
     let (filter, count, player) = if let Some(effect) =
         effect.downcast_ref::<crate::effects::SacrificeEffect>()
@@ -150,9 +230,7 @@ fn sacrifice_cost_precheck(
             match crate::effects::helpers::resolve_value(game, count, &exec) {
                 Ok(value) => value.max(0) as usize,
                 Err(error) => {
-                    return Some(Err(CostPaymentError::Other(format!(
-                        "sacrifice amount: {error:?}"
-                    ))));
+                    return Some(Err(CostPaymentError::ExecutionFailed(error)));
                 }
             }
         }
@@ -392,7 +470,7 @@ fn dynamic_counter_removal_cost_precheck(
     let effect = transparent_cost_effect(effect)
         .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()?;
     let announced_x = ctx.x_value?;
-    if !effect.dynamic_count {
+    if !effect.dynamic_count || !effect.display_x {
         return None;
     }
     let available = crate::effects::counters::remove_any_counters_among_total_available(
@@ -497,7 +575,9 @@ impl CostPayer for CostEffect {
             .0
             .as_cost_executable()
             .ok_or_else(|| CostPaymentError::Other("cost effect lost its payment contract".into()))?
-            .finalize_payment_bindings(game, outcome, execution, payment_x)
+            .finalize_payment_bindings(game, outcome, execution, payment_x)?;
+        retain_original_sacrifice_bindings(&self.effect, game, outcome, execution)?;
+        Ok(())
     }
 
     fn payment_x_from_outcome(
@@ -764,9 +844,9 @@ impl CostPayer for CostEffect {
             ctx.x_value = exec_ctx.x_value;
         }
 
-        // The shared payment gateway has acknowledged and published the
-        // completed owner's bindings; this bridge transfers the actual frame.
-        // Retain inherited input/output domains for subsequent payment frames.
+        ctx.completed_sacrifice = retain_original_sacrifice_bindings(
+            &self.effect, game, &outcome, &mut exec_ctx,
+        )?;
         ctx.execution_inputs = Some(Box::new(crate::effects::PaymentExecutionInputs::capture(
             &exec_ctx,
         )));
@@ -1068,6 +1148,44 @@ impl CostPayer for CostEffect {
 mod tests {
     use super::*;
     use crate::costs::{CostContext, CostPayer, CostPaymentResult};
+
+    #[test]
+    fn direct_sacrifice_cost_records_actual_original_snapshots_and_keeps_selection_separate() {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::replacement::{ReplacementAction, ReplacementEffect};
+        use ironsmith_core::tag::SacrificeCostTag;
+        for scenario in 0..4 {
+            let player = crate::PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let card = CardBuilder::new(crate::CardId::new(), "Original payment")
+                .card_types(vec![crate::CardType::Creature]).power_toughness(PowerToughness::fixed(3, 4)).build();
+            let original = game.create_object_from_card(&card, player, crate::Zone::Battlefield);
+            let source = game.create_object_from_card(&card, player, crate::Zone::Battlefield);
+            let added = game.create_object_from_card(&card, player, crate::Zone::Battlefield);
+            let action = match scenario {
+                0 => ReplacementAction::Prevent,
+                1 => ReplacementAction::ChangeDestination(crate::Zone::Exile),
+                2 => ReplacementAction::Instead(vec![Effect::new(crate::effects::SacrificeTargetEffect::new(crate::ChooseSpec::SpecificObject(added)))]),
+                _ => ReplacementAction::Additionally(vec![Effect::new(crate::effects::SacrificeTargetEffect::new(crate::ChooseSpec::SpecificObject(added)))]),
+            };
+            game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, player,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(original), Some(crate::Zone::Battlefield), Some(crate::Zone::Graveyard)), action));
+            let chosen_tag = SacrificeCostTag::Selected(7).key();
+            let actual_tag = SacrificeCostTag::OriginalResult(7).key();
+            let cost = crate::costs::Cost::effect(Effect::sacrifice(ObjectFilter::specific(original), 1).tag(chosen_tag.clone()));
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut context = CostContext::new(source, player, &mut dm).with_pre_chosen_cards(vec![original]);
+            assert!(matches!(cost.pay(&mut game, &mut context).unwrap(), CostPaymentResult::Paid));
+            let actual = context.tagged_objects.get(&actual_tag).expect("completed original receipt, including zero");
+            assert_eq!(actual.len(), usize::from(scenario == 1 || scenario == 3));
+            if let Some(snapshot) = actual.first() {
+                assert_eq!(snapshot.object_id, original); assert_eq!(snapshot.zone, crate::Zone::Battlefield); assert_eq!(snapshot.power, Some(3));
+            }
+            assert!(context.completed_sacrifice.is_some());
+            // An unrelated result cannot supply the original selected cost.
+            assert!(actual.iter().all(|snapshot| snapshot.object_id != added));
+        }
+    }
     use crate::decision::SelectFirstDecisionMaker;
     use crate::effects::{MoveToZoneEffect, RemoveCountersEffect, SacrificeEffect};
     use crate::ids::{CardId, PlayerId};
@@ -1663,5 +1781,28 @@ mod unsigned_counter_cost_contract_tests {
             assert_eq!(game.counter_count(source, CounterType::Charge), amount);
             assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 7);
         }
+    }
+}
+
+#[cfg(test)]
+mod retained_counter_x_independence {
+    use super::*;
+    #[test]
+    fn an_unannounced_counter_quantity_does_not_borrow_a_larger_mana_x() {
+        struct Two;
+        impl crate::decision::DecisionMaker for Two {
+            fn decide_number(&mut self, _: &GameState, context: &crate::decisions::context::NumberContext) -> u32 {
+                assert!(!context.is_x_value); assert_eq!((context.min,context.max),(1,2)); 2
+            }
+        }
+        let payer=crate::PlayerId::from_index(0);let mut game=GameState::new(vec!["A".into(),"B".into()],20);
+        let card=crate::card::CardBuilder::new(crate::CardId::new(),"Independent cost X").card_types(vec![crate::CardType::Artifact]).build();
+        let source=game.create_object_from_card(&card,payer,crate::Zone::Battlefield);game.add_counters(source,crate::CounterType::Charge,2);
+        let removal=crate::effects::RemoveAnyCountersAmongEffect::dynamic(1,u32::MAX,crate::ObjectFilter::source().in_zone(crate::Zone::Battlefield),false)
+            .with_counter_type(Some(crate::CounterType::Charge)).from_single_object();
+        let cost=crate::costs::Cost::effect(crate::effects::WithIdEffect::new(crate::effect::EffectId::ACTIVATION_COUNTER_COST,Effect::new(removal)));
+        let mut dm=Two;let mut context=CostContext::new(source,payer,&mut dm).with_x(17);
+        cost.pay(&mut game,&mut context).unwrap();assert_eq!(context.x_value,Some(17));assert_eq!(game.counter_count(source,crate::CounterType::Charge),0);
+        assert_eq!(context.effect_outcomes[&crate::effect::EffectId::ACTIVATION_COUNTER_COST].instruction_result().count_or_zero(),2);
     }
 }

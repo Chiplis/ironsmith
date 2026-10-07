@@ -33,6 +33,9 @@ pub use planner::{
     plan_mana_payment, plan_prompt_mana_payment, unfunded_mana_payment_plan,
 };
 
+mod waterbend;
+pub(crate) use waterbend::{waterbend_sources, validate_waterbend_scope, validate_waterbend_taps, record_waterbend_payment, maximum_waterbend_x};
+
 mod interactive;
 pub use interactive::{manual_mana_abilities, manual_mana_abilities_checked};
 pub(crate) use interactive::{activate_mana_during_payment, pay_mana_interactively, pay_mana_interactively_in_context};

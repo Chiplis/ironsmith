@@ -396,15 +396,16 @@ impl GameState {
     }
 
     /// Mark a permanent as suspected.
-    pub fn set_suspected(&mut self, id: ObjectId) {
+    pub fn set_suspected(&mut self, id: ObjectId) -> bool {
+        self.update_cant_effects();
         let Some(object) = self
             .object(id)
             .filter(|object| object.zone == Zone::Battlefield)
         else {
-            return;
+            return false;
         };
-        if self.is_phased_out(id) {
-            return;
+        if self.is_phased_out(id) || self.effect_store.cant_effects.cant_become_suspected.contains(&id) {
+            return false;
         }
         let controller = self.current_controller(id).unwrap_or(object.owner);
         if self.battlefield_flags_mut().suspected.insert(id) {
@@ -428,11 +429,14 @@ impl GameState {
                 self.effect_store.continuous_effects.add_effect(effect);
             }
             self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
+            return true;
         }
+        false
     }
 
     /// Clear the suspected designation from a permanent.
     pub fn clear_suspected(&mut self, id: ObjectId) -> bool {
+        if self.is_phased_out(id) || !self.object(id).is_some_and(|object| object.zone == Zone::Battlefield) { return false; }
         let removed = self.battlefield_flags_mut().suspected.remove(&id);
         if removed {
             self.mark_source_designation_changed(id, Self::condition_reads_suspected_state);
@@ -697,6 +701,23 @@ impl GameState {
         self.battlefield_flags.face_down.contains(&id)
     }
 
+    /// Eligibility for turning an existing permanent face down (CR 712.11).
+    /// This is deliberately separate from `set_face_down`: a double-faced
+    /// card can enter face down through manifest, cloak, or a face-down cast.
+    pub fn can_turn_face_down_permanent(&self, id: ObjectId) -> bool {
+        let Some(object) = self.object(id) else { return false; };
+        if object.zone != Zone::Battlefield || self.is_face_down(id) || self.is_phased_out(id) {
+            return false;
+        }
+        let double_faced = |object: &crate::object::Object| {
+            matches!(object.linked_face_layout, LinkedFaceLayout::TransformLike)
+        };
+        if double_faced(object) { return false; }
+        !self.commander_tracking.merged_permanents.get(&object.stable_id)
+            .is_some_and(|merged| merged.components.iter().any(|component|
+                double_faced(&component.object)))
+    }
+
     /// Set an object face down.
     ///
     /// CR 730.2f turns every face-up component of a merged permanent face
@@ -754,6 +775,18 @@ impl GameState {
         if self.battlefield_flags_mut().manifested.insert(id) {
             self.mark_object_characteristics_dirty(id);
         }
+    }
+
+    /// Record cloak on the exact battlefield incarnation. Current ward and
+    /// characteristics cannot reconstruct this provenance.
+    pub fn set_cloaked(&mut self, id: ObjectId) {
+        if self.battlefield_flags_mut().cloaked.insert(id) {
+            self.mark_object_characteristics_dirty(id);
+        }
+    }
+
+    pub fn is_cloaked(&self, id: ObjectId) -> bool {
+        self.battlefield_flags.cloaked.contains(&id)
     }
 
     /// Check if a permanent is manifested.
@@ -981,13 +1014,13 @@ impl GameState {
             .object_store
             .object_mut(id)
             .is_some_and(|object| object.end_face_down_cast_overlay());
-        let (face_down_changed, manifested_changed) = {
+        let (face_down_changed, origin_changed) = {
             let flags = self.battlefield_flags_mut();
-            (flags.face_down.remove(&id), flags.manifested.remove(&id))
+            (flags.face_down.remove(&id), flags.manifested.remove(&id) | flags.cloaked.remove(&id))
         };
         if face_down_changed {
             self.mark_face_down_state_changed(id);
-        } else if manifested_changed {
+        } else if origin_changed {
             self.mark_object_characteristics_dirty(id);
         }
         face_down_changed
@@ -1508,6 +1541,7 @@ impl GameState {
     ) {
         let attacked_permanent = target.attacked_permanent();
         let as_battle = matches!(target, crate::combat_state::AttackTarget::Battle(_));
+        self.retain_attacking_role(creature, &target);
         self.combat
             .get_or_insert_with(Default::default)
             .attackers
@@ -1536,34 +1570,8 @@ impl GameState {
     /// Remove an attacking or blocking permanent from combat (CR 506.4).
     /// Creatures it blocked stay blocked (CR 509.1h).
     pub(crate) fn remove_object_from_combat(&mut self, id: ObjectId) {
-        let Some(combat) = self.combat.as_mut() else {
-            return;
-        };
-        let was_participating = combat
-            .attackers
-            .iter()
-            .any(|attacker| attacker.creature == id)
-            || combat
-                .blockers
-                .values()
-                .any(|blockers| blockers.contains(&id));
-        combat.remember_blocked_attackers();
-        combat.attackers.retain(|attacker| attacker.creature != id);
-        combat.blockers.remove(&id);
-        combat.blocked_attackers.remove(&id);
-        combat.damage_assignment_order.remove(&id);
-        combat
-            .attacking_bands
-            .iter_mut()
-            .for_each(|band| band.retain(|member| *member != id));
-        combat.attacking_bands.retain(|band| !band.is_empty());
-        combat.had_to_attack_this_combat.remove(&id);
-        for blockers in combat.blockers.values_mut() {
-            blockers.retain(|blocker| *blocker != id);
-        }
-        for order in combat.damage_assignment_order.values_mut() {
-            order.retain(|object| *object != id);
-        }
+        self.retire_attacking_role(id);
+        let was_participating = self.mutate_combat_lanes(|combat| combat.remove_combatant(id));
         self.clear_ninjutsu_attack_targets_for(id);
         if was_participating {
             // Combat roles can condition abilities and replacement matchers.
@@ -1582,40 +1590,11 @@ impl GameState {
         permanent: ObjectId,
         defending_player: Option<PlayerId>,
     ) {
-        let Some(combat) = self.combat.as_ref() else {
-            return;
-        };
-        if !combat
-            .attackers
-            .iter()
-            .any(|info| info.target.attacked_permanent() == Some(permanent))
-        {
-            return;
-        }
         let planeswalker_defender = defending_player.or_else(|| self.controller_of_id(permanent));
         let battle_defender = defending_player.or_else(|| self.battle_protector(permanent));
-        let Some(combat) = self.combat.as_mut() else {
-            return;
-        };
-        combat.attacked_permanent_types.remove(&permanent);
-        for info in &mut combat.attackers {
-            info.target = match info.target {
-                crate::combat_state::AttackTarget::Planeswalker(id) if id == permanent => {
-                    crate::combat_state::AttackTarget::Nothing {
-                        defending_player: planeswalker_defender,
-                        was_planeswalker: true,
-                    }
-                }
-                crate::combat_state::AttackTarget::Battle(id) if id == permanent => {
-                    crate::combat_state::AttackTarget::Nothing {
-                        defending_player: battle_defender,
-                        was_planeswalker: false,
-                    }
-                }
-                ref other => other.clone(),
-            };
-        }
-        self.mark_continuous_state_dirty();
+        if self.mutate_combat_lanes(|combat|
+            combat.remove_attacked_permanent(permanent, planeswalker_defender, battle_defender))
+        { self.mark_continuous_state_dirty(); }
     }
 
     /// Check if a card is exiled via madness.
@@ -1898,6 +1877,7 @@ impl GameState {
             flags.flipped.remove(&id);
             flags.face_down.remove(&id);
             flags.manifested.remove(&id);
+            flags.cloaked.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
             flags.rooms_with_no_unlocked_door.remove(&id);
             flags.transform_count.remove(&id);
@@ -1927,6 +1907,7 @@ impl GameState {
             choices.chosen_players.remove(&id);
             choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
+            choices.numeric_acquisitions.retain(|owner,_|owner.host!=id);
             choices
                 .chosen_modes_by_ability
                 .retain(|(source, _), _| *source != id);
@@ -2286,6 +2267,21 @@ impl GameState {
         }
     }
 
+    /// CR 406.3 retains a rules player's inspection entitlement without any
+    /// requirement that they actually looked. Exact member incarnations and
+    /// active acquisition-bound readers supply new entitlements; the durable
+    /// map deliberately does not retain the source as a continuing authority.
+    pub(crate) fn remember_linked_exile_inspection_entitlements(&mut self) {
+        let entitlements = self.effect_store.grant_registry.linked_exile_inspection_entitlements(self);
+        for (member, player) in entitlements {
+            if !self.exile_tracking.face_down_exile_viewers.get(&member)
+                .is_some_and(|viewers| viewers.contains(&player))
+            {
+                self.grant_face_down_exile_view(member, player);
+            }
+        }
+    }
+
     // === Chosen color helpers ===
 
     /// Record a chosen color for a permanent.
@@ -2534,6 +2530,39 @@ impl GameState {
         }
     }
 
+    pub fn set_number_for_acquisition(&mut self, owner: crate::source_numbers::NumberChoiceOwner, number: u32)
+        ->Result<(),crate::effects::ExecutionError>{
+        let public_group=if let Some(record)=self.choice_store.numeric_acquisitions.get(&owner){record.public_group}
+            else if let Some(last)=self.choice_store.numeric_acquisitions.iter().filter(|(known,_)|known.host==owner.host)
+                .map(|(_,record)|record.public_group).max(){
+                last.checked_add(1).ok_or(crate::effects::ExecutionError::ResourceLimitExceeded{
+                    resource:"numeric choice group sequence",requested:u128::from(last)+1,maximum:u128::from(u64::MAX)})?
+            }else{0};
+        // Numeric memory is noncopiable snapshot evidence even when no layer
+        // descriptor changes. Invalidate the object snapshot cache as well as
+        // calculated characteristics before publishing the completed choice.
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut().numeric_acquisitions.insert(owner,crate::source_numbers::NumberChoiceRecord{number,public_group});
+        Ok(())
+    }
+    pub fn numeric_choice_memory(&self, source:ObjectId)->crate::source_numbers::NumberChoiceMemory {
+        self.choice_store.numeric_acquisitions.iter().filter(|(owner,_)|owner.host==source)
+            .map(|(owner,number)|(owner.clone(),*number)).collect()
+    }
+    pub fn number_for_acquisition(&self,owner:&crate::source_numbers::NumberChoiceOwner,
+        retained:Option<&crate::snapshot::ObjectSnapshot>)->Result<Option<u32>,crate::effects::ExecutionError>{
+        if self.object(owner.host).is_some(){return Ok(self.choice_store.numeric_acquisitions.get(owner).map(|record|record.number));}
+        // A later completed choice before departure supersedes the older
+        // admission snapshot. Neither path follows a new object incarnation.
+        let snapshot=self.turn_store.turn_history.source_departure_snapshot(owner.host)
+            .or_else(||retained.filter(|snapshot|snapshot.object_id==owner.host));
+        let choices=snapshot.and_then(|snapshot|snapshot.numeric_choice_memory.as_deref())
+            .ok_or_else(||crate::effects::ExecutionError::IncompleteEvidence(
+                "numeric acquisition history is unavailable; the public proof is not an executable acquisition receipt".into()))?;
+        Ok(choices.get(owner).map(|record|record.number))
+    }
+
     /// The number chosen for a permanent as it entered ("choose 2, 3, or 4
     /// at random"), stored as its named option.
     pub fn chosen_number(&self, permanent_id: ObjectId) -> Option<i32> {
@@ -2641,7 +2670,8 @@ impl GameState {
             }
             let linked = tracking
                 .exiled_with_source
-                .remove(&source_id)
+                .get(&source_id)
+                .cloned()
                 .unwrap_or_default();
             let return_zones = tracking
                 .exiled_with_source_return_zones
@@ -2651,16 +2681,14 @@ impl GameState {
         };
         let returns = linked
             .into_iter()
-            .filter(|object_id| {
-                self.object(*object_id)
+            .filter_map(|object_id| {
+                // The source may also have an unrelated exile ability. Only
+                // an actual "exile until" receipt creates this duration;
+                // source ownership alone must not invent a return to play.
+                let return_zone = return_zones.get(&object_id).copied()?;
+                self.object(object_id)
                     .is_some_and(|object| object.zone == Zone::Exile)
-            })
-            .map(|object_id| {
-                let return_zone = return_zones
-                    .get(&object_id)
-                    .copied()
-                    .unwrap_or(Zone::Battlefield);
-                (object_id, return_zone)
+                    .then_some((object_id, return_zone))
             })
             .collect::<Vec<_>>();
         self.return_exiled_cards_at_duration_end(source_id, returns);
@@ -2837,6 +2865,23 @@ impl GameState {
     }
 
     /// Get cards exiled by a specific source object ID.
+    /// Record the exact resulting incarnation for this proven ability pair.
+    pub fn add_linked_exile_pair_member(&mut self, owner: crate::linked_exile::LinkedExileOwner, member: ObjectId) {
+        let members = self.exile_tracking_mut().linked_exile_pairs.entry(owner).or_default();
+        if !members.contains(&member) { members.push(member); }
+        self.remember_linked_exile_inspection_entitlements();
+    }
+
+    pub fn linked_exile_pair_members(&self, owner: &crate::linked_exile::LinkedExileOwner)
+        -> Result<&[ObjectId], crate::effects::ExecutionError>
+    {
+        if self.exile_tracking.linked_exile_pairs_incomplete {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "linked exile ownership was omitted by a source-only state import; full replay required".into()));
+        }
+        Ok(self.exile_tracking.linked_exile_pairs.get(owner).map(Vec::as_slice).unwrap_or(&[]))
+    }
+
     pub fn get_exiled_with_source_links(&self, source_id: ObjectId) -> &[ObjectId] {
         self.exile_tracking
             .exiled_with_source
@@ -2916,7 +2961,10 @@ impl GameState {
     }
 
     pub fn replace_exiled_with_source_links(&mut self, links: HashMap<ObjectId, Vec<ObjectId>>) {
-        self.exile_tracking_mut().exiled_with_source = links;
+        let tracking = self.exile_tracking_mut();
+        tracking.exiled_with_source = links;
+        tracking.linked_exile_pairs.clear();
+        tracking.linked_exile_pairs_incomplete = true;
     }
 
     pub fn replace_return_exiled_when_source_leaves(&mut self, sources: HashSet<ObjectId>) {
@@ -2967,6 +3015,10 @@ impl GameState {
     /// Remove an exiled card from all source-link lists.
     pub fn remove_exiled_with_source_link(&mut self, exiled_card_id: ObjectId) {
         let tracking = self.exile_tracking_mut();
+        tracking.linked_exile_pairs.retain(|_, members| {
+            members.retain(|member| *member != exiled_card_id);
+            !members.is_empty()
+        });
         tracking.exiled_with_source.retain(|_, linked| {
             linked.retain(|id| *id != exiled_card_id);
             !linked.is_empty()
@@ -3262,6 +3314,7 @@ impl GameState {
             } else {
                 let changed = flags.face_down.remove(&target_id);
                 flags.manifested.remove(&target_id);
+                flags.cloaked.remove(&target_id);
                 changed
             }
         };
@@ -3370,7 +3423,7 @@ impl GameState {
                 event
                     .downcast::<crate::events::combat::CreatureAttackedEvent>()
                     .and_then(|attack| self.object(attack.attacker))
-                    .map(|object| crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, self))
+                    .and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, self))
             })
             .or_else(|| {
                 event.object_id().and_then(|id| {
@@ -3605,9 +3658,7 @@ impl GameState {
                     .filter(|object| object.zone == previous.zone)
                     && !self.is_face_down(object.id)
                 {
-                    milled.snapshot = Some(
-                        ObjectSnapshot::from_object_with_calculated_characteristics(object, self),
-                    );
+                    milled.snapshot = ObjectSnapshot::capture_for_execution(object, self);
                 }
                 Some((index, event.with_inner_event(milled)))
             })
@@ -3678,6 +3729,10 @@ impl GameState {
                 .iter()
                 .filter_map(|event| event.snapshot().cloned())
                 .collect::<Vec<_>>();
+            let emerge_receipts = completed.iter().filter_map(|event| {
+                let entry = event.downcast::<crate::events::EnterBattlefieldEvent>()?;
+                entry.emerge_sacrifice.clone().map(|receipt| (entry.object, receipt))
+            }).collect::<std::collections::HashMap<_, _>>();
             for (index, event) in entries.into_iter().zip(completed) {
                 *all[index] = event;
             }
@@ -3696,6 +3751,13 @@ impl GameState {
                         && zone.destination_snapshot(snapshot.object_id).is_none()
                     {
                         zone.destination_snapshots.push(snapshot.clone());
+                    }
+                }
+                if zone.from == Zone::Stack {
+                    for destination in zone.destination_objects().to_vec() {
+                        if let Some(receipt) = emerge_receipts.get(&destination) {
+                            zone.destination_emerge_sacrifices.insert(destination, receipt.clone());
+                        }
                     }
                 }
                 **event = event.with_inner_event(zone);

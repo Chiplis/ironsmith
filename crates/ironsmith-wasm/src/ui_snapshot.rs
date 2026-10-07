@@ -1760,7 +1760,8 @@ pub(super) fn protected_object_ids_for_decision(
             ids.extend(payment.plan.allocations.iter().filter_map(|allocation| {
                 match allocation.payment {
                     ironsmith::mana_payment::PlannedPipPayment::Convoke(source)
-                    | ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => Some(source),
+                    | ironsmith::mana_payment::PlannedPipPayment::Improvise(source)
+                    | ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => Some(source),
                     _ => None,
                 }
             }));
@@ -2707,6 +2708,20 @@ impl GameSnapshot {
         &mut self, game: &GameState, view: &ActiveViewedCards, cache: &SnapshotObjectViewCache,
     ) {
         let Some(player) = self.players.iter_mut().find(|player| player.id == view.subject.0) else { return; };
+        if matches!(view.zone, Zone::Battlefield | Zone::Exile) && view.public {
+            let mut looks = player.persistent_look_cards.as_ref().clone();
+            for id in &view.cards {
+                let Some(object) = game.object(*id) else { continue; };
+                if game.is_hidden_card_placeholder(*id) || looks.iter().any(|held| held.id == id.0) { continue; }
+                // Inspect the disclosed face without removing the live 2/2
+                // face-down overlay or granting any of its printed abilities.
+                let mut identity = object.clone();
+                identity.end_face_down_cast_overlay();
+                looks.push(Arc::new(viewed_card_snapshot(&identity)));
+            }
+            player.persistent_look_cards = Arc::new(looks);
+            return;
+        }
         let disclosed = cache.hand_cards(game, view.subject, PlayerId::from_index(self.perspective), Some(view), 1);
         if disclosed.is_empty() { return; }
         let mut cards = player.hand_cards.as_ref().clone();

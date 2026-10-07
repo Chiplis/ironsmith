@@ -84,7 +84,8 @@ pub fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProd
 // This avoids drift between immutable/mutable/fallible traversal helpers.
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
-        EffectAst::Sequence { effects: $effects }
+        EffectAst::CollectManaPayments { effects: $effects }
+            | EffectAst::Sequence { effects: $effects }
             | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
                 nonwinner_effects: $effects,
@@ -270,6 +271,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::PlayerLooksAtTopCardsOfLibrary { .. } => {}
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
+        EffectAst::CollectManaPayments { .. } => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}

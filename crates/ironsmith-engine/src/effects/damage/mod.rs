@@ -20,7 +20,7 @@ pub(crate) mod redirect_next_time_damage_to_source;
 pub(crate) mod replace_next_damage_to_target;
 
 pub use clear_damage::ClearDamageEffect;
-pub(crate) use deal_damage::finish_damage_replacement_programs;
+pub(crate) use deal_damage::{finish_damage_replacement_programs, commit_damage_replacement_original_with_outputs};
 pub use deal_damage::{DealDamageEffect, DealDamageToRecipientsEffect};
 pub use deal_distributed_damage::{DamageDistributionMode, DealDistributedDamageEffect};
 pub use heal_damage::HealDamageEffect;

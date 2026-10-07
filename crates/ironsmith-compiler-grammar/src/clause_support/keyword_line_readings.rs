@@ -39,6 +39,20 @@ pub(super) const REGISTRY: RuleId = RuleId::new("keyword-line-registry");
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("suspend-time-and-cost"),
+        head: HeadDiscriminator::words(&["suspend"]),
+        admits: |_| true,
+        read: |input| input.outcome(
+            crate::activation_and_restrictions::keyword_action_costs::parse_suspend_keyword_action(input.tokens).map(|action| vec![action])),
+    },
+    Reading {
+        id: RuleId::new("dynamic-bolster-mobilize-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(
+            crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_line(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("flashback-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

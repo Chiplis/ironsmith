@@ -43,9 +43,13 @@ fn definitions(name: &str) -> Vec<CardDefinition> {
         text.push_str(&format!("Power/Toughness: {power}/{toughness}\n"));
     }
     text.push_str(row["oracle_text"].as_str().unwrap());
+    let (direct, direct_loss) = ironsmith_compiler::parse_loss::capture(||
+        compile_to_runtime_definition(name, &text, false));
+    let direct = direct.unwrap_or_else(|error| panic!("independent direct route {name}: {error}"));
+    assert!(!direct_loss.is_lossy(), "{name}: {}", direct_loss.reasons_text());
     let (result, loss) =
         ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, text, false));
-    let (artifact, direct) = result.unwrap_or_else(|error| panic!("{name}: {error}"));
+    let (artifact, _) = result.unwrap_or_else(|error| panic!("{name}: {error}"));
     assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
     artifact.validate().unwrap();
     let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
@@ -289,7 +293,7 @@ fn twelve_full_frozen_programs_compile_strictly_and_round_trip_complete_artifact
         assert_eq!(definitions(row["name"].as_str().unwrap()).len(), 2);
     }
 }
-fn create_named(game: &mut GameState, name: &str, restored: bool) -> ObjectId {
+fn create_named(game: &mut GameState, name: &str, expected_name: &str, restored: bool) -> ObjectId {
     let (artifact, direct) = compile_to_artifact(
         "Canonical token fixture",
         format!("Type: Sorcery\nCreate a {name} token."),
@@ -314,7 +318,7 @@ fn create_named(game: &mut GameState, name: &str, restored: bool) -> ObjectId {
         &mut EffectContext::new_default(source, A),
     )
     .unwrap();
-    *tokens(game, name).last().unwrap()
+    *tokens(game, expected_name).last().unwrap()
 }
 fn mana_request(
     source: ObjectId,
@@ -326,13 +330,13 @@ fn mana_request(
 #[test]
 fn eight_predefined_artifact_creators_execute_real_entry_and_optional_sacrifice_bodies() {
     for (name, token_name, count) in [
-        ("Aerid Konstrari", "Heartwood", 1),
-        ("Hungering Puppetbeast", "Heartwood", 1),
-        ("Tenured Tethermage", "Heartwood", 2),
-        ("Dora Milaje Elite", "Vibranium", 1),
-        ("Shuri's Fabricator", "Vibranium", 2),
-        ("T'Challa, the Black Panther", "Vibranium", 1),
-        ("Vibranium Mining Mech", "Vibranium", 1),
+        ("Aerid Konstrari", "Heartwood Token", 1),
+        ("Hungering Puppetbeast", "Heartwood Token", 1),
+        ("Tenured Tethermage", "Heartwood Token", 2),
+        ("Dora Milaje Elite", "Vibranium Token", 1),
+        ("Shuri's Fabricator", "Vibranium Token", 2),
+        ("T'Challa, the Black Panther", "Vibranium Token", 1),
+        ("Vibranium Mining Mech", "Vibranium Token", 1),
     ] {
         for definition in definitions(name) {
             let mut game = game();
@@ -357,7 +361,7 @@ fn eight_predefined_artifact_creators_execute_real_entry_and_optional_sacrifice_
                 let chars = game.current_characteristics(token).unwrap();
                 assert_eq!(chars.card_types.as_slice(), &[CardType::Artifact]);
                 assert!(chars.mana_cost.is_none());
-                if token_name == "Heartwood" {
+                if token_name == "Heartwood Token" {
                     assert!(chars.subtypes.contains(&ironsmith::Subtype::Heartwood));
                     assert_eq!(
                         chars.colors,
@@ -381,7 +385,7 @@ fn eight_predefined_artifact_creators_execute_real_entry_and_optional_sacrifice_
         let land = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         fund(&mut game, A, 3);
         activate(&mut game, land, 1, &mut Choices::default());
-        let made = tokens(&game, "Vibranium");
+        let made = tokens(&game, "Vibranium Token");
         assert_eq!(made.len(), 1);
         assert!(game.is_tapped(made[0]));
     }
@@ -403,9 +407,9 @@ fn optional_or_intervening_entry_qualifiers_do_not_create_artifacts_when_false()
                 tokens(
                     &game,
                     if name == "Tenured Tethermage" {
-                        "Heartwood"
+                        "Heartwood Token"
                     } else {
-                        "Vibranium"
+                        "Vibranium Token"
                     }
                 )
                 .is_empty()
@@ -418,7 +422,7 @@ fn heartwood_taps_repeatedly_for_exact_red_or_green_and_has_no_sacrifice_cost() 
     for restored in [false, true] {
         for color in [Color::Red, Color::Green] {
             let mut game = game();
-            let token = create_named(&mut game, "Heartwood", restored);
+            let token = create_named(&mut game, "Heartwood", "Heartwood Token", restored);
             let green = mana_request(
                 token,
                 ironsmith::costs::PaymentReason::Other,
@@ -474,7 +478,7 @@ fn vibranium_indestructibility_and_floated_payment_restrictions_execute_from_art
     for restored in [false, true] {
         for purpose in 0..3 {
             let mut game = game();
-            let token = create_named(&mut game, "Vibranium", restored);
+            let token = create_named(&mut game, "Vibranium", "Vibranium Token", restored);
             activate(&mut game, token, 0, &mut Choices::default());
             assert_eq!(game.player(A).unwrap().mana_pool.colorless, 1);
             assert!(game.current_has_static_ability_id(
@@ -569,7 +573,7 @@ fn canonical_card_name_tokens_retain_printed_cost_color_type_and_complete_abilit
                 1,
             ),
         ] {
-            let token = create_named(&mut game, name, restored);
+            let token = create_named(&mut game, name, name, restored);
             let object = game.object(token).unwrap();
             assert!(matches!(object.kind, ironsmith::object::ObjectKind::Token));
             assert_eq!(
@@ -594,7 +598,7 @@ fn aerid_hungering_and_tethermage_pay_real_costs_and_retain_their_non_token_effe
         let power = game.current_power(source).unwrap();
         fund(&mut game, A, 2);
         activate(&mut game, source, 0, &mut Choices::default());
-        assert_eq!(tokens(&game, "Heartwood").len(), 2);
+        assert_eq!(tokens(&game, "Heartwood Token").len(), 2);
         assert_eq!(game.current_power(source), Some(power + 2));
         cleanup(&mut game);
         assert_eq!(game.current_power(source), Some(power));
@@ -605,12 +609,12 @@ fn aerid_hungering_and_tethermage_pay_real_costs_and_retain_their_non_token_effe
         )
         .unwrap();
         settle(&mut game, &mut TriggerQueue::new(), &mut Choices::default());
-        assert_eq!(tokens(&game, "Heartwood").len(), 3);
+        assert_eq!(tokens(&game, "Heartwood Token").len(), 3);
     }
     for definition in definitions("Hungering Puppetbeast") {
         let mut game = game();
         let source = enter(&mut game, &definition, A, &mut Choices::default());
-        let food = tokens(&game, "Heartwood")[0];
+        let food = tokens(&game, "Heartwood Token")[0];
         fund(&mut game, A, 1);
         let mut choices = Choices {
             objects: vec![food],
@@ -618,7 +622,7 @@ fn aerid_hungering_and_tethermage_pay_real_costs_and_retain_their_non_token_effe
             ..Default::default()
         };
         activate(&mut game, source, 0, &mut choices);
-        assert!(tokens(&game, "Heartwood").is_empty());
+        assert!(tokens(&game, "Heartwood Token").is_empty());
         assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 1);
         assert!(game.current_has_static_ability_id(
             source,
@@ -639,7 +643,7 @@ fn aerid_hungering_and_tethermage_pay_real_costs_and_retain_their_non_token_effe
             ..Default::default()
         };
         let source = enter(&mut game, &definition, A, &mut choices);
-        let made = tokens(&game, "Heartwood");
+        let made = tokens(&game, "Heartwood Token");
         assert_eq!(made.len(), 2);
         assert!(made.iter().all(|id| game.is_tapped(*id)));
         for id in &made {
@@ -751,7 +755,7 @@ fn tchalla_cast_filter_vehicle_crew_attack_and_great_mound_draw_keep_full_bodies
             );
         }
         attack(&mut game, source, &mut Choices::default());
-        assert_eq!(tokens(&game, "Vibranium").len(), 2);
+        assert_eq!(tokens(&game, "Vibranium Token").len(), 2);
     }
     for definition in definitions("Vibranium Mining Mech") {
         let mut game = game();
@@ -779,7 +783,7 @@ fn tchalla_cast_filter_vehicle_crew_attack_and_great_mound_draw_keep_full_bodies
         activate(&mut game, source, 0, &mut Choices::default());
         assert_eq!(game.current_power(source), Some(power + 1));
         attack(&mut game, source, &mut Choices::default());
-        assert_eq!(tokens(&game, "Vibranium").len(), 2);
+        assert_eq!(tokens(&game, "Vibranium Token").len(), 2);
         cleanup(&mut game);
         assert!(!game.current_is_creature(source));
     }

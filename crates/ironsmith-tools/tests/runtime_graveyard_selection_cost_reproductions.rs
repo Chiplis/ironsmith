@@ -325,7 +325,7 @@ fn next_main(g: &mut GameState, d: &mut Choices, history: &mut Vec<Value>) -> Re
     }
     finish(g, &mut q, d)?;
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    for e in ironsmith::turn::execute_draw_step_with(g, d) {
+    for e in ironsmith::turn::execute_draw_step_with(g, d).unwrap() {
         for t in ironsmith::triggers::check_triggers(g, &e) {
             q.add(t)
         }

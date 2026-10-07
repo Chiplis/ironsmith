@@ -1,0 +1,48 @@
+[
+  {
+    "oracle_id": "221240c5-3c97-438c-b906-2508eacf190f",
+    "name": "Confront the Unknown",
+    "mana_cost": "{G}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate, then target creature gets +1/+1 until end of turn for each Clue you control. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")"
+  },
+  {
+    "oracle_id": "ead0820e-fc6b-4ab2-9110-048d6d53985d",
+    "name": "Panther Pounce",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Target player investigates. Target creature gets +1/+0 and gains flying until end of turn. Untap it. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")"
+  },
+  {
+    "oracle_id": "ca4936cf-48d4-4469-9243-8dbf8ec4cdca",
+    "name": "Roalesk, Apex Hybrid",
+    "mana_cost": "{2}{G}{G}{U}",
+    "type_line": "Legendary Creature \u2014 Human Mutant",
+    "oracle_text": "Flying, trample\nWhen Roalesk enters, put two +1/+1 counters on another target creature you control.\nWhen Roalesk dies, proliferate, then proliferate again. (Choose any number of permanents and/or players, then give each another counter of each kind already there. Then do it again.)",
+    "power": "4",
+    "toughness": "5"
+  },
+  {
+    "oracle_id": "55c7ce94-3cd3-42f3-9dd8-0c118fa626c8",
+    "name": "Secrets of the Key",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Investigate. If this spell was cast from a graveyard, investigate twice instead. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")\nFlashback {3}{U}"
+  },
+  {
+    "oracle_id": "5753f4d6-08d0-4e12-85c5-875ee6441626",
+    "name": "Tidings of War",
+    "mana_cost": "{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Amass Goblins 1. If this spell was cast from a graveyard, amass Goblins 3 instead. (To amass Goblins X, put X +1/+1 counters on an Army you control. It's also a Goblin. If you don't control an Army, create a 0/0 black Goblin Army creature token first.)\nFlashback {3}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)"
+  },
+  {
+    "oracle_id": "ab41243d-b178-4ebe-a7ac-bea37427be99",
+    "name": "Wojek Investigator",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature \u2014 Angel Detective",
+    "oracle_text": "Flying, vigilance\nAt the beginning of your upkeep, investigate once for each opponent who has more cards in hand than you. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+    "power": "2",
+    "toughness": "4"
+  }
+]

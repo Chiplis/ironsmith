@@ -5,6 +5,7 @@ pub(crate) struct LayerValueContext<'a, 'game> {
     pub calculation: &'a CalculationContext<'game>,
     pub source: ObjectId,
     pub controller: PlayerId,
+    pub numeric_origin: Option<&'a crate::continuous::AbilityOrigin>,
     direct_counts: Option<(&'a [ContinuousEffect], &'a HashSet<ObjectId>)>,
 }
 
@@ -19,6 +20,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             source,
             controller,
             direct_counts: None,
+            numeric_origin: None,
         }
     }
     pub fn direct(
@@ -33,7 +35,11 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             source,
             controller,
             direct_counts: Some((effects, commanders)),
+            numeric_origin: None,
         }
+    }
+    pub fn with_numeric_origin(mut self,origin:Option<&'a crate::continuous::AbilityOrigin>)->Self{
+        self.numeric_origin=origin;self
     }
     pub fn filter_context(&self) -> crate::filter::FilterContext {
         continuous_filter_context(self.calculation.game, self.controller, self.source)
@@ -155,15 +161,6 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             .map(|p| p.id)
             .collect()
     }
-    pub fn single_player(&self, value: &Value, filter: &PlayerFilter) -> PlayerId {
-        continuous_single_player(
-            value,
-            self.calculation,
-            filter,
-            self.controller,
-            self.source,
-        )
-    }
     pub fn unsupported(&self, value: &Value, reason: &str) -> ! {
         unsupported_continuous_value(value, reason)
     }
@@ -272,12 +269,12 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         }
     }
 
-    pub fn counters_on_source(&self, _value: &Value, counter_type: &CounterType) -> i32 {
+    pub fn counters_on_source(&self, _value: &Value, counter_type: &CounterType) -> i64 {
         let ctx = self.calculation;
         let source = self.source;
         ctx.objects
             .get(&source)
-            .map(|o| o.counters.get(counter_type).copied().unwrap_or(0) as i32)
+            .map(|o| i64::from(o.counters.get(counter_type).copied().unwrap_or(0)))
             .unwrap_or(0)
     }
     pub fn counters_on(
@@ -285,53 +282,51 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         _value: &Value,
         spec: &Box<ChooseSpec>,
         counter_type: &Option<CounterType>,
-    ) -> i32 {
+    ) -> Result<i64, crate::effects::ExecutionError> {
         let ctx = self.calculation;
         let controller = self.controller;
         let source = self.source;
-        {
-            let counter_total = |object: &Object| match counter_type {
-                Some(counter_type) => {
-                    object.counters.get(counter_type).copied().unwrap_or(0) as i32
-                }
-                None => object.counters.values().map(|count| *count as i32).sum(),
-            };
+        let counter_total = |object: &Object| match counter_type {
+            Some(counter_type) => Ok(i64::from(object.counters.get(counter_type).copied().unwrap_or(0))),
+            None => object.counters.values().try_fold(0i64, |sum, count|
+                checked_counter_total(sum, i64::from(*count))),
+        };
 
-            if let ChooseSpec::All(filter) = spec.unhinted() {
-                let filter_ctx = continuous_filter_context(ctx.game, controller, source);
-                let mut total = 0;
-                for_each_filter_candidate(ctx, filter, |object| {
-                    let matches = ctx
-                        .effects
-                        .calculate_characteristics(
-                            object.id,
-                            ctx.objects,
-                            ctx.battlefield,
-                            ctx.game,
-                        )
-                        .is_some_and(|chars| {
-                            filter_matches_with_characteristics(
-                                filter,
-                                object,
-                                &chars,
-                                ctx.game,
-                                filter_ctx.you.unwrap_or(object.owner),
-                                filter_ctx.source.unwrap_or(ctx.current_object),
-                            )
-                        });
-                    if matches {
-                        total += counter_total(object);
-                    }
+        if let ChooseSpec::All(filter) = spec.unhinted() {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut total = Ok(0i64);
+            for_each_filter_candidate(ctx, filter, |object| {
+                let subtotal = match &total { Ok(value) => *value, Err(_) => return };
+                let matches = ctx.effects.calculate_characteristics(
+                    object.id, ctx.objects, ctx.battlefield, ctx.game,
+                ).is_some_and(|chars| {
+                    filter_matches_with_characteristics(
+                        filter, object, &chars, ctx.game,
+                        filter_ctx.you.unwrap_or(object.owner),
+                        filter_ctx.source.unwrap_or(ctx.current_object),
+                    )
                 });
-                total
-            } else {
-                object_for_value_spec(spec, ctx, source)
-                    .map(counter_total)
-                    .unwrap_or(0)
-            }
+                if matches {
+                    total = counter_total(object).and_then(|count| checked_counter_total(subtotal, count));
+                }
+            });
+            total
+        } else {
+            object_for_value_spec(spec, ctx, source).map(counter_total).unwrap_or(Ok(0))
         }
     }
+
 }
+/// Keep counter cardinalities wide until their consumer's checked scalar
+/// boundary. Never reinterpret a u32 counter count or a multi-object sum as i32.
+fn checked_counter_total(total: i64, count: i64) -> Result<i64, crate::effects::ExecutionError> {
+    total.checked_add(count).ok_or(crate::effects::ExecutionError::ResourceLimitExceeded {
+        resource: "continuous counter total",
+        requested: total as u128 + count as u128,
+        maximum: i64::MAX as u128,
+    })
+}
+
 fn object_for_value_spec<'a>(
     spec: &ChooseSpec,
     ctx: &'a CalculationContext<'_>,

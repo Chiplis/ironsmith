@@ -1371,6 +1371,42 @@ pub fn parse_same_name_gets_fanout_sentence(
     }
 
     let subject_tokens = &tokens[..verb_idx];
+    if let Some((and_idx, end)) = find_token_word_sequence_span(subject_tokens, &["and", "each", "other"])
+        .or_else(|| find_token_word_sequence_span(subject_tokens, &["and", "all", "other"]))
+        && is_source_reference_words(&non_article_token_word_refs(&subject_tokens[..and_idx]))
+    {
+        let mut filter = parse_object_filter(&subject_tokens[end..], true)?;
+        let source = crate::tag::CompilerReferenceTag::SourceObject;
+        let mut has_name_reference = false;
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
+                && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            {
+                constraint.tag = source.bind().into();
+                has_name_reference = true;
+            }
+        }
+        if !has_name_reference { return Ok(None); }
+        filter.other = true;
+        filter.set_same_name_antecedent_surface(
+            non_article_token_word_refs(&subject_tokens[..and_idx]).last()
+                .and_then(|noun| ironsmith_core::SameNameAntecedentSurface::from_noun(noun)),
+        );
+        let modifiers = collapse_leading_signed_pt_modifier_tokens(&tokens[verb_idx + 1..])
+            .unwrap_or_else(|| tokens[verb_idx + 1..].to_vec());
+        let Some(modifier) = modifiers.first().and_then(OwnedLexToken::as_word) else { return Ok(None); };
+        let (power, toughness) = parse_pt_modifier_values(modifier)?;
+        let (power, toughness, duration, condition) = super::for_each_helpers::parse_get_modifier_values_with_tail(
+            &modifiers, power, toughness,
+        )?;
+        if condition.is_some() {
+            return Err(CardTextError::ParseError("unsupported conditional source-and-name pump".into()));
+        }
+        return Ok(Some(vec![
+            EffectAst::subject_verb_pump(power.clone(), toughness.clone(), TargetAst::Source(None), duration.clone(), None),
+            EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
+        ]));
+    }
     let Some((and_idx, _and_end)) =
         find_token_word_sequence_span(subject_tokens, &["and", "all", "other"])
     else {

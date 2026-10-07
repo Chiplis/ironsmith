@@ -1957,6 +1957,7 @@ impl CardDefinitionBuilder {
                 ));
                 self.with_ability(Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        keyword: None,
                         mana_cost: cost,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![animate]),
                         choices: Vec::new(),
@@ -1982,6 +1983,7 @@ impl CardDefinitionBuilder {
                 let saddle = Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new());
                 self.with_ability(Ability {
                     kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                        keyword: None,
                         mana_cost: cost,
                         effects: crate::resolution::ResolutionProgram::from_effects(vec![saddle]),
                         choices: Vec::new(),
@@ -2830,6 +2832,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::plus_one_counters(1, ChooseSpec::Source),
@@ -2857,6 +2860,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::UnearthEffect::new(),
@@ -2892,6 +2896,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: ResolutionProgram::from_effects(vec![create_embalmed_copy]),
                 choices: vec![],
@@ -2926,6 +2931,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: ResolutionProgram::from_effects(vec![create_eternalized_copy]),
                 choices: vec![],
@@ -2976,6 +2982,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: None,
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::put_counters(
@@ -3009,6 +3016,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu),
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::NinjutsuEffect::new(),
@@ -3948,10 +3956,10 @@ impl CardDefinitionBuilder {
     pub fn afterlife(self, amount: u32) -> Self {
         self.with_ability(Ability::triggered(
             Trigger::this_dies(),
-            vec![Effect::create_tokens(
+            vec![Effect::new(Self::keyword_token_instruction(
                 Self::afterlife_spirit_token(),
                 amount,
-            )],
+            ))],
         ))
     }
 
@@ -3978,7 +3986,7 @@ impl CardDefinitionBuilder {
             },
             EffectMode {
                 source_text: create_description,
-                effects: vec![Effect::create_tokens(Self::fabricate_servo_token(), amount)],
+                effects: vec![Effect::new(Self::keyword_token_instruction(Self::fabricate_servo_token(), amount))],
             },
         ];
 
@@ -4000,7 +4008,7 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![
-                Effect::create_tokens(Self::for_mirrodin_rebel_token(), 1).tag(created_tag.clone()),
+                Effect::new(Self::keyword_token_instruction(Self::for_mirrodin_rebel_token(), 1)).tag(created_tag.clone()),
                 Effect::attach_to(ChooseSpec::Tagged(created_tag)),
             ],
         ))
@@ -4012,7 +4020,7 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![
-                Effect::create_tokens(Self::job_select_hero_token(), 1).tag(created_tag.clone()),
+                Effect::new(Self::keyword_token_instruction(Self::job_select_hero_token(), 1)).tag(created_tag.clone()),
                 Effect::attach_to(ChooseSpec::Tagged(created_tag)),
             ],
         ))
@@ -4026,7 +4034,7 @@ impl CardDefinitionBuilder {
         self.with_ability(Ability::triggered(
             Trigger::this_enters_battlefield(),
             vec![
-                Effect::create_tokens(Self::living_weapon_germ_token(), 1).tag(created_tag.clone()),
+                Effect::new(Self::keyword_token_instruction(Self::living_weapon_germ_token(), 1)).tag(created_tag.clone()),
                 Effect::attach_to(ChooseSpec::Tagged(created_tag)),
             ],
         ))
@@ -4064,10 +4072,13 @@ impl CardDefinitionBuilder {
     /// attacking 1/1 red Warrior creature tokens. Sacrifice them at the
     /// beginning of the next end step."
     pub fn mobilize(self, amount: u32) -> Self {
-        let effect = crate::effects::CreateTokenEffect::new(
+        self.mobilize_value(amount.into())
+    }
+
+    pub fn mobilize_value(self, amount: crate::effect::Value) -> Self {
+        let effect = Self::keyword_token_instruction(
             Self::mobilize_warrior_token(),
             amount,
-            PlayerFilter::You,
         )
         .tapped()
         .attacking()
@@ -4445,6 +4456,10 @@ impl CardDefinitionBuilder {
 
     /// Add suspend with the given time count and cost.
     pub fn suspend(self, time: u32, cost: ManaCost) -> Self {
+        self.suspend_with_time(ironsmith_core::SuspendTime::Fixed(time), cost)
+    }
+
+    pub fn suspend_with_time(self, time: ironsmith_core::SuspendTime, cost: ManaCost) -> Self {
         self.alternative_cast(AlternativeCastingMethod::Suspend { cost, time })
             .with_ability(Ability {
                 kind: AbilityKind::Triggered(TriggeredAbility {
@@ -4710,6 +4725,7 @@ impl CardDefinitionBuilder {
 
         let ability = Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::mana(cost),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::put_counters_on_source(CounterType::Level, 1),
@@ -4746,8 +4762,18 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// Only known keyword-expansion owners call this constructor. The generic
+    /// token executor never guesses word provenance from characteristics.
+    fn keyword_token_instruction(token: CardDefinition, count: impl Into<crate::effect::Value>)
+        -> crate::effects::CreateTokenEffect
+    {
+        let roles = ironsmith_core::TokenTextRoles::rules_implied(
+            ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
+        crate::effects::CreateTokenEffect::you(token, count).with_text_roles(roles)
+    }
+
     fn fabricate_servo_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Servo")
+        CardDefinitionBuilder::new(CardId::new(), "Servo Token")
             .token()
             .card_types(vec![CardType::Artifact, CardType::Creature])
             .subtypes(vec![Subtype::Servo])
@@ -4756,7 +4782,7 @@ impl CardDefinitionBuilder {
     }
 
     fn afterlife_spirit_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Spirit")
+        CardDefinitionBuilder::new(CardId::new(), "Spirit Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Spirit])
@@ -4767,7 +4793,7 @@ impl CardDefinitionBuilder {
     }
 
     fn for_mirrodin_rebel_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Rebel")
+        CardDefinitionBuilder::new(CardId::new(), "Rebel Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Rebel])
@@ -4777,7 +4803,7 @@ impl CardDefinitionBuilder {
     }
 
     fn job_select_hero_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Hero")
+        CardDefinitionBuilder::new(CardId::new(), "Hero Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Hero])
@@ -4786,7 +4812,7 @@ impl CardDefinitionBuilder {
     }
 
     fn living_weapon_germ_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ")
+        CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Phyrexian, Subtype::Germ])
@@ -4796,7 +4822,7 @@ impl CardDefinitionBuilder {
     }
 
     fn mobilize_warrior_token() -> CardDefinition {
-        CardDefinitionBuilder::new(CardId::new(), "Warrior")
+        CardDefinitionBuilder::new(CardId::new(), "Warrior Token")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Warrior])
@@ -4815,8 +4841,19 @@ impl CardDefinitionBuilder {
             .split(|character: char| !character.is_ascii_alphanumeric())
             .any(|word| word.eq_ignore_ascii_case("ante"));
         let canonical_text = self.card_builder.oracle_text_ref().to_string();
+        let mut card = self.card_builder.build();
+        // CR 903.4: printed color CDAs contribute to Commander identity even
+        // when the mana cost has no colored symbols. Keep the indicator and
+        // mana-derived base color unchanged; gameplay applies the ability.
+        for ability in &self.abilities {
+            if let crate::ability::AbilityKind::Static(ability) = &ability.kind
+                && let Some(colors) = ability.characteristic_defining_colors()
+            {
+                card.rules_text_color_identity = card.rules_text_color_identity.union(colors);
+            }
+        }
         let definition = finalize_backup_abilities(CardDefinition {
-            card: self.card_builder.build(),
+            card,
             canonical_text,
             ability_labels: Vec::new(),
             abilities: self.abilities,
@@ -4882,6 +4919,9 @@ mod delayed_trigger_finalization_tests;
 
 #[cfg(test)]
 mod keyword_behavior_tests;
+
+#[cfg(test)]
+mod keyword_token_profile_tests;
 
 #[cfg(test)]
 mod scheme_type_line_tests {

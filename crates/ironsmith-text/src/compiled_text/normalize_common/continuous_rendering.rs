@@ -4550,6 +4550,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
         Until::NextEndStep => "until the next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
+        Until::YourNextUntapStep => "during your next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {
             "for as long as this source remains on the battlefield".to_string()
@@ -4811,6 +4812,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
         cant.duration,
         Until::Forever
             | Until::ControllersNextUntapStep
+            | Until::YourNextUntapStep
             | Until::ThisLeavesTheBattlefield
             | Until::SourceUntaps
             | Until::YouStopControllingThis
@@ -4839,6 +4841,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
     };
 
     let mut text = match cant.duration {
+        Until::YourNextUntapStep => format!("{} {verb} during your next untap step", subject.text),
         Until::ControllersNextUntapStep => {
             format!("{} {verb} during {controller_next_step}", subject.text)
         }
@@ -5352,6 +5355,18 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{subject} can't block")
         }
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            if (ObjectFilter { source_surface: None, ..attacker.clone() })
+                == ObjectFilter::source()
+            {
+                let subject = attacker.source_surface.as_ref()
+                    .map(|surface| surface.display_text().to_string())
+                    .unwrap_or_else(|| "This creature".to_string());
+                return format!(
+                    "{} can't be blocked by {}",
+                    capitalize_first(&subject),
+                    crate::compiled_text::pluralize_noun_phrase(&blockers.description())
+                );
+            }
             // "It can't be blocked by creatures of that color this turn"
             // (Skrelv, Defector Mite): a back-referenced attacker is the
             // subject, not an object of the blockers.
@@ -5382,6 +5397,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 attacker.description()
             )
         }
+        crate::effect::Restriction::MustBlock(filter) => format!(
+            "{} block each combat if able",
+            crate::compiled_text::pluralize_noun_phrase(&filter.description()),
+        ),
         crate::effect::Restriction::MustAttack(filter) => format!(
             "{} attack each combat if able",
             crate::compiled_text::pluralize_noun_phrase(&filter.description()),
@@ -5433,6 +5452,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                     filter.description()
                 )
             }
+        }
+        crate::effect::Restriction::MaximumBlockers { filter, maximum } => {
+            format!("{} can't be blocked by more than {} {}", filter.description(), maximum,
+                if *maximum == 1 { "creature" } else { "creatures" })
+        }
+        crate::effect::Restriction::BecomeSuspected(filter) => {
+            format!("{} can't become suspected", filter.description())
         }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
@@ -5494,13 +5520,14 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
-            let opponent_sources_only =
-                source_filter.controller == Some(crate::target::PlayerFilter::Opponent) && {
-                    let mut stripped = source_filter.clone();
-                    stripped.controller = None;
-                    stripped == ObjectFilter::default()
-                };
-            if opponent_sources_only {
+            format!(
+                "{} can't be the target of spells or abilities from {}",
+                describe_player_set_filter(player),
+                source_filter.description()
+            )
+        }
+        crate::effect::Restriction::PlayerHexproofFrom(player, source_filter) => {
+            if source_filter == &ObjectFilter::default() {
                 return format!("{} have hexproof", describe_player_set_filter(player));
             }
             let source_description = describe_hexproof_from_filter(source_filter);
@@ -5810,10 +5837,12 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Cast => "cast",
         crate::effect::PriorEffectAction::Chosen => "choose",
         crate::effect::PriorEffectAction::ChosenNumber => "choose",
+        crate::effect::PriorEffectAction::Flipped => "flipped",
         crate::effect::PriorEffectAction::Rolled => "roll",
         crate::effect::PriorEffectAction::Connived => "connive",
         crate::effect::PriorEffectAction::Countered => "counter",
         crate::effect::PriorEffectAction::CountersPut => "put counters on",
+        crate::effect::PriorEffectAction::CountersMoved(_) => "move counters",
         crate::effect::PriorEffectAction::DealtDamage => "deal damage to",
         crate::effect::PriorEffectAction::Died => "die",
         crate::effect::PriorEffectAction::Destroyed => "destroy",
@@ -5959,6 +5988,10 @@ fn describe_prior_effect_result_surface(
                 crate::effect::PriorEffectResultActor::Passive,
                 crate::effect::PriorEffectAction::Removed,
             ) => "one or more counters are removed this way".to_string(),
+            (
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectAction::CountersMoved(kind),
+            ) => format!("one or more {} counters are moved this way", kind.description()),
             (
                 crate::effect::PriorEffectResultActor::Passive,
                 crate::effect::PriorEffectAction::Countered,

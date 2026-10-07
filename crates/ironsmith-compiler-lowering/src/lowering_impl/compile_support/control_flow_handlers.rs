@@ -1103,6 +1103,19 @@ pub fn compile_repeat_process_body(
     continue_effect_index: usize,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, EffectId), CardTextError> {
+    // A result-correlated followup is a separate instruction. Its side effects
+    // (including prevention/replacement) must not replace the antecedent's
+    // continuation receipt. Reuse the exact ID created by the shared pair owner.
+    if continue_effect_index == 0 && effects.len() == 2
+        && let Some((compiled, choices)) = compile_if_do_with_player_did(&effects[0], &effects[1], ctx)?
+    {
+        let condition = compiled.last().and_then(|effect| effect.as_if_effect())
+            .map(|effect| effect.condition).ok_or_else(|| CardTextError::InvariantViolation(
+                "a repeated correlated pair must export its antecedent result".into(),
+            ))?;
+        ctx.last_effect_id = Some(condition);
+        return Ok((compiled, choices, condition));
+    }
     fn defines_effect_result_id(effect: &Effect, id: EffectId) -> bool {
         if effect
             .downcast_ref::<crate::effects::WithIdEffect>()

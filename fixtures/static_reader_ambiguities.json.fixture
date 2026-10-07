@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Bedlam",
+    "id": "51ac9983-791e-451e-b085-a2eabc2eaa9d",
+    "oracle_id": "c28d4caf-9b7c-40b1-9cbe-275ca9dae06a",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "Creatures can't block."
+  },
+  {
+    "name": "Orb of Dreams",
+    "id": "5fbe52a3-f85e-4b3a-a345-413b64d69c49",
+    "oracle_id": "2c24b7c3-7c90-4109-a4aa-d9cae6febf34",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "Permanents enter tapped."
+  },
+  {
+    "name": "Noble's Purse",
+    "id": "be533558-3b16-4df0-a0ca-faa1ebf2e641",
+    "oracle_id": "f3f10173-fead-48a2-9726-a4e7efec3951",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "This artifact enters tapped and with three coin counters on it.\n{T}, Remove a coin counter from this artifact: Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")"
+  },
+  {
+    "name": "Sphere of the Suns",
+    "id": "971f7dd0-290f-4ba4-aa2d-29ff148e7778",
+    "oracle_id": "7c709413-dacf-48af-8ac9-8f61b2699bf1",
+    "mana_cost": "{2}",
+    "type_line": "Artifact",
+    "oracle_text": "This artifact enters tapped and with three charge counters on it.\n{T}, Remove a charge counter from this artifact: Add one mana of any color."
+  }
+]

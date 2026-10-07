@@ -439,6 +439,7 @@ mod tests {
         game.set_hidden_card_info(
             id,
             crate::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner,
                 zone: Zone::Hand,
                 slot,

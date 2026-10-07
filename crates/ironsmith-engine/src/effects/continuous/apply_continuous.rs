@@ -1143,7 +1143,7 @@ impl EffectExecutor for ApplyContinuousEffect {
                 game,
                 ctx,
             )
-            .bind_chosen_protection_qualities(game, ctx.source);
+            .bind_chosen_protection_qualities(game, ctx.source, false);
             if let Modification::ChangeController(new_controller) = &resolved_modification {
                 // CR 800.4b: an effect cannot give control of an object to a
                 // player who has left the game.
@@ -1892,6 +1892,7 @@ mod tests {
             .abilities_mut()
             .push(Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::default(),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![]),
                     choices: vec![],

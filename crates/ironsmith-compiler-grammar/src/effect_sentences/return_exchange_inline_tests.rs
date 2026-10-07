@@ -9,6 +9,36 @@ use crate::model::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
 use crate::types::CardType;
 
 #[test]
+fn random_graveyard_return_keeps_selection_count_and_filter() {
+    for (text, expected_count) in [
+        ("a Zombie creature card at random from your graveyard to the battlefield", 1),
+        ("two creature cards at random from your graveyard to the battlefield", 2),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let effect = parse_return(&tokens).unwrap();
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                target: TargetAst::WithCount(inner, count),
+                ..
+            }),
+            ..
+        }) = effect else {
+            panic!("expected a counted battlefield return: {effect:?}");
+        };
+        assert_eq!(count, crate::effect::ChoiceCount::exactly(expected_count).at_random());
+        let TargetAst::Object(filter, None, _) = *inner else {
+            panic!("random resolution choice must not become an announced target");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        if expected_count == 1 {
+            assert_eq!(filter.subtypes, [crate::types::Subtype::Zombie]);
+        }
+    }
+}
+
+#[test]
 fn public_effect_sentence_route_removes_the_return_verb_before_the_clause_parser() {
     let tokens = lex_line("Return this Aura to its owner's hand.", 0)
         .expect("source return sentence should lex");

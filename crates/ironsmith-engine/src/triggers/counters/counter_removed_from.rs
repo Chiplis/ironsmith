@@ -107,14 +107,21 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
     }
 
     fn display(&self) -> String {
+        let exiled_source = self.filter.source && self.filter.zone == Some(crate::zone::Zone::Exile);
+        let zone = if exiled_source { " while it's exiled" } else { "" };
+        let subject = if exiled_source {
+            self.filter.source_surface.as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this card".to_string())
+        } else { self.filter.description() };
         if self.last {
             let counter = self.counter_type.map_or_else(
                 || "counter".to_string(),
                 |counter_type| format!("{} counter", counter_type.description()),
             );
             return format!(
-                "When the last {counter} is removed from {}",
-                self.filter.description()
+                "When the last {counter} is removed from {}{zone}",
+                subject
             );
         }
         let counter_noun = self.counter_type.map_or_else(
@@ -132,8 +139,8 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
             ""
         };
         format!(
-            "Whenever {counter_phrase} removed from {}{this_way}",
-            self.filter.description()
+            "Whenever {counter_phrase} removed from {}{this_way}{zone}",
+            subject
         )
     }
 }
@@ -260,4 +267,16 @@ mod tests {
         );
         assert!(!trigger.matches(&wrong_object, &ctx));
     }
+}
+
+#[cfg(test)]
+#[test]
+fn source_exile_filter_renders_the_event_qualifier_once() {
+    use crate::triggers::matcher_trait::TriggerMatcher;
+    let filter = ObjectFilter::source_with_surface(
+        crate::target::SourceReferenceSurface::ThisPermanentType("this card".into()),
+    ).in_zone(crate::zone::Zone::Exile);
+    let trigger = CounterRemovedFromTrigger::new(filter).counter_type(crate::object::CounterType::Time);
+    assert_eq!(trigger.display(), "Whenever a time counter is removed from this card while it's exiled");
+    assert_eq!(trigger.last().display(), "When the last time counter is removed from this card while it's exiled");
 }

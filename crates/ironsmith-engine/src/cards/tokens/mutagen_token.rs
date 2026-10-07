@@ -19,6 +19,7 @@ use crate::zone::Zone;
 pub fn mutagen_token_definition() -> CardDefinition {
     let ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![
                 Cost::mana(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
                 Cost::tap(),

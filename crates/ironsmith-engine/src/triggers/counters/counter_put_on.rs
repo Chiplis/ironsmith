@@ -161,11 +161,24 @@ impl TriggerMatcher for CounterPutOnTrigger {
         &self,
         event: &TriggerEvent,
     ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
-        (self.one_or_more_objects
-            && self.count_mode == CountMode::OneOrMore
-            && self.counter_number.is_none()
-            && event.kind() == EventKind::MarkersChanged)
-            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::CounterBatch)
+        use crate::game_state::Target;
+        use crate::triggers::matcher_trait::SimultaneousTriggerKey;
+        if self.count_mode != CountMode::OneOrMore || self.counter_number.is_some() {
+            return None;
+        }
+        let markers = event.downcast::<MarkersChangedEvent>()?;
+        if !markers.is_added() || markers.marker.as_counter().is_none() {
+            return None;
+        }
+        if self.one_or_more_objects {
+            return Some(SimultaneousTriggerKey::CounterBatch);
+        }
+        let recipient = markers.object().map(Target::Object)
+            .or_else(|| markers.player().map(Target::Player))?;
+        Some(SimultaneousTriggerKey::CounterRecipient {
+            recipient,
+            actor: self.source_controller.as_ref().and(markers.source_controller),
+        })
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {

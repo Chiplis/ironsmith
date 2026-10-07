@@ -16,6 +16,9 @@ impl TriggerMatcher for PlayerAttackDeclarationTrigger {
         let Some(event) = event.downcast::<PlayerAttackDeclarationEvent>() else {
             return false;
         };
+        if !event.directly_attacked_player && self.grouping != PlayerAttackGrouping::AttackerAnyTarget {
+            return false;
+        }
         player_filter_matches_game(&self.attacker, event.attacker, ctx.game, &ctx.filter_ctx)
             && player_filter_matches_game(&self.defender, event.defender, ctx.game, &ctx.filter_ctx)
     }
@@ -25,7 +28,7 @@ impl TriggerMatcher for PlayerAttackDeclarationTrigger {
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
         let event = event.downcast::<PlayerAttackDeclarationEvent>()?;
         match self.grouping {
-            PlayerAttackGrouping::Attacker => {
+            PlayerAttackGrouping::Attacker | PlayerAttackGrouping::AttackerAnyTarget => {
                 Some(SimultaneousTriggerKey::PlayerAttackActor(event.attacker))
             }
             PlayerAttackGrouping::Defender => {
@@ -35,6 +38,11 @@ impl TriggerMatcher for PlayerAttackDeclarationTrigger {
         }
     }
     fn display(&self) -> String {
+        if self.grouping == PlayerAttackGrouping::AttackerAnyTarget {
+            return format!("Whenever {} {}",
+                crate::triggers::describe_player_filter_subject(&self.attacker),
+                if self.attacker == PlayerFilter::You { "attack" } else { "attacks" });
+        }
         if self.grouping == PlayerAttackGrouping::Defender {
             format!(
                 "Whenever {} is attacked",

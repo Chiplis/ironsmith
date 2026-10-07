@@ -2,6 +2,9 @@ use crate::tag::TagKeyWalk;
 
 use super::*;
 
+#[cfg(feature = "serde")]
+fn serialized_bool_is_false(value: &bool) -> bool { !*value }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AddManaOfChosenColorEffect {
@@ -767,6 +770,9 @@ impl RedirectNextDamageToTargetEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
+    /// Earlier admitted payloads represent unqualified damage.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub combat_only: bool,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
     pub destination_target: Option<ChooseSpec>,
@@ -777,6 +783,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn new(source: RedirectNextTimeDamageSource, target: ChooseSpec) -> Self {
         Self {
             source,
+            combat_only: false,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
             destination_target: None,
@@ -787,6 +794,7 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn from_source_target(source: ChooseSpec) -> Self {
         Self {
             source: RedirectNextTimeDamageSource::Target(source),
+            combat_only: false,
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
             destination_target: None,
@@ -796,6 +804,12 @@ impl RedirectNextTimeDamageToSourceEffect {
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_damage_source(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::DamageSource;
         self.destination_target = None;
         self
     }
@@ -874,6 +888,10 @@ pub struct GrantPlayTaggedEffect<C> {
     pub allow_land: bool,
     /// Semantic mana conversion used while casting the granted cards.
     pub mana_spend_mode: crate::value_model::ManaSpendMode,
+    /// New exact-selection route. Legacy artifacts omit false and retain
+    /// their earlier independently tracked spending permission.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "legacy_tagged_play_mana"))]
+    pub permission_bound_mana: bool,
     /// Compatibility flag for older render-pattern predicates. This is true
     /// for both flexible modes; new code must inspect `mana_spend_mode` when
     /// the distinction between color and type matters.
@@ -907,6 +925,9 @@ pub struct GrantPlayTaggedEffect<C> {
     pub alternative_cost: Option<crate::TotalCost<C>>,
 }
 
+#[cfg(feature = "serde")]
+fn legacy_tagged_play_mana(bound: &bool) -> bool { !*bound }
+
 impl<C> GrantPlayTaggedEffect<C> {
     pub fn new(
         tag: crate::tag::TagKey,
@@ -923,6 +944,7 @@ impl<C> GrantPlayTaggedEffect<C> {
             surface: None,
             allow_land,
             mana_spend_mode,
+            permission_bound_mana: false,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
@@ -1700,11 +1722,18 @@ impl SetClassLevelEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BolsterEffect {
     pub amount: u32,
+    /// A resolving quantity; fixed legacy payloads omit this field.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub amount_value: Option<Value>,
 }
 
 impl BolsterEffect {
     pub fn new(amount: u32) -> Self {
-        Self { amount }
+        Self { amount, amount_value: None }
+    }
+
+    pub fn with_value(amount: Value) -> Self {
+        Self { amount: 0, amount_value: Some(amount) }
     }
 }
 
@@ -1821,6 +1850,33 @@ pub enum CoinFlipKind {
     FaceOnly,
 }
 
+/// An additional stopping condition for successive called flips. A loss always
+/// stops the instruction; this policy never changes a simultaneous fixed batch.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CoinFlipStopCondition {
+    /// Ask the actual flipper after each retained win, including beyond rewards.
+    ChooseToStop,
+    /// Stop after the independently resolved count, or the first loss.
+    CountReached,
+}
+
+/// An explicit instruction-wide consequence of losing a retained called flip.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CoinFlipLossAction {
+    /// The resolving spell has no further effect, including appended text.
+    StopResolution,
+}
+
+/// The retained result groups of one coin associated with each opponent.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CoinFlipOpponentTags {
+    pub won: TagKey,
+    pub lost: TagKey,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct FlipCoinEffect {
@@ -1831,6 +1887,17 @@ pub struct FlipCoinEffect {
     pub forced_face: Option<CoinFace>,
     pub forced_winner: Option<PlayerFilter>,
     pub forced_loser: Option<PlayerFilter>,
+    /// Each retained flip is a fresh batch until an actual loss ends the process.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub repeat_until_loss: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub opponent_results: Option<CoinFlipOpponentTags>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub count_value: Option<Value>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub stop_condition: Option<CoinFlipStopCondition>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub loss_action: Option<CoinFlipLossAction>,
 }
 
 fn single_coin_count() -> u32 {
@@ -1840,6 +1907,11 @@ fn single_coin_count() -> u32 {
 impl FlipCoinEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: CoinFlipKind::Called,
@@ -1851,6 +1923,11 @@ impl FlipCoinEffect {
 
     pub fn face_only(player: PlayerFilter) -> Self {
         Self {
+            repeat_until_loss: false,
+            stop_condition: None,
+            loss_action: None,
+            opponent_results: None,
+            count_value: None,
             count: 1,
             player,
             kind: CoinFlipKind::FaceOnly,
@@ -2197,12 +2274,33 @@ impl ControlCombatChoicesThisTurnEffect {
     }
 }
 
+/// An authored arithmetic operation on a die result, never an extra roll or mana action.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum DieResultModifier {
+    Add(Value),
+    Subtract(Value),
+}
+
+impl DieResultModifier {
+    pub fn value(&self) -> &Value {
+        match self { Self::Add(value) | Self::Subtract(value) => value }
+    }
+
+    pub fn value_mut(&mut self) -> &mut Value {
+        match self { Self::Add(value) | Self::Subtract(value) => value }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RollDieEffect {
     pub player: PlayerFilter,
     pub sides: u32,
     pub die_text: Option<String>,
+    /// Arithmetic performed on this completed roll, after physical die choices.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub result_modifier: Option<DieResultModifier>,
 }
 
 impl RollDieEffect {
@@ -2211,6 +2309,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text: None,
+            result_modifier: None,
         }
     }
 
@@ -2219,6 +2318,7 @@ impl RollDieEffect {
             player,
             sides,
             die_text,
+            result_modifier: None,
         }
     }
 }
@@ -2710,6 +2810,8 @@ impl MoveOneCounterEffect {
 pub enum CounterMoveAmount {
     Exact(Value),
     AnyNumber,
+    /// Every counter of the named kind present on each donor at resolution.
+    All,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2739,6 +2841,10 @@ impl MoveCountersEffect {
     /// Choose zero through the number currently available at resolution.
     pub fn any_number(counter_type: crate::counter::CounterType, from: ChooseSpec, to: ChooseSpec) -> Self {
         Self { counter_type, count: CounterMoveAmount::AnyNumber, from, to }
+    }
+
+    pub fn all(counter_type: crate::counter::CounterType, from: ChooseSpec, to: ChooseSpec) -> Self {
+        Self { counter_type, count: CounterMoveAmount::All, from, to }
     }
 
     pub fn plus_one_counters(count: impl Into<Value>) -> Self {
@@ -4989,6 +5095,10 @@ impl<E> ManaRetainedEffect<E> {
 pub struct MayEffect<E> {
     pub decider: Option<PlayerFilter>,
     pub effects: Vec<E>,
+    /// The complete optional program is a cost, paid atomically before its
+    /// successful outcome can enable a following "if you do" instruction.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub pay_as_cost: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5050,6 +5160,18 @@ pub struct UnlessActionEffect<E> {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CollectManaPaymentsEffect<E> {
+    /// Resolve this complete program with X equal to the accepted payments.
+    /// Every in-game player may contribute, starting with the controller.
+    pub effects: Vec<E>,
+}
+
+impl<E> CollectManaPaymentsEffect<E> {
+    pub fn new(effects: Vec<E>) -> Self { Self { effects } }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,
@@ -5084,6 +5206,8 @@ pub struct ForEachControllerOfTaggedEffect<E> {
 pub struct ForEachTaggedPlayerEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub require_evidence: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

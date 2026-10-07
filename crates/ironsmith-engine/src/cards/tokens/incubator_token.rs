@@ -18,6 +18,7 @@ pub fn incubator_token_definitions() -> (CardDefinition, CardDefinition) {
 
     let transform_ability = Ability {
         kind: AbilityKind::Activated(ActivatedAbility {
+            keyword: None,
             mana_cost: TotalCost::from_costs(vec![Cost::mana(ManaCost::from_pips(vec![vec![
                 ManaSymbol::Generic(2),
             ]]))]),
@@ -36,7 +37,9 @@ pub fn incubator_token_definitions() -> (CardDefinition, CardDefinition) {
         functional_zones: vec![Zone::Battlefield],
     };
 
-    let front = CardDefinitionBuilder::new(front_id, "Incubator")
+    // CR 111.10i supplies the front subtype without an explicit name; 111.4
+    // derives Incubator Token. The back face has the explicit name below.
+    let front = CardDefinitionBuilder::new(front_id, "Incubator Token")
         .token()
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Incubator])
@@ -52,7 +55,7 @@ pub fn incubator_token_definitions() -> (CardDefinition, CardDefinition) {
         .subtypes(vec![Subtype::Phyrexian])
         .power_toughness(PowerToughness::fixed(0, 0))
         .other_face(front_id)
-        .other_face_name("Incubator")
+        .other_face_name("Incubator Token")
         .linked_face_layout(LinkedFaceLayout::TransformLike)
         .build();
 
@@ -74,6 +77,10 @@ mod tests {
     fn incubator_token_has_transform_linked_faces() {
         let (front, back) = incubator_token_definitions();
 
+        assert_eq!(front.card.name, "Incubator Token");
+        assert_eq!(back.card.name, "Phyrexian Token");
+        assert_eq!(front.card.other_face_name.as_deref(), Some("Phyrexian Token"));
+        assert_eq!(back.card.other_face_name.as_deref(), Some("Incubator Token"));
         assert!(front.card.is_token);
         assert!(front.card.card_types.contains(&CardType::Artifact));
         assert!(front.card.subtypes.contains(&Subtype::Incubator));

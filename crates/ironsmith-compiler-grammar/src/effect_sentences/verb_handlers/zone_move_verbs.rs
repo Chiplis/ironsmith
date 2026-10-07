@@ -66,6 +66,8 @@ fn parse_move_counted_counters(
 
     let (count, used) = if grammar::strip_lexed_prefix_phrase(tokens, &["any", "number", "of"]).is_some() {
         (ironsmith_core::effect::CounterMoveAmount::AnyNumber, 3)
+    } else if tokens.first().is_some_and(|token| token.is_word("all")) {
+        (ironsmith_core::effect::CounterMoveAmount::All, 1)
     } else if let Some((count, used)) = crate::util::parse_value(tokens) {
         (ironsmith_core::effect::CounterMoveAmount::Exact(count), used)
     } else {
@@ -95,6 +97,21 @@ fn parse_move_counted_counters(
     };
     if from_tokens.is_empty() || to_tokens.is_empty() {
         return Ok(None);
+    }
+    // A plural donor phrase is the whole set. Choosing the amount for each
+    // donor must not accidentally turn it into a choice of one permanent.
+    let plural_donors = !from_tokens.iter().any(|token| token.is_word("target"))
+        && from_tokens.iter().any(|token| token.is_any_word(&["creatures", "permanents", "artifacts", "lands"]));
+    if plural_donors {
+        if matches!(count, ironsmith_core::effect::CounterMoveAmount::Exact(_)) {
+            return Err(CardTextError::ParseError("a counted transfer from several donors needs a total distribution".into()));
+        }
+        let filter_tokens = grammar::strip_lexed_prefix_phrase(from_tokens, &["all"])
+            .unwrap_or(from_tokens);
+        let filter = crate::object_filters::parse_object_filter(filter_tokens, false)?;
+        let from = TargetAst::Object(filter.clone(), None, None);
+        let to = parse_counter_move_destination(to_tokens, &from)?;
+        return Ok(Some(EffectAst::subject_verb_move_counters_from_all(counter_type, count, filter, to)));
     }
     let from = parse_target_phrase(from_tokens)?;
     let to = parse_counter_move_destination(to_tokens, &from)?;
@@ -209,7 +226,7 @@ pub fn parse_draw(
             if let Ok(max) = u32::try_from(maximum) {
                 return Ok(EffectAst::Sequence { effects: vec![
                     EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, player.clone(),
-                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max })),
+                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max: Some(max), source_owned: false })),
                     subject_verb_player_resource_effect(SubjectVerbRoleAst::AffectedPlayer, player,
                         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: Value::PendingEffectMetric { source: ironsmith_core::EffectMetricSource::Outcome, metric: ironsmith_core::EffectMetric::Count } })),
                 ] });
@@ -761,6 +778,24 @@ fn counter_unless_payment_total_cost(
     ironsmith_core::TotalCost::from_costs(components)
 }
 
+fn counter_with_payment_payer(
+    target: TargetAst,
+    cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+    payer: zone_move_grammar::CounterPaymentPayer,
+) -> EffectAst {
+    match payer {
+        zone_move_grammar::CounterPaymentPayer::SpellController =>
+            EffectAst::subject_verb_counter_unless_pays(target, cost),
+        zone_move_grammar::CounterPaymentPayer::You =>
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                effects: vec![EffectAst::subject_verb_counter(target)],
+                player: PlayerAst::You,
+                cost,
+                before_delayed_step: false,
+            }),
+    }
+}
+
 pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
         return Ok(effect);
@@ -782,6 +817,9 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     "missing pays keyword (clause: '{}')",
                     clause_words.join(" ")
                 ))
+            }
+            zone_move_grammar::CounterClauseShapeError::UnsupportedPayer => {
+                CardTextError::ParseError(format!("unsupported counter payment actor (clause: '{}')", clause_words.join(" ")))
             }
         })?;
     let unless_shape = match shape {
@@ -828,7 +866,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     }
                     Ok::<_, CardTextError>(component)
                 })?;
-                return Ok(EffectAst::subject_verb_counter_unless_pays(target, cost));
+                return Ok(counter_with_payment_payer(target, cost, unless_shape.payer));
             }
         }
         Ok(None) => {
@@ -958,7 +996,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         });
     }
 
-    Ok(EffectAst::subject_verb_counter_unless_pays(
+    Ok(counter_with_payment_payer(
         target,
         counter_unless_payment_total_cost(
             mana,
@@ -968,6 +1006,7 @@ pub fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             x_value,
             dynamic_display_hint,
         ),
+        unless_shape.payer,
     ))
 }
 
@@ -1140,5 +1179,54 @@ mod relative_draw_tests {
         let tokens =
             crate::lexer::lex_line("equal to the difference among strange things", 0).unwrap();
         assert!(parse_draw_equal_to_value(&tokens).unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod counter_payment_actor_tests {
+    use super::*;
+    #[test]
+    fn explicit_you_and_spell_controller_keep_different_payment_owners() {
+        let parse = |text| parse_counter(&crate::lexer::lex_line(text, 0).unwrap());
+        assert!(matches!(parse("that spell unless you sacrifice a creature").unwrap(),
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { player: PlayerAst::You, .. })));
+        for text in ["target spell unless its controller discards their hand",
+            "target spell unless its controller discards a card",
+            "target spell unless its controller exiles all cards from their graveyard",
+            "target spell an opponent controls unless they pay {1}"] {
+            assert!(parse(text).is_ok(), "{text}");
+        }
+        for text in ["target spell unless its controller exiles all cards from their graveyard then wins the game",
+            "target spell unless a creature pays {1}",
+            "target spell unless its controller discards their library",
+            "target spell unless you sacrifice a creature nonsense"] {
+            assert!(parse(text).is_err(), "{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod counted_transfer_shape_tests {
+    use super::*;
+    #[test]
+    fn complete_donor_sets_and_named_all_amounts_keep_typed_cardinality() {
+        for (text, all, amount) in [
+            ("any number of +1/+1 counters from other permanents you control onto this creature", true, "AnyNumber"),
+            ("all +1/+1 counters from all creatures onto it", true, "All"),
+            ("all charge counters from target artifact onto another target artifact", false, "All"),
+            ("any number of +1/+1 counters from this creature onto another target creature", false, "AnyNumber"),
+        ] {
+            let effect = parse_move(&crate::lexer::lex_line(text, 0).unwrap()).unwrap();
+            let debug = format!("{effect:?}");
+            assert!(debug.contains(&format!("from_all: {all}")), "{debug}");
+            assert!(debug.contains(amount), "{debug}");
+        }
+        for text in [
+            "all 2 counters from target creature onto another target creature",
+            "two +1/+1 counters from creatures you control onto this creature",
+            "all +1/+1 counters from target creature onto another target creature and draw a card",
+        ] {
+            assert!(parse_move(&crate::lexer::lex_line(text, 0).unwrap()).is_err(), "{text}");
+        }
     }
 }

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Arcane Investigator",
+    "oracle_id": "19b229c4-1c21-4c7c-a25e-4e8c1cd4ed4b",
+    "oracle_text": "Search the Room — {5}{U}: Roll a d20.\n1—9 | Draw a card.\n10—20 | Look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.",
+    "text": "Mana cost: {1}{U}\nType: Creature — Elf Wizard\nPower/Toughness: 2/1\nSearch the Room — {5}{U}: Roll a d20.\n1—9 | Draw a card.\n10—20 | Look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Herald of Hadar",
+    "oracle_id": "25ab42a5-ec1a-4510-b957-1d4f14fa10b0",
+    "oracle_text": "Circle of Death — {5}{B}: Roll a d20.\n1—9 | Each opponent loses 2 life.\n10—19 | Each opponent loses 2 life and you gain 2 life.\n20 | Each opponent loses 2 life and you gain 2 life. Create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "text": "Mana cost: {4}{B}\nType: Creature — Human Warlock\nPower/Toughness: 4/4\nCircle of Death — {5}{B}: Roll a d20.\n1—9 | Each opponent loses 2 life.\n10—19 | Each opponent loses 2 life and you gain 2 life.\n20 | Each opponent loses 2 life and you gain 2 life. Create two Treasure tokens. (They're artifacts with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Druid of the Emerald Grove",
+    "oracle_id": "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+    "oracle_text": "When this creature enters, search your library for up to two basic land cards and reveal them, then roll a d20.\n9 or less | Put those cards into your hand, then shuffle.\n10—19 | Put one of those cards onto the battlefield tapped and the other into your hand, then shuffle.\n20+ | Put those cards onto the battlefield tapped, then shuffle.",
+    "text": "Mana cost: {3}{G}\nType: Creature — Dwarf Druid\nPower/Toughness: 2/2\nWhen this creature enters, search your library for up to two basic land cards and reveal them, then roll a d20.\n9 or less | Put those cards into your hand, then shuffle.\n10—19 | Put one of those cards onto the battlefield tapped and the other into your hand, then shuffle.\n20+ | Put those cards onto the battlefield tapped, then shuffle.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Diviner's Portent",
+    "oracle_id": "119585c7-ddfa-47ed-b2f8-488ebc156222",
+    "oracle_text": "Roll a d20 and add the number of cards in your hand.\n1—14 | Draw X cards.\n15+ | Scry X, then draw X cards.",
+    "text": "Mana cost: {X}{U}{U}{U}\nType: Instant\nRoll a d20 and add the number of cards in your hand.\n1—14 | Draw X cards.\n15+ | Scry X, then draw X cards.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Bag of Tricks",
+    "oracle_id": "f14ce7d7-6cfa-4f88-a381-d6e912c18b5d",
+    "oracle_text": "{4}{G}, {T}: Roll a d8. Reveal cards from the top of your library until you reveal a creature card with mana value equal to the result. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+    "text": "Type: Artifact\n{4}{G}, {T}: Roll a d8. Reveal cards from the top of your library until you reveal a creature card with mana value equal to the result. Put that card onto the battlefield and the rest on the bottom of your library in a random order.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Danse Macabre",
+    "oracle_id": "a9c58cfe-9630-48fa-84ad-50268eb725ed",
+    "oracle_text": "Each player sacrifices a nontoken creature of their choice. Roll a d20 and add the toughness of the creature you sacrificed this way.\n1—14 | Return a creature card put into a graveyard this way to the battlefield under your control.\n15+ | Return up to two creature cards put into graveyards this way to the battlefield under your control.",
+    "text": null,
+    "status": "HELD; remaining full-body references and tails not yet established"
+  },
+  {
+    "name": "Gale's Redirection",
+    "oracle_id": "8676f007-bf5f-4312-968c-59f4549f7d51",
+    "oracle_text": "Exile target spell, then roll a d20 and add that spell's mana value.\n1—14 | You may cast the exiled card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.\n15+ | You may cast the exiled card without paying its mana cost for as long as it remains exiled.",
+    "text": null,
+    "status": "HELD; remaining full-body references and tails not yet established"
+  },
+  {
+    "name": "Revivify",
+    "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+    "oracle_text": "Roll a d20 and add the number of creature cards in your graveyard that were put there from the battlefield this turn.\n1—14 | Return all creature cards in your graveyard that were put there from the battlefield this turn to your hand.\n15+ | Return those cards from your graveyard to the battlefield.",
+    "text": null,
+    "status": "HELD; remaining full-body references and tails not yet established"
+  },
+  {
+    "name": "Song of Inspiration",
+    "oracle_id": "bdb80d7b-672c-4e2a-b93b-9b96721b93f2",
+    "oracle_text": "Choose up to two target permanent cards in your graveyard. Roll a d20 and add the total mana value of those cards.\n1—14 | Return those cards to your hand.\n15+ | Return those cards to your hand. You gain life equal to their total mana value.",
+    "text": "Mana cost: {3}{G}{G}\nType: Instant\nChoose up to two target permanent cards in your graveyard. Roll a d20 and add the total mana value of those cards.\n1—14 | Return those cards to your hand.\n15+ | Return those cards to your hand. You gain life equal to their total mana value.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  },
+  {
+    "name": "Wyll's Reversal",
+    "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+    "oracle_text": "Choose target spell or ability with one or more targets. Roll a d20 and add the greatest power among creatures you control.\n1—14 | You may choose new targets for that spell or ability.\n15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.",
+    "text": "Mana cost: {1}{R}{R}\nType: Instant\nChoose target spell or ability with one or more targets. Roll a d20 and add the greatest power among creatures you control.\n1—14 | You may choose new targets for that spell or ability.\n15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.",
+    "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
+  }
+]

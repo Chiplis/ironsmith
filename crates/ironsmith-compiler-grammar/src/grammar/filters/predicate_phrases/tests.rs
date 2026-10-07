@@ -188,7 +188,7 @@ fn parse_predicate_paid_cost_labels_use_capture_parser() -> Result<(), CardTextE
             PredicateAst::ThisSpellPaidLabel("Surge".into()),
         ),
         (
-            "If this creature's spectacle cost was paid instead discard your hand",
+            "If this creature's spectacle cost was paid",
             PredicateAst::ThisSpellPaidLabel("Spectacle".into()),
         ),
         (
@@ -2380,6 +2380,10 @@ fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTe
             "If this creature attacked or blocked this turn",
             PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn),
         ),
+        (
+            "If this creature attacked or blocked this combat",
+            PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat),
+        ),
     ] {
         let tokens = lex_line(text, 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);
@@ -3937,7 +3941,7 @@ fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), C
         ),
     ] {
         let tokens = lex_line(text, 0)?;
-        let PredicateAst::TaggedMatches(tag, filter) = parse_predicate(&tokens)? else {
+        let PredicateAst::TaggedMatchedLastKnown(tag, filter) = parse_predicate(&tokens)? else {
             panic!("expected tagged cost-object predicate for {text}");
         };
         assert_eq!(
@@ -4400,4 +4404,83 @@ fn monarch_at_turn_begin_is_a_historical_predicate_not_current_designation() {
     );
     let tokens = crate::lexer::lex_line("you were the monarch during an unknown time", 0).unwrap();
     assert!(parse_predicate(&tokens).is_err());
+}
+
+#[test]
+fn foretold_spell_predicate_is_distinct_from_exile_and_payment() -> Result<(), CardTextError> {
+    let tokens = lex_line("If this spell was foretold", 0)?;
+    assert_eq!(parse_predicate(&predicate_tokens_after_if(&tokens))?, PredicateAst::ThisSpellWasForetold);
+    for text in ["If this spell was cast from exile", "If this spell was kicked"] {
+        let tokens = lex_line(text, 0)?;
+        assert!(!matches!(parse_predicate(&predicate_tokens_after_if(&tokens))?, PredicateAst::ThisSpellWasForetold));
+    }
+    Ok(())
+}
+
+#[test]
+fn suspected_predicates_distinguish_source_pronoun_and_paid_history() {
+    for text in ["it's suspected", "it is suspected", "any of them are suspected"] {
+        let predicate = parse_predicate(&lex_line(text, 0).unwrap()).unwrap();
+        assert!(matches!(predicate, PredicateAst::ItMatches(filter) if filter.suspected), "{text}");
+    }
+    assert!(matches!(parse_predicate(&lex_line("this creature is suspected", 0).unwrap()).unwrap(), PredicateAst::Source(SourcePredicateAst::SourceSuspected)));
+    let predicate = parse_predicate(&lex_line("the sacrificed creature was suspected", 0).unwrap()).unwrap();
+    assert!(matches!(predicate, PredicateAst::TaggedMatchedLastKnown(tag, filter) if filter.suspected && tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str()));
+}
+
+#[test]
+fn alternative_payment_tails_consume_and_preserve_the_temporal_bound() -> Result<(), CardTextError> {
+    for text in ["her sneak cost was paid this turn", "this creature's sneak cost was paid this turn"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()));
+    }
+    for text in ["her sneak cost was paid last turn", "her sneak cost was paid this turn or last turn",
+        "her sneak cost was paid instead discard your hand"] {
+        assert!(advanced::parse_paid_cost_label_predicate(&lex_line(text, 0)?).is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn public_paid_predicate_reader_rejects_tokens_hidden_by_word_projection() -> Result<(), CardTextError> {
+    for text in [
+        "her sneak cost was paid {R} this turn",
+        "her sneak cost was paid this turn {R}",
+        "her sneak cost was paid (this turn)",
+        "her sneak cost was paid: this turn",
+        "her sneak cost was paid this; turn",
+        "her sneak cost was paid this turn;",
+        "her sneak: cost was paid this turn",
+        "her sneak cost was paid this turn)",
+    ] {
+        assert!(parse_predicate(&lex_line(text, 0)?).is_err(), "{text}");
+    }
+    for text in ["her sneak cost was paid this turn.", "her sneak cost was paid this turn,"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()));
+    }
+    for text in ["her sneak cost wasn't paid this turn", "her sneak cost was not paid this turn"] {
+        assert_eq!(parse_predicate(&lex_line(text, 0)?)?, PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::from("Sneak").this_turn()))));
+    }
+    Ok(())
+}
+
+#[test]
+fn activation_threshold_requires_the_exact_ability_current_turn_and_complete_predicate() {
+    for (word, count) in [("four", 4), ("7", 7)] {
+        let tokens = lex_line(&format!("this ability has been activated {word} or more times this turn"), 0).unwrap();
+        assert_eq!(super::parse_this_ability_activation_count_predicate(&tokens),
+            Some(PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count))));
+        assert_eq!(parse_predicate(&tokens).unwrap(),
+            PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)));
+    }
+    for text in [
+        "this ability has resolved four or more times this turn",
+        "an ability has been activated four or more times this turn",
+        "this ability has been activated four or more times last turn",
+        "this ability has been activated four or more times this turn or was copied",
+    ] {
+        assert!(super::parse_this_ability_activation_count_predicate(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+    }
 }

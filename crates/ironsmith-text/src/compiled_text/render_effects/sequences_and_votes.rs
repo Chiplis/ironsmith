@@ -7361,7 +7361,7 @@ pub(super) fn describe_hand_choose_then_zone_move(effects: &[&Effect]) -> Option
         };
         let order_suffix = match move_to_zone.library_order.as_ref() {
             Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) => " in any order",
+            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) => " in any order",
             None => "",
         };
         return Some(format!(
@@ -7421,7 +7421,7 @@ pub(super) fn describe_target_player_choose_hand_top_library_any_order(
     } else {
         match move_to_zone.library_order.as_ref() {
             Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
-            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | None => " in any order",
+            Some(crate::effects::LibraryPlacementOrder::ChosenBy(_)) | Some(crate::effects::LibraryPlacementOrder::Owners) | None => " in any order",
         }
     };
     Some(format!(

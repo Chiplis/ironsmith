@@ -54,6 +54,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             _ => None,
         }
     }
+    pub(super) fn numeric_origin(&self)->Option<&'a crate::continuous::AbilityOrigin>{
+        match self.mode {Mode::Continuous(layer)=>layer.numeric_origin,_=>None}
+    }
     pub(super) fn layer(&self) -> LayerValueContext<'a, 'game> {
         match self.mode {
             Mode::Continuous(layer) => layer,
@@ -110,7 +113,12 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
     ) -> Result<&crate::player::Player, ExecutionError> {
         let id = match self.mode {
             Mode::Execution(ctx) => resolve_player_filter(self.game, filter, ctx)?,
-            Mode::Continuous(layer) => layer.single_player(value, filter),
+            Mode::Continuous(layer) => match layer.aggregate_players(filter).as_slice() {
+                [player] => *player,
+                _ => return Err(ExecutionError::UnresolvableValue(format!(
+                    "{value:?} requires one available player in continuous-effect context",
+                ))),
+            },
         };
         self.game
             .player(id)
@@ -180,6 +188,35 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         }
     }
 
+    /// Source-controller and explicit-player histories need an available
+    /// player even when their retained draw history is genuinely empty.
+    /// Other history filters keep their existing participant-binding owner.
+    pub(super) fn validate_history_player_reference(
+        &self,
+        value: &Value,
+        filter: &PlayerFilter,
+    ) -> Result<(), ExecutionError> {
+        if !matches!(filter, PlayerFilter::You | PlayerFilter::Specific(_)) {
+            return Ok(());
+        }
+        let players = self.aggregate_player_ids(value, filter)?;
+        if players.is_empty() {
+            return Err(ExecutionError::UnresolvableValue(
+                "draw history requires an available referenced player".into(),
+            ));
+        }
+        for player in players {
+            let evidence = self.game.player(player)
+                .ok_or(ExecutionError::PlayerNotFound(player))?;
+            if !evidence.is_in_game() {
+                return Err(ExecutionError::UnresolvableValue(
+                    "draw history referenced player is no longer available".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn count_objects(&self, filter: &ObjectFilter, allow_prevented_amount: bool) -> i32 {
         let Some(ctx) = self.execution() else {
             return self.layer().count(filter);
@@ -215,7 +252,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                 .filter(|attachment| filter.matches_snapshot(attachment, &filter_ctx, self.game))
                 .count() as i32;
         }
-        if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+        if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
             let count = snapshots
                 .iter()
                 .filter(|snapshot| {
@@ -329,7 +366,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
-                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
                     for snapshot in snapshots.iter().filter(|snapshot| {
                         filter.matches_snapshot(snapshot, &filter_ctx, self.game)
                     }) {
@@ -419,6 +456,42 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         }
     }
 
+    /// Current-name reductions must observe layer-one copy and name changes.
+    /// Tagged historical collections continue to use their captured names.
+    pub(super) fn distinct_names(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
+        let mut names = std::collections::HashSet::new();
+        match self.mode {
+            Mode::Execution(ctx) => {
+                let filter_ctx = ctx.filter_context(self.game);
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
+                    for snapshot in snapshots.iter().filter(|snapshot| {
+                        value_tagged_snapshot_matches_filter(self.game, filter, &filter_ctx, snapshot)
+                    }) {
+                        names.insert(snapshot.name.to_string());
+                    }
+                } else {
+                    let ids = value_candidate_ids_for_filter(self.game, filter, ctx)
+                        .into_iter().filter(|id| !self.game.is_phased_out(*id)).collect::<Vec<_>>();
+                    let frame = self.game.try_current_characteristics_batch(&ids)
+                        .map_err(ExecutionError::ContinuousDiscovery)?;
+                    for id in ids {
+                        let object = self.game.object(id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                            format!("distinct names has no current object for candidate {id:?}")))?;
+                        if !filter.matches(object, &filter_ctx, self.game) { continue; }
+                        let chars = frame.get(&id).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                            format!("distinct names has no current characteristics for object {id:?}")))?;
+                        names.insert(chars.name.to_string());
+                    }
+                }
+            }
+            Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
+                names.insert(chars.name.to_string());
+            }),
+        }
+        i64::try_from(names.len()).map_err(|_| ExecutionError::UnresolvableValue(
+            "distinct current names exceed the scalar range".into()))
+    }
+
     pub(super) fn visit_property_objects(
         &self,
         filter: &ObjectFilter,
@@ -427,7 +500,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
-                if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                if let Some(snapshots) = value_tagged_snapshots_for_filter(self.game, filter, ctx) {
                     for snapshot in snapshots.iter().filter(|snapshot| {
                         filter.matches_snapshot(snapshot, &filter_ctx, self.game)
                     }) {
@@ -479,12 +552,6 @@ impl PropertyObject<'_> {
         match self {
             Self::Live(object) | Self::LayerBaseline(object) => object.colors(),
             Self::Snapshot(snapshot) => snapshot.colors,
-        }
-    }
-    pub(super) fn name(&self) -> &str {
-        match self {
-            Self::Live(object) | Self::LayerBaseline(object) => &object.name,
-            Self::Snapshot(snapshot) => &snapshot.name,
         }
     }
     pub(super) fn counters(&self) -> &std::collections::BTreeMap<crate::object::CounterType, u32> {
@@ -673,11 +740,108 @@ impl EvaluationContext<'_, '_> {
             Err(ExecutionError::ObjectNotFound(self.source))
         }
     }
+    pub(super) fn object_number_wide(
+        &self,
+        spec: &ChooseSpec,
+        property: NumericProperty,
+    ) -> Result<i64, ExecutionError> {
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && matches!(ironsmith_core::tag::SacrificeCostTag::parse(tag), Some(ironsmith_core::tag::SacrificeCostTag::OriginalResult(_)))
+        {
+            let missing = || {
+                let error = ExecutionError::IncompleteEvidence("sacrificed-object quantity requires the completed original cost result".into());
+                self.game.record_token_resource_failure(&error); error
+            };
+            let snapshots = self.execution().and_then(|ctx| ctx.tagged_objects.get(tag)).ok_or_else(missing)?;
+            return snapshots.iter().try_fold(0i64, |total, snapshot| {
+                if snapshot.zone != crate::zone::Zone::Battlefield { return Err(missing()); }
+                total.checked_add(i64::from(property.snapshot(snapshot).unwrap_or(0)))
+                    .ok_or_else(|| ExecutionError::UnresolvableValue("sacrificed-object characteristic sum exceeds the scalar range".into()))
+            });
+        }
+        if matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+            && matches!(property, NumericProperty::Power | NumericProperty::Toughness | NumericProperty::ManaValue)
+            && let Some(ctx) = self.execution()
+        {
+            let missing = |message: &str| {
+                let error = ExecutionError::IncompleteEvidence(message.into());
+                self.game.record_token_resource_failure(&error);
+                error
+            };
+            // CR 607.3: repeated executions of the linked exile ability can
+            // leave several cards; a characteristic question uses their sum.
+            // Read the source incarnation's live link table, never a captured
+            // tag or an unrelated prior effect. An empty link set is known
+            // zero, including after an exiled card leaves before resolution.
+            if self.game.object(ctx.source).is_none()
+                && !ctx.source_snapshot.as_ref().is_some_and(|snapshot| snapshot.object_id == ctx.source) {
+                return Err(missing("linked exile quantity requires the original source identity"));
+            }
+            let owner = ctx.linked_exile_owner.as_ref().ok_or_else(||
+                missing("linked exile quantity requires explicit pair and acquisition metadata"))?;
+            let members = self.game.linked_exile_pair_members(owner).map_err(|error| {
+                self.game.record_token_resource_failure(&error);
+                error
+            })?;
+            return members.iter().try_fold(0i64, |total, id| {
+                let object = self.game.object(*id).ok_or_else(||
+                    missing("linked exile quantity has an unavailable linked object"))?;
+                if object.zone != crate::zone::Zone::Exile { return Ok(total); }
+                let chars = self.game.try_current_characteristics(*id).map_err(|discovery| {
+                    let error = ExecutionError::ContinuousDiscovery(discovery);
+                    self.game.record_token_resource_failure(&error);
+                    error
+                })?.ok_or_else(|| missing("linked exile characteristics are unavailable"))?;
+                // Checked absence is zero (CR 107.2); failed discovery and
+                // range validation never fall back to a printed card value.
+                let number = match property {
+                    NumericProperty::Power => i64::from(chars.power.unwrap_or(0)),
+                    NumericProperty::Toughness => i64::from(chars.toughness.unwrap_or(0)),
+                    NumericProperty::ManaValue => i64::from(chars.linked_face_mana_value
+                        .unwrap_or_else(|| chars.mana_cost.as_ref().map_or(0, |cost| cost.mana_value()))),
+                    _ => unreachable!("linked characteristic guard"),
+                };
+                total.checked_add(number)
+                    .ok_or_else(|| ExecutionError::UnresolvableValue(
+                        "linked exile characteristic sum exceeds the scalar range".into(),
+                    ))
+            });
+        }
+        self.object_number(spec, property).map(i64::from)
+    }
+
     pub(super) fn object_number(
         &self,
         spec: &ChooseSpec,
         property: NumericProperty,
     ) -> Result<i32, ExecutionError> {
+        if matches!(spec.base(), ChooseSpec::Tagged(tag)
+            if tag.as_str() == crate::tag::SOURCE_EMERGE_SACRIFICE_TAG)
+        {
+            let missing = || {
+                let error = ExecutionError::IncompleteEvidence(
+                    "Emerge requires a complete original sacrifice receipt".into(),
+                );
+                self.game.record_token_resource_failure(&error);
+                error
+            };
+            let ctx = self.execution().ok_or_else(missing)?;
+            let receipts = ctx.tagged_objects.get(crate::tag::SOURCE_EMERGE_SACRIFICE_TAG)
+                .filter(|receipts| receipts.len() <= 1).ok_or_else(missing)?;
+            // A paid cost may be wholly prevented/replaced (CR 118.11,
+            // 614.6). The known absence of any sacrificed creature gives
+            // zero (CR 107.2), distinct from unavailable payment evidence.
+            if receipts.is_empty() { return Ok(0); }
+            let receipt = &receipts[0];
+            if receipt.zone != crate::zone::Zone::Battlefield
+                || !receipt.card_types.contains(&crate::types::CardType::Creature)
+                || receipt.toughness.is_none()
+            { return Err(missing()); }
+            // A completed sacrifice may be redirected. Later changes or new
+            // incarnations cannot overwrite its immutable pre-departure LKI.
+            return property.snapshot(receipt).ok_or_else(missing);
+        }
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };
@@ -691,6 +855,16 @@ impl EvaluationContext<'_, '_> {
             && let Some(snapshot) = source_lki_for_moved_current_object(self.game, ctx)
         {
             return property.snapshot(snapshot).ok_or_else(|| missing("had"));
+        }
+        // A completed selection/consultation may authoritatively match no
+        // object. Its characteristic is known to be zero (CR 107.2), rather
+        // than an invalid target or a request to borrow another result set.
+        // An absent tag remains missing evidence and takes the normal error
+        // path below; only an explicitly retained empty set qualifies.
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && ctx.get_tagged_all(tag).is_some_and(Vec::is_empty)
+        {
+            return Ok(0);
         }
         // A tagged object that left its zone is read from its last known
         // information before any live lookup, which can no longer find it
@@ -735,7 +909,9 @@ impl EvaluationContext<'_, '_> {
                 self.game
                     .players
                     .iter()
-                    .filter(|p| p.is_in_game() && filter.matches_player(p.id, &filter_ctx))
+                    .filter(|p| p.is_in_game() && crate::filter::player_filter_matches_game(
+                        filter, p.id, self.game, &filter_ctx,
+                    ))
                     .map(|p| p.id)
                     .collect()
             }
@@ -986,5 +1162,43 @@ mod known_noncreature_source_tests {
             crate::effects::helpers::resolve_value(&game, &Value::SourcePower, &ctx),
             Err(ExecutionError::UnresolvableValue(_))
         ));
+    }
+}
+
+#[cfg(test)]
+mod qualified_player_count_tests {
+    use super::*;
+
+    #[test]
+    fn counted_hand_advantage_matches_current_hands_and_team_opponents_in_both_contexts() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Teammate".into(), "Dan".into()], 20);
+        let [alice, bob, teammate, dan] = std::array::from_fn(|index| game.players[index].id);
+        game.restore_alternating_teams(vec![vec![alice, teammate], vec![bob, dan]],
+            vec![alice, bob, teammate, dan], alice,
+            crate::game_state::FreeForAllAttackOption::MultiplePlayers, None, false).unwrap();
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Count witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        for (owner, size) in [(alice, 2), (bob, 3), (teammate, 7), (dan, 2)] {
+            for _ in 0..size { game.create_object_from_card(&card, owner, Zone::Hand); }
+        }
+        let count = Value::CountPlayers(PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base: Box::new(PlayerFilter::Opponent), count: 1,
+        });
+        let check = |game: &GameState, expected| {
+            let ctx = ExecutionContext::new_default(source, alice);
+            assert_eq!(super::super::resolve(&count, &EvaluationContext::execution_context(game, &ctx)).unwrap(), expected);
+            assert_eq!(crate::continuous::resolve_value_direct(&count, game.objects_map(), &[], &game.battlefield,
+                &std::collections::HashSet::new(), source, alice, game), expected);
+        };
+        check(&game, 1);
+        let discarded = game.player(bob).unwrap().hand[0];
+        game.move_object_by_effect(discarded, Zone::Graveyard);
+        check(&game, 0);
+        game.create_object_from_card(&card, dan, Zone::Hand);
+        check(&game, 1);
+        let discarded = game.player(alice).unwrap().hand[0];
+        game.move_object_by_effect(discarded, Zone::Graveyard);
+        check(&game, 2);
     }
 }

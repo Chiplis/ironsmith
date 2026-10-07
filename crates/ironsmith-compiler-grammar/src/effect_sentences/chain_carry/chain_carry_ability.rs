@@ -86,7 +86,10 @@ pub(super) fn effect_duration_for_gain_followup_carry(effect: &EffectAst) -> Opt
                 | SubjectVerbActionAst::Characteristics(
                     CharacteristicActionAst::BecomeBasicLandTypeChoice { duration, .. },
                 )
-                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                    duration,
+                    ..
+                }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                     duration,
                     ..
                 })

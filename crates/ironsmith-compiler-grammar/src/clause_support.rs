@@ -352,43 +352,120 @@ fn all_magic_colors() -> crate::color::ColorSet {
         .union(crate::color::ColorSet::GREEN)
 }
 
-fn protection_from_each_mana_value_among_action(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
-    let chain = clause_grammar::parse_protection_chain_tokens(tokens)?;
-    let target = chain.targets.first()?;
-    let ProtectionTargetKind::EachManaValueAmong { filter_word_first } = target.kind else {
-        return None;
-    };
-    let view = TokenWordView::new(tokens);
-    let filter_token_first = *view.token_start_indices().get(filter_word_first)?;
-    let filter_tokens = trim_commas(&tokens[filter_token_first..]);
-    (!filter_tokens.is_empty())
-        .then(|| {
-            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
-                &filter_tokens,
-                false,
-            ))
-        })
-        .flatten()
-        .map(KeywordAction::ProtectionFromEachManaValueAmong)
+/// Check the original punctuation before generic splitters can erase an
+/// empty protection-list component.
+fn invalid_protection_list_delimiters(tokens: &[OwnedLexToken]) -> bool {
+    if !tokens.iter().any(|token| token.is_word("protection")) { return false; }
+    let body = if tokens.last().is_some_and(|token|
+        token.kind == crate::lexer::TokenKind::Period)
+    { &tokens[..tokens.len() - 1] } else { tokens };
+    let delimiter = |token: &OwnedLexToken| matches!(token.kind,
+        crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Semicolon);
+    body.first().is_some_and(delimiter)
+        || body.last().is_some_and(delimiter)
+        || body.windows(2).any(|pair| delimiter(&pair[0])
+            && (delimiter(&pair[1]) || pair[1].kind == crate::lexer::TokenKind::Period))
+}
+
+/// Keep raw static grants ahead of readers that trim punctuation or quote
+/// provenance. Resolution `gains` and quoted activated/triggered abilities
+/// keep their own readers and controller semantics.
+pub fn validate_protection_static_line(tokens: &[OwnedLexToken]) -> Result<(), CardTextError> {
+    let mut in_quote = false;
+    let mut continuous_grant = false;
+    let mut resolution_body = clause_grammar::parse_trigger_intro_tokens(tokens).body_first > 0;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_quote() {
+            if !in_quote && continuous_grant && !resolution_body {
+                let tail = &tokens[index + 1..];
+                if let Some(end) = tail.iter().position(OwnedLexToken::is_quote) {
+                    let body = &tail[..end];
+                    let words = TokenWordView::new(body).word_refs();
+                    if !body.iter().any(|token| token.kind == crate::lexer::TokenKind::Colon)
+                        && clause_grammar::parse_trigger_intro_tokens(body).body_first == 0
+                        && words.windows(5).any(|words|
+                            words == ["protection", "from", "each", "color", "among"])
+                    {
+                        return Err(CardTextError::ParseError(
+                            "quoted continuous color-population protection needs recipient-owned grant provenance".into()));
+                    }
+                }
+            }
+            in_quote = !in_quote;
+            continue;
+        }
+        if in_quote { continue; }
+        if token.kind == crate::lexer::TokenKind::Colon { resolution_body = true; }
+        if token.kind == crate::lexer::TokenKind::Period { continuous_grant = false; }
+        if token.is_any_word(&["gain", "gains"]) {
+            continuous_grant = false;
+            continue;
+        }
+        if !token.is_any_word(&["has", "have"]) { continue; }
+        continuous_grant = true;
+        let tail = &tokens[index + 1..];
+        let mut quoted_tail = false;
+        let mut has_protection = false;
+        let end = tail.iter().position(|token| {
+            if token.is_quote() { quoted_tail = !quoted_tail; }
+            if !quoted_tail && token.is_word("protection") { has_protection = true; }
+            !quoted_tail && token.kind == crate::lexer::TokenKind::Period
+        }).unwrap_or(tail.len());
+        if has_protection && invalid_protection_list_delimiters(&tail[..end]) {
+            return Err(CardTextError::ParseError("malformed protection grant list delimiter".into()));
+        }
+    }
+    if !tokens.iter().any(OwnedLexToken::is_quote)
+        && invalid_protection_list_delimiters(tokens)
+    {
+        return Err(CardTextError::ParseError("malformed protection list delimiter".into()));
+    }
+    Ok(())
+}
+
+/// The outer Option distinguishes another keyword family from malformed
+/// protection. A following keyword is a separate, completely parsed component.
+pub fn parse_protection_keyword_line(tokens: &[OwnedLexToken]) -> Option<Option<Vec<KeywordAction>>> {
+    // Validate before either public reader can drop empty list spans,
+    // including a malformed suffix after an ordinary mixed keyword.
+    if invalid_protection_list_delimiters(tokens) { return Some(None); }
+    let first = usize::from(tokens.first().is_some_and(|token| token.is_word("and")));
+    if !tokens.get(first).is_some_and(|token| token.is_word("protection")) { return None; }
+    for (index, token) in tokens.iter().enumerate() {
+        if !matches!(token.kind, crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Semicolon) { continue; }
+        let tail = &tokens[index + 1..];
+        if tail.is_empty() { return Some(None); }
+        let start = usize::from(tail.first().is_some_and(|token| token.is_word("and")));
+        if tail.get(start).is_some_and(|token| token.is_word("from")) { continue; }
+        let Some(mut prefix) = parse_protection_chain(&tokens[..index]) else { return Some(None); };
+        let Some(suffix) = parse_ability_line_lexed(tail) else { return Some(None); };
+        prefix.extend(suffix);
+        return Some(Some(prefix));
+    }
+    Some(protection_from_colored_spells_action(tokens).map(|action| vec![action])
+        .or_else(|| parse_protection_chain(tokens)))
 }
 
 pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let chain = clause_grammar::parse_protection_chain_tokens(tokens)?;
     let words = TokenWordView::new(tokens).word_refs();
     let mut actions = Vec::new();
-    for (target_index, target) in chain.targets.iter().enumerate() {
+    for target in &chain.targets {
         let action = match target.kind {
             ProtectionTargetKind::EachManaValueAmong { filter_word_first } => {
                 let filter_token_first = *TokenWordView::new(tokens)
                     .token_start_indices()
                     .get(filter_word_first)?;
-                let filter_tokens = trim_commas(&tokens[filter_token_first..]);
+                let filter_tokens = trim_commas(&tokens[filter_token_first..target.target_token_end]);
                 crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
                     &filter_tokens,
                     false,
                 ))
                 .map(KeywordAction::ProtectionFromEachManaValueAmong)
             }
+            ProtectionTargetKind::ManaValueParity(parity) => Some(
+                KeywordAction::ProtectionFromFilter(ObjectFilter::default().with_mana_value_parity(parity)),
+            ),
             ProtectionTargetKind::ManaValuesOtherThanChosenNumber => {
                 Some(KeywordAction::ProtectionFromManaValuesOtherThanChosenNumber)
             }
@@ -403,7 +480,7 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             ProtectionTargetKind::ManaValue {
                 comparison_word_first,
             } => {
-                let comparison_tail = words.get(comparison_word_first..)?;
+                let comparison_tail = words.get(comparison_word_first..target.target_word_end)?;
                 let (comparison, consumed) = crate::grammar::primitives::probe_shape(
                     parse_filter_comparison_tokens("mana value", comparison_tail, &words),
                 )??;
@@ -414,7 +491,7 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 })
             }
             ProtectionTargetKind::PermanentWithCounter { counter_word_first } => {
-                let counter_words = words.get(counter_word_first..)?;
+                let counter_words = words.get(counter_word_first..target.target_word_end)?;
                 parse_filter_counter_constraint_words(counter_words).and_then(
                     |(with_counter, consumed)| {
                         (consumed == counter_words.len()).then(|| {
@@ -445,6 +522,23 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 filter.chosen_card_type = true;
                 Some(KeywordAction::ProtectionFromFilter(filter))
             }
+            ProtectionTargetKind::OwnColors => Some(KeywordAction::ProtectionFromOwnColors),
+            ProtectionTargetKind::EachColorAmong { filter_word_first } => {
+                let first = *TokenWordView::new(tokens).token_start_indices().get(filter_word_first)?;
+                // This live family is intentionally bounded to the printed
+                // permanent population; future scopes need their own review.
+                let scope_tokens = &tokens[first..target.target_token_end];
+                crate::grammar::primitives::probe_all(scope_tokens,
+                    crate::grammar::primitives::phrase(&["permanents", "you", "control"]),
+                    "complete controlled-permanent color scope")?;
+                Some(KeywordAction::ProtectionFromColorsAmong(ObjectFilter::permanent().you_control()))
+            }
+            ProtectionTargetKind::Monocolored => Some(KeywordAction::ProtectionFromFilter(
+                ObjectFilter::default().monocolored(),
+            )),
+            ProtectionTargetKind::Snow => Some(KeywordAction::ProtectionFromFilter(
+                ObjectFilter::default().with_supertype(crate::types::Supertype::Snow),
+            )),
             ProtectionTargetKind::Colorless => Some(KeywordAction::ProtectionFromColorless),
             ProtectionTargetKind::Multicolored => Some(KeywordAction::ProtectionFromFilter(
                 ObjectFilter::default().multicolored(),
@@ -458,16 +552,7 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
             ProtectionTargetKind::Named => {
                 // The quality runs from the named word to the next "from"
                 // (or the end); "and"/"or" before that "from" is a separator.
-                let end_word = chain
-                    .targets
-                    .get(target_index + 1)
-                    .map_or(words.len(), |next| next.target_word.saturating_sub(1));
-                let mut tail_end = end_word;
-                while tail_end > target.target_word + 1
-                    && matches!(words.get(tail_end - 1), Some(&("and" | "or")))
-                {
-                    tail_end -= 1;
-                }
+                let tail_end = target.target_word_end;
                 if tail_end <= target.target_word + 1 {
                     parse_color(target.value)
                         .map(KeywordAction::ProtectionFrom)
@@ -484,13 +569,7 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                     // is a whole object filter (CR 702.16a); dropping the
                     // qualifiers would widen the protection, so a tail that
                     // doesn't parse fails the chain.
-                    let view = TokenWordView::new(tokens);
-                    let token_end = view
-                        .token_start_indices()
-                        .get(tail_end)
-                        .copied()
-                        .unwrap_or(tokens.len());
-                    let filter_tokens = trim_commas(&tokens[target.target_token_first..token_end]);
+                    let filter_tokens = &tokens[target.target_token_first..target.target_token_end];
                     crate::grammar::primitives::probe_shape(parse_object_filter_lexed(
                         &filter_tokens,
                         false,
@@ -586,11 +665,17 @@ mod keyword_line_readings;
 
 pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+        if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_dynamic_keyword_amount(tokens) {
+            return Some(action);
+        }
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
         let words = strip_leading_word_refs_any(&words, &["and"]);
         if words.is_empty() {
             return None;
+        }
+        if matches!(words.first().copied(), Some("bolster" | "mobilize")) {
+            return parse_ability_phrase(tokens);
         }
 
         if clause_grammar::parse_casualty_planeswalker_copy_prefix_words(words) {
@@ -715,9 +800,6 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
         if let Some(action) = protection_from_colored_spells_action(tokens) {
             return Some(vec![action]);
         }
-        if let Some(action) = protection_from_each_mana_value_among_action(tokens) {
-            return Some(vec![action]);
-        }
         parse_protection_chain(tokens)
     }
 
@@ -727,11 +809,15 @@ pub fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordA
     if let Some(actions) = parse_hexproof_from_type_list_line(tokens) {
         return Some(actions);
     }
+    if let Some(result) = parse_protection_keyword_line(tokens) { return result; }
     let input = keyword_line_readings::KeywordLine { tokens };
     match keyword_line_readings::read(&input) {
         crate::recognition::ParseOutcome::Match(matched) => return Some(matched.value.value),
         crate::recognition::ParseOutcome::NoMatch => {}
         crate::recognition::ParseOutcome::Error(_) => return None,
+    }
+    if crate::grammar::keyword_action_costs::dynamic_keyword_tail_start(tokens).is_some() {
+        return None;
     }
     let segments = clause_grammar::parse_ability_segments_tokens(tokens);
     let mut actions = Vec::new();

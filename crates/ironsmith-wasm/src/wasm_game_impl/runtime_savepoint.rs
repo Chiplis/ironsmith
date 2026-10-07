@@ -227,3 +227,67 @@ impl WasmGame {
         self.runtime_savepoints.remove(&handle).is_some()
     }
 }
+
+#[cfg(test)]
+mod trigger_acquisition_savepoint_contracts {
+    use super::*;
+    use ironsmith::ability::{Ability, AbilityKind};
+    use ironsmith::continuous::{ContinuousEffect, Modification};
+    use ironsmith::triggers::{Trigger, compute_trigger_identity};
+    use ironsmith_core::{Color, ColorSet, LinkedExileDefinition, TextChange};
+
+    #[test]
+    fn native_savepoint_restores_captured_words_acquisition_and_turn_history() {
+        let _ids = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["A".into(), "B".into()], 20, 1);
+        let player = PlayerId(0);
+        let program = ironsmith::resolution::ResolutionProgram::from_effects(vec![ironsmith::effect::Effect::gain_life(1)])
+            .with_trigger_definition(LinkedExileDefinition([219; 32]));
+        let ability = Ability::triggered(Trigger::spell_cast(Some(ironsmith::target::ObjectFilter {
+            colors: Some(ColorSet::BLACK), ..Default::default()
+        }), ironsmith::target::PlayerFilter::You), program);
+        let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Retained trigger witness")
+            .card_types(vec![CardType::Enchantment]).with_ability(ability).build();
+        let source = wasm.game.create_object_from_definition(&definition, player, Zone::Battlefield);
+        let spell = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Black spell witness")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ironsmith::mana::ManaSymbol::Black])).build();
+        let spell = wasm.game.create_object_from_definition(&spell, player, Zone::Stack);
+        let event = ironsmith::triggers::TriggerEvent::new(
+            ironsmith::events::spells::SpellCastEvent::new(spell, player, Zone::Hand), Default::default(),
+        );
+        let entry = ironsmith::triggers::check_triggers(&wasm.game, &event).into_iter()
+            .find(|entry| entry.source == source).unwrap();
+        let identity = entry.trigger_identity;
+        let old_matcher = entry.ability.trigger.clone();
+        wasm.game.record_trigger_fired(source, identity);
+        wasm.game.record_triggered_ability_resolved(source, identity);
+        wasm.trigger_queue.add(entry);
+        let retained = RuntimeSavepoint::capture(&wasm);
+        wasm.game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
+            source, player, vec![source],
+            Modification::RewriteText(TextChange::color(Color::Black, Color::Blue).unwrap()),
+        ));
+        wasm.game.refresh_continuous_state().unwrap();
+        let chars = wasm.game.calculated_characteristics(source).unwrap();
+        let AbilityKind::Triggered(changed) = &chars.abilities[0].kind else { unreachable!() };
+        assert_eq!(compute_trigger_identity(changed), identity);
+        assert_eq!(changed.trigger.downcast_ref::<ironsmith::triggers::SpellCastTrigger>().unwrap().filter.as_ref().unwrap().colors, Some(ColorSet::BLUE));
+        wasm.trigger_queue.clear();
+        wasm.game.move_object_by_effect(source, Zone::Graveyard).unwrap();
+        retained.restore(&mut wasm);
+        assert!(wasm.game.object(source).is_some());
+        assert_eq!(wasm.game.trigger_fire_count_this_turn(source, identity), 1);
+        assert_eq!(wasm.game.triggered_ability_resolution_count_this_turn(source, identity), 1);
+        let restored = wasm.trigger_queue.take_all();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].trigger_identity, identity);
+        assert_eq!(compute_trigger_identity(&restored[0].ability), identity);
+        assert_eq!(restored[0].ability.trigger.downcast_ref::<ironsmith::triggers::SpellCastTrigger>().unwrap().filter.as_ref().unwrap().colors, Some(ColorSet::BLACK));
+        assert_eq!(old_matcher.downcast_ref::<ironsmith::triggers::SpellCastTrigger>().unwrap().filter.as_ref().unwrap().colors, Some(ColorSet::BLACK));
+        let chars = wasm.game.calculated_characteristics(source).unwrap();
+        let AbilityKind::Triggered(current) = &chars.abilities[0].kind else { unreachable!() };
+        assert_eq!(compute_trigger_identity(current), identity);
+    }
+}

@@ -56,6 +56,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(try_parse_repeated_intro_event_union_lexed(input.tokens)),
     },
     Reading {
+        id: RuleId::new("land-play-or-spell-cast"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(try_parse_land_play_or_spell_cast_lexed(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("player-plays-card"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

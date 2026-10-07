@@ -134,6 +134,17 @@ impl std::fmt::Debug for IterationProgramCursor {
     }
 }
 impl ActionProgramCursor for IterationProgramCursor {
+    fn finish_stopped(mut self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<ProgramCompletion, ExecutionError> {
+        self.child_pending = false;
+        if let Some(scope) = self.scope.take() { scope.leave(ctx); }
+        if let Some(input) = self.input.take() {
+            self.ranges.push((input.player, self.range_start, self.outcomes.len()));
+        }
+        if let Some(tags) = self.tags.take() { tags.leave(ctx); }
+        if let Some(result) = self.result.take() { result.leave(ctx); }
+        self.finish()
+    }
     fn next_action(
         &mut self,
         game: &mut GameState,
@@ -146,6 +157,15 @@ impl ActionProgramCursor for IterationProgramCursor {
             return Err(ExecutionError::InternalError(
                 "iteration advanced before child completion".into(),
             ));
+        }
+        if ctx.resolution_stopped() {
+            if let Some(scope) = self.scope.take() { scope.leave(ctx); }
+            if let Some(input) = self.input.take() {
+                self.ranges.push((input.player, self.range_start, self.outcomes.len()));
+            }
+            if let Some(tags) = self.tags.take() { tags.leave(ctx); }
+            if let Some(result) = self.result.take() { result.leave(ctx); }
+            return Ok(None);
         }
         while self.iteration < self.plan.len() {
             if self.input.is_none() {

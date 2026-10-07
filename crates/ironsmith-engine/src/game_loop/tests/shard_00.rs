@@ -2227,6 +2227,7 @@ pub(super) fn deal_test_combat_damage_to_player(
     }
 
     CombatDamageEvent {
+        defending_player_reference: None,
         damage_receipt: None,
         source_snapshot: None,
         target_snapshot: None,
@@ -3425,7 +3426,7 @@ pub(super) fn clue_tokens_controlled_by(game: &GameState, player: PlayerId) -> V
             game.object(*id).is_some_and(|object| {
                 game.controller_of(object) == player
                     && object.kind == ObjectKind::Token
-                    && object.name == "Clue"
+                    && object.name == "Clue Token"
             })
         })
         .collect()

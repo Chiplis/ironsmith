@@ -192,9 +192,17 @@ struct ManabrewCounterState {
 }
 
 #[derive(Debug, Clone)]
+struct ManabrewOpaqueExileBinding {
+    action_ref: PriorityActionRef,
+    /// Paired public identity captured with the menu, never reconstructed from its index.
+    hidden_identity: Option<(u8, u16, String)>,
+}
+
+#[derive(Debug, Clone)]
 enum ManabrewPromptBinding {
     Priority {
         actions: HashMap<String, usize>,
+        opaque_exile: HashMap<usize, ManabrewOpaqueExileBinding>,
         pass_index: usize,
     },
     Mulligan {
@@ -378,6 +386,7 @@ struct ManaPaymentEditorView {
     payment_pips: Vec<Vec<String>>,
     transaction_id: String,
     fixed_excluded_source_ids: Vec<String>,
+    fixed_activation_excluded_source_ids: Vec<String>,
     required_activations: Vec<ManaPaymentActivationCommand>,
     required_alternatives: Vec<ManaPaymentAlternativeCommand>,
     required_life_pips: Vec<u32>,
@@ -951,28 +960,32 @@ fn cast_payment_cost_context(
 ) -> Vec<String> {
     use ironsmith::alternative_cast::CastingMethod;
     let object = game.object(pending.spell_id);
-    let method = match &pending.casting_method {
-        CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
-        CastingMethod::Normal => "Normal cast".to_string(),
-        CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
-        CastingMethod::SplitOtherHalf => "Other half".to_string(),
-        CastingMethod::Fuse => "Fuse".to_string(),
-        CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
-        CastingMethod::GrantedFlashback => "Flashback".to_string(),
-        CastingMethod::Alternative(index)
-        | CastingMethod::PlayFrom {
-            use_alternative: Some(index),
-            ..
+    fn method_label(method: &CastingMethod, object: Option<&ironsmith::object::Object>) -> String {
+        match method {
+            CastingMethod::ExactPermission { origin, .. } => method_label(origin, object),
+            CastingMethod::AlternativePrice { .. } => "Alternative price".to_string(),
+            CastingMethod::Normal => "Normal cast".to_string(),
+            CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => "Face down".to_string(),
+            CastingMethod::SplitOtherHalf => "Other half".to_string(),
+            CastingMethod::Fuse => "Fuse".to_string(),
+            CastingMethod::GrantedEscape { .. } => "Escape".to_string(),
+            CastingMethod::GrantedFlashback => "Flashback".to_string(),
+            CastingMethod::Alternative(index)
+            | CastingMethod::PlayFrom {
+                use_alternative: Some(index),
+                ..
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom {
+                use_alternative: Some(index),
+                ..
+            } => object
+                .and_then(|object| object.alternative_casts.get(*index))
+                .map(|method| method.name().to_string())
+                .unwrap_or_else(|| "Alternative cost".to_string()),
+            CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
         }
-        | CastingMethod::SplitOtherHalfPlayFrom {
-            use_alternative: Some(index),
-            ..
-        } => object
-            .and_then(|object| object.alternative_casts.get(*index))
-            .map(|method| method.name().to_string())
-            .unwrap_or_else(|| "Alternative cost".to_string()),
-        CastingMethod::PlayFrom { .. } | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: None, .. } => "Granted cast".to_string(),
-    };
+    }
+    let method = method_label(&pending.casting_method, object);
     let mut result = vec![method];
     if pending.base_mana_cost_waived {
         result.push("Base mana cost waived".to_string());
@@ -1010,10 +1023,7 @@ fn mana_activation_views_from_inventory(
     options
         .iter()
         .filter(|option| {
-            if matches!(
-                request.reason,
-                ironsmith::costs::PaymentReason::ActivateManaAbility
-            ) && option.source == request.source
+            if request.reason.is_mana_ability() && option.source == request.source
             {
                 return false;
             }
@@ -1077,14 +1087,8 @@ fn mana_payment_editor_view(
             .map(|pip| pip.iter().map(mana_symbol_display_code).collect())
             .collect(),
         transaction_id: ironsmith::mana_payment::mana_payment_transaction_id(request).to_string(),
-        fixed_excluded_source_ids: if matches!(
-            request.reason,
-            ironsmith::costs::PaymentReason::ActivateManaAbility
-        ) {
-            vec![request.source.0.to_string()]
-        } else {
-            Vec::new()
-        },
+        fixed_excluded_source_ids: request.reserved_tap_sources.iter().map(|id| id.0.to_string()).collect(),
+        fixed_activation_excluded_source_ids: request.activation_excluded_sources.iter().map(|id| id.0.to_string()).collect(),
         required_activations: preferences
             .required_activations
             .iter()
@@ -1199,6 +1203,7 @@ fn planned_mana_source_views(
             ironsmith::mana_payment::PlannedPipPayment::Convoke(source) => (source, "convoke"),
             ironsmith::mana_payment::PlannedPipPayment::Improvise(source) => (source, "improvise"),
             ironsmith::mana_payment::PlannedPipPayment::Delve(source) => (source, "delve"),
+            ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => (source, "waterbend"),
             _ => continue,
         };
         if sources
@@ -1269,6 +1274,9 @@ fn planned_pip_allocation_views(
                     None,
                     None,
                 ),
+                ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                    ("waterbend".to_string(), Some(source.0.to_string()), None, None)
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
                     ("delve".to_string(), Some(source.0.to_string()), None, None)
                 }
@@ -1493,6 +1501,19 @@ fn stack_revealed_view(game: &GameState) -> Option<ActiveViewedCards> {
             .as_ref()
             .filter(|snapshot| snapshot.zone.is_hidden())
         {
+            // Miracle keeps this exact hand arrival revealed while any of
+            // its accepted linked triggers (including copies) remains. A
+            // stale trigger does not disclose a later incarnation of the card.
+            if let Some(drawn) = entry.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<ironsmith::events::CardsDrawnEvent>())
+                && let Some(decision) = &drawn.miracle
+                && let Some(proof) = decision.revealed_instances().iter()
+                    .find(|proof| proof.card == source_snapshot.object_id)
+                && !game.object(proof.card).is_some_and(|object|
+                    object.zone == Zone::Hand && object.stable_id == proof.stable_id && object.owner == proof.player)
+            {
+                continue;
+            }
             return Some(ActiveViewedCards {
                 acknowledged_by: Vec::new(),
                 viewer: entry.controller,
@@ -2667,6 +2688,16 @@ enum PriorityActionRef {
         card_id: u64,
         ability_index: usize,
     },
+    OpenExiledCardForPlay {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
+    },
+    CastExiledCardFaceDown {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
+    },
     CastSpell {
         spell_id: u64,
         from_zone: String,
@@ -2816,6 +2847,32 @@ enum CastingMethodRef {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         prototype: Option<usize>,
     },
+    /// Public menu selector only. Resolution selects the complete native
+    /// action from the checked menu; this never carries a private identity.
+    ExactPermission {
+        origin: Box<CastingMethodRef>,
+        permission: GrantSelectionRef,
+    },
+}
+
+impl CastingMethodRef {
+    fn origin_method(&self) -> &Self {
+        match self {
+            Self::AlternativePrice { origin, .. } | Self::ExactPermission { origin, .. } => {
+                origin.origin_method()
+            }
+            _ => self,
+        }
+    }
+
+    fn origin_method_mut(&mut self) -> &mut Self {
+        match self {
+            Self::AlternativePrice { origin, .. } | Self::ExactPermission { origin, .. } => {
+                origin.origin_method_mut()
+            }
+            _ => self,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4027,6 +4084,7 @@ impl ManaPaymentAlternativeCommand {
             "convoke" => ironsmith::mana_payment::ManaPaymentSourceKind::Convoke,
             "improvise" => ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
             "delve" => ironsmith::mana_payment::ManaPaymentSourceKind::Delve,
+            "waterbend" => ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
             other => {
                 return Err(JsValue::from_str(&format!(
                     "invalid mana payment alternative kind: {other}"
@@ -5991,6 +6049,7 @@ mod native_tests {
         wasm.game.set_hidden_card_info(
             hidden,
             ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner: alice,
                 zone: Zone::Hand,
                 slot: 4,
@@ -6985,6 +7044,10 @@ mod viewed_card_acknowledgement_tests;
 mod territorial_kavu_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "tests/cumulative_action_costs.rs"]
+mod cumulative_action_cost_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "tests/opposition_agent_search.rs"]
 mod opposition_agent_search_tests;
 
@@ -7205,5 +7268,59 @@ mod independent_price_action_reference_tests {
         assert_eq!(serde_json::to_value(prototype_ref).unwrap()["prototype"],0);
         let old=CastingMethodRef::PlayFrom{source:11,zone:"exile".into(),use_alternative:None};
         assert_eq!(serde_json::to_value(old).unwrap(),serde_json::json!({"kind":"play_from","source":11,"zone":"exile","use_alternative":null}));
+    }
+}
+
+#[cfg(test)]
+mod exact_permission_action_reference_tests {
+    use super::*;
+    use ironsmith::alternative_cast::{CastingMethod, GrantSelection};
+    use ironsmith::grant_registry::GrantPermissionIdentity;
+
+    #[test]
+    fn unmarked_play_from_variants_keep_their_old_json_bytes() {
+        let source = ObjectId::from_raw(11);
+        for (method, expected) in [
+            (CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None },
+                r#"{"kind":"play_from","source":11,"zone":"exile","use_alternative":null}"#),
+            (CastingMethod::SplitOtherHalfPlayFrom { source, zone: Zone::Exile, use_alternative: None },
+                r#"{"kind":"split_other_half_play_from","source":11,"zone":"exile","use_alternative":null}"#),
+            (CastingMethod::FaceDownPlayFrom { source, zone: Zone::Library },
+                r#"{"kind":"face_down_play_from","source":11,"zone":"library"}"#),
+        ] {
+            let reference = wasm_game_impl::casting_method_ref(&method);
+            assert_eq!(serde_json::to_string(&reference).unwrap(), expected);
+            assert_eq!(serde_json::from_str::<CastingMethodRef>(expected).unwrap(), reference);
+        }
+    }
+
+    #[test]
+    fn exact_refs_distinguish_same_source_choices_without_exposing_native_identity() {
+        let source = ObjectId::from_raw(11);
+        let first = CastingMethod::ExactPermission {
+            origin: Box::new(CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None }),
+            permission: GrantSelection { identity: GrantPermissionIdentity::Stored(71), source, index: 0 },
+        };
+        let reference = wasm_game_impl::casting_method_ref(&first);
+        let json = serde_json::to_value(&reference).unwrap();
+        assert_eq!(json, serde_json::json!({
+            "kind": "exact_permission",
+            "origin": { "kind": "play_from", "source": 11, "zone": "exile", "use_alternative": null },
+            "permission": { "source": 11, "index": 0 },
+        }));
+        assert_eq!(serde_json::from_value::<CastingMethodRef>(json).unwrap(), reference);
+        let mut second = first.clone();
+        if let CastingMethod::ExactPermission { permission, .. } = &mut second {
+            permission.index = 1;
+            permission.identity = GrantPermissionIdentity::Stored(72);
+        }
+        assert_ne!(wasm_game_impl::casting_method_ref(&second), reference);
+        // The selector addresses the signed menu/state, not an occurrence
+        // across unrelated states. Native identity is checked by admission.
+        if let CastingMethod::ExactPermission { permission, .. } = &mut second {
+            permission.index = 0;
+        }
+        assert_ne!(second, first);
+        assert_eq!(wasm_game_impl::casting_method_ref(&second), reference);
     }
 }

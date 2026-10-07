@@ -17608,6 +17608,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
                 object: Some(ironsmith_core::GrantPlayTaggedObjectSurface::It),
                 mana_reference: None,
                 control_source: None,
+                battlefield_source: None,
                 until_source_exiles_another: None,
                 mana_spend_followup: false,
             })
@@ -17686,6 +17687,7 @@ mod exile_top_treasure_conditional_cast_fallback_tests {
             object: Some(ironsmith_core::GrantPlayTaggedObjectSurface::It),
             mana_reference: None,
             control_source: None,
+            battlefield_source: None,
             until_source_exiles_another: None,
             mana_spend_followup: false,
         });
@@ -20627,13 +20629,13 @@ fn describe_everybody_lives_program(
         return None;
     };
     let player_cant = player_effect.downcast_ref::<crate::effects::CantEffect>()?;
-    let crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) =
+    let crate::effect::Restriction::PlayerHexproofFrom(player, source_filter) =
         &player_cant.restriction
     else {
         return None;
     };
     if *player != PlayerFilter::Any
-        || source_filter != &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        || source_filter != &ObjectFilter::default()
         || !exact_everybody_lives_cant(player_cant)
     {
         return None;
@@ -20704,9 +20706,9 @@ mod everybody_lives_program_tests {
         ]));
 
         let player_hexproof = Effect::new(crate::effects::CantEffect::until_end_of_turn(
-            crate::effect::Restriction::BeTargetedPlayerFrom(
+            crate::effect::Restriction::PlayerHexproofFrom(
                 PlayerFilter::Any,
-                ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+                ObjectFilter::default(),
             ),
         ));
         let rules_sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
@@ -30409,6 +30411,11 @@ fn describe_structural_equipment_token_keyword(ability: &Ability) -> Option<Stri
     if !matches!(&attach.target, ChooseSpec::Tagged(found) if found == tag) {
         return None;
     }
+    if create.text_roles.as_ref() != Some(&ironsmith_core::TokenTextRoles::rules_implied(
+        ironsmith_core::TokenNameTextRole::SubtypeDerived, create.token.abilities.len()))
+    {
+        return None;
+    }
     if is_living_weapon_germ_token(&create.token) {
         return Some("Living weapon".to_string());
     }
@@ -30440,7 +30447,6 @@ fn tagged_create_token_effect_for_keyword(
 
 fn is_living_weapon_germ_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Phyrexian Germ"
         && token.card.colors() == crate::color::ColorSet::BLACK
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Phyrexian, Subtype::Germ]
@@ -30456,7 +30462,6 @@ fn is_living_weapon_germ_token(token: &CardDefinition) -> bool {
 
 fn is_job_select_hero_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Hero"
         && token.card.colors().is_empty()
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Hero]
@@ -30472,7 +30477,6 @@ fn is_job_select_hero_token(token: &CardDefinition) -> bool {
 
 fn is_for_mirrodin_rebel_token(token: &CardDefinition) -> bool {
     token.card.is_token
-        && token.card.name == "Rebel"
         && token.card.colors() == crate::color::ColorSet::RED
         && token.card.card_types == [CardType::Creature]
         && token.card.subtypes == [Subtype::Rebel]
@@ -31950,7 +31954,7 @@ pub(super) fn describe_alternative_cast_line(
             else { format!("Warp—{}, {}", cost.to_oracle(), capitalize_first(&describe_alternative_costs(costs))) }
         },
         AlternativeCastingMethod::Suspend { cost, time } => {
-            format!("Suspend {time}—{}", cost.to_oracle())
+            time.display_keyword(cost)
         }
         AlternativeCastingMethod::Disturb { cost } => format!("Disturb {}", cost.to_oracle()),
         AlternativeCastingMethod::Overload { cost, .. } => {
@@ -32098,6 +32102,9 @@ fn alternative_cast_method_matches_kind(
         ) | (
             AlternativeCastKind::Suspend,
             AlternativeCastingMethod::Suspend { .. }
+        ) | (
+            AlternativeCastKind::Foretell,
+            AlternativeCastingMethod::Foretell { .. }
         )
     )
 }
@@ -34465,6 +34472,45 @@ fn is_miracle_linked_trigger(def: &CardDefinition, ability: &Ability) -> bool {
             .any(|method| method.is_miracle())
 }
 
+/// Keep the exact authored reveal group on one parseable source line. Only
+/// typed pair equality establishes membership; unrelated neighboring abilities
+/// remain independent, including unmarked native compatibility definitions.
+fn first_draw_reveal_surface_groups(
+    def: &CardDefinition,
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> std::collections::BTreeMap<usize, (String, Vec<usize>)> {
+    let producers = def.abilities.iter().enumerate().filter_map(|(index, ability)| {
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        ability.reveal_drawn_card_spec()?.linked_reveal_pair.map(|pair| (index, pair))
+    }).collect::<Vec<_>>();
+    let mut groups = std::collections::BTreeMap::new();
+    for &(producer, pair) in &producers {
+        if producers.iter().filter(|(_, candidate)| *candidate == pair).count() != 1 { continue; }
+        let consumers = def.abilities.iter().enumerate().filter_map(|(index, ability)| {
+            let AbilityKind::Triggered(ability) = &ability.kind else { return None; };
+            let trigger = ability.trigger.downcast_ref::<crate::triggers::PlayerRevealsCardTrigger>()?;
+            (trigger.from_source && trigger.first_draw_pair == Some(pair)).then_some(index)
+        }).collect::<Vec<_>>();
+        if consumers.is_empty() { continue; }
+        let mut members = vec![producer];
+        members.extend(consumers);
+        let mut sentences = Vec::new();
+        for &index in &members {
+            for line in describe_ability(index + 1, &def.abilities[index], subject, rewrite_it_deals) {
+                let static_prefix = format!("Static ability {}: ", index + 1);
+                let trigger_prefix = format!("Triggered ability {}: ", index + 1);
+                let body = line.strip_prefix(static_prefix.as_str()).or_else(|| line.strip_prefix(trigger_prefix.as_str()))
+                    .unwrap_or(&line).trim().trim_end_matches('.');
+                if !body.is_empty() { sentences.push(body.to_string()); }
+            }
+        }
+        let anchor = *members.iter().min().expect("group has a static producer");
+        groups.insert(anchor, (sentences.join(". "), members));
+    }
+    groups
+}
+
 fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     let mut out = Vec::new();
     let mut leading_alternative_cast_lines = Vec::new();
@@ -34642,8 +34688,15 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     if static_ability.id() == crate::static_abilities::StaticAbilityId::Delve
             )
         });
+        let first_draw_groups = first_draw_reveal_surface_groups(def, subject, rewrite_it_deals);
+        let mut first_draw_members = std::collections::HashSet::new();
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
+            if let Some((text, members)) = first_draw_groups.get(&ability_idx) {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                first_draw_members.extend(members.iter().copied());
+            }
+            if first_draw_members.contains(&ability_idx) { ability_idx += 1; continue; }
             let ability = &def.abilities[ability_idx];
             if kicker_x_minimum_ability == Some(ability_idx) {
                 ability_idx += 1;
@@ -36791,7 +36844,7 @@ fn describe_source_line_conditioned_player_object_hexproof_group(
         return None;
     };
     let ironsmith_core::StaticAbilityPayload::RuleRestriction {
-        restriction: crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter),
+        restriction: crate::effect::Restriction::PlayerHexproofFrom(player, source_filter),
         additional_restrictions,
         ..
     } = &ability.payload
@@ -36800,7 +36853,7 @@ fn describe_source_line_conditioned_player_object_hexproof_group(
     };
     let (filter, grant_condition, keyword) = modeled_object_static_grant(object_ability)?;
     if *player != PlayerFilter::You
-        || source_filter != &ObjectFilter::default().controlled_by(PlayerFilter::Opponent)
+        || source_filter != &ObjectFilter::default()
         || !additional_restrictions.is_empty()
         || grant_condition != Some(condition)
         || keyword.id() != crate::static_abilities::StaticAbilityId::Hexproof

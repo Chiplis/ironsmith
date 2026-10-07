@@ -1,0 +1,81 @@
+[
+  {
+    "id": "9a67f626-1cc6-4489-a9d3-4304779602d9",
+    "oracle_id": "8cccc8d0-bdd8-4853-8330-6f6a57695d11",
+    "name": "Amareth, the Lustrous",
+    "mana_cost": "{3}{G}{W}{U}",
+    "type_line": "Legendary Creature — Dragon",
+    "oracle_text": "Flying\nWhenever another permanent you control enters, look at the top card of your library. If it shares a card type with that permanent, you may reveal that card and put it into your hand.",
+    "power": "6",
+    "toughness": "6",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "79debf90a76b832d64f866e462155d7bea651041"
+  },
+  {
+    "id": "7c77f2a8-7a98-4c02-86ea-0f348db82eb4",
+    "oracle_id": "fa450433-85b0-4f95-bd4e-f141ba036bee",
+    "name": "Cemetery Gatekeeper",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Vampire",
+    "oracle_text": "First strike\nWhen this creature enters, exile a card from a graveyard.\nWhenever a player plays a land or casts a spell, if it shares a card type with the exiled card, this creature deals 2 damage to that player.",
+    "power": "2",
+    "toughness": "1",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "79debf90a76b832d64f866e462155d7bea651041"
+  },
+  {
+    "id": "ebbad0a9-925f-43cc-b771-7e5ac178e7e5",
+    "oracle_id": "34c8fffd-1b23-4f40-ad29-1f0acb519e7e",
+    "name": "Cemetery Protector",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Creature — Human Soldier",
+    "oracle_text": "Flash\nWhen this creature enters, exile a card from a graveyard.\nWhenever you play a land or cast a spell, if it shares a card type with the exiled card, create a 1/1 white Human creature token.",
+    "power": "3",
+    "toughness": "4",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "79debf90a76b832d64f866e462155d7bea651041"
+  },
+  {
+    "id": "8b3376c4-369a-4d63-bd48-966bcfb0c9b9",
+    "oracle_id": "3bb16720-18dc-44b7-adb0-c9b7adda9ebe",
+    "name": "Creeping Dread",
+    "mana_cost": "{3}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, each player discards a card. Each opponent who discarded a card that shares a card type with the card you discarded loses 3 life. (Players reveal the discarded cards simultaneously.)",
+    "source_coverage_status": "partial_not_counted",
+    "validation": "authored_not_run"
+  },
+  {
+    "id": "2134a564-b089-4049-bd9c-a3f10e072263",
+    "oracle_id": "7e108285-52da-473c-accd-d48e646a49c0",
+    "name": "Holistic Wisdom",
+    "mana_cost": "{1}{G}{G}",
+    "type_line": "Enchantment",
+    "oracle_text": "{2}, Exile a card from your hand: Return target card from your graveyard to your hand if it shares a card type with the card exiled this way. (Artifact, battle, creature, enchantment, kindred, instant, land, planeswalker, and sorcery are card types.)",
+    "source_coverage_status": "partial_not_counted",
+    "validation": "authored_not_run"
+  },
+  {
+    "id": "19a40023-f7ac-4db7-9cc1-c8b113d5c5b8",
+    "oracle_id": "afad2e76-4b53-4884-8f96-ba68b0808990",
+    "name": "Reality Scramble",
+    "mana_cost": "{2}{R}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Put target permanent you own on the bottom of your library. Reveal cards from the top of your library until you reveal a card that shares a card type with that permanent. Put that card onto the battlefield and the rest on the bottom of your library in a random order.\nRetrace (You may cast this card from your graveyard by discarding a land card in addition to paying its other costs.)",
+    "source_coverage_status": "partial_not_counted",
+    "validation": "authored_not_run"
+  },
+  {
+    "id": "f05de68f-7cd8-4e93-a67b-9f17662c8b8d",
+    "oracle_id": "41d16975-d6c0-4343-bea2-4f360ead9a1c",
+    "name": "Wild Magic Surge",
+    "mana_cost": "{R}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target permanent an opponent controls. Its controller reveals cards from the top of their library until they reveal a permanent card that shares a card type with that permanent. They put that card onto the battlefield and the rest on the bottom of their library in a random order.",
+    "source_coverage_status": "partial_not_counted",
+    "validation": "authored_not_run"
+  }
+]

@@ -725,6 +725,8 @@ impl StaticAbilityKind for ExertAttack {
                     return Err("Exert source left the battlefield".to_string());
                 };
                 trigger_queue.add(TriggeredAbilityEntry {
+                    linked_exile_owner: None,
+                    source_number_owner: None,
                     source,
                     controller,
                     x_value: source_object.x_value,
@@ -937,6 +939,8 @@ impl StaticAbilityKind for EnlistAttack {
                 })?;
                 let receipt = taps.append_batch_completion_outputs(completion);
                 let linked_trigger = TriggeredAbilityEntry {
+                    linked_exile_owner: None,
+                    source_number_owner: None,
                     source,
                     controller,
                     x_value: source_object.x_value,
@@ -1186,6 +1190,17 @@ impl Landwalk {
 }
 
 impl StaticAbilityKind for Landwalk {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::new(self.kind))
+    }
+
+    fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
+        -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let kind = crate::continuous::text_changes::rewrite_landwalk_words(self.kind, change);
+        Ok((kind != self.kind).then(|| super::StaticAbility::new(Self { kind })))
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Landwalk
     }

@@ -495,11 +495,19 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
             (used == amount.len()).then_some(amount)
         });
     let candidates = top_level_boundaries(tokens);
+    let mixed_target_ranges = explicit_mixed_target_ranges(tokens);
     let mut members = Vec::new();
     let mut boundaries = Vec::new();
     let mut member_start = 0usize;
 
     for candidate in candidates {
+        if mixed_target_ranges.iter().any(|range| {
+            range.start < candidate.start && candidate.end < range.end
+        }) {
+            // These connectives belong to one fully parsed target domain,
+            // including relative controller predicates in its object arms.
+            continue;
+        }
         if aggregate_amount.or(capped_amount).is_some_and(|amount| {
             amount
                 .iter()
@@ -686,6 +694,39 @@ fn top_level_boundaries(tokens: &[OwnedLexToken]) -> Vec<BoundaryCandidate> {
         index = end;
     }
     boundaries
+}
+
+/// Identify explicit mixed player/object operands before inferring action
+/// heads. Only a complete, loss-free object filter can own a connective.
+/// Trying clause-boundary endpoints keeps a following real action outside
+/// the target, while leaving malformed tails for the committed target reader
+/// to reject. This never strips or rewrites any authored tokens.
+pub(crate) fn explicit_mixed_target_ranges(
+    tokens: &[OwnedLexToken],
+) -> Vec<std::ops::Range<usize>> {
+    let end = tokens.iter().rposition(|token| token.kind != TokenKind::Period)
+        .map_or(0, |index| index + 1);
+    let mut endpoints = top_level_boundaries(&tokens[..end])
+        .into_iter()
+        .map(|boundary| boundary.start)
+        .collect::<Vec<_>>();
+    endpoints.push(end);
+    tokens[..end].iter().enumerate().filter_map(|(start, token)| {
+        if !token.is_word("target") {
+            return None;
+        }
+        endpoints.iter().rev().copied().find_map(|end| {
+            if end <= start + 1 {
+                return None;
+            }
+            let union = crate::grammar::targets::parse_object_or_player_union_target(
+                &tokens[start + 1..end],
+            )?;
+            crate::grammar::filters::parse_complete_mixed_target_object_filter(
+                union.object_tokens, false,
+            ).ok().map(|_| start..end)
+        })
+    }).collect()
 }
 
 fn classify_boundary<'a>(

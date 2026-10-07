@@ -1043,6 +1043,9 @@ pub fn generated_definition_unsupported_mechanics_message(
 /// This is used by generated registries and reporting utilities to keep support
 /// classification consistent.
 pub fn generated_definition_has_unimplemented_content(definition: &CardDefinition) -> bool {
+    if definition.spell_effect.as_ref().is_some_and(|program| !program.has_complete_definition()) {
+        return true;
+    }
     let has_placeholder_static = definition.abilities.iter().any(|ability| {
         matches!(
             &ability.kind,

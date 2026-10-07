@@ -797,7 +797,7 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
         "same-name-gets-fanout",
         710,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("target")],
+        &[LexRuleHeadHint::Single("target"), LexRuleHeadHint::Single("this")],
         parse_sentence_same_name_gets_fanout
     ),
     primitive!(

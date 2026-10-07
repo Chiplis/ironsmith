@@ -1,5 +1,6 @@
 //! Announcement-time public identities needed to determine costs or targets.
 //! This does not pay costs, reveal hidden cards, or manufacture unknown tags.
+use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::cost::{Cost, CostPaymentError, TotalCost};
 use crate::effect::Effect;
 use crate::effects::{ChooseObjectsEffect, ExecutionContext};
@@ -219,6 +220,7 @@ fn target_has_exact_mana_x(effect: &Effect) -> bool {
 }
 
 pub(crate) fn needs_activation_reference_context(cost: &TotalCost, effects: &[Effect]) -> bool {
+    if super::counter_declaration::target_spec(effects).is_some() { return true; }
     if effects.iter().any(target_has_exact_mana_x) {
         return true;
     }
@@ -268,6 +270,7 @@ pub(crate) fn activation_reference_preflight(
     payer: PlayerId,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<bool> {
+    if let Some(result) = super::counter_declaration::preflight(game, source, ability_index, payer, activated) { return Some(result); }
     let effects = activated.effects.flattened_default_effects();
     if !needs_activation_reference_context(&activated.mana_cost, effects) {
         return None;
@@ -374,7 +377,7 @@ pub(crate) fn activation_reference_preflight(
             };
             let view = crate::derived_view::DerivedGameView::new(game)
                 .with_target_reference_bindings(context.clone());
-            let reason = crate::costs::PaymentReason::ActivateAbility;
+            let reason = activated.payment_reason(game, source, payer);
             let mut nonmana = Vec::new();
             let mut combined_mana = crate::mana::ManaCost::new();
             for component in components {
@@ -483,6 +486,8 @@ pub(crate) fn activation_branch_preflight_checked(
         Ok(
             crate::decision::activation_total_cost_branch_is_payable_with_view(
                 checked, payer, source, branch, &view,
+                activated.map(|ability| ability.payment_reason(checked, source, payer))
+                    .unwrap_or(crate::costs::PaymentReason::ActivateAbility),
             ),
         )
     })

@@ -31,6 +31,8 @@ type JsonMap = serde_json::Map<String, Value>;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ManabrewMatchConfigInput {
+    #[serde(default)]
+    protocol_version: u32,
     player_names: Vec<String>,
     starting_life: i32,
     #[serde(default)]
@@ -54,6 +56,7 @@ struct ManabrewMatchConfigInput {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManabrewViewResult {
+    protocol_version: u32,
     state: StateUpdate,
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt: Option<AgentPrompt>,
@@ -67,6 +70,13 @@ enum ManabrewResponseAction {
         input: PromptInput,
         binding: ManabrewPromptBinding,
     },
+}
+
+fn validate_manabrew_protocol_version(version: u32) -> Result<(), String> {
+    let expected = manabrew_protocol::protocol::PROTOCOL_VERSION;
+    if version == expected { Ok(()) } else {
+        Err(format!("Manabrew protocol version mismatch: expected {expected}, received {version}"))
+    }
 }
 
 const MANABREW_TEXT_OPTIONS_PER_PROMPT: usize = 100;
@@ -491,6 +501,7 @@ fn manabrew_replan_command(
                 let payment_kind = match alternative.kind {
                     ironsmith::mana_payment::ManaPaymentSourceKind::Convoke => "convoke",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => "improvise",
+                    ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => "waterbend",
                     ironsmith::mana_payment::ManaPaymentSourceKind::Delve => "delve",
                     ironsmith::mana_payment::ManaPaymentSourceKind::ManaAbility => return None,
                 };
@@ -592,6 +603,15 @@ fn manabrew_plan_is_fully_selected(
                         )
                     })
                 }
+                ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                    preferences.required_alternatives.iter().any(|selected| {
+                        selected_alternative_matches(
+                            selected,
+                            source,
+                            ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
+                        )
+                    })
+                }
                 ironsmith::mana_payment::PlannedPipPayment::Delve(source) => {
                     preferences.required_alternatives.iter().any(|selected| {
                         selected_alternative_matches(
@@ -649,6 +669,15 @@ fn manabrew_remaining_mana_cost(
                         selected,
                         source,
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise,
+                    )
+                })
+            }
+            ironsmith::mana_payment::PlannedPipPayment::Waterbend(source) => {
+                !preferences.required_alternatives.iter().any(|selected| {
+                    selected_alternative_matches(
+                        selected,
+                        source,
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
                     )
                 })
             }
@@ -993,6 +1022,7 @@ impl WasmGame {
                             selected.kind,
                             ironsmith::mana_payment::ManaPaymentSourceKind::Convoke
                                 | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend
                         )
                 })
     }
@@ -1304,7 +1334,9 @@ impl WasmGame {
     fn manabrew_action_card(&self, action: &LegalAction) -> Option<ObjectId> {
         use ironsmith::special_actions::SpecialAction;
         match action {
-            LegalAction::UsePregameAction { card_id, .. } => Some(*card_id),
+            LegalAction::UsePregameAction { card_id, .. }
+            | LegalAction::OpenExiledCardForPlay { card_id, .. }
+            | LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(*card_id),
             LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),
             LegalAction::ActivateAbility { source, .. }
             | LegalAction::ActivateManaAbility { source, .. } => Some(*source),
@@ -1351,6 +1383,22 @@ impl WasmGame {
             | LegalAction::TakeMulligan
             | LegalAction::ContinuePregame
             | LegalAction::BeginGame => None,
+            LegalAction::CastExiledCardFaceDown { card_id, .. } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *card_id),
+                    mode: PlayCardMode::StaticAlternative,
+                    label: "Cast exiled card face down".into(),
+                },
+            }),
+            LegalAction::OpenExiledCardForPlay { card_id, .. } => Some(AvailableAction {
+                id,
+                kind: AvailableActionKind::Cast {
+                    card_id: object_id(&self.game, *card_id),
+                    mode: PlayCardMode::StaticAlternative,
+                    label: "Play exiled card".into(),
+                },
+            }),
             LegalAction::CastSpell {
                 spell_id,
                 casting_method,
@@ -1758,6 +1806,7 @@ impl WasmGame {
                     kind,
                     ironsmith::mana_payment::ManaPaymentSourceKind::Convoke
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Improvise
+                        | ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend
                         | ironsmith::mana_payment::ManaPaymentSourceKind::Delve
                 )
             }) {
@@ -1792,6 +1841,9 @@ impl WasmGame {
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
                             PaymentResourceKind::Improvise
                         }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
+                            PaymentResourceKind::Waterbend
+                        }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
                         }
@@ -1817,6 +1869,9 @@ impl WasmGame {
                         }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Improvise => {
                             PaymentResourceKind::Improvise
+                        }
+                        ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend => {
+                            PaymentResourceKind::Waterbend
                         }
                         ironsmith::mana_payment::ManaPaymentSourceKind::Delve => {
                             PaymentResourceKind::Delve
@@ -2005,6 +2060,7 @@ impl WasmGame {
                     })
                     .ok_or_else(|| unsupported("priority without a pass action"))?;
                 let mut actions = HashMap::new();
+                let mut opaque_exile = HashMap::new();
                 let available = ctx
                     .actions
                     .iter()
@@ -2012,6 +2068,13 @@ impl WasmGame {
                     .filter_map(|(index, action)| {
                         let available = self.manabrew_available_action(index, action)?;
                         actions.insert(available.id.clone(), index);
+                        if let LegalAction::OpenExiledCardForPlay { card_id, .. }
+                            | LegalAction::CastExiledCardFaceDown { card_id, .. } = action {
+                            opaque_exile.insert(index, ManabrewOpaqueExileBinding {
+                                action_ref: priority_action_ref(action),
+                                hidden_identity: self.manabrew_opaque_exile_identity(*card_id),
+                            });
+                        }
                         Some(available)
                     })
                     .collect();
@@ -2019,6 +2082,7 @@ impl WasmGame {
                     PromptInput::ChooseAction(ChooseActionInput { actions: available }),
                     ManabrewPromptBinding::Priority {
                         actions,
+                        opaque_exile,
                         pass_index,
                     },
                 ))
@@ -2532,6 +2596,7 @@ impl WasmGame {
             }),
             Err(prompt_error) => {
                 return ManabrewViewResult {
+                    protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
                     state: self.manabrew_state(viewer),
                     prompt: None,
                     error: error.or(Some(prompt_error)),
@@ -2539,6 +2604,7 @@ impl WasmGame {
             }
         };
         ManabrewViewResult {
+            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
             state: self.manabrew_state(viewer),
             prompt,
             error,
@@ -2703,6 +2769,16 @@ impl WasmGame {
         Ok(ManabrewResponseAction::Continue { input, binding })
     }
 
+    fn manabrew_opaque_exile_identity(&self, card: ObjectId) -> Option<(u8, u16, String)> {
+        self.game.hidden_card_info(card).map(|info| {
+            let (slot, commitment) = match (info.public_slot, info.public_commitment.as_ref()) {
+                (Some(slot), Some(commitment)) => (slot, commitment.clone()),
+                _ => (info.slot, info.commitment.clone()),
+            };
+            (info.owner.0, slot, commitment)
+        })
+    }
+
     fn manabrew_response_action(
         &self,
         open: &ManabrewOpenPrompt,
@@ -2719,6 +2795,7 @@ impl WasmGame {
             (
                 ManabrewPromptBinding::Priority {
                     actions,
+                    opaque_exile,
                     pass_index,
                 },
                 PromptOutput::ChooseAction(output),
@@ -2732,6 +2809,27 @@ impl WasmGame {
                         return Err(invalid("snapshot restoration is not supported".to_string()));
                     }
                 };
+                if let Some(captured) = opaque_exile.get(&index) {
+                    let Some(context @ DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
+                        return Err(invalid("opaque exile prompt no longer owns priority".into()));
+                    };
+                    if hash_debug_value(context) != open.decision_hash || priority.player != open.deciding_player {
+                        return Err(invalid("opaque exile prompt belongs to a different decision epoch".into()));
+                    }
+                    let card = match &captured.action_ref {
+                        PriorityActionRef::OpenExiledCardForPlay { card_id, .. }
+                        | PriorityActionRef::CastExiledCardFaceDown { card_id, .. } => ObjectId::from_raw(*card_id),
+                        _ => return Err(invalid("opaque exile prompt lost its captured reference".into())),
+                    };
+                    if self.manabrew_opaque_exile_identity(card) != captured.hidden_identity
+                        || resolve_priority_action(&self.game, priority, None, Some(&captured.action_ref))
+                            .map_err(|error| invalid(error.to_string()))?.is_none() {
+                        return Err(invalid("opaque exile prompt lost its exact paired origin".into()));
+                    }
+                    return Ok(ManabrewResponseAction::Dispatch(UiCommand::PriorityAction {
+                        action_index: None, action_ref: Some(captured.action_ref.clone()),
+                    }));
+                }
                 Ok(ManabrewResponseAction::Dispatch(
                     UiCommand::PriorityAction {
                         action_index: Some(index),
@@ -3104,6 +3202,9 @@ impl WasmGame {
 
 #[wasm_bindgen]
 impl WasmGame {
+    #[wasm_bindgen(js_name = manabrewProtocolVersion)]
+    pub fn manabrew_protocol_version(&self) -> u32 { manabrew_protocol::protocol::PROTOCOL_VERSION }
+
     #[wasm_bindgen(js_name = registerManabrewDeckSources)]
     pub fn register_manabrew_deck_sources(&mut self, decks: JsValue) -> Result<JsValue, JsValue> {
         let decks: Vec<Value> = serde_wasm_bindgen::from_value(decks)
@@ -3118,6 +3219,8 @@ impl WasmGame {
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
             })?;
+        validate_manabrew_protocol_version(input.protocol_version)
+            .map_err(|error| JsValue::from_str(&error))?;
         self.register_manabrew_deck_sources_input(&input.decks);
         let validation = self.validate_match_setup_input(&manabrew_match_setup(&input))?;
         manabrew_to_js(&validation, "Manabrew match validation")
@@ -3129,6 +3232,8 @@ impl WasmGame {
             serde_wasm_bindgen::from_value(config).map_err(|error| {
                 JsValue::from_str(&format!("invalid Manabrew match config: {error}"))
             })?;
+        validate_manabrew_protocol_version(input.protocol_version)
+            .map_err(|error| JsValue::from_str(&error))?;
         self.register_manabrew_deck_sources_input(&input.decks);
         let setup = manabrew_match_setup(&input);
         let seed = setup.seed;
@@ -3159,6 +3264,7 @@ impl WasmGame {
                 Err(error) => {
                     return manabrew_to_js(
                         &ManabrewViewResult {
+                            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
                             state: self.manabrew_state(None),
                             prompt: None,
                             error: Some(error),
@@ -3345,6 +3451,7 @@ mod manabrew_tests {
     #[test]
     fn manabrew_brawl_import_uses_distinct_format_and_rules_life() {
         let two_player = ManabrewMatchConfigInput {
+            protocol_version: manabrew_protocol::protocol::PROTOCOL_VERSION,
             player_names: vec!["Alice".to_string(), "Bob".to_string()],
             starting_life: 40,
             seed: Some(7),

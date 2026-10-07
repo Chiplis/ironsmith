@@ -490,7 +490,17 @@ pub fn lower_normalized_card_ast_with_facts(
     }
     // Building the definition expands keywords (undying, persist, ...) that
     // mint keys of their own: still inside the document's reference scope.
-    let definition = builder.build();
+    let mut definition = builder.build();
+    super::linked_exile::bind_scalar_linked_exile(&mut definition);
+    super::linked_exile::bind_static_linked_exile(&mut definition);
+    super::linked_exile::bind_private_return_linked_exile(&mut definition);
+    super::linked_exile::bind_class_linked_exile(&mut definition);
+    let numeric = super::source_numbers::bind_source_number_pair(&mut definition)?;
+    let mut generated: Vec<_> = numeric.iter().map(|proof| proof.definition()).collect();
+    let first_draw = super::first_draw_reveals::stamp_first_draw_pairs_with_generated(&mut definition, &generated)?;
+    generated.extend(first_draw.iter().map(|proof| proof.definition()));
+    super::activation_definitions::stamp_activation_definitions_with_generated(&mut definition, &generated)?;
+    super::trigger_definitions::stamp_trigger_definitions_with_generated(&mut definition, &generated)?;
     drop(_document_references);
     Ok(LoweredCardDocument {
         symbols: symbols.into_inner(),

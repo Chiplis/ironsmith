@@ -81,3 +81,17 @@ Ellivere / Virtuous Role and Overlord / Everywhere remain outside this proposal;
 their independent secondary prerequisites have not been closed by this change.
 
 The independent bounded source review of `0e34ec164` found no additional concrete blocker in the canonical definitions, complete candidate body routes, or existing creation/payment/receipt owners. Twelve exact identities are admitted as source-proposed/unvalidated in stage52. No executed compile or gameplay credit is implied.
+
+## Subsequent bounded naming hold (2026-10-06)
+
+The eight Heartwood/Vibranium rows above are now partial, not counted. Independent
+source review at `9638af33` proved their typed Builtin constructors install bare
+`Heartwood` and `Vibranium` names. CR 111.10w/x provides no explicit name, so
+CR 111.4 requires `Heartwood Token` and `Vibranium Token`. The frozen instructions
+also supply no named clause. The four CR 111.11 named-card token rows are unaffected.
+A typed predefined-profile correction is in progress and must receive source and
+compatibility review before these eight proposals return. This supersedes only
+the earlier naming/full-body disposition for those rows; no execution has run.
+
+Primary rules: https://media.wizards.com/2026/downloads/MagicCompRules%2020260925.pdf
+(CR 111.4, 111.10w, 111.10x and 111.11).

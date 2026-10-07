@@ -80,6 +80,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "CastTaggedEffect" => Some(EffectFamily::Player),
         "ChooseCardNameEffect" => Some(EffectFamily::Player),
         "ChooseCardTypeEffect" => Some(EffectFamily::Player),
+        "ChangeTextEffect" => Some(EffectFamily::Permanent),
         "ChooseColorEffect" => Some(EffectFamily::Player),
         "ChooseCreatureTypeEffect" => Some(EffectFamily::Player),
         "ChooseLandTypeEffect" => Some(EffectFamily::Player),
@@ -161,6 +162,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ForEachObjectCorrelatedResultEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedEffect" => Some(EffectFamily::CompositionAL),
         "ForEachTaggedPlayerEffect" => Some(EffectFamily::CompositionAL),
+        "CollectManaPaymentsEffect" => Some(EffectFamily::CompositionAL),
         "ForPlayersEffect" => Some(EffectFamily::CompositionAL),
         "GivePlayerCountersEffect" => Some(EffectFamily::Player),
         "GainLifeEffect" => Some(EffectFamily::Resources),
@@ -330,6 +332,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "TargetOnlyEffect" => Some(EffectFamily::CompositionMZ),
         "TicketCountersEffect" => Some(EffectFamily::Player),
         "TransformEffect" => Some(EffectFamily::Permanent),
+        "TurnFaceDownEffect" => Some(EffectFamily::Permanent),
         "TurnFaceUpEffect" => Some(EffectFamily::Permanent),
         "UnattachObjectsEffect" => Some(EffectFamily::Permanent),
         "UnearthEffect" => Some(EffectFamily::Permanent),
@@ -424,10 +427,35 @@ pub fn remap_card_ids<T: serde::Serialize>(
 ) -> Result<Value, String> {
     let context = card_graph::Context {
         bind: std::cell::RefCell::new(bind),
+        authored_definition: false,
+        retained_definition: std::cell::Cell::new(false),
+        generated_definitions: &[],
+        normalized_definitions: std::cell::RefCell::new(std::collections::BTreeMap::new()),
     };
     value
         .serialize(card_graph::Serializer { context: &context })
         .map_err(|error| error.to_string())
+}
+
+/// Normalize an authored definition through the same typed graph owner as
+/// artifact CardId remapping. Presentation fields are not identity inputs.
+/// An opaque retained definition is reported separately: callers must not
+/// claim that remapping CardIds canonicalized the bytes inside an older stamp.
+pub fn authored_definition_graph<T: serde::Serialize>(
+    value: &T,
+    bind: &mut dyn FnMut(u32) -> Result<u32, String>,
+    generated_definitions: &[ironsmith_core::LinkedExileDefinition],
+) -> Result<(Value, bool), String> {
+    let context = card_graph::Context {
+        bind: std::cell::RefCell::new(bind),
+        authored_definition: true,
+        retained_definition: std::cell::Cell::new(false),
+        generated_definitions,
+        normalized_definitions: std::cell::RefCell::new(std::collections::BTreeMap::new()),
+    };
+    let normalized = value.serialize(card_graph::Serializer { context: &context })
+        .map_err(|error| error.to_string())?;
+    Ok((normalized, context.retained_definition.get()))
 }
 
 fn remap_effect_payload(
@@ -456,6 +484,10 @@ mod card_graph {
 
     pub(super) struct Context<'b> {
         pub(super) bind: RefCell<&'b mut dyn FnMut(u32) -> Result<u32, String>>,
+        pub(super) authored_definition: bool,
+        pub(super) retained_definition: std::cell::Cell<bool>,
+        pub(super) generated_definitions: &'b [ironsmith_core::LinkedExileDefinition],
+        pub(super) normalized_definitions: RefCell<std::collections::BTreeMap<[u8; 32], [u8; 32]>>,
     }
     #[derive(Clone, Copy)]
     pub(super) struct Serializer<'a, 'b> {
@@ -552,6 +584,21 @@ mod card_graph {
             name: &'static str,
             value: &T,
         ) -> Result<Value, Self::Error> {
+            if self.context.authored_definition && name == "LinkedExileDefinition" {
+                let raw = value.serialize(value::Serializer)?;
+                let bytes: [u8; 32] = serde_json::from_value(raw)?;
+                if self.context.generated_definitions.contains(&ironsmith_core::LinkedExileDefinition(bytes)) {
+                    let mut definitions = self.context.normalized_definitions.borrow_mut();
+                    let ordinal = definitions.len() as u64;
+                    let mapped = *definitions.entry(bytes).or_insert_with(|| {
+                        let mut mapped = [0; 32];
+                        mapped[24..].copy_from_slice(&ordinal.to_le_bytes());
+                        mapped
+                    });
+                    return mapped.serialize(value::Serializer);
+                }
+                self.context.retained_definition.set(true);
+            }
             if name == "CardId" {
                 let raw = value.serialize(value::Serializer)?;
                 let id = raw
@@ -695,6 +742,16 @@ mod card_graph {
             key: &'static str,
             value: &T,
         ) -> Result<(), Self::Error> {
+            // These are declared serde struct fields, reached after exact
+            // effect payload decoding. Arbitrary JSON keys and rule-bearing
+            // names/strings never select this behavior.
+            if self.context.authored_definition && matches!((self.name, key),
+                (Some("CardDefinition"), "canonical_text" | "ability_labels")
+                    | (Some("TriggeredAbility"), "presentation_label")
+                    | (Some("Trigger" | "StaticAbility"), "label"))
+            {
+                return Ok(());
+            }
             let mapped = self.mapped(value)?;
             self.inner.serialize_field(key, &mapped)
         }
@@ -832,5 +889,50 @@ mod card_graph_tests {
                 .unwrap_err()
                 .contains("unknown compiled effect")
         );
+    }
+
+    #[test]
+    fn authored_graph_tracks_only_typed_opaque_definitions_and_preserves_pair_aliases() {
+        #[derive(serde::Serialize)]
+        struct Carrier {
+            pairs: Vec<ironsmith_core::LinkedExilePair>,
+            arbitrary: Value,
+        }
+        let first = ironsmith_core::LinkedExileDefinition([17; 32]);
+        let second = ironsmith_core::LinkedExileDefinition([29; 32]);
+        let value = Carrier {
+            pairs: vec![
+                ironsmith_core::LinkedExilePair { definition: first, pair: 3 },
+                ironsmith_core::LinkedExilePair { definition: first, pair: 7 },
+                ironsmith_core::LinkedExilePair { definition: second, pair: 3 },
+            ],
+            arbitrary: serde_json::json!({"LinkedExileDefinition": [99], "label": "semantic arbitrary value"}),
+        };
+        let (_, opaque) = authored_definition_graph(&value, &mut |id| Ok(id), &[first]).unwrap();
+        assert!(opaque, "one proven owner never canonicalizes an independent native identity");
+        let (mapped, opaque) = authored_definition_graph(&value, &mut |id| Ok(id), &[first, second]).unwrap();
+        assert!(!opaque);
+        assert_eq!(mapped["pairs"][0]["definition"], mapped["pairs"][1]["definition"]);
+        assert_ne!(mapped["pairs"][0]["definition"], mapped["pairs"][2]["definition"]);
+        assert_eq!(mapped["pairs"][1]["pair"], 7);
+        assert_eq!(mapped["arbitrary"], value.arbitrary);
+        let ordinary = remap_card_ids(&value, &mut |id| Ok(id)).unwrap();
+        assert_eq!(ordinary, serde_json::to_value(&value).unwrap(), "artifact remapping preserves retained identities");
+    }
+
+    #[test]
+    fn authored_graph_omits_nested_presentation_without_mutating_transport_data() {
+        let make = |text: &str| {
+            let mut token: wire::WireCardDefinition = ironsmith_core::CardDefinition::new(
+                CardBuilder::new(CardId::from_raw(9), "Token name is a characteristic").token().build());
+            token.canonical_text = text.into();
+            token.ability_labels = vec![text.into()];
+            wire::WireEffect::new("CreateTokenEffect", serde_json::to_value(ironsmith_core::CreateTokenEffect::one(token)).unwrap())
+        };
+        let first = make("First rendering");
+        let second = make("Second rendering");
+        assert_ne!(serde_json::to_value(&first).unwrap(), serde_json::to_value(&second).unwrap());
+        assert_eq!(authored_definition_graph(&first, &mut |id| Ok(id), &[]).unwrap(),
+            authored_definition_graph(&second, &mut |id| Ok(id), &[]).unwrap());
     }
 }

@@ -1273,4 +1273,25 @@ mod tests {
             Some(crate::filter::ParityRequirement::Even)
         );
     }
+
+    #[test]
+    fn milled_references_retain_public_origin_without_inventing_a_graveyard_clause() {
+        for (text, explicit_zone) in [
+            ("creature card milled this way", None),
+            ("card milled this way", None),
+            ("creature card in your graveyard milled this way", Some(Zone::Graveyard)),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+            assert!(filter.match_captured_public_destination, "{text}");
+            assert_eq!(filter.zone, explicit_zone, "{text}");
+            assert!(filter.tagged_constraints.iter().any(|constraint|
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject));
+        }
+        let tokens = lex_line("creature card put into your graveyard this way", 0).unwrap();
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert!(!filter.match_captured_public_destination);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+    }
+
 }

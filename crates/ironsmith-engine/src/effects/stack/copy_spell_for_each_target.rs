@@ -70,7 +70,7 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
         // and legality is judged for the copies' controller.
         let mut probe_entry = original_entry.clone();
         probe_entry.controller = copier;
-        let Some(slots) = stack_entry_retarget_requirements(game, &probe_entry, false) else {
+        let Some(slots) = stack_entry_retarget_requirements(game, &probe_entry, false)? else {
             return Ok(EffectOutcome::resolved());
         };
         let slots: Vec<_> = slots

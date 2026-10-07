@@ -1,4 +1,4 @@
-import { normalizeSelectObjectHiddenRef } from "./sync-commands.js";
+import { normalizeSelectObjectHiddenRef, findPriorityActionForCommand } from "./sync-commands.js";
 
 export function actionRefObjectId(actionRef) {
   if (!actionRef || typeof actionRef !== "object") return null;
@@ -7,6 +7,8 @@ export function actionRefObjectId(actionRef) {
       return actionRef.land_id;
     case "cast_spell":
       return actionRef.spell_id;
+    case "open_exiled_card_for_play":
+    case "cast_exiled_card_face_down":
     case "use_pregame_action":
       return actionRef.card_id;
     case "activate_ability":
@@ -33,6 +35,8 @@ export function actionRefWithObjectId(actionRef, objectId) {
     case "cast_spell":
       next.spell_id = Number(objectId);
       break;
+    case "open_exiled_card_for_play":
+    case "cast_exiled_card_face_down":
     case "use_pregame_action":
       next.card_id = Number(objectId);
       break;
@@ -89,4 +93,105 @@ export function hiddenObjectIdForHiddenRefFromCheckpoint(checkpoint, hiddenRef) 
     if (Number.isSafeInteger(objectId) && objectId > 0) matches.push(objectId);
   }
   return matches.length === 1 ? matches[0] : null;
+}
+
+
+export function isOpaqueExilePlayCommand(command) {
+  return command?.type === "priority_action"
+    && ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(command.action_ref?.kind);
+}
+
+// Opaque actions use the shared ciphertext identity when one exists. Private
+// hydration may replace the local manifest slot without changing that public
+// origin. Reading metadata here never requires an exported face/name.
+export function opaqueExileOriginReference(metadata) {
+  if (!metadata || metadata.zone !== "exile") return null;
+  const publicSlot = metadata.publicSlot ?? metadata.public_slot;
+  const publicCommitment = metadata.publicCommitment ?? metadata.public_commitment;
+  const slot = publicCommitment && publicSlot != null ? publicSlot : metadata.slot;
+  const commitment = publicCommitment && publicSlot != null ? publicCommitment : metadata.commitment;
+  if (!Number.isSafeInteger(metadata.owner) || metadata.owner < 0
+    || !Number.isSafeInteger(slot) || slot < 0 || typeof commitment !== "string" || !commitment) return null;
+  return { owner: metadata.owner, zone: "exile", slot, commitment };
+}
+
+function opaqueExileObjectForReference(checkpoint, reference) {
+  // Do not use the general selection normalizer: its legacy partial-reference
+  // completion may pair a private slot with a public commitment.
+  const owner = reference?.owner;
+  const pairs = [[reference?.slot, reference?.commitment],
+    [reference?.public_slot ?? reference?.publicSlot,
+      reference?.public_commitment ?? reference?.publicCommitment]]
+    .filter(([slot, commitment]) => slot != null || commitment != null);
+  if (!Number.isSafeInteger(owner) || owner < 0 || reference?.zone !== "exile"
+    || pairs.length === 0 || pairs.some(([slot, commitment]) =>
+      !Number.isSafeInteger(slot) || slot < 0 || typeof commitment !== "string" || !commitment)) {
+    throw new Error("Opaque exile remapping requires its complete public hidden identity");
+  }
+  const matches = (checkpoint?.objects || []).filter(object => {
+    const hidden = object?.hiddenCard ?? object?.hidden_card;
+    if (object?.zone !== "exile" || hidden?.owner !== owner) return false;
+    return pairs.every(([slot, commitment]) =>
+      (hidden.slot === slot && hidden.commitment === commitment)
+      || ((hidden.publicSlot ?? hidden.public_slot) === slot
+        && (hidden.publicCommitment ?? hidden.public_commitment) === commitment));
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+// A hidden commitment identifies a physical card, not its current CR 400.7
+// object. The offered action freezes its public zone-change generation. Only
+// that pair permits a legitimate peer-local ObjectId translation.
+export function resolveOpaqueExilePlayCommand(command, checkpoint) {
+  if (!isOpaqueExilePlayCommand(command)) return command;
+  const originalId = Number(actionRefObjectId(command.action_ref));
+  if (!Number.isSafeInteger(originalId) || originalId <= 0) {
+    throw new Error("Opaque exile action has an invalid original object");
+  }
+  const hiddenRef = command.object_hidden_ref ?? command.objectHiddenRef;
+  const matches = (checkpoint?.objects || []).filter(object => Number(object?.id) === originalId);
+  const current = hiddenRef ? opaqueExileObjectForReference(checkpoint, hiddenRef)
+    : matches.length === 1 ? matches[0] : null;
+  const currentId = current == null ? null : Number(current.id);
+  if (!current || !Number.isSafeInteger(currentId) || currentId <= 0 || current.zone !== "exile") {
+    throw new Error("Opaque exile action has no exact current exile origin");
+  }
+  const hidden = current.hiddenCard ?? current.hidden_card;
+  const frozen = command.action_ref.incarnation;
+  if (hidden) {
+    if (!hiddenRef) {
+      throw new Error("Tracked opaque exile action requires its complete public hidden identity");
+    }
+    if (!Number.isSafeInteger(frozen) || frozen < 0
+      || !Number.isSafeInteger(hidden.incarnation) || hidden.incarnation < 0
+      || hidden.incarnation !== frozen) {
+      throw new Error("Opaque exile action refers to an obsolete or unknown hidden incarnation");
+    }
+  } else if (frozen != null || hiddenRef || currentId !== originalId) {
+    // Untracked local cards have no cryptographic incarnation witness. Their
+    // native ObjectId remains exact; they cannot use an identity fallback.
+    throw new Error("Untracked exile action requires its exact original object");
+  }
+  if (currentId === originalId) return command;
+  return { ...command, object_id: currentId,
+    action_ref: actionRefWithObjectId(command.action_ref, currentId) };
+}
+
+
+export async function localOpaqueExilePlayCommand(game, command) {
+  if (command?.type === "priority_action" && !command.action_ref && command.action_index != null) {
+    if (typeof game?.uiState !== "function") {
+      throw new Error("Index-only priority command requires a current public decision or an explicit action reference");
+    }
+    const decision = (await game.uiState())?.decision;
+    const action = findPriorityActionForCommand(decision, command);
+    if (!action || isOpaqueExilePlayCommand({ type: "priority_action", action_ref: action.action_ref })) {
+      throw new Error("Opaque or unavailable index-only priority command requires its explicit frozen action reference");
+    }
+  }
+  if (!isOpaqueExilePlayCommand(command)) return command;
+  if (typeof game?.getHiddenCardState !== "function") {
+    throw new Error("Engine cannot validate the opaque exile incarnation");
+  }
+  return resolveOpaqueExilePlayCommand(command, await game.getHiddenCardState());
 }

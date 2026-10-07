@@ -67,7 +67,9 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
     match restriction {
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
         | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
-        | crate::effect::Restriction::MustAttack(sources) => {
+        | crate::effect::Restriction::MustAttack(sources)
+        | crate::effect::Restriction::MustBlock(sources)
+        | crate::effect::Restriction::MaximumBlockers { filter: sources, .. } => {
             object_filter_mentions_iterated_player(sources)
         }
         crate::effect::Restriction::PlayLandsMatching(player, filter) => {
@@ -223,6 +225,9 @@ pub(super) fn predicate_matches_with_context(
             game,
             ctx,
         );
+    }
+    if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
+        return outcome.count_or_zero() > 0;
     }
     if surface.action == crate::effect::PriorEffectAction::Died {
         let filter_ctx = ctx.filter_context(game);
@@ -509,7 +514,7 @@ pub(crate) fn prepare_if_branches(
             .execution_facts
             .iter()
             .filter_map(|fact| match fact {
-                ExecutionFact::ChosenNumber(n) => Some(*n as i32),
+                ExecutionFact::ChosenNumber(n) => Some(i64::from(*n)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -518,7 +523,7 @@ pub(crate) fn prepare_if_branches(
         } else {
             let matches = chosen_numbers
                 .into_iter()
-                .filter(|value| cmp.evaluate(*value))
+                .filter(|value| cmp.evaluate_wide(*value))
                 .count();
             Some(matches)
         }
@@ -586,9 +591,44 @@ pub(crate) fn execute_if_branches_with_outputs(
     )
 }
 
+/// A shared antecedent selects an exact roster for one simultaneous authored
+/// action. Delegate it to the same player-action owner as ordinary ForPlayers.
+fn correlated_branch(effect: &IfEffect, branches: &[PreparedIfBranch])
+    -> Option<(Vec<crate::ids::PlayerId>, Vec<crate::effect::Effect>)> {
+    if !effect.per_player_result || !effect.else_.is_empty() { return None; }
+    let first = branches.iter().find(|branch| !branch.effects.is_empty())?;
+    if !first.effects.iter().all(|effect| effect.0.supports_simultaneous_player_action()
+        || effect.0.is_read_only_simultaneous_player_action()
+        || effect.0.supports_prepared_action_program()) { return None; }
+    if !branches.iter().filter(|branch| !branch.effects.is_empty()).all(|branch|
+        branch.player.is_some() && branch.repetitions == 1 && branch.effects == first.effects) { return None; }
+    let participants = branches.iter().filter(|branch| !branch.effects.is_empty())
+        .filter_map(|branch| branch.player).collect::<Vec<_>>();
+    (participants.len() > 1).then(|| (participants, first.effects.clone()))
+}
+
 impl EffectExecutor for IfEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.then.iter().chain(&self.else_).all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let branches = prepare_if_branches(self, game, ctx);
+        if let Some((participants, effects)) = correlated_branch(self, &branches) {
+            let excluded = participants.into_iter().fold(crate::target::PlayerFilter::Any, |remaining, player|
+                crate::target::PlayerFilter::excluding(remaining, crate::target::PlayerFilter::Specific(player)));
+            let filter = crate::target::PlayerFilter::excluding(crate::target::PlayerFilter::Any, excluded);
+            return super::ForPlayersEffect::new(filter, effects).prepare_draw_continuation(game, ctx)
+                .map(super::for_players::ForPlayersDrawProgress::into_commit);
+        }
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
-        self.then
+        // A per-player antecedent owns its own simultaneous roster boundary.
+        !self.per_player_result && self.then
             .iter()
             .chain(&self.else_)
             .all(super::action_program::action_program_child_is_prepared)
@@ -636,6 +676,9 @@ impl EffectExecutor for IfEffect {
         // untaken branch, an antecedent skipped because its object is gone)
         // left no result: it didn't happen (CR 608.2c).
         let branches = prepare_if_branches(self, game, ctx);
+        if let Some((participants, effects)) = correlated_branch(self, &branches) {
+            return super::execute_player_occurrences_with_outputs(&effects, participants, game, ctx);
+        }
         execute_if_branches_with_outputs(game, ctx, &branches)
     }
 

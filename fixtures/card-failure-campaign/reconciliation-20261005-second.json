@@ -1,0 +1,53 @@
+{
+  "checked_at": "2026-10-05T19:35:00Z",
+  "working_base": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
+  "prior_working_base": "ced8df84fa9e2103c04dfdf54e98e3332ad9a6d0",
+  "main_repair_commit": "492c077394eaf416d41c19c9a1c11c58a7579c3e",
+  "original_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+  "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+  "published_source_proposals": 1114,
+  "safe_current_proposals_after_confirmed_holds": 1116,
+  "sigil_original_hold_fixed_upstream": true,
+  "historical_local_stage61": {
+    "commit": "c6c3978f31132d92b8f8fab5fce3d31b5483e859",
+    "tree": "036a9bfa16a6a1b3add739d6c0b230d4ac270f12",
+    "proposals": 1014,
+    "available_locally": false,
+    "reconstruction_requires_new_review": true
+  },
+  "published_stages_in_main": 54,
+  "published_prs_through": 820,
+  "working_tree_replaced": true,
+  "historical_local_manifests_and_bundle_unavailable": true,
+  "unpublished_proposals_above_main_requiring_recovery": 72,
+  "remote_source_checkpoint": "5ed4b8fb3dfcf8e670517823d25532432c838207",
+  "remote_recovery_archive_branch": "checkpoint/card-campaign-20261005-recovery-bundles",
+  "execution": "all builds/tests/probes/formatters/corpus deferred; no recovery credit claimed",
+  "prior_recovery_working_base": "d51f4ee69b500462c8d70354cec324bf6d04677c",
+  "source_integration_commit": "a92dbeb7a3c3b783f25472ba80ca5ddc944ea32f",
+  "historical_reheld_cards": [
+    "Auton Soldier",
+    "Barret Wallace",
+    "Blue Mage's Cane",
+    "Lord Xander, the Collector",
+    "Memory Vampire"
+  ],
+  "reheld_cards": [
+    "Bishop of Binding"
+  ],
+  "defender_holds_source_reviewed_at": "6afb57377",
+  "recovered_historical_missing_72": 16,
+  "remaining_historical_missing_72": 56,
+  "additional_foretell_not_in_historical_1014": 4,
+  "latest_published_pr": 841,
+  "main_delta_scope": {
+    "commit": "77760eaf8670b3cbb0f368632edc4b40762f19a7",
+    "paths": 22,
+    "all_prefix": "web/ui/",
+    "overlap_with_recovery_source_paths": [],
+    "integration": "Exact upstream contents retained without conflict in local branch; runtime execution remains deferred."
+  },
+  "latest_card_source_integration": "65ae94a20f970ab4efbb0600f9f029fd69df3467",
+  "publication_scope": "Card-source-only delta on prior draft; the separate upstream UI commit remains on main and a local reconciliation branch, excluded from new draft diffs.",
+  "historical_identity_reconciliation_caveat": "The retained 16/56 historical missing-set figures describe the initial exact-name comparison only. Later independently reviewed families are counted from frozen baseline Oracle IDs; the unavailable historical 72-ID manifest prevents claiming a complete identity-by-identity recovery comparison. These figures do not measure current unresolved source work."
+}

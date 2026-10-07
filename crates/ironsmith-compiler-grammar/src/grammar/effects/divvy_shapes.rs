@@ -9,6 +9,10 @@ use crate::lexer::{OwnedLexToken, TokenWordView};
 mod helpers;
 use helpers::*;
 
+#[path = "divvy_shapes/binary_program.rs"]
+mod binary_program;
+pub use binary_program::{BinaryPileCount, BinaryPileDestination, BinaryPilePartitioner, BinaryPileProducer, BinaryPileProgramShape};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivvyChooserShape {
     Opponent,
@@ -23,6 +27,7 @@ pub enum DivvyRestDestinationShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivvySequenceShape {
+    BinaryCards(BinaryPileProgramShape),
     FixedExilePiles {
         first_count: i32,
         second_count: i32,
@@ -60,6 +65,9 @@ pub enum DivvySequenceShape {
 }
 
 pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<DivvySequenceShape> {
+    if let Some(program) = binary_program::parse(sentences) {
+        return Some(DivvySequenceShape::BinaryCards(program));
+    }
     let sentence_words = sentences
         .iter()
         .map(|tokens| TokenWordView::new(tokens).to_word_refs())

@@ -123,6 +123,31 @@ impl GrandMeleeState {
 }
 
 impl GameState {
+    pub(super) fn combat_lanes(&self) -> Vec<&CombatState> {
+        let mut combats = self.combat.iter().collect::<Vec<_>>();
+        if let Some(state) = &self.grand_melee {
+            combats.extend(state.markers.iter().filter(|marker| marker.number != state.focused_marker)
+                .filter_map(|marker| marker.lane.combat.as_ref()));
+        }
+        combats
+    }
+    pub(super) fn mutate_combat_lanes(&mut self, mut change: impl FnMut(&mut CombatState) -> bool) -> bool {
+        let mut changed = self.combat.as_mut().is_some_and(&mut change);
+        if let Some(state) = self.grand_melee.as_mut() {
+            for marker in &mut state.markers {
+                if marker.number != state.focused_marker && let Some(combat) = marker.lane.combat.as_mut() {
+                    changed |= change(combat);
+                }
+            }
+        }
+        changed
+    }
+    pub(crate) fn current_attack_target_across_lanes(&self, attacker: ObjectId)
+        -> Option<&crate::combat_state::AttackTarget>
+    {
+        self.combat_lanes().into_iter().find_map(|combat| crate::combat_state::get_attack_target(combat, attacker))
+    }
+
     fn grand_melee_lane(&self) -> GrandMeleeTurnLane {
         GrandMeleeTurnLane {
             turn: self.turn.clone(),

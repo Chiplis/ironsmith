@@ -149,6 +149,9 @@ impl OutcomeValue {
 // Effect Outcome (result + events)
 // ============================================================================
 
+/// Compatibility name for complete immutable original-result evidence.
+pub type OutcomeObjectMemory = ObjectSnapshot;
+
 /// Original recipient evidence for one damage instruction, before damage's
 /// life/counter consequences and independently of any redirection destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +169,21 @@ pub enum DamageRecipientBefore {
         was_creature: bool,
         loyalty: Option<u32>,
     },
+}
+
+/// A retained flip from one exact instruction, independent of event draining.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct CoinFlipResult {
+    pub player: PlayerId,
+    pub face: ironsmith_core::CoinFace,
+    pub call: Option<ironsmith_core::CoinFace>,
+    pub winner: Option<PlayerId>,
+    pub loser: Option<PlayerId>,
+    pub turn_ordinal: u32,
+    pub instruction_ordinal: u32,
+    /// Opponent paired with this original retained coin, independent of who flips it.
+    pub associated_player: Option<PlayerId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -241,6 +259,22 @@ pub enum ExecutionFact {
         player: PlayerId,
         cards: Vec<ObjectSnapshot>,
     },
+    /// Exact completed original sacrifice action, before replacement programs.
+    /// An empty receipt is a known prevented/substituted action, not missing
+    /// evidence. Appended after deferred additions so nested sacrifices cannot
+    /// supply the outer action's result.
+    OriginalSacrificeObjects(Vec<OutcomeObjectMemory>),
+    /// Retained results from one exact coin instruction; appended for wire stability.
+    CoinFlips(Vec<CoinFlipResult>),
+    /// Exact card arrivals from one original move instruction. Recorded before
+    /// deferred replacement programs; each memory carries the actual zone.
+    /// An empty vector is completed zero movement, not missing evidence.
+    OriginalZoneMoveCards(Vec<OutcomeObjectMemory>),
+    /// One completed local color decision, including when its source left.
+    ChosenColor(crate::color::Color),
+    /// Exact cards disclosed by this reveal instruction. Empty is a completed
+    /// empty reveal; absence is unavailable evidence.
+    RevealedCards(Vec<OutcomeObjectMemory>),
 }
 
 impl ExecutionFact {
@@ -318,6 +352,20 @@ impl EffectOutcome {
             action,
             player,
             objects,
+        })
+    }
+
+    pub fn coin_flip_results(&self) -> Option<&[CoinFlipResult]> {
+        self.execution_facts.iter().rev().find_map(|fact| match fact {
+            ExecutionFact::CoinFlips(results) => Some(results.as_slice()),
+            _ => None,
+        })
+    }
+
+    /// Keep the terminal authored summary and the complete chronological receipts.
+    pub fn aggregate_terminal(outcomes: impl IntoIterator<Item = EffectOutcome>) -> Self {
+        Self::aggregate_with_summary(outcomes, |results| {
+            results.last().cloned().unwrap_or((OutcomeStatus::Succeeded, OutcomeValue::None))
         })
     }
 
@@ -425,6 +473,7 @@ impl EffectOutcome {
         let mut other = Vec::new();
         let mut chosen_objects = Vec::new();
         let mut result_objects = Vec::new();
+        let mut has_result_objects = false;
         let mut affected_objects = Vec::new();
         let mut result_memory = Vec::new();
         let mut chosen_memory = Vec::new();
@@ -435,7 +484,10 @@ impl EffectOutcome {
         for fact in facts {
             match fact {
                 ExecutionFact::ChosenObjects(ids) => chosen_objects.extend(ids),
-                ExecutionFact::ResultObjects(ids) => result_objects.extend(ids),
+                ExecutionFact::ResultObjects(ids) => {
+                    has_result_objects = true;
+                    result_objects.extend(ids);
+                }
                 ExecutionFact::AffectedObjects(ids) => affected_objects.extend(ids),
                 ExecutionFact::ResultObjectMemory(memory) => result_memory.extend(memory),
                 ExecutionFact::ChosenObjectMemory(memory) => chosen_memory.extend(memory),
@@ -469,7 +521,7 @@ impl EffectOutcome {
         if !chosen_objects.is_empty() {
             other.push(ExecutionFact::ChosenObjects(chosen_objects));
         }
-        if !result_objects.is_empty() {
+        if has_result_objects {
             other.push(ExecutionFact::ResultObjects(result_objects));
         }
         if !affected_objects.is_empty() {
@@ -667,12 +719,9 @@ impl EffectOutcome {
     ///
     /// Use this when the compatibility payload must remain a count or another
     /// value, but follow-up effects need the post-effect object IDs.
+    /// An empty vector is an authoritative empty result, not absent evidence.
     pub fn with_result_objects(self, objects: Vec<ObjectId>) -> Self {
-        if objects.is_empty() {
-            self
-        } else {
-            self.with_execution_fact(ExecutionFact::ResultObjects(objects))
-        }
+        self.with_execution_fact(ExecutionFact::ResultObjects(objects))
     }
 
     /// Record affected object ids and their current object memory in one step.
@@ -1206,6 +1255,9 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     positive.negated = false;
                     return !Self::PriorEffectResult(positive).evaluate_outcome(outcome);
                 }
+                if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
+                    return outcome.count_or_zero() > 0;
+                }
                 if surface.action == crate::effect::PriorEffectAction::Died {
                     let count = outcome.affected_object_memory().unwrap_or_default().iter()
                         .filter(|memory| memory.card_types.contains(&crate::types::CardType::Creature)
@@ -1431,6 +1483,7 @@ impl RestrictionExt for Restriction {
                                         tracker.add_scoped_cant_cast_filter(
                                             player.id,
                                             crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                                                 filter: resolved_filter,
                                                 source: Some(source),
                                                 controller: Some(controller),
@@ -1445,6 +1498,7 @@ impl RestrictionExt for Restriction {
                             tracker.add_scoped_cant_cast_filter(
                                 player.id,
                                 crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                                     filter: spell_filter.clone(),
                                     source,
                                     controller: Some(controller),
@@ -1775,6 +1829,18 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MaximumBlockers { filter, maximum } => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        tracker.maximum_blockers.entry(object.id)
+                            .and_modify(|existing| *existing = (*existing).min(*maximum))
+                            .or_insert(*maximum);
+                    }
+                }
+            }
             Restriction::MustAttack(filter) => {
                 for &object in &game.battlefield {
                     if !game.is_phased_out(object)
@@ -1782,6 +1848,16 @@ impl RestrictionExt for Restriction {
                         && filter.matches(object, &ctx, game)
                     {
                         *tracker.must_attack.entry(object.id).or_default() += 1;
+                    }
+                }
+            }
+            Restriction::MustBlock(filter) => {
+                for &object in &game.battlefield {
+                    if !game.is_phased_out(object)
+                        && let Some(object) = game.object(object)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        *tracker.must_block.entry(object.id).or_default() += 1;
                     }
                 }
             }
@@ -1854,6 +1930,7 @@ impl RestrictionExt for Restriction {
             }
             Restriction::EnterBattlefield(filter) => {
                 let restriction = crate::game_state::CastRestrictionFilter {
+                                    source_number_owner: None,
                     filter: filter.clone(),
                     source,
                     controller: Some(controller),
@@ -1862,6 +1939,13 @@ impl RestrictionExt for Restriction {
                 };
                 if !tracker.cant_enter_battlefield.contains(&restriction) {
                     tracker.cant_enter_battlefield.push(restriction);
+                }
+            }
+            Restriction::BecomeSuspected(filter) => {
+                for &obj_id in &game.battlefield {
+                    if !game.is_phased_out(obj_id) && game.object(obj_id).is_some_and(|object| filter.matches(object, &ctx, game)) {
+                        tracker.cant_become_suspected.insert(obj_id);
+                    }
                 }
             }
             Restriction::BeSacrificed(filter) => {
@@ -1939,6 +2023,29 @@ impl RestrictionExt for Restriction {
                         && player_matches_restriction_filter(player.id, player_filter)
                     {
                         tracker.cant_target_players_from.push(
+                            crate::game_state::PlayerCantBeTargetedFrom {
+                                player: player.id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
+                    }
+                }
+            }
+            Restriction::PlayerHexproofFrom(player_filter, source_filter) => {
+                let bound_filter = source.and_then(|source| {
+                    crate::static_abilities::bind_chosen_filter_qualities(
+                        source_filter,
+                        game,
+                        source,
+                    )
+                });
+                let source_filter = bound_filter.as_ref().unwrap_or(source_filter);
+                for player in &game.players {
+                    if player.is_in_game()
+                        && player_matches_restriction_filter(player.id, player_filter)
+                    {
+                        tracker.player_hexproof_from.push(
                             crate::game_state::PlayerCantBeTargetedFrom {
                                 player: player.id,
                                 source_filter: source_filter.clone(),
@@ -2033,7 +2140,16 @@ impl RestrictionExt for Restriction {
 ///
 /// Use the helper constructors (e.g., `Effect::draw()`, `Effect::damage()`) to
 /// create effects rather than constructing directly.
-pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>);
+pub struct Effect(pub Arc<dyn EffectExecutor>, Option<RetainedEffectModel>, Arc<TextChangeCache>);
+
+/// Immutable transformed executors are memoized by original executor and
+/// directed word change. Repeated layer reads retain the same program-node
+/// identities instead of manufacturing a new acquisition on each read.
+struct TextChangeCache {
+    executor: std::sync::Weak<dyn EffectExecutor>,
+    values: std::sync::Mutex<std::collections::HashMap<ironsmith_core::TextChange,
+        Result<Effect, crate::continuous::text_changes::TextChangeDomainError>>>,
+}
 
 /// The canonical executable model belongs to this exact immutable executor.
 /// A direct replacement of the public executor must invalidate its model.
@@ -2052,7 +2168,7 @@ impl std::fmt::Debug for Effect {
 
 impl Clone for Effect {
     fn clone(&self) -> Self {
-        Effect(Arc::clone(&self.0), self.1.clone())
+        Effect(Arc::clone(&self.0), self.1.clone(), Arc::clone(&self.2))
     }
 }
 
@@ -2066,6 +2182,14 @@ impl PartialEq for Effect {
 }
 
 impl Effect {
+    /// Select a reached native program through the same checked input and
+    /// instruction-identity gateway as ordinary effect dispatch.
+    pub(crate) fn select_prepared_action_program(
+        &self, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, crate::effects::ExecutionError> {
+        crate::effects::runtime::select_reached_action_program(game, self, ctx)
+    }
+
     /// Prepare a simultaneous instruction with the same immutable result
     /// contract as ordinary execution, including nested result/tag wrappers.
     pub fn prepare_simultaneous_player_action(
@@ -2101,11 +2225,40 @@ impl Effect {
 
     /// Create a new effect from an EffectExecutor implementation.
     pub fn new<E: EffectExecutor + 'static>(executor: E) -> Self {
-        Effect(Arc::new(executor), None)
+        let executor: Arc<dyn EffectExecutor> = Arc::new(executor);
+        let cache = TextChangeCache { executor: Arc::downgrade(&executor),
+            values: std::sync::Mutex::new(std::collections::HashMap::new()) };
+        Effect(executor, None, Arc::new(cache))
+    }
+
+    /// Rewrite this immutable definition through typed native owners. A
+    /// caller that already captured this Effect keeps its old executor.
+    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
+        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let valid_cache = self.2.executor.upgrade()
+            .is_some_and(|executor| Arc::ptr_eq(&executor, &self.0));
+        if valid_cache {
+            if let Some(value) = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner())
+                .get(&change).cloned() { return value; }
+        }
+        let value = match crate::continuous::text_change_programs::rewrite_effect_words(self, change) {
+            Ok(None) => return Ok(self.clone()),
+            Ok(Some(value)) => Ok(value),
+            Err(error) => Err(error),
+        };
+        if valid_cache {
+            // Do not hold this lock during recursion through child programs.
+            let mut cache = self.2.values.lock().unwrap_or_else(|poison| poison.into_inner());
+            cache.entry(change).or_insert_with(|| value.clone()).clone()
+        } else { value }
     }
 
     pub(crate) fn from_boxed_executor(executor: Box<dyn EffectExecutor>) -> Self {
-        Effect(Arc::from(executor), None)
+        let executor: Arc<dyn EffectExecutor> = Arc::from(executor);
+        let cache = TextChangeCache { executor: Arc::downgrade(&executor),
+            values: std::sync::Mutex::new(std::collections::HashMap::new()) };
+        Effect(executor, None, Arc::new(cache))
     }
 
     /// Retain the canonical model encoded by the compiler/artifact service.
@@ -2566,6 +2719,10 @@ impl Effect {
     }
 
     /// Create a "bolster N" effect.
+    pub fn bolster_value(amount: Value) -> Self {
+        Self::new(crate::effects::BolsterEffect::with_value(amount))
+    }
+
     pub fn bolster(amount: u32) -> Self {
         use crate::effects::BolsterEffect;
         Self::new(BolsterEffect::new(amount))

@@ -17,7 +17,8 @@ test('audit replay hydrates a public land before preview and resolves its stable
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/audit-replay-test`);
   const result = await page.evaluate(async () => {
     const { createSnapshotDecoder } = await import('/src/lib/snapshot-channel.js');
-    const { applyAuditReplayActionWithGame } = await import('/src/lib/audit-replay.js');
+    const { applyAuditReplayActionWithGame, startAuditTranscriptReplayWithGame } = await import('/src/lib/audit-replay.js');
+    const { CURRENT_AUDIT_PROTOCOL_VERSION } = await import('/src/lib/multiplayer-audit.js');
     const worker = new Worker('/src/workers/wasmGameWorker.js', { type: 'module' });
     const decoder = createSnapshotDecoder(), pending = new Map();
     let id = 0;
@@ -36,21 +37,23 @@ test('audit replay hydrates a public land before preview and resolves its stable
     const call = (method, ...args) => new Promise((resolve, reject) => {
       pending.set(++id, { resolve, reject }); worker.postMessage({ type: 'call', id, method, args });
     });
-    const game = Object.fromEntries(['uiState', 'dispatch', 'previewCryptoRequirements', 'revealHiddenPosition',
+    const game = Object.fromEntries(['uiState', 'setPerspective', 'dispatch', 'previewCryptoRequirements', 'revealHiddenPosition',
       'revealHiddenSlot', 'revealHiddenObject', 'getHiddenCardState', 'exportPublicAuditCheckpoint',
       'createRuntimeSavepoint', 'restoreRuntimeSavepoint', 'releaseRuntimeSavepoint']
       .map(method => [method, (...args) => call(method, ...args)]));
+    game.startMatch = config => call('startMatch', { ...config, startingPlayer: 0 });
     worker.postMessage({ type: 'init', assetBaseUrl: `${location.origin}/` });
     try {
       await ready;
-      await call('setPerspective', 0);
-      let state = await call('startMatch', {
-        playerNames: ['Alice', 'Bob'], startingLife: 20, seed: 1, format: 'normal', startingPlayer: 0,
+      const transcript = { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, match: {
+        protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
+        players: [{ name: 'Alice', deck: Array(60).fill('Island') }, { name: 'Bob', deck: Array(60).fill('Mountain') }],
+        openDecklists: true, startingLife: 20, seed: 1, format: 'normal',
         openingHandSize: 7, decks: [[], []],
-        publicDecklists: [Array(60).fill('Island'), Array(60).fill('Mountain')],
         hiddenDeckManifests: [0, 1].map(owner => ({ owner, deckCount: 60, commitmentRoot: `root-${owner}`,
           slotCommitments: Array.from({ length: 60 }, (_, slot) => ({ slot, commitment: `commitment-${owner}-${slot}` })) })),
-      });
+      } };
+      let { state } = await startAuditTranscriptReplayWithGame({ game, transcript });
       for (let step = 0; step < 20 && !state.phase.includes('main'); step++) {
         const action = state.decision?.actions?.find(value =>
           ['keep_opening_hand', 'continue_pregame', 'begin_game', 'pass_priority'].includes(value.action_ref?.kind));

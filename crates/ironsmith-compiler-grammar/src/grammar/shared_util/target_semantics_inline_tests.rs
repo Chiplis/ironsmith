@@ -9,6 +9,35 @@ fn parse(raw: &str) -> TargetAst {
 }
 
 #[test]
+fn leading_player_union_retains_independently_qualified_object_branches() {
+    let TargetAst::ObjectOrPlayer(filter, player, explicit_target) = parse(
+        "target opponent, creature you control, or planeswalker an opponent controls",
+    ) else {
+        panic!("expected one mixed target domain");
+    };
+    assert_eq!(player, PlayerFilter::Opponent);
+    assert!(explicit_target.is_some());
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert_eq!(filter.any_of[0].card_types, [CardType::Creature]);
+    assert_eq!(filter.any_of[0].controller, Some(PlayerFilter::You));
+    assert_eq!(filter.any_of[1].card_types, [CardType::Planeswalker]);
+    assert_eq!(filter.any_of[1].controller, Some(PlayerFilter::Opponent));
+}
+
+#[test]
+fn mixed_target_union_commits_to_full_object_filter_validation() {
+    for text in [
+        "target opponent or creature an opponent controls unsupported",
+        "target opponent, creature an opponent controls, or planeswalker an opponent controls unsupported",
+        "target opponent or creature an opponent controls and draw a card",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let (parsed, loss) = crate::parse_loss::capture(|| parse_target_phrase_inner(&tokens));
+        assert!(parsed.is_err() || loss.is_lossy(), "{text}: {parsed:#?}");
+    }
+}
+
+#[test]
 fn enchanted_creature_card_reference_is_not_limited_to_battlefield() {
     let TargetAst::Object(filter, explicit_target, _) = parse("enchanted creature card") else {
         panic!("expected an object reference");

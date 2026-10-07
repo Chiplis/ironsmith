@@ -594,6 +594,9 @@ pub(super) fn alternative_cast_matches_kind(
         ) | (
             AlternativeCastKind::Suspend,
             AlternativeCastingMethod::Suspend { .. }
+        ) | (
+            AlternativeCastKind::Foretell,
+            AlternativeCastingMethod::Foretell { .. }
         )
     )
 }
@@ -604,6 +607,23 @@ pub(super) fn object_has_alternative_cast_kind(
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
 ) -> bool {
+    object_has_alternative_cast_kind_in_view(object, object.abilities.as_slice(), kind, game, ctx)
+}
+
+pub(super) fn object_has_alternative_cast_kind_in_view(
+    object: &Object,
+    abilities: &[crate::ability::Ability],
+    kind: AlternativeCastKind,
+    game: &crate::game_state::GameState,
+    ctx: &FilterContext,
+) -> bool {
+    // The physical restore record retains printed alternatives for a later
+    // reveal, not as current capability of a face-down spell/permanent/card.
+    if game.is_face_down(object.id) { return false; }
+    if kind == AlternativeCastKind::Suspend && crate::ability::abilities_have_suspend(abilities)
+    {
+        return true;
+    }
     if object
         .alternative_casts
         .iter()
@@ -612,7 +632,20 @@ pub(super) fn object_has_alternative_cast_kind(
         return true;
     }
 
-    // Include temporary grants (e.g., Snapcaster Mage granting flashback).
+    // Suspended status is a property of the card (CR 702.62b), independent of
+    // the player checking it. A permission granted to its owner or another
+    // player must not disappear when an opponent targets that card. This does
+    // not give the querying player permission to cast it.
+    if kind == AlternativeCastKind::Suspend {
+        return game.players.iter().filter(|player| player.is_in_game()).any(|player| {
+            game.effect_store.grant_registry
+                .granted_alternative_casts_for_card(game, object.id, object.zone, player.id)
+                .iter().any(|grant| alternative_cast_matches_kind(&grant.method, kind))
+        });
+    }
+
+    // Other alternative-casting permission queries retain their player scope
+    // (e.g., Snapcaster Mage granting flashback).
     let Some(player) = ctx.you else {
         return false;
     };
@@ -1177,6 +1210,7 @@ pub(super) fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'sta
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
         AlternativeCastKind::Suspend => "suspend",
+        AlternativeCastKind::Foretell => "foretell",
     }
 }
 

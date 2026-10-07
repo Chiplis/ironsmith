@@ -133,6 +133,10 @@ pub(crate) fn complete_prepared_damage_action(
     ctx: &mut ExecutionContext,
     mut proposal: Box<dyn crate::effects::SimultaneousEffectProposal>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    proposal.prepare_selection(game, ctx)?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+    }
     proposal.prepare_original(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(

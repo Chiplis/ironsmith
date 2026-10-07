@@ -391,6 +391,12 @@ pub enum StaticAbilityId {
     ExtraDieIgnoreLowest,
     /// Conversion of mana that would be lost, preserving the existing units.
     ConvertUnspentMana,
+    /// Appended to preserve existing published enum discriminants.
+    ForetellSpecialActionModifier,
+    ExtraCoinIgnoreOne,
+    FirstCoinBatchHeadsWin,
+    /// Standalone paired private inspection; appended for wire compatibility.
+    LookAtSourceExiledCards,
 }
 
 impl StaticAbilityId {
@@ -695,6 +701,9 @@ impl StaticAbilityId {
             | PreventHalfDamageReplacement
             | PreventMatchingDamage
             | SpellManaSpendingRestriction
+            | ExtraCoinIgnoreOne
+            | FirstCoinBatchHeadsWin
+            | LookAtSourceExiledCards
             | ExtraDieIgnoreLowest
             | RedirectMatchingDamage
             | AddLifeGainReplacement
@@ -754,6 +763,7 @@ impl StaticAbilityId {
             | EntersUnderChosenControl
             | Toxic
             | TrampleOverPlaneswalkers
+            | ForetellSpecialActionModifier
             | NativeAlternativeCastFromZone => {}
         }
     }

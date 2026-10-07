@@ -21,6 +21,11 @@ pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 /// Never widened to the source's other linked exile objects.
 pub const SOURCE_EXILED_SELF_TAG: &str = "__source_exiled_self__";
 
+/// Exact public-zone successor created by the original self-exile cost action.
+/// Captured before replacement additions; prevention and hidden arrivals bind
+/// an empty set. Stack admission must never repoint this completed receipt.
+pub const SOURCE_COST_PUBLIC_ARRIVAL_TAG: &str = "__source_cost_public_arrival__";
+
 /// Runtime tag for only the cards the current resolution exiled with its
 /// source. Filter contexts widen [`SOURCE_EXILED_TAG`] to every linked card,
 /// so "each other card exiled with ~" excludes the just-exiled card through
@@ -80,6 +85,39 @@ pub const SPELLS_CAST_THIS_TURN_TAG: &str = "__spells_cast_this_turn__";
 /// owner") the same snapshot-backed representation as other tagged-object
 /// references without inventing a separate player-filter primitive.
 pub const SOURCE_OBJECT_TAG: &str = "__source_object__";
+
+/// The actual pre-payment creature snapshot sacrificed for this source's
+/// Emerge alternative cost. Imported only by that incarnation's ETB event.
+pub const SOURCE_EMERGE_SACRIFICE_TAG: &str = "__source_emerge_sacrifice__";
+
+/// A sacrifice cost's announced object set and its completed original action
+/// are different references when a replacement changes the payment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SacrificeCostTag {
+    Selected(usize),
+    OriginalResult(usize),
+}
+
+impl SacrificeCostTag {
+    pub fn parse(tag: &TagKey) -> Option<Self> {
+        if let Some(ordinal) = tag.as_str().strip_prefix("sacrifice_cost_") {
+            return ordinal.parse().ok().map(Self::Selected);
+        }
+        tag.as_str().strip_prefix("__original_sacrifice_cost_")?
+            .parse().ok().map(Self::OriginalResult)
+    }
+
+    pub fn key(self) -> TagKey {
+        match self {
+            Self::Selected(ordinal) => TagKey::new(format!("sacrifice_cost_{ordinal}")),
+            Self::OriginalResult(ordinal) => TagKey::new(format!("__original_sacrifice_cost_{ordinal}")),
+        }
+    }
+
+    pub fn original_result_key(self) -> TagKey {
+        match self { Self::Selected(ordinal) | Self::OriginalResult(ordinal) => Self::OriginalResult(ordinal).key() }
+    }
+}
 
 /// Runtime player tag for the opponent a resolving clash was performed with
 /// (CR 701.30a). "Clash with an opponent. ... Otherwise, that player ..."
@@ -187,6 +225,8 @@ pub const PHASING_GROUP_TAG: &str = "__phasing_group__";
 /// Frozen actor and directly attacked player of one declared attack pair.
 pub const ATTACK_DECLARATION_ACTOR_TAG: &str = "__attack_declaration_actor__";
 pub const ATTACK_DECLARATION_DEFENDER_TAG: &str = "__attack_declaration_defender__";
+/// Controller when the triggering completed damage was dealt, not the source's current controller.
+pub const DAMAGE_SOURCE_CONTROLLER_TAG: &str = "__damage_source_controller__";
 /// Live controllers attacking the event's frozen defender when an effect
 /// constructs its filter context (CR 508.6), not the declaration's old actors.
 pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
@@ -241,11 +281,14 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     PHASING_GROUP_TAG,
     ATTACK_DECLARATION_ACTOR_TAG,
     ATTACK_DECLARATION_DEFENDER_TAG,
+    DAMAGE_SOURCE_CONTROLLER_TAG,
     CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,
     CAST_MODIFIED_CREATURES_TAG,
     CAST_CONTROLLED_OBJECTS_TAG,
+    SOURCE_COST_PUBLIC_ARRIVAL_TAG,
+    SOURCE_EMERGE_SACRIFICE_TAG,
 ];
 
 /// Dynamic tag key used by the tagging system.

@@ -113,7 +113,7 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                 let player_id = resolve_player_filter(game, &self.player, ctx)?;
                 let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
                 for tag in &self.moved_tags {
-                    ctx.clear_object_tag(tag.as_str());
+                    ctx.set_tagged_objects(tag.clone(), Vec::new());
                 }
 
                 let top_cards = game
@@ -159,6 +159,9 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
                                 && change.final_zone == Zone::Exile
                                 && let Some(id) = change.new_object_id
                             {
+                                if let Some(owner) = &ctx.linked_exile_owner {
+                                    game.add_linked_exile_pair_member(owner.clone(), id);
+                                }
                                 game.add_exiled_with_source_link(ctx.source, id);
                                 if self.face_down {
                                     game.set_face_down(id);
@@ -488,7 +491,12 @@ mod additional_owner_contract_tests {
         let stack = game.stack.iter().map(|e| e.object_id).collect::<Vec<_>>();
         let parent_tag = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
         let mut dm = ObserveOriginal { owner, alice, source, pause: mode == 2, pending: false, questions: 0 };
+        let linked_owner = crate::linked_exile::LinkedExileOwner::capture(source,
+            Some(ironsmith_core::LinkedExilePair {
+                definition: ironsmith_core::LinkedExileDefinition([33; 32]), pair: 0,
+            }), Some(&crate::continuous::AbilityOrigin::Printed(0))).unwrap();
         let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        if owner == 0 { ctx.linked_exile_owner = Some(linked_owner.clone()); }
         for name in ["it", "original_exiles", "accumulated"] { ctx.set_tagged_objects(name, vec![parent_tag.clone()]); }
         let result = run_owner(owner, &mut game, &mut ctx);
         if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
@@ -521,6 +529,10 @@ mod additional_owner_contract_tests {
             assert_eq!(ctx.get_tagged_all("accumulated").unwrap().len(), 1);
         }
         drop(ctx);
+        if owner == 0 {
+            assert_eq!(game.linked_exile_pair_members(&linked_owner).unwrap().len(),
+                if mode == 1 || mode == 2 { 0 } else { 2 });
+        }
         assert_eq!(game.player(alice).unwrap().life, 20);
         if mode == 1 || mode == 2 {
             assert_eq!(game.player(alice).unwrap().library, library); assert_eq!(game.player(alice).unwrap().hand, hand);
@@ -536,7 +548,9 @@ mod additional_owner_contract_tests {
             assert_eq!(dm.questions, 1);
             let mut dm = ObserveOriginal { owner, alice, source, pause: false, pending: false, questions: 0 };
             let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            if owner == 0 { ctx.linked_exile_owner = Some(linked_owner.clone()); }
             let outcome = run_owner(owner, &mut game, &mut ctx).unwrap(); assert!(!ctx.decision_maker.awaiting_choice()); drop(ctx);
+            if owner == 0 { assert_eq!(game.linked_exile_pair_members(&linked_owner).unwrap().len(), 2); }
             assert_original(owner, &outcome); assert_eq!(dm.questions, 1); assert_eq!(game.player(bob).unwrap().life, 27);
             assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
             assert_eq!(outcome.events.iter().filter_map(|e| e.downcast::<crate::events::LifeGainEvent>()).map(|e| e.amount).collect::<Vec<_>>(), vec![3,4]);

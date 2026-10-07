@@ -373,6 +373,10 @@ impl Effect {
             }
             return;
         }
+        if let Some(payments) = self.downcast_ref::<crate::effects::CollectManaPaymentsEffect<Effect>>() {
+            for effect in &payments.effects { visitor(effect); }
+            return;
+        }
         if let Some(for_players) = self.downcast_ref::<crate::effects::ForPlayersEffect<Effect>>() {
             for effect in &for_players.effects {
                 visitor(effect);
@@ -619,6 +623,9 @@ impl Effect {
         if let Some(payload) = self.downcast_ref::<crate::effects::RestartGameEffect>() {
             return payload.cards_left_in_exile.as_ref();
         }
+        if let Some(payload) = self.downcast_ref::<crate::effects::ChangeTextEffect>() {
+            return payload.target.is_target().then_some(&payload.target);
+        }
         if let Some(payload) = self.as_deal_damage() {
             return Some(&payload.target);
         }
@@ -730,6 +737,10 @@ impl Effect {
 
     pub fn heal_all_damage(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::HealDamageEffect::all(target))
+    }
+
+    pub fn turn_face_down(target: crate::target::ChooseSpec) -> Self {
+        Self::new(ironsmith_core::TurnFaceDownEffect::new(target))
     }
 
     pub fn turn_face_up(target: crate::target::ChooseSpec) -> Self {
@@ -941,6 +952,7 @@ impl Effect {
         Self::new(crate::effects::ForEachTaggedPlayerEffect {
             tag: tag.into(),
             effects,
+            require_evidence: false,
         })
     }
 
@@ -1130,6 +1142,7 @@ impl Effect {
         Self::new(crate::effects::MayEffect {
             decider: None,
             effects: _effects,
+            pay_as_cost: false,
         })
     }
 
@@ -1137,6 +1150,7 @@ impl Effect {
         Self::new(crate::effects::MayEffect {
             decider: Some(_player),
             effects: _effects,
+            pay_as_cost: false,
         })
     }
 
@@ -1302,6 +1316,10 @@ impl Effect {
 
     pub fn manifest_dread() -> Self {
         Self::new(crate::effects::ManifestDreadEffect::new())
+    }
+
+    pub fn bolster_value(amount: Value) -> Self {
+        Self::new(crate::effects::BolsterEffect::with_value(amount))
     }
 
     pub fn bolster(amount: u32) -> Self {

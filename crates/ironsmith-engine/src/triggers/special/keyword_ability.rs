@@ -78,6 +78,7 @@ impl TriggerMatcher for KeywordAbilityTrigger {
                 let Some(e) = event.downcast::<CardsDrawnEvent>() else {
                     return false;
                 };
+                if e.miracle.is_some() { return false; }
                 if e.player != ctx.controller {
                     return false;
                 }

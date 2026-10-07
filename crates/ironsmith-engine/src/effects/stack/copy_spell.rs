@@ -43,6 +43,11 @@ fn target_from_resolved_target(target: &ResolvedTarget) -> Target {
 pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry {
     let mut entry = StackEntry::new(ctx.source, ctx.controller);
     entry.provenance = ctx.provenance;
+    entry.linked_exile_owner = ctx.linked_exile_owner.clone();
+    entry.source_number_owner = ctx.source_number_owner.clone();
+    entry.activation_origin = ctx.activation_origin.clone();
+    entry.activation_definition = ctx.activation_definition;
+    entry.ability_index = ctx.ability_index;
     entry.targets = ctx
         .targets
         .iter()
@@ -57,6 +62,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.casting_method = ctx.casting_method.clone();
     entry.optional_costs_paid = ctx.optional_costs_paid.clone();
     entry.defending_player = ctx.combat.defending_player;
+    entry.defending_player_reference = ctx.combat.defending_player_reference;
     entry.chosen_player = ctx.combat.chosen_player;
     entry.source_snapshot = ctx.source_snapshot.clone();
     entry.triggering_event = ctx.triggering_event.clone();
@@ -185,8 +191,29 @@ pub(crate) fn create_stack_copy_from_object(
             return Ok(None);
         }
     }
+    // A spell copy takes the source's frozen layer-1 definition, including
+    // earlier copy effects. Layer-3 word substitutions remain uncopiable.
+    // Ability copies keep their independently captured StackEntry program.
+    let copied_values = if original_entry.is_ability { None } else {
+        let values = if game.object(source.id).is_some_and(|object| object.zone == Zone::Stack) {
+            let view = game.continuous_query_snapshot().map_err(ExecutionError::ContinuousDiscovery)?;
+            let effects = view.all_continuous_effects();
+            crate::continuous::copiable_values_with_effects(source.id, view.objects_map(), &effects,
+                &view.battlefield, view.commander_objects(), &view)
+                .ok_or_else(|| ExecutionError::IncompleteEvidence("copied spell has no layer-one definition".into()))?
+        } else {
+            crate::snapshot::CopiableValues::from_spell_object(source)
+        };
+        if !values.spell_effect.has_complete_definition() {
+            return Err(ExecutionError::ContinuousDiscovery(
+                crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                    crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+        }
+        Some(values)
+    };
     let copy_id = game.new_object_id();
     let mut copy_obj = Object::spell_copy_of(source, copy_id, copier);
+    if let Some(values) = &copied_values { copy_obj.copy_spell_values_from_values(values); }
     if !removed_supertypes.is_empty() {
         copy_obj
             .supertypes
@@ -206,11 +233,18 @@ pub(crate) fn create_stack_copy_from_object(
     // to activate it either.
     copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
+    copy_entry.linked_exile_owner = original_entry.linked_exile_owner.clone();
+    copy_entry.source_number_owner = original_entry.source_number_owner.clone();
     copy_entry.ninjutsu_attack_target = original_entry.ninjutsu_attack_target.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();
     copy_entry.optional_costs_paid = original_entry.optional_costs_paid.clone();
+    if !copy_entry.is_ability {
+        // Ability copies continue to retain their source's casting receipt.
+        copy_entry.optional_costs_paid.clear_uncopied_cast_facts();
+    }
     copy_entry.defending_player = original_entry.defending_player;
+    copy_entry.defending_player_reference = original_entry.defending_player_reference;
     copy_entry.chosen_player = original_entry.chosen_player;
     copy_entry.source_snapshot = original_entry.source_snapshot.clone();
     copy_entry.source_name = original_entry.source_name.clone();
@@ -231,6 +265,8 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.event_value_amount = original_entry.event_value_amount;
     copy_entry.trigger_identity = original_entry.trigger_identity;
     copy_entry.ability_index = original_entry.ability_index;
+    copy_entry.activation_origin = original_entry.activation_origin.clone();
+    copy_entry.activation_definition = original_entry.activation_definition;
     copy_entry.intervening_if = original_entry.intervening_if.clone();
     copy_entry.mana_usage_restrictions = original_entry.mana_usage_restrictions.clone();
     copy_entry.mana_source_chosen_creature_type = original_entry.mana_source_chosen_creature_type;
@@ -560,6 +596,18 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn copied_and_resolving_sources_preserve_exact_defender_bindings() {
+        // Reconstructed source contract, UNRUN.
+        let mut game=setup_game();let source=game.create_object_from_card(&CardBuilder::new(CardId::new(),"Attacker").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2,2)).build(),PlayerId(0),Zone::Battlefield);
+        game.add_entering_attacker(source,crate::combat_state::AttackTarget::Player(PlayerId(1)));let attacking=game.retain_attacking_role(source,&crate::combat_state::AttackTarget::Player(PlayerId(1)));
+        for reference in [attacking,crate::combat_state::DefendingPlayerReference::Selected(PlayerId(1)),crate::combat_state::DefendingPlayerReference::KnownAbsent,crate::combat_state::DefendingPlayerReference::Missing]{
+            let object=game.object(source).unwrap().clone();let mut entry=StackEntry::ability(source,PlayerId(0),vec![Effect::gain_life(1)]);entry.defending_player_reference=Some(reference);
+            let copy=create_stack_copy_from_object(&mut game,&object,source,&entry,PlayerId(0),&[],|_|{},None).unwrap().unwrap();assert_eq!(game.stack.iter().find(|entry|entry.object_id==copy).unwrap().defending_player_reference,Some(reference));
+            let mut dm=crate::decision::SelectFirstDecisionMaker;let mut ctx=ExecutionContext::new(source,PlayerId(0),&mut dm);ctx.combat.defending_player_reference=Some(reference);assert_eq!(resolving_source_stack_entry(&ctx).defending_player_reference,Some(reference));
+        }
     }
 
     fn create_instant_on_stack(

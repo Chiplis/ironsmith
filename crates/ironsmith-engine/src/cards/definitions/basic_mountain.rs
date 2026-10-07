@@ -1,12 +1,8 @@
 //! Mountain basic land card definition.
 
 use super::CardDefinitionBuilder;
-use crate::ability::Ability;
 use crate::cards::CardDefinition;
-use crate::cost::TotalCost;
-use crate::costs::Cost;
 use crate::ids::CardId;
-use crate::mana::ManaSymbol;
 use crate::types::{CardType, Subtype, Supertype};
 
 /// Mountain - Basic Land — Mountain
@@ -15,10 +11,6 @@ pub fn basic_mountain() -> CardDefinition {
         .supertypes(vec![Supertype::Basic])
         .card_types(vec![CardType::Land])
         .subtypes(vec![Subtype::Mountain])
-        .with_ability(Ability::mana(
-            TotalCost::from_cost(Cost::tap()),
-            vec![ManaSymbol::Red],
-        ))
         .build()
 }
 
@@ -32,7 +24,7 @@ mod tests {
         let def = basic_mountain();
         assert!(def.card.is_land());
         assert!(def.card.has_supertype(Supertype::Basic));
-        assert!(def.abilities.iter().any(|a| a.is_mana_ability()));
+        assert!(def.abilities.is_empty(), "CR 305.6 mana belongs to the current type, not printed text");
     }
 
     // =========================================================================

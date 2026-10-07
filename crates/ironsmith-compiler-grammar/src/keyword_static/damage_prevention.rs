@@ -12,7 +12,7 @@ pub(super) fn prevention_recipient_filters(
         return Ok(known);
     }
     for (index, token) in tokens.iter().enumerate() {
-        if !token.is_word("or") {
+        if !token.is_any_word(&["or", "and"]) {
             continue;
         }
         let left = parser_token_word_refs(&tokens[..index]);
@@ -115,6 +115,92 @@ pub fn parse_filtered_damage_prevention_line(
             display: render_token_slice(tokens),
         },
     )))
+}
+
+/// Persistent self-prevention uses the shared damage matcher, so the source's
+/// live characteristics (or exact LKI) are tested at every damage event.
+pub fn parse_permanent_self_damage_prevention_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.iter().any(|word| matches!(*word,
+        "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
+        || words.windows(3).any(|words| words == ["as", "long", "as"])
+    {
+        return Ok(None);
+    }
+    let Some(shape) = keyword_static_lines::parse_permanent_damage_prevention_tokens(tokens) else {
+        return Ok(None);
+    };
+    // Attached-object references and combat relationships retain their own
+    // productions; this rule owns only a complete self recipient.
+    if !is_source_reference_words(&parser_token_word_refs(shape.damaged_tokens)) {
+        return Ok(None);
+    }
+    // Existing complete rules own unqualified self-prevention, combat-only
+    // prevention, and the bare "by creatures" form. Keep registry claims
+    // disjoint instead of giving equivalent behavior different AST payloads.
+    let Some(source) = shape.source else { return Ok(None); };
+    if shape.combat_only || shape.noncombat_only
+        || parser_token_word_refs(source.filter_tokens).as_slice() == ["creatures"]
+            && !source.source_noun && source.trailing_filter_tokens.is_empty()
+    {
+        return Ok(None);
+    }
+    let source_filter = damage_source_filter_from_shape(source)?;
+    let mut recipient = ObjectFilter::source();
+    recipient.source_surface = source_reference_surface_for_words(
+        &parser_token_word_refs(shape.damaged_tokens),
+    );
+    Ok(Some(StaticAbility::prevent_matching_damage(PreventMatchingDamageSpec {
+        source_filter,
+        target_player_filter: None,
+        target_object_filter: Some(recipient),
+        combat_only: shape.combat_only,
+        noncombat_only: shape.noncombat_only,
+        maximum_damage: None,
+        amount: StaticDamagePreventionAmount::All,
+        display: render_token_slice(tokens),
+    })))
+}
+
+/// Persistent prevention over a source/recipient relation. The self-recipient
+/// family and unqualified attached prevention retain their established owners.
+pub fn parse_persistent_filtered_damage_prevention_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if words.iter().any(|word| matches!(*word,
+        "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
+        || words.windows(3).any(|words| words == ["as", "long", "as"])
+    {
+        return Ok(None);
+    }
+    let Some(shape) = keyword_static_lines::parse_permanent_damage_prevention_tokens(tokens) else {
+        return Ok(None);
+    };
+    if is_source_reference_words(&parser_token_word_refs(shape.damaged_tokens)) {
+        return Ok(None);
+    }
+    let Some(source) = shape.source else { return Ok(None); };
+    if needs_shared_recipient_allocation(shape.damaged_tokens) {
+        return Ok(None);
+    }
+    let (target_player_filter, target_object_filter) = if shape.damaged_tokens.is_empty() {
+        (Some(PlayerFilter::Any), Some(ObjectFilter::permanent()))
+    } else {
+        prevention_recipient_filters(shape.damaged_tokens)?
+    };
+    Ok(Some(StaticAbility::prevent_matching_damage(PreventMatchingDamageSpec {
+        source_filter: damage_source_filter_from_shape(source)?,
+        target_player_filter,
+        target_object_filter,
+        combat_only: shape.combat_only,
+        noncombat_only: shape.noncombat_only,
+        maximum_damage: None,
+        amount: StaticDamagePreventionAmount::All,
+        display: render_token_slice(tokens),
+    })))
 }
 
 #[cfg(test)]
@@ -280,6 +366,147 @@ mod tests {
                 ),
                 "{text}"
             );
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod permanent_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    fn payload(text: &str) -> PreventMatchingDamageSpec {
+        let ability = parse_permanent_self_damage_prevention_line(&lex_line(text, 0).unwrap())
+            .unwrap().expect("complete permanent prevention");
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else {
+            panic!("one declarative prevention payload");
+        };
+        spec
+    }
+
+    #[test]
+    fn permanent_instruction_retains_source_domain_and_exact_recipient() {
+        let artifact = payload("Prevent all damage that would be dealt to this creature by artifact sources.");
+        assert_eq!(artifact.source_filter.zone, None);
+        assert_eq!(artifact.source_filter.card_types, vec![CardType::Artifact]);
+        assert!(artifact.target_object_filter.unwrap().source);
+        assert_eq!(artifact.amount, StaticDamagePreventionAmount::All);
+        let creature = payload("Prevent all damage that would be dealt to this creature by artifact creatures.");
+        assert_eq!(creature.source_filter.zone, Some(Zone::Battlefield));
+        let desert = payload("Prevent all damage that would be dealt to this creature by Deserts.");
+        assert!(desert.source_filter.subtypes.contains(&Subtype::Desert));
+        assert_eq!(desert.source_filter.zone, Some(Zone::Battlefield));
+        let goblins = payload("Prevent all damage that would be dealt to this creature by Goblins.");
+        assert_eq!(goblins.source_filter.zone, Some(Zone::Battlefield));
+        let goblin_sources = payload("Prevent all damage that would be dealt to this creature by Goblin sources.");
+        assert_eq!(goblin_sources.source_filter.zone, None);
+        let enchanted = payload("Prevent all damage that would be dealt to this creature by enchanted creatures.");
+        assert!(enchanted.source_filter.with_attached_object.is_some());
+        let first_strike = payload("Prevent all damage that would be dealt to this creature by creatures with first strike.");
+        assert_ne!(first_strike.source_filter, ObjectFilter::creature());
+        let controlled = payload("Prevent all damage that would be dealt to this permanent by blue sources you control.");
+        assert!(!controlled.combat_only && !controlled.noncombat_only);
+        assert_eq!(controlled.source_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(controlled.source_filter.zone, None);
+    }
+
+    #[test]
+    fn permanent_instruction_never_discards_duration_condition_or_another_sentence() {
+        for text in [
+            "Prevent all damage that would be dealt to this creature this turn.",
+            "Prevent all damage that would be dealt to this creature by artifact sources until your next turn.",
+            "Prevent all damage that would be dealt to this creature while it's tapped.",
+            "Prevent all damage that would be dealt to this creature as long as you control an artifact.",
+            "Prevent all damage that would be dealt to this creature. Draw a card.",
+            "Prevent all damage that would be dealt to this creature by artifact creatures. Draw a card.",
+            "Prevent all damage that would be dealt to this creature by artifact sources and draw a card.",
+            "Prevent all damage that would be dealt to enchanted creature by artifact sources.",
+            "Prevent all damage that would be dealt to target creature.",
+        ] {
+            assert!(!matches!(parse_permanent_self_damage_prevention_line(&lex_line(text, 0).unwrap()),
+                Ok(Some(_))), "{text}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod persistent_relation_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+
+    fn payload(text: &str) -> PreventMatchingDamageSpec {
+        let tokens = lex_line(text, 0).unwrap();
+        let ability = parse_persistent_filtered_damage_prevention_line(&tokens)
+            .unwrap().or_else(|| parse_permanent_self_damage_prevention_line(&tokens).unwrap())
+            .expect("complete persistent prevention relation");
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else {
+            panic!("shared typed prevention owner");
+        };
+        spec
+    }
+
+    #[test]
+    fn passive_prevention_keeps_both_controller_scopes_and_attachment_identity() {
+        let spec = payload("Prevent all damage that would be dealt to creatures you control by sources you control.");
+        assert_eq!(spec.source_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(spec.source_filter.zone, None);
+        assert_eq!(spec.target_object_filter, Some(ObjectFilter::creature().you_control()));
+        let spec = payload("Prevent all damage that would be dealt to you by sources you don't control.");
+        assert_eq!(spec.source_filter.controller, Some(PlayerFilter::NotYou));
+        assert_eq!(spec.target_player_filter, Some(PlayerFilter::You));
+        assert!(spec.target_object_filter.is_none());
+        let spec = payload("Prevent all damage that would be dealt to enchanted creature by artifact sources.");
+        assert_eq!(spec.source_filter.card_types, vec![CardType::Artifact]);
+        assert_eq!(spec.source_filter.zone, None);
+        assert!(spec.target_object_filter.unwrap().with_attached_object.unwrap().source);
+    }
+
+    #[test]
+    fn active_prevention_and_source_only_prevention_preserve_direction_and_zone() {
+        for text in [
+            "Prevent all damage that this creature would deal to snow creatures.",
+            "Prevent all damage that this creature would deal to red creatures.",
+        ] {
+            let spec = payload(text);
+            assert!(spec.source_filter.source);
+            assert!(!spec.target_object_filter.unwrap().source);
+            assert!(spec.target_player_filter.is_none());
+        }
+        let spec = payload("Prevent all damage that would be dealt by instant and sorcery spells.");
+        assert_eq!(spec.source_filter.zone, Some(Zone::Stack));
+        assert!(spec.source_filter.card_types.contains(&CardType::Instant));
+        assert!(spec.source_filter.card_types.contains(&CardType::Sorcery));
+        assert_eq!(spec.target_player_filter, Some(PlayerFilter::Any));
+        assert_eq!(spec.target_object_filter, Some(ObjectFilter::permanent()));
+    }
+
+    #[test]
+    fn source_choice_and_current_blocking_remain_typed_predicates() {
+        let spec = payload("Prevent all damage that would be dealt to enchanted creature by sources of the chosen color.");
+        assert!(spec.source_filter.chosen_color);
+        assert_eq!(spec.source_filter.zone, None);
+        let spec = payload("Prevent all damage that would be dealt to you and permanents you control by sources with the chosen name.");
+        assert_eq!(spec.source_filter.name.as_deref(), Some("{chosen name}"));
+        assert_eq!(spec.target_player_filter, Some(PlayerFilter::You));
+        assert_eq!(spec.target_object_filter, Some(ObjectFilter::permanent().you_control()));
+        let spec = payload("Prevent all damage that would be dealt to this creature by creatures it's blocking.");
+        assert!(spec.source_filter.blocked_by_source);
+        assert!(spec.target_object_filter.unwrap().source);
+    }
+
+    #[test]
+    fn persistent_prevention_cannot_swallow_temporal_conditional_or_effect_tails() {
+        for text in [
+            "Prevent all damage that would be dealt to you this turn by sources you don't control.",
+            "Prevent all damage that would be dealt to target creature by artifact sources.",
+            "Prevent all damage that would be dealt to creatures you control by sources you control until end of turn.",
+            "Prevent all damage that would be dealt by instant and sorcery spells. Draw a card.",
+            "Prevent all damage that this creature would deal to red creatures and draw a card.",
+            "Prevent all damage that would be dealt to you by sources you don't control unless you pay 1 life.",
+        ] {
+            assert!(!matches!(parse_persistent_filtered_damage_prevention_line(
+                &lex_line(text, 0).unwrap()), Ok(Some(_))), "{text}");
         }
     }
 }

@@ -4873,6 +4873,10 @@ impl PartialEq for SetColorsForFilter {
 }
 
 impl StaticAbilityKind for SetColorsForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        (self.condition.is_none() && self.filter.is_source_only()).then_some(self.colors)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SetColors
     }
@@ -4909,7 +4913,11 @@ impl StaticAbilityKind for SetColorsForFilter {
             }
             return text;
         }
-        let colors = join_with_and(&color_list(self.colors));
+        let colors = if self.colors.is_empty() {
+            "colorless".to_string()
+        } else {
+            join_with_and(&color_list(self.colors))
+        };
         let mut text = format!("{subject} {verb} {colors}");
         if let Some(condition) = &self.condition {
             if static_condition_is_during_your_turn(condition) {
@@ -5006,6 +5014,10 @@ impl PartialEq for AddColorsForFilter {
 }
 
 impl StaticAbilityKind for AddColorsForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        self.filter.is_source_only().then_some(self.colors)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AddColors
     }
@@ -5891,6 +5903,10 @@ impl PartialEq for MakeColorlessForFilter {
 }
 
 impl StaticAbilityKind for MakeColorlessForFilter {
+    fn characteristic_defining_colors(&self) -> Option<crate::color::ColorSet> {
+        self.filter.is_source_only().then_some(crate::color::ColorSet::COLORLESS)
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::MakeColorless
     }
@@ -6235,7 +6251,7 @@ fn materialize_named_granting_source_in_effect(
 /// attached object. The cost is lowered as a choice of the ability's source
 /// followed by an unattach of that choice, so bind the choice to the
 /// granting object.
-fn materialize_granting_source_unattach_costs(
+fn materialize_granting_source_costs(
     cost: &crate::cost::TotalCost,
     source: ObjectId,
 ) -> Option<crate::cost::TotalCost> {
@@ -6250,7 +6266,7 @@ fn materialize_granting_source_unattach_costs(
         // object by identity.
         if let Some(effect) = components[idx]
             .effect_ref()
-            .and_then(|effect| bind_granting_source_sacrifice(effect, source))
+            .and_then(|effect| bind_granting_source_cost_effect(effect, source))
         {
             rebuilt[idx] = crate::costs::Cost::validated_effect(effect);
             changed = true;
@@ -6320,12 +6336,26 @@ fn filter_names_granting_source(filter: &crate::filter::ObjectFilter) -> bool {
 
 /// A sacrifice cost (possibly under a result tag) whose filter names the
 /// granting object, rebound to that concrete object.
-fn bind_granting_source_sacrifice(
+fn bind_granting_source_cost_effect(
     effect: &crate::effect::Effect,
     source: ObjectId,
 ) -> Option<crate::effect::Effect> {
+    if let Some(observed) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        let inner = bind_granting_source_cost_effect(&observed.effect, source)?;
+        return Some(crate::effect::Effect::new(crate::effects::WithIdEffect::new(observed.id, inner)));
+    }
+    if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
+        && matches!(remove.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::GRANTING_SOURCE_TAG) {
+        let mut remove = remove.clone();
+        if let crate::effect::Value::CountersOn(spec, kind) = remove.count.unhinted()
+            && spec.base() == remove.target.base() && *kind == Some(remove.counter_type) {
+            remove.count = crate::effect::Value::CountersOn(Box::new(ChooseSpec::SpecificObject(source)), *kind);
+        }
+        remove.target = ChooseSpec::SpecificObject(source);
+        return Some(crate::effect::Effect::new(remove));
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
-        let inner = bind_granting_source_sacrifice(&tagged.effect, source)?;
+        let inner = bind_granting_source_cost_effect(&tagged.effect, source)?;
         let mut tagged = tagged.clone();
         tagged.effect = Box::new(inner);
         return Some(crate::effect::Effect::new(tagged));
@@ -6346,7 +6376,7 @@ fn bind_granting_source_sacrifice(
 fn materialize_named_granting_source(ability: &Ability, source: ObjectId) -> Ability {
     let mut ability = ability.clone();
     if let AbilityKind::Activated(activated) = &mut ability.kind
-        && let Some(cost) = materialize_granting_source_unattach_costs(&activated.mana_cost, source)
+        && let Some(cost) = materialize_granting_source_costs(&activated.mana_cost, source)
     {
         activated.mana_cost = cost;
     }
@@ -6512,7 +6542,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     &self.ability,
                     source,
                 ))
-                .bind_chosen_protection_qualities(game, source),
+                .bind_chosen_protection_qualities(game, source, true),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -6526,7 +6556,7 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     Modification::AddAbilityGeneric(materialize_named_granting_source(
                         &ability, source,
                     ))
-                    .bind_chosen_protection_qualities(game, source),
+                    .bind_chosen_protection_qualities(game, source, true),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

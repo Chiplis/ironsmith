@@ -1347,6 +1347,7 @@ pub(super) fn test_once_per_turn_ability_tracking() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_cost(crate::costs::Cost::tap()),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -1392,6 +1393,7 @@ pub(super) fn test_activate_no_more_than_twice_each_turn_restriction() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -1448,6 +1450,7 @@ pub(super) fn test_non_mana_activation_condition_max_activations_per_turn_is_enf
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -2116,6 +2119,7 @@ pub(super) fn test_once_per_turn_in_legal_actions() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(), // Free ability for testing
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -2189,6 +2193,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
         .extend([
             Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::from_cost(Cost::add_counters(CounterType::Loyalty, 1)),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::draw(1),
@@ -2206,6 +2211,7 @@ pub(super) fn test_loyalty_activation_is_tracked_per_permanent_without_text_cap(
             },
             Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: TotalCost::from_cost(Cost::remove_counters(CounterType::Loyalty, 3)),
                     effects: crate::resolution::ResolutionProgram::from_effects(vec![
                         Effect::draw(1),
@@ -2311,6 +2317,7 @@ pub(super) fn test_negative_loyalty_cost_requires_enough_loyalty_in_legal_action
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::from_cost(Cost::remove_counters(CounterType::Loyalty, 3)),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -2357,6 +2364,7 @@ pub(super) fn elvish_refueler_exhaust_permission_allows_one_used_exhaust_on_your
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::mana(ManaCost::from_pips(vec![
                     vec![ManaSymbol::Generic(1)],
                     vec![ManaSymbol::Green],
@@ -2448,6 +2456,7 @@ pub(super) fn test_nonactive_player_keeps_priority_after_activating_ability() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],
@@ -2529,6 +2538,7 @@ pub(super) fn test_once_per_turn_restriction_survives_control_change() {
         .abilities_mut()
         .push(Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: TotalCost::free(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::draw(1)]),
                 choices: vec![],

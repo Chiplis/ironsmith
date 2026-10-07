@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(ids.len(), 1);
         let token_id = ids[0];
         let token = game.object(token_id).expect("incubator should exist");
-        assert_eq!(token.name, "Incubator");
+        assert_eq!(token.name, "Incubator Token");
         assert!(token.card_types.contains(&CardType::Artifact));
         assert!(token.subtypes.contains(&Subtype::Incubator));
         assert!(!game.current_is_creature(token_id));
@@ -130,6 +130,16 @@ mod tests {
         assert_eq!(game.counter_count(token_id, CounterType::PlusOnePlusOne), 3);
         assert_eq!(game.calculated_power(token_id), Some(3));
         assert_eq!(game.calculated_toughness(token_id), Some(3));
+
+        let mut transform_back_ctx = ExecutionContext::new_default(token_id, alice);
+        TransformEffect::source().execute(&mut game, &mut transform_back_ctx)
+            .expect("the same linked token can transform back");
+        let front = game.object(token_id).unwrap();
+        assert_eq!(front.name, "Incubator Token");
+        assert!(front.subtypes.contains(&Subtype::Incubator));
+        assert!(!game.current_is_creature(token_id));
+        assert_eq!(game.counter_count(token_id, CounterType::PlusOnePlusOne), 3);
+        assert_eq!(front.abilities.len(), 1);
     }
 
     #[test]
@@ -147,7 +157,7 @@ mod tests {
         assert_eq!(ids.len(), 3);
         for &id in ids {
             let token = game.object(id).expect("incubator should exist");
-            assert_eq!(token.name, "Incubator");
+            assert_eq!(token.name, "Incubator Token");
             assert_eq!(game.controller_of(token), alice);
             assert_eq!(game.counter_count(id, CounterType::PlusOnePlusOne), 2);
         }

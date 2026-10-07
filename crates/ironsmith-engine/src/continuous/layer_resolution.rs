@@ -34,6 +34,45 @@ pub(crate) fn resolve_value_direct_for_recipient(
     controller: PlayerId,
     game: &crate::game_state::GameState,
 ) -> i32 {
+    resolve_value_direct_for_recipient_impl(
+        value, objects, effects, battlefield, commanders, source, recipient, controller, game,
+        None, None,
+    )
+}
+
+pub(crate) fn resolve_characteristic_value_direct_for_recipient(
+    value: &Value,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    source: ObjectId,
+    recipient: ObjectId,
+    controller: PlayerId,
+    game: &crate::game_state::GameState,
+    error: &mut Option<(&'static str, i128)>,
+    evidence_error: &mut Option<&'static str>,
+    numeric_origin: Option<&crate::continuous::AbilityOrigin>,
+) -> i32 {
+    resolve_value_direct_for_recipient_impl(
+        value, objects, effects, battlefield, commanders, source, recipient, controller, game,
+        Some((error,evidence_error)), numeric_origin,
+    )
+}
+
+fn resolve_value_direct_for_recipient_impl(
+    value: &Value,
+    objects: &ObjectMap,
+    effects: &[ContinuousEffect],
+    battlefield: &[ObjectId],
+    commanders: &HashSet<ObjectId>,
+    source: ObjectId,
+    recipient: ObjectId,
+    controller: PlayerId,
+    game: &crate::game_state::GameState,
+    error: Option<(&mut Option<(&'static str, i128)>,&mut Option<&'static str>)>,
+    numeric_origin: Option<&crate::continuous::AbilityOrigin>,
+) -> i32 {
     let mut effect_manager = ContinuousEffectManager::new();
     for effect in effects {
         effect_manager.add_effect(effect.clone());
@@ -51,8 +90,11 @@ pub(crate) fn resolve_value_direct_for_recipient(
         controller,
         effects,
         commanders,
-    );
-    crate::effects::helpers::value_eval::resolve_continuous(value, layer)
+    ).with_numeric_origin(numeric_origin);
+    match error {
+        Some((error,evidence_error)) => crate::effects::helpers::value_eval::resolve_continuous_characteristic(value, layer, error,evidence_error),
+        None => crate::effects::helpers::value_eval::resolve_continuous(value, layer),
+    }
 }
 
 /// Apply all layers to calculate final characteristics.
@@ -297,8 +339,9 @@ pub(super) fn calculate_with_layers(
                     chars.controller = effect.controller;
                 }
                 Modification::ChangeText { .. } => {
-                    // Text changes are handled separately.
+                    // Legacy wire vocabulary. New instructions use RewriteText.
                 }
+                Modification::RewriteText(change) => text_changes::apply_text_change(&mut chars, *change, object),
                 Modification::SetTextBox(overlay) => {
                     chars.compiled_card_text = overlay.compiled_card_text.clone();
                     replace_rules_text_abilities(
@@ -311,6 +354,7 @@ pub(super) fn calculate_with_layers(
                 }
                 Modification::SetName(name) => {
                     chars.name = name.clone().into();
+                    chars.alternate_name = None;
                 }
                 Modification::InsertNameWords {
                     words,
@@ -427,8 +471,7 @@ pub(super) fn calculate_with_layers(
                     }
                 }
                 Modification::SetAbilities(abilities) => {
-                    chars.abilities = abilities.clone().into();
-                    chars.abilities.rebind(effect);
+                    chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
                     chars.static_abilities = extract_static_abilities(abilities).into();
                 }
                 Modification::CopyActivatedAbilities {
@@ -600,9 +643,14 @@ pub(super) fn calculate_with_layers(
                             continue;
                         }
 
-                        for ability in &candidate_chars.abilities {
+                        for (slot, ability) in candidate_chars.abilities.iter().enumerate() {
                             if matches!(ability.kind, AbilityKind::Triggered(_)) {
-                                chars.abilities.push(ability.clone());
+                                chars.abilities.push_with_origin(ability.clone(), AbilityOrigin::Borrowed {
+                                    effect: effect.into(),
+                                    source: candidate.id,
+                                    origin: Box::new(candidate_chars.abilities.origin(slot)
+                                        .expect("copied trigger retains its donor origin").clone()),
+                                });
                             }
                         }
                     }
@@ -942,19 +990,21 @@ pub(super) fn apply_layer_7_effects(
 
         match &effect.modification {
             Modification::SetPower { value, .. } => {
-                power = Some(resolve_value_with_context(
+                power = Some(crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                     value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
+                    super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                        .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                    &mut chars.numeric_range_error,
+                    &mut chars.numeric_choice_error,
                 ));
             }
             Modification::SetToughness { value, .. } => {
-                toughness = Some(resolve_value_with_context(
+                toughness = Some(crate::effects::helpers::value_eval::resolve_continuous_characteristic(
                     value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
+                    super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                        .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                    &mut chars.numeric_range_error,
+                    &mut chars.numeric_choice_error,
                 ));
             }
             Modification::SetPowerToughness {
@@ -962,18 +1012,17 @@ pub(super) fn apply_layer_7_effects(
                 toughness: t,
                 ..
             } => {
-                power = Some(resolve_value_with_context(
-                    p,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                ));
-                toughness = Some(resolve_value_with_context(
-                    t,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                ));
+                let mut resolve = |value: &Value| {
+                    crate::effects::helpers::value_eval::resolve_continuous_characteristic(
+                        value,
+                        super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                            .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                        &mut chars.numeric_range_error,
+                        &mut chars.numeric_choice_error,
+                    )
+                };
+                power = Some(resolve(p));
+                toughness = Some(resolve(t));
             }
             Modification::ModifyPower(delta) => {
                 add_pt_checked(
@@ -1012,14 +1061,17 @@ pub(super) fn apply_layer_7_effects(
                 power: power_value,
                 toughness: toughness_value,
             } => {
-                let dp =
-                    resolve_value_with_context(power_value, ctx, effect.source, effect.controller);
-                let dt = resolve_value_with_context(
-                    toughness_value,
-                    ctx,
-                    effect.source,
-                    effect.controller,
-                );
+                let mut resolve = |value: &Value| {
+                    crate::effects::helpers::value_eval::resolve_continuous_characteristic(
+                        value,
+                        super::value_context::LayerValueContext::new(ctx, effect.source, effect.controller)
+                            .with_numeric_origin(effect.originating_ability.as_ref().map(|origin| &origin.ability)),
+                        &mut chars.numeric_range_error,
+                        &mut chars.numeric_choice_error,
+                    )
+                };
+                let dp = resolve(power_value);
+                let dt = resolve(toughness_value);
                 add_pt_checked(
                     &mut power,
                     i128::from(dp),
@@ -1058,6 +1110,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::ChangeController(_)
             | Modification::ChangeControllerToEffectController
             | Modification::ChangeText { .. }
+            | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. }
@@ -1465,25 +1518,6 @@ pub(super) fn required_continuous_value_players(
         );
     }
     players
-}
-
-pub(super) fn continuous_single_player(
-    value: &Value,
-    ctx: &CalculationContext<'_>,
-    player_filter: &PlayerFilter,
-    controller: PlayerId,
-    source: ObjectId,
-) -> PlayerId {
-    let players = continuous_value_players(ctx, player_filter, controller, source);
-    match players.as_slice() {
-        [player] => *player,
-        [] => panic!(
-            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} has no state-resolvable player"
-        ),
-        _ => panic!(
-            "unsupported continuous-effect value {value:?}: player filter {player_filter:?} is ambiguous"
-        ),
-    }
 }
 
 pub(super) fn for_each_matching_continuous_object(

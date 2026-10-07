@@ -1,0 +1,100 @@
+[
+  {
+    "name": "Alter Reality",
+    "oracle_id": "054c00b4-c940-455a-ad88-b8aa35931ecf",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one color word with another. (This effect lasts indefinitely.)\nFlashback {1}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "status": "held"
+  },
+  {
+    "name": "Artificial Evolution",
+    "oracle_id": "c5ab6dc9-34af-434f-ae8e-b2389ee6c5ae",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one creature type with another. The new creature type can't be Wall. (This effect lasts indefinitely.)",
+    "status": "held"
+  },
+  {
+    "name": "Balduvian Shaman",
+    "oracle_id": "3354c3d3-5713-4139-beb2-4fa17f6b47d9",
+    "mana_cost": "{U}",
+    "type_line": "Creature — Human Cleric Shaman",
+    "oracle_text": "{T}: Change the text of target white enchantment you control that doesn't have cumulative upkeep by replacing all instances of one color word with another. (For example, you may change \"black creatures can't attack\" to \"blue creatures can't attack.\") That enchantment gains \"Cumulative upkeep {1}.\" (At the beginning of its controller's upkeep, that player puts an age counter on it, then sacrifices it unless they pay its upkeep cost for each age counter on it.)",
+    "power": "1",
+    "toughness": "1",
+    "status": "held"
+  },
+  {
+    "name": "Crystal Spray",
+    "oracle_id": "fe371e3a-976f-41d8-ad58-4b3b61415d71",
+    "mana_cost": "{2}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one color word with another or one basic land type with another until end of turn.\nDraw a card.",
+    "status": "held"
+  },
+  {
+    "name": "Glamerdye",
+    "oracle_id": "570a5e60-ed0f-4c14-8cc3-af819648030b",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one color word with another.\nRetrace (You may cast this card from your graveyard by discarding a land card in addition to paying its other costs.)",
+    "status": "held"
+  },
+  {
+    "name": "Magical Hack",
+    "oracle_id": "cba229fa-9035-405b-b091-3798898a37ee",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one basic land type with another. (For example, you may change \"swampwalk\" to \"plainswalk.\" This effect lasts indefinitely.)",
+    "status": "held"
+  },
+  {
+    "name": "Mind Bend",
+    "oracle_id": "d8377869-f8f7-4b4b-93ad-3ad3c4826b1a",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target permanent by replacing all instances of one color word with another or one basic land type with another. (For example, you may change \"nonblack creature\" to \"nongreen creature\" or \"forestwalk\" to \"islandwalk.\" This effect lasts indefinitely.)",
+    "status": "held"
+  },
+  {
+    "name": "New Blood",
+    "oracle_id": "021d654e-b731-40d0-a18e-eaff43f9fdb9",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Sorcery",
+    "oracle_text": "As an additional cost to cast this spell, tap an untapped Vampire you control.\nGain control of target creature. Change the text of that creature by replacing all instances of one creature type with Vampire.",
+    "status": "held"
+  },
+  {
+    "name": "Sleight of Mind",
+    "oracle_id": "99dba614-40d3-41c1-a3b2-edc8777b010f",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Change the text of target spell or permanent by replacing all instances of one color word with another. (For example, you may change \"target black spell\" to \"target blue spell.\" This effect lasts indefinitely.)",
+    "status": "held"
+  },
+  {
+    "name": "Spectral Shift",
+    "oracle_id": "99eb4f63-841f-4b6b-9794-82bc2ed7b758",
+    "mana_cost": "{1}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Choose one —\n• Change the text of target spell or permanent by replacing all instances of one basic land type with another. (This effect lasts indefinitely.)\n• Change the text of target spell or permanent by replacing all instances of one color word with another. (This effect lasts indefinitely.)\nEntwine {2} (Choose both if you pay the entwine cost.)",
+    "status": "held"
+  },
+  {
+    "name": "Trait Doctoring",
+    "oracle_id": "3b5b926b-ee8f-4c7a-8737-1de7d18ca60d",
+    "mana_cost": "{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Change the text of target permanent by replacing all instances of one color word with another or one basic land type with another until end of turn.\nCipher (Then you may exile this spell card encoded on a creature you control. Whenever that creature deals combat damage to a player, its controller may cast a copy of the encoded card without paying its mana cost.)",
+    "status": "held"
+  },
+  {
+    "name": "Whim of Volrath",
+    "oracle_id": "51a20c9f-68d2-471b-8622-67d481b53b92",
+    "mana_cost": "{U}",
+    "type_line": "Instant",
+    "oracle_text": "Buyback {2} (You may pay an additional {2} as you cast this spell. If you do, put this card into your hand as it resolves.)\nChange the text of target permanent by replacing all instances of one color word with another or one basic land type with another until end of turn. (For example, you may change \"nonred creature\" to \"nongreen creature\" or \"plainswalk\" to \"swampwalk.\")",
+    "status": "held"
+  }
+]

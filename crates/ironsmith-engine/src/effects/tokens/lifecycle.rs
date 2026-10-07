@@ -206,7 +206,6 @@ pub(crate) struct AdditionalTokenInstructions {
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
     pub cleanup: Option<TokenCleanupOptions>,
     pub linked_exiles: Vec<ObjectId>,
-    pub gains_haste: bool,
 }
 
 /// Commit every added/substituted group as part of its original creation.
@@ -331,18 +330,6 @@ pub(crate) fn create_replacement_additional_tokens(
                 }
                 if let Some(attacker) = instructions.blocking_attacker {
                     crate::effects::combat::put_onto_battlefield_blocking(game, entered, attacker);
-                }
-                if instructions.gains_haste {
-                    let grant = grant_token_static_abilities(
-                        game,
-                        ctx,
-                        entered,
-                        &[StaticAbility::haste()],
-                    )?;
-                    retain_token_child(events, children, grant);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(Vec::new());
-                    }
                 }
                 if let Some(cleanup) = &instructions.cleanup {
                     let cleanup =
@@ -840,6 +827,7 @@ struct TokenInstructionCompletion {
     >,
     frozen: Option<crate::effects::zones::FrozenZoneChangeReceipts>,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+    haste_recipients: Vec<ObjectId>,
 }
 impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion {
     fn freeze(&mut self, game: &mut GameState) -> Result<(), ExecutionError> {
@@ -894,7 +882,27 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
                 EffectOutcome::count(0),
             ));
         }
-        Ok(outputs.append_batch_program_outputs(completed))
+        let mut outputs = outputs.append_batch_program_outputs(completed);
+        for id in self.haste_recipients {
+            if game.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+                && !game.is_phased_out(id)
+            {
+                let child = crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Specific(id),
+                    crate::continuous::Modification::AddAbility(Ability::static_ability(StaticAbility::haste())),
+                    crate::effect::Until::Forever,
+                ).execute_child_with_outputs(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+                }
+                let aggregate = EffectOutcome::aggregate_with_primary_result(
+                    outputs.outcome.clone(), [child.outcome.clone()],
+                );
+                outputs.retain_owned_child(child);
+                outputs = outputs.project_aggregate(aggregate);
+            }
+        }
+        Ok(outputs)
     }
 }
 
@@ -905,5 +913,14 @@ pub(crate) fn token_instruction_completion(
     entries: Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
 ) -> Box<dyn crate::effects::SimultaneousEffectCompletion> {
-    Box::new(TokenInstructionCompletion { instruction, entries: Some(entries), frozen: None, programs })
+    token_instruction_completion_with_haste(instruction, entries, programs, Vec::new())
+}
+
+pub(crate) fn token_instruction_completion_with_haste(
+    instruction: Option<super::resources::TokenInstructionPermit>,
+    entries: Vec<(ObjectId, crate::events::processing::PreparedEventOutcome<crate::effects::zones::AppliedZoneChange>)>,
+    programs: Vec<crate::events::processing::PreparedReplacementProgram>,
+    haste_recipients: Vec<ObjectId>,
+) -> Box<dyn crate::effects::SimultaneousEffectCompletion> {
+    Box::new(TokenInstructionCompletion { instruction, entries: Some(entries), frozen: None, programs, haste_recipients })
 }

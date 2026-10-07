@@ -713,6 +713,7 @@ fn test_ability_granting_counters() {
 
     // Calculate characteristics
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),
@@ -732,6 +733,10 @@ fn test_ability_granting_counters() {
         abilities: creature.abilities.clone().into(),
         static_abilities: extract_static_abilities(&creature.abilities).into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
+        text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -776,6 +781,7 @@ fn test_multiple_ability_counters() {
     creature.add_counters(CounterType::Vigilance, 1);
 
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),
@@ -795,6 +801,10 @@ fn test_multiple_ability_counters() {
         abilities: Vec::new().into(),
         static_abilities: Vec::new().into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
+        text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -855,6 +865,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
     let printed_flying = StaticAbility::flying();
     let printed_id = printed_flying.instance_id();
     let mut chars = CalculatedCharacteristics {
+        alternate_name: creature.split_other_half_name().map(str::to_string),
         name: creature.name.clone(),
         mana_cost: creature.mana_cost_owned(),
         linked_face_mana_value: creature.linked_face_mana_value(),
@@ -874,6 +885,10 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
         abilities: vec![crate::ability::Ability::static_ability(printed_flying.clone())].into(),
         static_abilities: vec![printed_flying].into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
+        text_change_error: None,
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
+        text_changes: Vec::new(),
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: creature.aura_attach_filter_owned(),
         controller: creature.owner,
@@ -2208,6 +2223,7 @@ fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<Str
         loyalty: Some(5),
         defense: Some(6),
         abilities: vec!["first payload".into(), "second payload".into()],
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
         aura_attach_filter: Some(crate::object::AuraAttachmentFilter::from(
             ObjectFilter::creature(),
         )),
@@ -2258,6 +2274,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
         loyalty: copy.loyalty,
         defense: copy.defense,
         abilities: std::sync::Arc::new(vec![ability]),
+        spell_effect: crate::snapshot::SpellProgramState::Absent,
         aura_attach_filter: copy.aura_attach_filter,
     };
     let model = crate::snapshot::RetainedCopiableValues::from(native.clone());
@@ -2926,5 +2943,160 @@ fn base_pt_boundary_agrees_across_all_evaluators_and_departure_snapshots() {
             (departure.base_power, departure.base_toughness),
             (Some(expected_base.0), Some(expected_base.1))
         );
+    }
+}
+
+#[test]
+fn entry_copy_registration_is_native_single_use_and_restores_with_checkpoints() {
+    let mut manager=ContinuousEffectManager::new();
+    let before=manager.clone();
+    let reserved=manager.reserve_entry_effect();
+    let source=ObjectId::from_raw(99001);let controller=PlayerId::from_index(0);
+    let effect=ContinuousEffect::new(source,controller,EffectTarget::Specific(source),
+        Modification::AddColors(crate::color::ColorSet::BLUE));
+    let mut prospective=manager.clone();
+    assert_eq!(prospective.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(manager.effects().is_empty(),"prospective admission does not publish the effect");
+    assert_eq!(manager.add_reserved_entry_effect(reserved,effect.clone()).unwrap(),reserved);
+    assert!(matches!(manager.add_reserved_entry_effect(reserved,effect),Err(crate::effects::ExecutionError::IncompleteEvidence(_))));
+    manager=before;
+    assert_eq!(manager.reserve_entry_effect(),reserved,"pending or failed native rollback restores the allocation sequence");
+}
+#[test]
+fn every_characteristic_setting_route_preserves_range_and_missing_player_errors() {
+    use crate::static_ability_processor::StaticEffectDiscoveryError;
+    for sublayer in [PtSublayer::CharacteristicDefining, PtSublayer::Setting] {
+        for axis in 0..3 {
+            for missing_player in [false, true] {
+                let mut game = dynamic_value_test_game();
+                let alice = PlayerId::from_index(0);
+                game.player_mut(alice).unwrap().life = i32::MAX;
+                let card = CardBuilder::new(CardId::new(), "Checked setting recipient")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 3)).build();
+                let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+                let value = if missing_player {
+                    Value::LifeTotal(PlayerFilter::Specific(PlayerId::from_index(99)))
+                } else {
+                    Value::Add(Box::new(Value::LifeTotal(PlayerFilter::You)), Box::new(Value::Fixed(1)))
+                };
+                let modification = match axis {
+                    0 => Modification::SetPower { value, sublayer },
+                    1 => Modification::SetToughness { value, sublayer },
+                    _ => Modification::SetPowerToughness { power: value.clone(), toughness: value, sublayer },
+                };
+                game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+                    object, alice, EffectTarget::Specific(object), modification,
+                ));
+                let effects = game.effect_store.continuous_effects.effects().to_vec();
+                let manager = game.effect_store.continuous_effects.calculate_characteristics(
+                    object, game.objects_map(), &game.battlefield, &game).unwrap();
+                let direct = calculate_characteristics_with_effects(object, game.objects_map(),
+                    &effects, &game.battlefield, game.commander_objects(), &game).unwrap();
+                let batch = calculate_characteristics_batch_with_effects(&[object], game.objects_map(),
+                    &effects, &game.battlefield, game.commander_objects(), &game);
+                for chars in [&manager, &direct, batch.get(&object).unwrap()] {
+                    let result = chars.validate_numeric_range();
+                    if missing_player {
+                        assert!(matches!(result, Err(StaticEffectDiscoveryError::NumericChoiceEvidence { .. })));
+                    } else {
+                        assert!(matches!(result, Err(StaticEffectDiscoveryError::ScalarRange {
+                            value: 2_147_483_648, ..
+                        })));
+                    }
+                }
+                assert!(game.try_current_characteristics(object).is_err(),
+                    "a provisional scalar must never be a successful checked view");
+            }
+        }
+    }
+}
+
+#[test]
+fn dynamic_modifiers_preserve_signed_values_and_checked_failures_on_every_route() {
+    use crate::static_ability_processor::StaticEffectDiscoveryError;
+    for case in 0..3 {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Checked modifier recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 7)).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let value = match case {
+            0 => Value::Scaled(Box::new(Value::LifeTotal(PlayerFilter::You)), -1),
+            1 => Value::Add(Box::new(Value::Fixed(i32::MAX)), Box::new(Value::LifeTotal(PlayerFilter::You))),
+            _ => Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(
+                PlayerFilter::Specific(PlayerId::from_index(99)))),
+        };
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            object, alice, EffectTarget::Specific(object),
+            Modification::ModifyPowerToughnessValue { power: value, toughness: Value::Fixed(2) },
+        ));
+        let effects = game.effect_store.continuous_effects.effects().to_vec();
+        let manager = game.effect_store.continuous_effects.calculate_characteristics(
+            object, game.objects_map(), &game.battlefield, &game).unwrap();
+        let direct = calculate_characteristics_with_effects(object, game.objects_map(),
+            &effects, &game.battlefield, game.commander_objects(), &game).unwrap();
+        let batch = calculate_characteristics_batch_with_effects(&[object], game.objects_map(),
+            &effects, &game.battlefield, game.commander_objects(), &game);
+        for chars in [&manager, &direct, batch.get(&object).unwrap()] {
+            match case {
+                0 => {
+                    chars.validate_numeric_range().unwrap();
+                    assert_eq!((chars.power, chars.toughness), (Some(-15), Some(9)));
+                    assert_eq!((chars.base_power, chars.base_toughness), (Some(5), Some(7)));
+                }
+                1 => assert!(matches!(chars.validate_numeric_range(),
+                    Err(StaticEffectDiscoveryError::ScalarRange { value: 2_147_483_667, .. }))),
+                _ => assert!(matches!(chars.validate_numeric_range(),
+                    Err(StaticEffectDiscoveryError::NumericChoiceEvidence { .. }))),
+            }
+        }
+        assert_eq!(game.try_current_characteristics(object).is_ok(), case == 0);
+    }
+}
+
+#[test]
+fn failing_dynamic_modifier_rolls_back_prior_effects_history_and_registered_layers() {
+    use crate::effect::{Effect, Until};
+    use crate::effects::{ApplyContinuousEffect, ExecutionContext, ExecutionError,
+        SequenceEffect, execute_effect};
+    use crate::static_ability_processor::StaticEffectDiscoveryError;
+    for missing in [false, true] {
+        let mut game = dynamic_value_test_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::new(), "Modifier rollback recipient")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 3)).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let value = if missing {
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CardsDrawn(
+                PlayerFilter::Specific(PlayerId::from_index(99))))
+        } else {
+            Value::Add(Box::new(Value::Fixed(i32::MAX)), Box::new(Value::LifeTotal(PlayerFilter::You)))
+        };
+        let modifier = Effect::new(ApplyContinuousEffect::new(EffectTarget::Specific(source),
+            Modification::ModifyPowerToughnessValue { power: value.clone(), toughness: value },
+            Until::EndOfTurn));
+        let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(5), modifier]));
+        let history_before = game.turn_store.turn_history.event_records.len();
+        let effects_before = game.effect_store.continuous_effects.effects().len();
+        let mut context = ExecutionContext::new_default(source, alice);
+        let result = execute_effect(&mut game, &sequence, &mut context);
+        if missing {
+            assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
+                StaticEffectDiscoveryError::NumericChoiceEvidence { .. }))));
+        } else {
+            assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
+                StaticEffectDiscoveryError::ScalarRange { .. }))));
+        }
+        assert_eq!(game.player(alice).unwrap().life, 20, "the earlier gain is part of the rollback");
+        assert_eq!(game.turn_store.turn_history.event_records.len(), history_before);
+        assert_eq!(game.effect_store.continuous_effects.effects().len(), effects_before);
+        assert!(context.created_continuous_effects.is_empty());
+        let recovered = game.try_current_characteristics(source).unwrap().unwrap();
+        assert_eq!((recovered.power, recovered.toughness), (Some(2), Some(3)));
+        execute_effect(&mut game, &Effect::gain_life(1), &mut context).unwrap();
+        assert_eq!(game.player(alice).unwrap().life, 21, "a failed query must not poison the next transaction");
     }
 }

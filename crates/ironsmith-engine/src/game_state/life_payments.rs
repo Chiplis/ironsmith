@@ -22,6 +22,23 @@ struct PaymentOriginalCompletion {
     context: crate::effects::ExecutionContextCheckpoint,
 }
 impl crate::effects::SimultaneousEffectCompletion for PaymentOriginalCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let Self { inner, context } = *self;
+        let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        context.restore_ref(ctx);
+        let result = inner.prepare_draw_boundary_with_outputs(game, ctx, original);
+        let context = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        parent.restore(ctx);
+        let mut receipt = result?;
+        receipt.completion = receipt.completion.map(|inner| Box::new(PaymentOriginalCompletion {
+            inner, context,
+        }) as Box<dyn crate::effects::SimultaneousEffectCompletion>);
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -192,7 +209,7 @@ impl GameState {
         // observer. Do not drain other held original events or resolve triggers
         // while a containing cast/activation is still paying its other costs.
         let mut matched = TriggerQueue::new();
-        crate::game_loop::queue_triggers_from_reported_events(self, &mut matched, events, true);
+        crate::game_loop::try_queue_triggers_from_reported_events(self, &mut matched, events, true)?;
         self.defer_trigger_entries(matched.take_all());
         for outcome in outcomes {
             for event in &mut outcome.events {

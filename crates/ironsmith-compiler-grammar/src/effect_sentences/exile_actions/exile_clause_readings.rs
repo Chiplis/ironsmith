@@ -508,6 +508,22 @@ fn read_dealt_damage_history(input: &ExileClause<'_>) -> Result<Option<EffectAst
         && grammar::contains_word(tokens, "damage")
         && grammar::contains_word(tokens, "turn")
     {
+        // The complete target reader owns dealer/recipient tense and the
+        // optional player relation. Unknown history clauses still fail here;
+        // do not strip the qualification and exile an unrestricted target.
+        let target = parse_target_phrase(tokens)?;
+        if matches!(&target, TargetAst::Object(filter, _, _)
+            if filter.dealt_damage_this_turn
+                || filter.dealt_damage_to_player_this_turn.is_some()
+                || filter.was_dealt_damage_this_turn)
+            && clause_words.ends_with(&["this", "turn"])
+        {
+            return Ok(Some(if input.until_source_leaves {
+                EffectAst::subject_verb_exile_until_source_leaves(target, input.face_down)
+            } else {
+                EffectAst::subject_verb_exile(target, input.face_down)
+            }));
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported combat-history exile clause (clause: '{}')",
             clause_words.join(" ")

@@ -19,8 +19,27 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 18;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, CURRENT_AUDIT_PROTOCOL_VERSION]);
+// Coordinated activation, combat participant and blind-exile boundary.
+// Historical signed bytes, including protocol23/digest6, stay intact; only the
+// current protocol and digest may enter the current engine or a current peer.
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 24;
+export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 7;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, CURRENT_AUDIT_PROTOCOL_VERSION]);
+
+// The current rules engine must never reinterpret a historical signed record.
+// Signature-only verification keeps the original version and canonical payload.
+export function assertCurrentAuditReplayProtocol(transcript) {
+  if (transcript?.protocolVersion !== CURRENT_AUDIT_PROTOCOL_VERSION
+    || transcript?.match?.protocolVersion !== CURRENT_AUDIT_PROTOCOL_VERSION) {
+    throw new Error(`Current engine replay requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION} on both transcript and match; historical transcripts support signature-only verification`);
+  }
+}
+
+export function assertCurrentPublicAuditCheckpoint(checkpoint) {
+  if (checkpoint?.version !== CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION) {
+    throw new Error(`Current engine replay requires public audit checkpoint version ${CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION}`);
+  }
+}
 export const CURRENT_AUDIT_MIN_PLAYERS = 2;
 export const CURRENT_AUDIT_MAX_PLAYERS = 4;
 export const ZIFFLE_OPENING_PROOF_TYPE = "ziffle_position_opening_v1";
@@ -438,6 +457,27 @@ function normalizePublicCheckpointForHash(checkpoint) {
     return normalized;
   };
 
+  const normalizeOpenedExilePlay = receipt => receipt && ({
+    ...receipt,
+    cardId: receipt.cardStableId ?? stableIdByRuntimeId.get(String(receipt.cardId)) ?? receipt.cardId,
+    permission: { ...receipt.permission,
+      source: receipt.permissionSourceStableId
+        ?? stableIdByRuntimeId.get(String(receipt.permission?.source)) ?? receipt.permission?.source },
+  });
+  const normalizeExileFaceDownKind = kind => {
+    if (!kind) return kind;
+    if (kind.permissionSource == null) return kind;
+    const source = kind.permissionSourceStableId;
+    if (!Number.isSafeInteger(source) || source <= 0) {
+      throw new Error("Face-down declaration has no captured public permission source identity");
+    }
+    return { ...kind, permissionSource: source };
+  };
+  const normalizeExileFaceDown = receipt => receipt && ({
+    ...normalizeOpenedExilePlay(receipt),
+    kinds: receipt.kinds.map(normalizeExileFaceDownKind),
+    declaredKind: normalizeExileFaceDownKind(receipt.declaredKind),
+  });
   const normalized = {
     ...stripped,
     players: (stripped.players || []).map(normalizePlayer),
@@ -452,6 +492,18 @@ function normalizePublicCheckpointForHash(checkpoint) {
         sort: key !== "stack",
       });
     }
+  }
+  for (const key of ["openedExilePlay", "exileFaceDown"]) {
+    if (normalized.priorityRuntime?.[key]) {
+      normalized.priorityRuntime = { ...normalized.priorityRuntime,
+        [key]: (key === "exileFaceDown" ? normalizeExileFaceDown : normalizeOpenedExilePlay)(normalized.priorityRuntime[key]) };
+    }
+  }
+  if (Array.isArray(normalized.grandMelee?.markers)) {
+    normalized.grandMelee = { ...normalized.grandMelee, markers: normalized.grandMelee.markers.map(marker => ({ ...marker,
+      ...(marker.openedExilePlay ? { openedExilePlay: normalizeOpenedExilePlay(marker.openedExilePlay) } : {}),
+      ...(marker.exileFaceDown ? { exileFaceDown: normalizeExileFaceDown(marker.exileFaceDown) } : {}),
+    })) };
   }
   if (Array.isArray(normalized.public_exile) && !Array.isArray(normalized.publicExile)) {
     normalized.publicExile = normalized.public_exile;
@@ -3972,6 +4024,16 @@ export async function verifyLiveAuditTranscript(
   if (!transcript || typeof transcript !== "object") {
     throw new Error("Missing audit transcript");
   }
+  const replayTranscript = typeof options.replayTranscript === "function"
+    ? options.replayTranscript
+    : null;
+  const requireEngineReplay = options.requireEngineReplay !== false;
+  if (requireEngineReplay || replayTranscript) {
+    assertCurrentAuditReplayProtocol(transcript);
+    if (transcript.finalPublicCheckpoint != null) {
+      assertCurrentPublicAuditCheckpoint(transcript.finalPublicCheckpoint);
+    }
+  }
   if (transcript.kind !== "ironsmith-live-browser-audit-v1") {
     throw new Error("Unsupported live audit transcript kind");
   }
@@ -4325,10 +4387,6 @@ export async function verifyLiveAuditTranscript(
     verifyZiffleOpening: options.verifyZiffleOpening,
     seq: expectedSeq - 1,
   }, cryptoImpl);
-  const replayTranscript = typeof options.replayTranscript === "function"
-    ? options.replayTranscript
-    : null;
-  const requireEngineReplay = options.requireEngineReplay !== false;
   if (requireEngineReplay && !replayTranscript) {
     throw new Error("Live audit transcript verification requires engine replay");
   }

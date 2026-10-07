@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Cavern Stomper",
+    "oracle_id": "94657522-9977-4d2b-8eb6-f1e64e82cd0f",
+    "mana_cost": "{4}{G}{G}",
+    "type_line": "Creature — Dinosaur",
+    "power": "7",
+    "toughness": "7",
+    "oracle_text": "When this creature enters, scry 2. (Look at the top two cards of your library, then put any number of them on the bottom and the rest on top in any order.)\n{3}{G}: This creature can't be blocked by creatures with power 2 or less this turn."
+  },
+  {
+    "name": "Harvesttide Sentry",
+    "oracle_id": "6cd6b56d-d69e-4144-a6c7-8c066629435b",
+    "mana_cost": "{1}{G}",
+    "type_line": "Creature — Human Warrior",
+    "power": "3",
+    "toughness": "1",
+    "oracle_text": "Coven — At the beginning of combat on your turn, if you control three or more creatures with different powers, this creature can't be blocked by creatures with power 2 or less this turn."
+  },
+  {
+    "name": "Sungold Sentinel",
+    "oracle_id": "410f5067-3380-4afb-9881-4b3bf0268493",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Human Soldier",
+    "power": "3",
+    "toughness": "2",
+    "oracle_text": "Whenever this creature enters or attacks, exile up to one target card from a graveyard.\nCoven — {1}{W}: Choose a color. This creature gains hexproof from that color until end of turn and can't be blocked by creatures of that color this turn. Activate only if you control three or more creatures with different powers."
+  },
+  {
+    "name": "Verdant Outrider",
+    "oracle_id": "8fc049e7-a16d-4b48-b930-5c346f6718b9",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Human Knight",
+    "power": "4",
+    "toughness": "2",
+    "oracle_text": "{1}{G}: This creature can't be blocked by creatures with power 2 or less this turn."
+  },
+  {
+    "name": "White Tiger, Ava Ayala",
+    "oracle_id": "e2084d73-5a4c-4b17-942a-93c1a1f7ac2a",
+    "mana_cost": "{1}{G}",
+    "type_line": "Legendary Creature — Human Hero",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Power-up — {5}{G}: Put a +1/+1 counter on White Tiger and create The Tiger God, a legendary 4/4 green Cat God creature token with \"The Tiger God can't be blocked by more than one creature.\" (Activate each power-up ability only once. Reduce the cost by her mana cost if she entered this turn.)"
+  }
+]

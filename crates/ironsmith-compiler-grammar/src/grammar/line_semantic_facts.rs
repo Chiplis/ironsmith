@@ -277,6 +277,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
     let trigger_frequency = trigger_surface::parse_trigger_frequency_tokens(tokens);
 
     LineSemanticFacts {
+        intrinsic_basic_land_mana_reminder: None,
         station_creature_threshold: None,
         supported_sneak_form: false,
         static_ability: StaticLineSemanticFacts {

@@ -1,4 +1,4 @@
-//! Alternative tap-cost selectors: exact typed Waterbend branches, canonical paid sources.
+//! Typed Waterbend resource selections with canonical paid sources.
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{DecisionMaker, GameProgress, LegalAction, compute_legal_actions};
 use ironsmith::decisions::context::{
@@ -27,6 +27,23 @@ struct Choices {
     trace: Vec<Value>,
 }
 impl DecisionMaker for Choices {
+    fn decide_mana_payment(&mut self, _game: &GameState,
+        context: &ironsmith::decisions::context::ManaPaymentContext) -> ironsmith::mana_payment::ManaPaymentResponse {
+        if context.request.cost.has_waterbend_obligation() {
+            let mut preferences = context.request.preferences.clone();
+            preferences.required_alternatives = self.resources.iter().take(self.branch.unwrap_or(0))
+                .map(|source| ironsmith::mana_payment::RequiredAlternativePayment {
+                    source: *source, kind: ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
+                }).collect();
+            preferences.normalize();
+            if preferences != context.request.preferences {
+                return ironsmith::mana_payment::ManaPaymentResponse::Replan { preferences };
+            }
+        }
+        ironsmith::mana_payment::ManaPaymentResponse::Confirm {
+            plan_id: context.plan.id, request_hash: context.plan.request_hash,
+        }
+    }
     fn answers_player_choices(&self) -> bool {
         true
     }
@@ -272,6 +289,22 @@ fn activate_branch(
                     return Ok(
                         json!({"action_offered":true,"branch_offered":false,"selector":selectors,"resolved":false,"mana_paid":before-g.player(PlayerId(0)).unwrap().mana_pool.total(),"first_gate":"alternative_cost_selector"}),
                     );
+                }
+            }
+        }
+        if let DecisionContext::ManaPayment(context) = &ctx {
+            if context.request.cost.has_waterbend_obligation() {
+                let mut request = context.request.clone();
+                request.preferences.required_alternatives = dm.resources.iter().take(dm.branch.unwrap_or(0))
+                    .map(|source| ironsmith::mana_payment::RequiredAlternativePayment {
+                        source: *source, kind: ironsmith::mana_payment::ManaPaymentSourceKind::Waterbend,
+                    }).collect();
+                let legal = ironsmith::mana_payment::plan_first_mana_payment(g, &request).is_ok();
+                selectors.push(json!({"typed_obligation":true,"desired_taps":dm.branch,"desired_legal":legal}));
+                if !legal {
+                    return Ok(json!({"action_offered":true,"branch_offered":false,"selector":selectors,
+                        "resolved":false,"mana_paid":before-g.player(PlayerId(0)).unwrap().mana_pool.total(),
+                        "first_gate":"typed_waterbend_resource_selection"}));
                 }
             }
         }
@@ -678,14 +711,12 @@ fn trial(
     let ironsmith::ability::AbilityKind::Activated(a) = &current[live].kind else {
         return Err("live index not activated".into());
     };
-    let ironsmith_core::TotalCostKind::OneOf(branches) = a.mana_cost.kind() else {
-        return Err("canonical cost not OneOf".into());
-    };
-    if branches.len() != n as usize + 1 {
-        return Err("unexpected number of typed alternatives".into());
+    let mana = a.mana_cost.mana_cost().ok_or("canonical Waterbend price missing")?;
+    if !mana.has_waterbend_obligation() || mana.waterbend_capacity(0) != n {
+        return Err("canonical scoped Waterbend obligation does not match its printed amount".into());
     }
-    let branch_text = branches[branch as usize].display();
-    let diagnostic = json!({"canonical_index":canonical,"live_index":live,"branch_index":branch,"typed_branch_display":branch_text,"branch_count":branches.len(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state"))});
+    let diagnostic = json!({"canonical_index":canonical,"live_index":live,"desired_taps":branch,
+        "typed_payment_display":a.mana_cost.display(),"legal_actions":format!("{:?}",compute_legal_actions(&g,PlayerId(0)).expect("fixture has complete replacement state"))});
     let trace_start = d.trace.len();
     let action = match activate_branch(&mut g, source, live, &mut d) {
         Ok(a) => a,
@@ -738,7 +769,7 @@ fn trial(
     )
 }
 #[test]
-#[ignore = "full canonical alternative tap-cost branches and exact legal selectors"]
+#[ignore = "full canonical typed tap-payment choices and exact legal selectors"]
 fn report_alternative_tap_costs() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let input = root.join("reports/runtime-audit/alternative-tap-cost-frozen-inputs.json");
@@ -791,7 +822,7 @@ fn report_alternative_tap_costs() {
         .iter()
         .map(|p| json!({"path":p,"sha256":hash(p)}))
         .collect();
-    let report = json!({"scope":"All 79 inventoried OneOf Tap consumer paths plus full-mana alternatives and nonresource/tapped controls. Every selected branch must be advertised legal. Full canonical paid sources and resources; Avatar Kuruk actual paid discard and reanimation. Aang transform effect excluded without canonical backface metadata.","rows":rows,"compilation":compilation,"provenance":{"before":before,"after":after,"artifacts_unchanged":before==after}});
+    let report = json!({"scope":"All 79 inventoried Waterbend tap consumer paths plus full-mana alternatives and nonresource/tapped controls. Every selected branch must be advertised legal. Full canonical paid sources and resources; Avatar Kuruk actual paid discard and reanimation. Aang transform effect excluded without canonical backface metadata.","rows":rows,"compilation":compilation,"provenance":{"before":before,"after":after,"artifacts_unchanged":before==after}});
     let filename = std::env::var("ALTERNATIVE_TAP_REPORT")
         .unwrap_or("alternative-tap-cost-execution.json".into());
     std::fs::write(

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Wave Goodbye",
+    "oracle_id": "06ef46c6-00ba-40e6-b866-d0095ab83749",
+    "mana_cost": "{2}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Return each creature without a +1/+1 counter on it to its owner's hand."
+  }
+]

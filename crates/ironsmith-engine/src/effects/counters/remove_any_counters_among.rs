@@ -1223,7 +1223,7 @@ mod tests {
             obj.alternative_casts.push(
                 crate::alternative_cast::AlternativeCastingMethod::Suspend {
                     cost: ManaCost::default(),
-                    time: 1,
+                    time: ironsmith_core::SuspendTime::Fixed(1),
                 },
             );
             obj.counters.insert(CounterType::Time, 1);

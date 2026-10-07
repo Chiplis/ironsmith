@@ -165,6 +165,8 @@ fn queue_room_ability(
     let trigger_identity = crate::triggers::compute_trigger_identity(&ability);
     let source = dungeon_room_source_id(player_id);
     let entry = crate::triggers::TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source,
         controller: player_id,
         x_value: None,

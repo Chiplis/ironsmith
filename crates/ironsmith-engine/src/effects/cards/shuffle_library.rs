@@ -93,6 +93,13 @@ pub(crate) fn shuffle_library_action(
 /// let effect = ShuffleLibraryEffect::you();
 /// ```
 impl EffectExecutor for ShuffleLibraryEffect {
+    fn supports_simultaneous_player_action(&self) -> bool { true }
+
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(ShuffleProposal { player: resolve_player_filter(game, &self.player, ctx)? }))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -109,6 +116,17 @@ impl EffectExecutor for ShuffleLibraryEffect {
 
     fn target_description(&self) -> &'static str {
         "player to shuffle"
+    }
+}
+
+/// Shuffling asks no choices and runs no replacement-added programs. Resolve
+/// the player before any member of a simultaneous batch changes the world.
+#[derive(Debug)]
+struct ShuffleProposal { player: crate::ids::PlayerId }
+impl crate::effects::SimultaneousEffectProposal for ShuffleProposal {
+    fn commit(self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<EffectOutcome, ExecutionError> {
+        ShuffleLibraryEffect::new(crate::target::PlayerFilter::Specific(self.player)).execute(game, ctx)
     }
 }
 

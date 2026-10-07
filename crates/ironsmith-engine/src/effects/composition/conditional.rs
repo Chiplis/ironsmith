@@ -348,6 +348,17 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
             .unwrap_or_default()
     }
 
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(inner) = &mut self.prepared {
+            ctx.with_temp_iterated_player(self.player, |ctx| inner.prepare_selection(game, ctx))?;
+        }
+        Ok(())
+    }
+
     fn prepare_original(
         &mut self,
         game: &mut GameState,
@@ -408,6 +419,16 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
 }
 
 impl EffectExecutor for ConditionalEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        self.if_true.iter().chain(&self.if_false).all(crate::effects::replacement::replacement_effect_supported)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         self.if_true
             .iter()

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Avenging Arrow",
+    "oracle_id": "6c29add6-8524-4a33-9f2e-f792032dd6cd",
+    "mana_cost": "{2}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature that dealt damage this turn."
+  },
+  {
+    "name": "Reciprocate",
+    "oracle_id": "ebdd29c0-2c33-4410-a05c-80ced58c7b81",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Exile target creature that dealt damage to you this turn."
+  },
+  {
+    "name": "Restore the Peace",
+    "oracle_id": "aeca0661-8b71-4085-81e9-bb0884fc9831",
+    "mana_cost": "{1}{W}{U}",
+    "type_line": "Instant",
+    "oracle_text": "Return each creature that dealt damage this turn to its owner's hand."
+  },
+  {
+    "name": "Red Guardian, Super-Soldier",
+    "oracle_id": "e85567e8-1102-4d44-a15b-d5f1fdef8465",
+    "mana_cost": "{2}{W}",
+    "type_line": "Legendary Creature — Human Soldier Villain",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "Flash\nWhen Red Guardian enters, destroy target creature an opponent controls that dealt damage this turn."
+  }
+]

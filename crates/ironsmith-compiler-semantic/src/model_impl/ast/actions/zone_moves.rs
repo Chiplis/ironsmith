@@ -63,6 +63,8 @@ pub enum ZoneMoveActionAst {
         /// The target is selected from the first matching object in its ordered source zone.
         source_top_only: bool,
         zone: Zone,
+        /// Captured disjoint groups moved by this same instruction.
+        tagged_destinations: Vec<(TagRef, Zone)>,
         to_top: bool,
         library_order: Option<LibraryBottomOrderAst>,
         library_order_chooser: PlayerAst,

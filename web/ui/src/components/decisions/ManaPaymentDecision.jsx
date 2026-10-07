@@ -58,6 +58,7 @@ function warningText(value) {
 function sourceActionLabel(source) {
   if (source.payment_kind === "convoke") return "Tap for convoke";
   if (source.payment_kind === "improvise") return "Tap for improvise";
+  if (source.payment_kind === "waterbend") return "Tap for waterbend";
   if (source.payment_kind === "delve") return "Exile for delve";
   return "";
 }

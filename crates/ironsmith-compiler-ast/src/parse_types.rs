@@ -194,6 +194,8 @@ pub enum PreventNextTimeDamageSourceAst<
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum RedirectNextTimeDamageDestinationAst {
+    /// The source of the damage being replaced, not the ability source.
+    DamageSource,
     SourceObject,
     Controller,
     SourceController,

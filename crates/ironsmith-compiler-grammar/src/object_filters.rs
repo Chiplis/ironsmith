@@ -1091,27 +1091,50 @@ fn parse_terminal_same_name_filter(
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Ok(Some(reference)) =
-        crate::grammar::effects::fanout_shapes::parse_same_name_reference_span(trimmed)
-    else {
+    let Some((start, (), reference)) = crate::grammar::primitives::find_prefix(trimmed, || {
+        crate::grammar::primitives::any_phrase(&[
+            &["with", "the", "same", "name", "as"],
+            &["with", "same", "name", "as"],
+            &["which", "have", "the", "same", "name", "as"],
+            &["that", "has", "the", "same", "name", "as"],
+        ])
+    }) else {
         return Ok(None);
     };
-    if reference.start == 0 || reference.end != trimmed.len() {
+    if start == 0 {
         return Ok(None);
     }
-    let words = parser_token_word_refs(&trimmed[reference.start..reference.end]);
-    let Some(surface) = words
-        .last()
-        .and_then(|word| ironsmith_core::SameNameAntecedentSurface::from_noun(word))
-    else {
+    let reference_shape = match reference {
+        [head, noun] if head.is_word("that") || head.is_word("this") => noun.as_word()
+            .and_then(ironsmith_core::SameNameAntecedentSurface::from_noun)
+            .map(|surface| (
+                if head.is_word("this") { crate::tag::CompilerReferenceTag::SourceObject }
+                else { crate::tag::CompilerReferenceTag::It }, Some(surface),
+            )),
+        [article, chosen, noun] if article.is_word("the") && chosen.is_word("chosen") => noun.as_word()
+            .and_then(ironsmith_core::SameNameAntecedentSurface::from_noun)
+            .map(|surface| (crate::tag::CompilerReferenceTag::It, Some(surface))),
+        [article, exiled, card] if article.is_word("the") && exiled.is_word("exiled") && card.is_word("card") => {
+            Some((crate::tag::CompilerReferenceTag::SourceExiled, Some(ironsmith_core::SameNameAntecedentSurface::Card)))
+        }
+        [it] if it.is_word("it") => Some((crate::tag::CompilerReferenceTag::It, None)),
+        _ => None,
+    };
+    let Some((tag, surface)) = reference_shape else {
+        let words = parser_token_word_refs(reference);
+        let recognized_reference = matches!(words.as_slice(),
+            ["it", ..] | ["the", "exiled" | "chosen", ..] | ["that" | "this", ..]);
+        if recognized_reference {
+            return Err(CardTextError::ParseError("malformed terminal same-name reference".into()));
+        }
         return Ok(None);
     };
-    let mut filter = parse_object_filter(&trimmed[..reference.start], other)?;
-    filter.set_same_name_antecedent_surface(Some(surface));
+    let mut filter = parse_object_filter(&trimmed[..start], other)?;
+    filter.set_same_name_antecedent_surface(surface);
     filter
         .tagged_constraints
         .push(crate::target::TaggedObjectConstraint {
-            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            tag: tag.bind().into(),
             relation: TaggedOpbjectRelation::SameNameAsTagged,
         });
     Ok(Some(filter))
@@ -2036,6 +2059,7 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     base.has_mana_cost |= extra.has_mana_cost;
     base.has_x_in_cost |= extra.has_x_in_cost;
     base.has_phyrexian_mana_symbol |= extra.has_phyrexian_mana_symbol;
+    if base.mana_symbol_count.is_none() { base.mana_symbol_count = extra.mana_symbol_count; }
     base.chosen_color |= extra.chosen_color;
     if base.colors_chosen_while_drafting_named.is_none() {
         base.colors_chosen_while_drafting_named = extra.colors_chosen_while_drafting_named;
@@ -3721,6 +3745,49 @@ mod tests {
 #[cfg(test)]
 mod same_name_operand_tests {
     #[test]
+    fn complete_name_reference_tokens_reject_internal_punctuation_in_all_readers() {
+        for text in [
+            "land with the same name as the exiled: card",
+            "basic land cards which have the same name as the chosen: land",
+            "creature with the same name as that: creature",
+            "creature with the same name as this: creature",
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(super::parse_object_filter(&tokens, false).is_err(), "{text}");
+            assert!(super::parse_object_filter_lexed(&tokens, false).is_err(), "{text}");
+            assert!(crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).is_err(), "{text}");
+            assert!(crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(&tokens, false).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn terminal_name_references_preserve_the_reference_domain() {
+        use crate::tag::CompilerReferenceTag;
+        for (text, tag) in [
+            ("land with the same name as the exiled card", CompilerReferenceTag::SourceExiled),
+            ("land an opponent controls with the same name as the exiled card", CompilerReferenceTag::SourceExiled),
+            ("land on the battlefield with the same name as the exiled card", CompilerReferenceTag::SourceExiled),
+            ("basic land cards which have the same name as the chosen land", CompilerReferenceTag::It),
+            ("creature with the same name as this creature", CompilerReferenceTag::SourceObject),
+        ] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            for filter in [
+                super::parse_object_filter(&tokens, false).unwrap(),
+                super::parse_object_filter_lexed(&tokens, false).unwrap(),
+                crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap(),
+            ] {
+                let names: Vec<_> = filter.tagged_constraints.iter().filter(|constraint| {
+                    constraint.relation == crate::target::TaggedOpbjectRelation::SameNameAsTagged
+                }).collect();
+                assert_eq!(names.len(), 1, "{text}: {filter:?}");
+                assert_eq!(names[0].tag.as_str(), tag.as_str(), "{text}");
+                assert_ne!(filter.zone, Some(crate::zone::Zone::Exile), "the reference does not move the candidate into exile");
+                assert_eq!(filter.controller, text.contains("opponent").then_some(crate::target::PlayerFilter::Opponent));
+            }
+        }
+    }
+
+    #[test]
     fn comparison_creature_does_not_constrain_the_selected_tokens() {
         let tokens =
             crate::lexer::lex_line("tokens with the same name as that creature", 0).unwrap();
@@ -3738,5 +3805,24 @@ mod same_name_operand_tests {
                         == crate::target::TaggedOpbjectRelation::SameNameAsTagged)
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod morph_ability_filter_tests {
+    use super::*;
+
+    #[test]
+    fn morph_ability_nouns_keep_real_keywords_and_source_exclusion() {
+        for text in ["creature with a morph ability", "creatures with morph abilities"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            let filter = parse_object_filter(&tokens, false).unwrap();
+            assert_eq!(filter.static_abilities, [crate::static_abilities::StaticAbilityId::Morph]);
+            assert!(filter.ability_markers.is_empty());
+        }
+        let tokens = crate::lexer::lex_line("creatures with morph abilities other than this creature", 0).unwrap();
+        let filter = parse_object_filter(&tokens, false).unwrap();
+        assert!(filter.other);
+        assert_eq!(filter.static_abilities, [crate::static_abilities::StaticAbilityId::Morph]);
     }
 }

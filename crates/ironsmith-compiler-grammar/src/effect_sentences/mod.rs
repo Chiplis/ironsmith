@@ -1,5 +1,6 @@
 mod ability_loss_templates;
 mod bounded_number_choice;
+mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;
 mod duration_source_prevention;
@@ -100,13 +101,15 @@ mod looked_cards_family;
 mod looked_procedure;
 mod mill_procedure;
 mod next_spell_family;
+pub(crate) mod flashback_grants;
 mod optional_companion_fanout;
 mod pair_procedure;
+mod local_self_replacement;
 mod toughness_assignment;
-pub(crate) fn recognizes_life_gain_replacement_sentence(
+pub(crate) fn recognizes_scalar_self_replacement_sentence(
     tokens: &[crate::lexer::OwnedLexToken],
 ) -> bool {
-    pair_procedure::recognizes_life_gain_replacement_sentence(tokens)
+    pair_procedure::recognizes_scalar_self_replacement_sentence(tokens)
 }
 mod player_subject_sequences;
 mod procedures;

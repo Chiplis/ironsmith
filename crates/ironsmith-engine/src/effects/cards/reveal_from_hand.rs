@@ -24,6 +24,7 @@ fn reveal_filter(
 ) -> crate::filter::ObjectFilter {
     let mut filter = crate::filter::ObjectFilter::default()
         .in_zone(Zone::Hand)
+        .nontoken()
         .owned_by(crate::target::PlayerFilter::Specific(player));
     if let Some(card_type) = effect.card_type {
         filter = filter.with_type(card_type);
@@ -60,12 +61,18 @@ fn reveal_from_hand_candidates(
     let candidates = hand
         .into_iter()
         .filter(|card_id| {
-            if placeholders.contains(card_id) {
-                return true;
-            }
             let Some(obj) = game.object(*card_id) else {
                 return false;
             };
+            if obj.zone != Zone::Hand
+                || obj.owner != player
+                || obj.kind != crate::object::ObjectKind::Card
+            {
+                return false;
+            }
+            if placeholders.contains(card_id) {
+                return true;
+            }
             if effect
                 .card_type
                 .is_some_and(|card_type| !obj.has_card_type(card_type))
@@ -90,6 +97,34 @@ fn valid_reveal_from_hand_cards(
     source: crate::ids::ObjectId,
 ) -> Vec<ObjectId> {
     reveal_from_hand_candidates(effect, game, player, source).0
+}
+
+/// Shared by cost admission, native special actions, and resolving reveal
+/// payments. Hidden candidates retain the existing public-opening contract.
+pub(crate) fn legal_reveal_from_hand_cards(
+    game: &GameState,
+    player: crate::ids::PlayerId,
+    source: ObjectId,
+    card_type: Option<crate::types::CardType>,
+    color_filter: Option<crate::color::ColorSet>,
+) -> Vec<ObjectId> {
+    valid_reveal_from_hand_cards(
+        &RevealFromHandEffect::with_color_filter(1, card_type, color_filter),
+        game,
+        player,
+        source,
+    )
+}
+
+pub(crate) fn is_exact_reveal_selection(
+    selected: &[ObjectId],
+    candidates: &[ObjectId],
+    required: usize,
+) -> bool {
+    selected.len() == required
+        && selected.iter().enumerate().all(|(index, id)| {
+            candidates.contains(id) && !selected[..index].contains(id)
+        })
 }
 
 fn required_reveal_count(
@@ -144,7 +179,16 @@ impl EffectExecutor for RevealFromHandEffect {
             .collect();
 
         let cards_to_reveal = if !explicit_cards.is_empty() {
-            normalize_object_selection(explicit_cards, &valid_cards, required)
+            if ctx.targets_are_cost_choices {
+                if !is_exact_reveal_selection(&explicit_cards, &valid_cards, required) {
+                    return Err(ExecutionError::Impossible(
+                        "reveal payment must select exactly the required legal hand cards".into(),
+                    ));
+                }
+                explicit_cards
+            } else {
+                normalize_object_selection(explicit_cards, &valid_cards, required)
+            }
         } else {
             let mut spec = ChooseObjectsSpec::new(
                 ctx.source,
@@ -178,7 +222,14 @@ impl EffectExecutor for RevealFromHandEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            if hidden_hand_choice {
+            if ctx.targets_are_cost_choices {
+                if !is_exact_reveal_selection(&chosen, &valid_cards, required) {
+                    return Err(ExecutionError::Impossible(
+                        "reveal payment must select exactly the required legal hand cards".into(),
+                    ));
+                }
+                chosen
+            } else if hidden_hand_choice {
                 // No fill-up: it would pick different cards on peers holding
                 // placeholders.
                 let mut normalized = Vec::new();
@@ -195,6 +246,22 @@ impl EffectExecutor for RevealFromHandEffect {
                 normalize_object_selection(chosen, &valid_cards, required)
             }
         };
+        if ctx.prospective_cost_payment {
+            // Admission runs only on an isolated game clone. A reveal does
+            // not consume a card; its prospective result does not disclose,
+            // mark, tag, or emit a completed reveal event.
+            return Ok(EffectOutcome::count(cards_to_reveal.len() as i32));
+        }
+        if ctx.targets_are_cost_choices
+            && cards_to_reveal.iter().any(|id| game.is_hidden_card_placeholder(*id))
+        {
+            // Public selection opens exactly these identities before replay.
+            // A deferred hand claim proves neither their color/type nor that
+            // the mandatory reveal completed in the current payment.
+            return Err(ExecutionError::IncompleteEvidence(
+                "reveal payment is awaiting its selected card's public identity opening".into(),
+            ));
+        }
         if hidden_hand_choice {
             let filter = reveal_filter(self, ctx.controller);
             let filter_ctx =

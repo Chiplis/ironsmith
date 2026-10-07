@@ -1660,6 +1660,8 @@ pub(super) fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_w
         .expect("Exchange of Words should exist")
         .stable_id;
     trigger_queue.add(crate::triggers::TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source: exchange_id,
         controller: alice,
         x_value: None,
@@ -2176,6 +2178,8 @@ pub(super) fn test_repeated_earthbend_trigger_prompts_for_each_target() {
 
     let mut trigger_queue = TriggerQueue::new();
     trigger_queue.add(TriggeredAbilityEntry {
+        linked_exile_owner: None,
+        source_number_owner: None,
         source: source_id,
         controller: alice,
         x_value: None,

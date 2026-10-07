@@ -255,6 +255,22 @@ struct PaymentCompletion {
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
 impl SimultaneousEffectCompletion for PaymentCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let Self { cause, inner } = *self;
+        let mut receipt = with_payment_cause(ctx, &cause, |ctx| {
+            inner.prepare_draw_boundary_with_outputs(game, ctx, original)
+        })?;
+        receipt.completion = receipt.completion.map(|inner| {
+            Box::new(PaymentCompletion { cause, inner }) as Box<dyn SimultaneousEffectCompletion>
+        });
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,

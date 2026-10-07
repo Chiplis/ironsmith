@@ -22,6 +22,7 @@ pub use ironsmith_core::AddManaEffect;
 /// let effect = AddManaEffect::new(vec![ManaSymbol::Green, ManaSymbol::Green], PlayerFilter::You);
 /// ```
 impl EffectExecutor for AddManaEffect {
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> { Some(self) }
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
         Some(ManaProduction::Fixed { symbols: &self.mana, player: &self.player })
@@ -49,6 +50,17 @@ impl EffectExecutor for AddManaEffect {
         _controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
         Some(self.mana.clone())
+    }
+}
+
+impl crate::effects::CostExecutableEffect for AddManaEffect {
+    fn can_execute_as_cost(
+        &self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let ctx = ExecutionContext::new_default(source, controller);
+        crate::effects::helpers::resolve_player_filter(game, &self.player, &ctx)
+            .map(|_| ())
+            .map_err(|error| crate::effects::CostValidationError::Other(error.to_string()))
     }
 }
 

@@ -13,6 +13,8 @@ pub enum AttachedSubject {
     EnchantedLand,
     EnchantedArtifact,
     EnchantedEquipment,
+    EnchantedArtifactCreature,
+    EnchantedEnchantment,
     EquippedCreature,
     EquippedPermanent,
 }
@@ -25,6 +27,8 @@ impl AttachedSubject {
             Self::EnchantedLand => "enchanted land",
             Self::EnchantedArtifact => "enchanted artifact",
             Self::EnchantedEquipment => "enchanted equipment",
+            Self::EnchantedArtifactCreature => "enchanted artifact creature",
+            Self::EnchantedEnchantment => "enchanted enchantment",
             Self::EquippedCreature => "equipped creature",
             Self::EquippedPermanent => "equipped permanent",
         }
@@ -187,6 +191,10 @@ pub(super) fn parse_attached_subject_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<AttachedSubject> {
     alt((
+        (semantic_kw("enchanted"), semantic_kw("artifact"), semantic_kw("creature"))
+            .value(AttachedSubject::EnchantedArtifactCreature),
+        (semantic_kw("enchanted"), semantic_kw("enchantment"))
+            .value(AttachedSubject::EnchantedEnchantment),
         (semantic_kw("enchanted"), semantic_kw("creature"))
             .value(AttachedSubject::EnchantedCreature),
         (semantic_kw("enchanted"), semantic_kw("permanent"))

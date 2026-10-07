@@ -30,6 +30,8 @@ pub(crate) fn tagged_collection_has_object_in_zone(
 pub struct DelayedTriggerConfig {
     pub trigger: Trigger,
     pub effects: ResolutionProgram,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
@@ -46,6 +48,7 @@ pub struct DelayedTriggerConfig {
     pub choices: Vec<crate::target::ChooseSpec>,
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     pub tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     pub prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
     pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
@@ -61,6 +64,8 @@ impl DelayedTriggerConfig {
         Self {
             trigger,
             effects: effects.into(),
+            linked_exile_owner: None,
+            source_number_owner: None,
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
@@ -75,6 +80,7 @@ impl DelayedTriggerConfig {
             choices: Vec::new(),
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
+            defending_player_reference: None,
             prepayment: None,
             prevention_shield: None,
         }
@@ -118,6 +124,16 @@ impl DelayedTriggerConfig {
         self
     }
 
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
+        self
+    }
+
+    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.source_number_owner = owner;
+        self
+    }
+
     pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
         self.x_value = x_value;
         self
@@ -138,6 +154,11 @@ impl DelayedTriggerConfig {
 
     pub fn with_tagged_players(mut self, tagged_players: HashMap<TagKey, Vec<PlayerId>>) -> Self {
         self.tagged_players = tagged_players;
+        self
+    }
+
+    pub fn with_defending_player_reference(mut self, reference: Option<crate::combat_state::DefendingPlayerReference>) -> Self {
+        self.defending_player_reference = reference;
         self
     }
 
@@ -182,6 +203,8 @@ impl DelayedWatcherIdentity {
 pub(crate) struct DelayedTriggerTemplate {
     pub trigger: Trigger,
     pub effects: ResolutionProgram,
+    pub linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
+    pub source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
     pub one_shot: bool,
     pub not_before_turn: Option<u32>,
     pub expires_at_turn: Option<u32>,
@@ -195,6 +218,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub choices: Vec<crate::target::ChooseSpec>,
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
     pub tagged_players: HashMap<TagKey, Vec<PlayerId>>,
+    pub defending_player_reference: Option<crate::combat_state::DefendingPlayerReference>,
     pub prepayment: Option<crate::triggers::PendingDelayedTriggerPayment>,
     pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
@@ -209,6 +233,8 @@ impl DelayedTriggerTemplate {
         Self {
             trigger,
             effects: effects.into(),
+            linked_exile_owner: None,
+            source_number_owner: None,
             one_shot,
             not_before_turn: None,
             expires_at_turn: None,
@@ -222,6 +248,7 @@ impl DelayedTriggerTemplate {
             choices: Vec::new(),
             tagged_objects: HashMap::new(),
             tagged_players: HashMap::new(),
+            defending_player_reference: None,
             prepayment: None,
             prevention_shield: None,
         }
@@ -265,6 +292,16 @@ impl DelayedTriggerTemplate {
         self
     }
 
+    pub fn with_linked_exile_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.linked_exile_owner = owner;
+        self
+    }
+
+    pub fn with_source_number_owner(mut self, owner: Option<crate::linked_exile::LinkedExileOwner>) -> Self {
+        self.source_number_owner = owner;
+        self
+    }
+
     pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
         self.x_value = x_value;
         self
@@ -280,6 +317,11 @@ impl DelayedTriggerTemplate {
 
     pub fn with_tagged_players(mut self, tagged_players: HashMap<TagKey, Vec<PlayerId>>) -> Self {
         self.tagged_players = tagged_players;
+        self
+    }
+
+    pub fn with_defending_player_reference(mut self, reference: Option<crate::combat_state::DefendingPlayerReference>) -> Self {
+        self.defending_player_reference = reference;
         self
     }
 
@@ -332,6 +374,8 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
     let tagged_objects = config.tagged_objects;
 
     game.effect_store.delayed_triggers.push(DelayedTrigger {
+        linked_exile_owner: config.linked_exile_owner,
+        source_number_owner: config.source_number_owner,
         trigger: config.trigger,
         effects: config.effects,
         one_shot: config.one_shot,
@@ -351,6 +395,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         choices: config.choices,
         tagged_objects,
         tagged_players: config.tagged_players,
+        defending_player_reference: config.defending_player_reference,
         prepayment: config.prepayment,
         prevention_shield: config.prevention_shield,
     });
@@ -383,11 +428,14 @@ pub(crate) fn queue_delayed_from_template(
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                 .with_bound_extra_turn_index(template.bound_extra_turn_index)
                 .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
+                .with_linked_exile_owner(template.linked_exile_owner.clone())
+                .with_source_number_owner(template.source_number_owner.clone())
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
                 .with_choices(template.choices)
                 .with_tagged_objects(template.tagged_objects)
                 .with_tagged_players(template.tagged_players)
+                .with_defending_player_reference(template.defending_player_reference)
                 .with_prepayment(template.prepayment)
                 .with_prevention_shield(template.prevention_shield),
             );
@@ -415,11 +463,14 @@ pub(crate) fn queue_delayed_from_template(
                     .while_any_tagged_object_in_zone_opt(
                         template.while_any_tagged_object_in_zone.clone(),
                     )
-                    .with_ability_source(template.ability_source)
+                    .with_linked_exile_owner(template.linked_exile_owner.clone())
+                    .with_source_number_owner(template.source_number_owner.clone())
+                .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
                     .with_choices(template.choices.clone())
                     .with_tagged_objects(template.tagged_objects.clone())
                     .with_tagged_players(template.tagged_players.clone())
+                    .with_defending_player_reference(template.defending_player_reference)
                     .with_prepayment(template.prepayment.clone())
                     .with_prevention_shield(template.prevention_shield),
                 );

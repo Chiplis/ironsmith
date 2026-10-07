@@ -1,3 +1,7 @@
+#[path = "dispatch_entry/grouped_coins.rs"]
+mod grouped_coins;
+#[path = "dispatch_entry/dynamic_keyword_instructions.rs"]
+mod dynamic_keyword_instructions;
 #[path = "dispatch_entry/temporary_damage_addition.rs"]
 mod temporary_damage_addition;
 mod temporary_damage_multiplier;
@@ -310,7 +314,10 @@ pub fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration:
                     ..
                 },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                duration: effect_duration,
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 duration: effect_duration,
                 ..
             })
@@ -1458,7 +1465,7 @@ fn classification_row_subject(effect: &EffectAst) -> Option<(String, &PredicateA
         | PredicateAst::ItMatchedLastKnown(_)
         | PredicateAst::ItIsLandCard => crate::tag::CompilerReferenceTag::It.as_str().to_string(),
         PredicateAst::TargetMatches(_) => "__target__".to_string(),
-        PredicateAst::TaggedMatches(tag, _) => tag.as_str().to_string(),
+        PredicateAst::TaggedMatches(tag, _) | PredicateAst::TaggedMatchedLastKnown(tag, _) => tag.as_str().to_string(),
         _ => return None,
     };
     Some((subject, predicate))
@@ -1478,7 +1485,7 @@ fn classification_sibling_predicates(effects: &[EffectAst]) -> Vec<PredicateAst>
             PredicateAst::ItMatches(filter)
             | PredicateAst::ItMatchedLastKnown(filter)
             | PredicateAst::TargetMatches(filter)
-            | PredicateAst::TaggedMatches(_, filter) => Some(filter),
+            | PredicateAst::TaggedMatches(_, filter) | PredicateAst::TaggedMatchedLastKnown(_, filter) => Some(filter),
             _ => None,
         }
     }
@@ -2447,6 +2454,12 @@ fn parse_effect_sentences_from_sentence_inputs(
             || super::chain_carry::bind_return_exiled_to_owners_hands(&mut effects, sentence)
         {
             parser_trace("parse_effect_sentences:rider:bound-followup", sentence);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+        if let Some(effect) = dynamic_keyword_instructions::parse(authored_sentence) {
+            effects.push(effect);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -3923,6 +3936,13 @@ pub(crate) fn parse_complete_investigate_statement(
     {
         return Ok(None);
     }
+    if super::lex_chain_helpers::has_authored_comma_then_surface_lexed(tokens)
+        || super::lex_chain_helpers::split_effect_chain_on_and_lexed(tokens).len() > 1
+    {
+        // The leaf owns one complete investigate instruction. The chain
+        // owner must retain subsequent targets and values in source order.
+        return Ok(None);
+    }
     super::creation_handlers::parse_investigate(&tokens[1..], None).map(|effect| Some(vec![effect]))
 }
 
@@ -4628,17 +4648,6 @@ pub(crate) fn parse_complete_create_statement(
                 // followup while preserving its authored duration.
                 return Ok(None);
             }
-            // Eldrazi Spawn/Scion tokens carry their mana ability in the
-            // token blueprint, so the authored restatement adds nothing. The
-            // followup registry treats it as a no-op; this fast path must
-            // agree, or the ability is appended a second time as a grant.
-            if crate::activation_and_restrictions::is_spawn_scion_token_mana_reminder(followup)
-                && effects.last().is_some_and(
-                    crate::activation_and_restrictions::effect_creates_eldrazi_spawn_or_scion,
-                )
-            {
-                continue;
-            }
             // A complete create statement may absorb only grammar-proven
             // token reminder sentences. Conditional `create ... instead`
             // followups share token words but belong to the typed
@@ -4789,6 +4798,9 @@ pub(super) fn parse_complete_quantified_discard_statement(
 pub(crate) fn parse_complete_get_pump_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effects) = super::parse_same_name_gets_fanout_sentence(sentence)? {
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
     if sentence
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -5639,6 +5651,7 @@ fn parse_composable_typed_statements(
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
                             action:
                                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                                    maximum_total: None,
                                     counter_type: crate::object::CounterType::PlusOnePlusOne,
                                     count,
                                     target,
@@ -5650,6 +5663,7 @@ fn parse_composable_typed_statements(
                         EffectAst::SubjectVerb(SubjectVerbEffectAst {
                             action:
                                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                                    maximum_total: None,
                                     counter_type: source_counter_type,
                                     count: Value::Fixed(1),
                                     target: TargetAst::Source(_),
@@ -6078,6 +6092,9 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
+    super::pair_procedure::validate_discard_replacements(tokens)?;
+    super::local_self_replacement::validate(tokens)?;
     // A leading payment condition owns the complete consequence. Broad
     // document readings must not claim only the payment verb inside it.
     let leading = trim_edge_punctuation(tokens);
@@ -6101,6 +6118,7 @@ pub fn parse_effect_sentences_lexed(
     if let Some(effects) = crate::effect_sentences::life_unit_programs::parse_prefix(tokens)? {
         return Ok(effects);
     }
+    if let Some(effect) = dynamic_keyword_instructions::parse(tokens) { return Ok(vec![effect]); }
     if let Some(effect) =
         temporary_damage_addition::parse(tokens)?.or(temporary_damage_multiplier::parse(tokens)?)
     {
@@ -6344,6 +6362,9 @@ fn parse_effect_sentences_lexed_unfinalized(
         return Ok(vec![effect]);
     }
     if let Some(effects) = parse_coin_batch_and_counted_turn_skip(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = grouped_coins::parse_document(tokens)? {
         return Ok(effects);
     }
     // The complete outside-game selection owns its optional choice, reveal,
@@ -6692,6 +6713,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
     };
     let (
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+            maximum_total: None,
             counter_type: crate::object::CounterType::PlusOnePlusOne,
             count,
             target: first_target,
@@ -6699,6 +6721,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
             distributed: false,
         }),
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+            maximum_total: None,
             counter_type: source_counter_type,
             count: Value::Fixed(1),
             target: TargetAst::Source(_),
@@ -12516,7 +12539,6 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
@@ -12800,7 +12822,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. },
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. },
             )
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
                 ..
@@ -12854,7 +12877,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeCreatureTypeChoice { .. },
             )
-            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText {
+                ..
+            }) | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
             | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
@@ -12869,6 +12894,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp {
+                ..
+            })
+            | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown {
                 ..
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => {}
@@ -12965,6 +12993,9 @@ pub fn replace_unbound_x_in_effect_anywhere(
                     clause,
                     false,
                 )?;
+            }
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) => {
+                replace_value(amount, replacement, clause)?;
             }
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
                 spec,
@@ -13288,7 +13319,7 @@ pub fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                     ..
                 })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
-                    target: effect_target,
+                    target: Some(effect_target),
                     ..
                 })
                 | SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
@@ -14262,7 +14293,7 @@ fn parse_coin_batch_and_counted_turn_skip(
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count }),
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count, kind: ironsmith_core::CoinFlipKind::FaceOnly, repeat_until_loss: false, stop_condition: None, loss_action: None, opponent_results: None, count_value: None }),
         ),
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
             count: Value::PendingEffectMetric {

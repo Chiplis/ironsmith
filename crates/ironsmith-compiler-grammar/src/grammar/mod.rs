@@ -8,6 +8,7 @@ pub mod anthem_grants;
 pub mod attached_object_static_lines;
 pub mod blocking_permissions;
 pub mod choices;
+pub mod combat_requirements;
 pub mod clause_support;
 pub mod conditions;
 pub mod document_facts;

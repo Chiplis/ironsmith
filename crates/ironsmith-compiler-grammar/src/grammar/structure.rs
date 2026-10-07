@@ -587,6 +587,12 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "gains"
             | "get"
             | "gets"
+            | "investigate"
+            | "investigates"
+            | "proliferate"
+            | "proliferates"
+            | "amass"
+            | "amasses"
             | "look"
             | "looks"
             | "lose"
@@ -1259,6 +1265,12 @@ pub fn split_if_clause_lexed(
             &[OwnedLexToken],
         ) -> Result<Vec<EffectAst>, CardTextError>| {
             let trimmed = trim_lexed_commas(effect_tokens);
+            // The direct sentence route retains its final period. Consume
+            // that delimiter before recognizing a terminal replacement word;
+            // never erase a colon, mana symbol, or another unparsed tail.
+            let trimmed = if trimmed.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
+                &trimmed[..trimmed.len() - 1]
+            } else { trimmed };
             let without_instead = if trimmed
                 .first()
                 .is_some_and(|token| structure_token_is(token, "instead"))

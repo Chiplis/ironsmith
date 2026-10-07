@@ -1,0 +1,70 @@
+[
+  {
+    "name": "Bane Alley Broker",
+    "mana_cost": "{1}{U}{B}",
+    "type_line": "Creature — Human Rogue",
+    "oracle_text": "{T}: Draw a card, then exile a card from your hand face down.\nYou may look at cards exiled with this creature.\n{U}{B}, {T}: Return a card exiled with this creature to its owner's hand.",
+    "power": "0",
+    "toughness": "3",
+    "oracle_id": "4993e373-4b76-4582-a789-6a3123e7ca89"
+  },
+  {
+    "name": "Kheru Mind-Eater",
+    "mana_cost": "{2}{B}",
+    "type_line": "Creature — Vampire",
+    "oracle_text": "Menace\nWhenever this creature deals combat damage to a player, that player exiles a card from their hand face down.\nYou may look at cards exiled with this creature, and you may play lands and cast spells from among those cards.",
+    "power": "1",
+    "toughness": "3",
+    "oracle_id": "dfea918b-5702-4c12-ba36-e6aa4ace09c7"
+  },
+  {
+    "name": "Nightveil Specter",
+    "mana_cost": "{U/B}{U/B}{U/B}",
+    "type_line": "Creature — Specter",
+    "oracle_text": "Flying\nWhenever this creature deals combat damage to a player, that player exiles the top card of their library.\nYou may play lands and cast spells from among cards exiled with this creature.",
+    "power": "2",
+    "toughness": "3",
+    "oracle_id": "4ce83f8c-b27e-4e5b-b19b-76b66aaa904b"
+  },
+  {
+    "name": "Intellect Devourer",
+    "mana_cost": "{3}{B}",
+    "type_line": "Creature — Horror",
+    "oracle_text": "Devour Intellect — When this creature enters, each opponent exiles a card from their hand until this creature leaves the battlefield.\nBody Thief — You may play lands and cast spells from among cards exiled with this creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
+    "power": "2",
+    "toughness": "4",
+    "oracle_id": "a06fa827-900b-46d4-8f48-b4e15964951a"
+  },
+  {
+    "name": "Colfenor's Plans",
+    "mana_cost": "{2}{B}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "When this enchantment enters, exile the top seven cards of your library face down.\nYou may look at the cards exiled with this enchantment, and you may play lands and cast spells from among those cards.\nSkip your draw step.\nYou can't cast more than one spell each turn.",
+    "oracle_id": "ad786230-4045-46af-bc89-078d45891e5b"
+  },
+  {
+    "name": "Rogue Class",
+    "mana_cost": "{U}{B}",
+    "type_line": "Enchantment — Class",
+    "oracle_text": "(Gain the next level as a sorcery to add its ability.)\nWhenever a creature you control deals combat damage to a player, exile the top card of that player's library face down. You may look at it for as long as it remains exiled.\n{1}{U}{B}: Level 2\nCreatures you control have menace.\n{2}{U}{B}: Level 3\nYou may play cards exiled with this Class, and you may spend mana as though it were mana of any color to cast those spells.",
+    "oracle_id": "76f0f39a-ce1b-4935-a6b8-5c4e1a27ab24"
+  },
+  {
+    "name": "Intet, the Dreamer",
+    "mana_cost": "{3}{G}{U}{R}",
+    "type_line": "Legendary Creature — Dragon",
+    "oracle_text": "Flying\nWhenever Intet deals combat damage to a player, you may pay {2}{U}. If you do, exile the top card of your library face down. You may look at that card for as long as it remains exiled. You may play that card without paying its mana cost for as long as Intet remains on the battlefield.",
+    "power": "6",
+    "toughness": "6",
+    "oracle_id": "9518ffbc-bb3d-4f48-a900-f5bad8302a87"
+  },
+  {
+    "name": "Elder Brain",
+    "mana_cost": "{5}{B}{B}",
+    "type_line": "Creature — Horror",
+    "oracle_text": "Menace\nWhenever this creature attacks a player, exile all cards from that player's hand, then they draw that many cards. You may play lands and cast spells from among the exiled cards for as long as they remain exiled. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
+    "power": "6",
+    "toughness": "6",
+    "oracle_id": "e537bd23-7368-459b-badf-b7b7c112c88a"
+  }
+]

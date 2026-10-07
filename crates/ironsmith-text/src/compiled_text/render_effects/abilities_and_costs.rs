@@ -1822,15 +1822,6 @@ pub(crate) fn describe_ability(
             };
             let mut pre = Vec::new();
             let mut trailing_x_definition = None;
-            let waterbend_label = activated_presentation_label(activated)
-                .filter(|label| label.starts_with("Waterbend {") && label.ends_with('}'));
-            if let Some(label) = waterbend_label {
-                // Waterbend's expanded `OneOf` cost is the executable payment
-                // model. Its authored keyword and mana value are the complete
-                // public cost surface, so do not print every equivalent tap
-                // branch after the presentation label.
-                pre.push(label.to_string());
-            } else {
                 let rendered_cost = describe_total_cost(&activated.mana_cost);
                 if !rendered_cost.is_empty() {
                     let (cost_text, x_definition) =
@@ -1842,7 +1833,6 @@ pub(crate) fn describe_ability(
                         pre.push(cost_text);
                     }
                 }
-            }
             if !activated.choices.is_empty()
                 && !(!activated.effects.is_empty()
                     && choices_are_simple_targets(&activated.choices))
@@ -3190,9 +3180,12 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         .map(describe_cost_list)
         .unwrap_or_else(|| describe_total_cost_payment(&cost.cost));
     let label = cost.kind.canonical_label();
+    if cost.kind == OptionalCostKind::Waterbend {
+        return format!("As an additional cost to cast this spell, you may {}", lowercase_first(&cost_text));
+    }
     if matches!(
         cost.kind,
-        OptionalCostKind::Gift | OptionalCostKind::Waterbend
+        OptionalCostKind::Gift
     ) {
         return cost.reference.display_label();
     }

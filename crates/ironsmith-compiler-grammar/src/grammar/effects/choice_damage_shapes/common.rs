@@ -82,7 +82,8 @@ pub fn is_choice_damage_drain_shape(words: &[&str]) -> bool {
 }
 
 pub fn is_random_card_descriptor_shape(words: &[&str]) -> bool {
-    word_occurs(words, "card") && phrase_occurs(words, &["at", "random"])
+    exact_phrase(words, &["card", "at", "random"])
+        || exact_phrase(words, &["cards", "at", "random"])
 }
 
 pub fn is_create_token_sacrifice_counter_shape(words: &[&str]) -> bool {

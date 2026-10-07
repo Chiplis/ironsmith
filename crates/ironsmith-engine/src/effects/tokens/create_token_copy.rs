@@ -315,9 +315,12 @@ fn prepare_token_copy_proposal(
     let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
         snapshot.object_id
     } else {
-        let resolved =
-            crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx);
-        match resolved.as_ref().ok().and_then(|ids| ids.first()) {
+        let resolved = match crate::effects::helpers::resolve_objects_from_spec(game, &effect.target, ctx) {
+            Ok(ids) => ids,
+            Err(ExecutionError::InvalidTarget) => Vec::new(),
+            Err(error) => return Err(error),
+        };
+        match resolved.first() {
             Some(id) => *id,
             None => {
                 // A tagged copy source may already have left its zone
@@ -378,9 +381,9 @@ fn prepare_token_copy_proposal(
     if stored_snapshot.is_none()
         && let Some(target) = target_object.as_ref()
     {
-        stored_snapshot = Some(ObjectSnapshot::from_object_with_calculated_characteristics(
+        stored_snapshot = Some(ObjectSnapshot::try_from_object_with_calculated_characteristics(
             target, game,
-        ));
+        )?);
     }
     let copy_snapshot = stored_snapshot.as_ref();
     if target_object.is_none() && copy_snapshot.is_none() {
@@ -410,7 +413,7 @@ fn prepare_token_copy_proposal(
     );
     let mut static_abilities_to_grant =
         Vec::with_capacity(effect.granted_static_abilities.len() + usize::from(effect.has_haste));
-    if effect.has_haste {
+    if effect.has_haste && effect.haste_followup_reference_surface.is_none() {
         static_abilities_to_grant.push(StaticAbility::haste());
     }
     static_abilities_to_grant.extend(effect.granted_static_abilities.iter().cloned());
@@ -771,7 +774,6 @@ fn commit_token_copy_original(
             prepared_attack_targets: (effect.enters_attacking
                 || proposal.configured_attack_player.is_some())
             .then_some(proposal.additional_attack_targets),
-            gains_haste: effect.has_haste && effect.haste_followup_reference_surface.is_some(),
             ..Default::default()
         },
         &mut events,
@@ -804,6 +806,9 @@ fn commit_token_copy_original(
             super::lifecycle::retain_token_child(&mut events, &mut lifecycle_children, cleanup);
         }
     }
+    let haste_recipients = if effect.has_haste && effect.haste_followup_reference_surface.is_some() {
+        created_ids.clone()
+    } else { Vec::new() };
     Ok(crate::effects::SimultaneousEffectCommit {
         outcome: super::lifecycle::compose_token_original(
             EffectOutcome::with_objects(created_ids.clone())
@@ -811,10 +816,8 @@ fn commit_token_copy_original(
                 .with_events(events),
             lifecycle_children,
         ),
-        completion: Some(super::lifecycle::token_instruction_completion(
-            proposal.instruction.take(),
-            entry_receipts,
-            programs,
+        completion: Some(super::lifecycle::token_instruction_completion_with_haste(
+            proposal.instruction.take(), entry_receipts, programs, haste_recipients,
         )),
     })
 }

@@ -465,3 +465,15 @@ fn included_literal_name_keeps_original_case_apostrophe_and_comma_surface() {
         "a stale spelling must not override a changed semantic name"
     );
 }
+
+#[test]
+fn blocked_or_was_blocked_union_keeps_its_outer_creature_and_controller_scope() {
+    let filter = parse_filter("creature you control that blocked or was blocked this turn");
+    assert_eq!(filter.card_types, vec![CardType::Creature]);
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert!(!filter.blocked && !filter.blocking);
+    assert!(!filter.blocked_this_turn && !filter.was_blocked_this_turn);
+    assert_eq!(filter.any_of.len(), 2);
+    assert!(filter.any_of.iter().any(|arm| arm.blocked_this_turn && !arm.was_blocked_this_turn));
+    assert!(filter.any_of.iter().any(|arm| arm.was_blocked_this_turn && !arm.blocked_this_turn));
+}

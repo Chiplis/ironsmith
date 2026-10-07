@@ -417,6 +417,40 @@ fn invitation_chooses_once_then_each_player_sacrifices_their_own_available_set()
     }
 }
 #[test]
+fn invitation_originals_precede_added_programs_and_share_replacement_eligibility() {
+    use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
+    use ironsmith::target::{Comparison, ObjectFilter};
+    for definition in definitions("By Invitation Only") {
+        let mut game = game();
+        let lord = compile_to_runtime_definition("Sacrifice simultaneity witness",
+            "Type: Creature\nPower/Toughness: 1/3\nOther creatures get +1/+1.", false).unwrap();
+        let a = game.create_object_from_definition(&lord, A, Zone::Battlefield);
+        let body = vanilla("Sacrifice participant", "{1}", "Bear", 1, 3);
+        let b = game.create_object_from_definition(&body, B, Zone::Battlefield);
+        let c = game.create_object_from_definition(&body, C, Zone::Battlefield);
+        let b_stable = game.object(b).unwrap().stable_id;
+        let c_stable = game.object(c).unwrap().stable_id;
+        assert_eq!(game.current_power(b), Some(2));
+        let mut dm = Choices { number: 1, ..Default::default() };
+        let spell = cast(&mut game, &definition, CastingMethod::Normal, &mut dm);
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(spell, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(a), Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::Additionally(vec![Effect::gain_life(ironsmith::effect::Value::Count(ObjectFilter::creature().controlled_by(PlayerFilter::Opponent)))])));
+        let mut b_filter = ObjectFilter::specific(b); b_filter.power = Some(Comparison::GreaterThanOrEqual(2));
+        game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(spell, A,
+            ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(b_filter, Some(Zone::Battlefield), Some(Zone::Graveyard)),
+            ReplacementAction::ChangeDestination(Zone::Exile)));
+        resolve(&mut game, &mut dm);
+        assert_eq!(dm.number_prompts, 1);
+        assert_eq!(game.object(game.find_object_by_stable_id(b_stable).unwrap()).unwrap().zone, Zone::Exile,
+            "B's replacement was determined while A's lord effect still applied");
+        assert_eq!(game.object(game.find_object_by_stable_id(c_stable).unwrap()).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.player(A).unwrap().life, 20, "A's addition cannot observe later participants' original creatures");
+        assert!(game.battlefield.is_empty());
+    }
+}
+
+#[test]
 fn expel_uses_the_exact_choice_as_a_live_filter_and_preserves_indestructible() {
     for definition in definitions("Expel the Interlopers") {
         for chosen in [0, 3, 10] {

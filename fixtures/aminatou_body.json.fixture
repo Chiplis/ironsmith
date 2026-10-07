@@ -1,0 +1,10 @@
+{
+  "name": "Aminatou, Veil Piercer",
+  "id": "9f868023-6035-403d-ba91-7a4840c6c392",
+  "oracle_id": "bf45f5ee-4d5f-4920-b612-b5492c2f035d",
+  "mana_cost": "{1}{W}{U}{B}",
+  "type_line": "Legendary Creature \u2014 Human Wizard",
+  "power": "2",
+  "toughness": "4",
+  "oracle_text": "At the beginning of your upkeep, surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)\nEach enchantment card in your hand has miracle. Its miracle cost is equal to its mana cost reduced by {4}. (You may cast a card for its miracle cost when you draw it if it's the first card you drew this turn.)"
+}

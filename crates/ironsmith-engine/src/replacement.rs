@@ -632,6 +632,14 @@ pub struct ReplacementEffectManager {
     /// ETB batch. These remain live while sibling proposals are evaluated.
     pending_batch_one_shot_effects: std::collections::HashSet<ReplacementEffectId>,
 
+    /// Replacements for the next complete damage occurrence, including every
+    /// simultaneous assignment and every fragment produced by a redirection.
+    next_damage_occurrence_effects: std::collections::HashSet<ReplacementEffectId>,
+
+    /// Used registrations remain available to siblings in their own occurrence,
+    /// but not to a new damage instruction executed by a replacement payload.
+    damage_occurrence_frames: Vec<std::collections::HashSet<ReplacementEffectId>>,
+
     /// Temporary replacement effects that expire during cleanup.
     until_end_of_turn_effects: std::collections::HashSet<ReplacementEffectId>,
 
@@ -671,6 +679,7 @@ impl ReplacementEffectManager {
             .one_shot_effects
             .iter()
             .chain(&self.batch_one_shot_effects)
+            .chain(&self.next_damage_occurrence_effects)
             .map(|id| id.0)
             .collect();
         entries.sort();
@@ -718,6 +727,10 @@ impl ReplacementEffectManager {
         self.one_shot_effects.remove(&id);
         self.batch_one_shot_effects.remove(&id);
         self.pending_batch_one_shot_effects.remove(&id);
+        self.next_damage_occurrence_effects.remove(&id);
+        for frame in &mut self.damage_occurrence_frames {
+            frame.remove(&id);
+        }
         self.until_end_of_turn_effects.remove(&id);
         self.until_next_turn_effects.remove(&id);
     }
@@ -826,8 +839,7 @@ impl ReplacementEffectManager {
             .iter()
             .filter(|e| {
                 e.source == source
-                    && (self.one_shot_effects.contains(&e.id)
-                        || self.batch_one_shot_effects.contains(&e.id))
+                    && self.is_one_shot(e.id)
             })
             .map(|e| e.id)
             .collect();
@@ -943,6 +955,37 @@ impl ReplacementEffectManager {
         id
     }
 
+    /// Add a turn-scoped replacement for the next damage occurrence in which
+    /// it applies. Damage processing owns the occurrence boundary; ETB batches
+    /// and ordinary one-shot replacements retain their independent lifetimes.
+    pub fn add_next_damage_occurrence_effect(
+        &mut self,
+        effect: ReplacementEffect,
+    ) -> ReplacementEffectId {
+        let id = self.add_resolution_effect(effect);
+        self.next_damage_occurrence_effects.insert(id);
+        id
+    }
+
+    pub(crate) fn begin_damage_occurrence(&mut self) {
+        self.damage_occurrence_frames.push(Default::default());
+    }
+
+    pub(crate) fn finish_damage_occurrence(&mut self) {
+        if let Some(used) = self.damage_occurrence_frames.pop() {
+            for id in used {
+                self.remove_effect(id);
+            }
+        }
+    }
+
+    pub(crate) fn available_in_damage_occurrence(&self, id: ReplacementEffectId) -> bool {
+        let ancestors = self.damage_occurrence_frames.len().saturating_sub(1);
+        !self.damage_occurrence_frames[..ancestors]
+            .iter()
+            .any(|frame| frame.contains(&id))
+    }
+
     /// Add a replacement effect that lasts until cleanup.
     pub fn add_until_end_of_turn_effect(
         &mut self,
@@ -1024,6 +1067,15 @@ impl ReplacementEffectManager {
     }
 
     pub fn mark_effect_used(&mut self, id: ReplacementEffectId) -> bool {
+        if self.next_damage_occurrence_effects.contains(&id) {
+            if let Some(frame) = self.damage_occurrence_frames.last_mut() {
+                frame.insert(id);
+            } else {
+                // A direct, non-batched event is one complete occurrence.
+                self.remove_effect(id);
+            }
+            return true;
+        }
         if self.batch_one_shot_effects.contains(&id) {
             self.pending_batch_one_shot_effects.insert(id);
             return true;
@@ -1038,7 +1090,9 @@ impl ReplacementEffectManager {
 
     /// Check if an effect is a one-shot effect.
     pub fn is_one_shot(&self, id: ReplacementEffectId) -> bool {
-        self.one_shot_effects.contains(&id) || self.batch_one_shot_effects.contains(&id)
+        self.one_shot_effects.contains(&id)
+            || self.batch_one_shot_effects.contains(&id)
+            || self.next_damage_occurrence_effects.contains(&id)
     }
 
     /// Consume every batch-scoped one-shot applied while preparing the current
@@ -1057,6 +1111,7 @@ impl ReplacementEffectManager {
             .one_shot_effects
             .iter()
             .chain(&self.batch_one_shot_effects)
+            .chain(&self.next_damage_occurrence_effects)
             .copied()
             .collect();
         for id in one_shot_ids {
@@ -1065,6 +1120,7 @@ impl ReplacementEffectManager {
         self.one_shot_effects.clear();
         self.batch_one_shot_effects.clear();
         self.pending_batch_one_shot_effects.clear();
+        self.next_damage_occurrence_effects.clear();
     }
 
     /// Clear all replacement effects that expire during cleanup.
@@ -1084,8 +1140,7 @@ impl ReplacementEffectManager {
             .iter()
             .filter(|e| {
                 e.source == source
-                    && (self.one_shot_effects.contains(&e.id)
-                        || self.batch_one_shot_effects.contains(&e.id))
+                    && self.is_one_shot(e.id)
             })
             .count() as u32
     }
@@ -1290,6 +1345,43 @@ impl ReplacementEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn damage_occurrence_clone_preserves_identity_and_isolates_nested_and_entry_lifetimes() {
+        let source = ObjectId::from_raw(73);
+        let player = PlayerId::from_index(0);
+        let mut manager = ReplacementEffectManager::new();
+        let effect = ReplacementEffect::with_matcher(
+            source, player, DamageToPlayerMatcher::to_you(), ReplacementAction::Double,
+        );
+        let damage = manager.add_next_damage_occurrence_effect(effect.clone());
+        let entry = manager.add_batch_one_shot_effect(effect.clone());
+        manager.mark_effect_used(entry);
+        let unused = manager.add_next_damage_occurrence_effect(effect);
+        manager.begin_damage_occurrence();
+        manager.mark_effect_used(damage);
+        let key = manager.get_effect(damage).unwrap().application_key();
+        let mut restored = manager.clone();
+        assert_eq!(restored.get_effect(damage).unwrap().application_key(), key);
+        assert!(restored.available_in_damage_occurrence(damage));
+        restored.begin_damage_occurrence();
+        assert!(!restored.available_in_damage_occurrence(damage));
+        assert!(restored.available_in_damage_occurrence(unused));
+        restored.finish_damage_occurrence();
+        assert!(restored.available_in_damage_occurrence(damage));
+        restored.finish_damage_occurrence();
+        assert!(restored.get_effect(damage).is_none());
+        assert!(restored.get_effect(entry).is_some());
+        assert!(restored.get_effect(unused).is_some());
+        assert!(manager.get_effect(damage).is_some(), "clone leaves the checkpoint intact");
+        restored.consume_pending_batch_one_shot_effects();
+        assert!(restored.get_effect(entry).is_none());
+        assert!(restored.get_effect(unused).is_some());
+        restored.clear_one_shot_effects();
+        assert!(restored.get_effect(unused).is_none());
+        assert!(restored.one_shot_effects_snapshot().is_empty());
+        assert!(restored.effect_sources_snapshot().is_empty());
+    }
 
     fn registered_lifetime_fixture() -> (ReplacementEffectManager, [ReplacementEffectId; 5]) {
         let source = ObjectId::from_raw(71);

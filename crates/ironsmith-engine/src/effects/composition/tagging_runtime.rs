@@ -201,6 +201,10 @@ pub(crate) fn apply_tagged_runtime_state(
             .explicit_objects()
             .or_else(|| outcome.result_objects())
     {
+        if result_ids.is_empty() {
+            ctx.set_tagged_objects(tag, Vec::new());
+            return;
+        }
         if let Some(snapshots) = outcome.result_object_memory() {
             if !snapshots.is_empty() {
                 ctx.set_tagged_objects(tag, snapshots.to_vec());
@@ -211,13 +215,20 @@ pub(crate) fn apply_tagged_runtime_state(
             .iter()
             .filter_map(|id| {
                 game.object(*id)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
+                    .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+                    .or_else(|| game.turn_store.turn_history.source_last_known_snapshot(*id).cloned())
             })
             .collect::<Vec<_>>();
-        if !snapshots.is_empty() {
-            ctx.set_tagged_objects(tag, snapshots);
-            return;
+        if snapshots.len() != result_ids.len() {
+            game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                "an explicit result object has no current or retained exact characteristics".into(),
+            ));
         }
+        // The explicit result contract is authoritative even when empty, or
+        // when a produced object left during a replacement follow-up. Never
+        // substitute the original target (e.g. an Aura copied by a token).
+        ctx.set_tagged_objects(tag, snapshots);
+        return;
     }
 
     // Decision hints describe candidates, not the objects actually selected.

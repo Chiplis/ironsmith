@@ -4,7 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-const PUBLIC_AUDIT_VERSION: u32 = 2;
+// Coordinated with artifact11 and signed audit24. Restricted mana carries new
+// activation/combat models; blind-exile declarations add exact public evidence.
+// Historical digests retain their bytes; native recovery is unchanged.
+const PUBLIC_AUDIT_VERSION: u32 = 7;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -61,6 +64,11 @@ fn sync_restricted_mana(
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod public_audit_boundary_11_7_24_tests {
+    include!("public_audit_boundary_11_7_24_tests.rs");
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -146,6 +154,7 @@ struct PublicAuditObject {
     identity: Option<PublicAuditObjectIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     chosen_subtype: Option<Subtype>,
+    numeric_choices: ironsmith::source_numbers::NumberChoicePublicProof,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     chosen_subtypes: Vec<Subtype>,
     token: bool,
@@ -166,6 +175,7 @@ struct PublicAuditObject {
     flipped: bool,
     face_down: bool,
     manifested: bool,
+    cloaked: bool,
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
@@ -198,6 +208,7 @@ struct PublicAuditHiddenZone {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PublicAuditCheckpoint {
     version: u32,
+    hidden_incarnation_high_water: u64,
     format: MatchFormatInput,
     perspective: u8,
     snapshot_serial: u64,
@@ -316,10 +327,23 @@ struct PublicAuditClaimState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncFaceDownCastClaim {
-    object: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object: Option<u64>,
     kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     permission_source: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blind_exile_origin: Option<SyncBlindExileClaimOrigin>,
+}
+
+/// Public evidence only. Explicit field names keep this distinct from the
+/// native exact ObjectId authority and from legacy ordinary cast claim IDs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncBlindExileClaimOrigin {
+    card_stable_id: u64,
+    incarnation: Option<u64>,
+    permission_source_stable_id: Option<u64>,
 }
 
 
@@ -733,6 +757,10 @@ struct SyncGrandMeleeMarker {
     consecutive_priority_passes: usize,
     #[serde(default)]
     priority_players_in_game: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opened_exile_play: Option<SyncOpenedExilePlay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exile_face_down: Option<SyncExileFaceDownDeclaration>,
 }
 
 
@@ -793,8 +821,94 @@ struct SyncPriorityRuntime {
     consecutive_priority_passes: usize,
     #[serde(default)]
     priority_players_in_game: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    opened_exile_play: Option<SyncOpenedExilePlay>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exile_face_down: Option<SyncExileFaceDownDeclaration>,
 }
 
+
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncOpenedExilePlay {
+    card_id: u64,
+    incarnation: Option<u64>,
+    card_stable_id: Option<u64>,
+    player: u8,
+    permission: GrantSelectionRef,
+    permission_source_stable_id: Option<u64>,
+    choice_pending: bool,
+}
+
+fn sync_opened_exile_play(state: &PriorityLoopState) -> Option<SyncOpenedExilePlay> {
+    let opened = state.opened_exile_play.as_ref()?;
+    Some(SyncOpenedExilePlay {
+        card_id: opened.card_id.0,
+        incarnation: opened.incarnation,
+        card_stable_id: state.checkpoint.as_ref().and_then(|game| game.object(opened.card_id)).map(|card| card.stable_id.0.0),
+        player: opened.player.0,
+        permission: GrantSelectionRef { source: opened.permission.source.0, index: opened.permission.index },
+        permission_source_stable_id: state.checkpoint.as_ref().and_then(|game| game.object(opened.permission.source)).map(|source| source.stable_id.0.0),
+        choice_pending: state.pending_exile_play.is_some(),
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExileFaceDownDeclaration {
+    card_id: u64,
+    incarnation: Option<u64>,
+    card_stable_id: Option<u64>,
+    player: u8,
+    permission: GrantSelectionRef,
+    permission_source_stable_id: Option<u64>,
+    kinds: Vec<SyncExileFaceDownKind>,
+    declared_kind: Option<SyncExileFaceDownKind>,
+    choice_pending: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncExileFaceDownKind {
+    kind: String,
+    permission_source: Option<u64>,
+    permission_source_stable_id: Option<u64>,
+}
+
+fn validate_exile_face_down_public_sources(state: &PriorityLoopState) -> Result<(), String> {
+    for declaration in [state.pending_exile_face_down.as_ref(), state.declared_exile_face_down.as_ref()].into_iter().flatten() {
+        for kind in declaration.kinds.iter().copied().chain(declaration.declared_kind) {
+            if kind.permission_source().is_some_and(|source| !declaration.kind_source_public_ids.contains_key(&source)) {
+                return Err("face-down declaration omitted its exact permission source public identity".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn sync_exile_face_down(state: &PriorityLoopState, game: &GameState) -> Option<SyncExileFaceDownDeclaration> {
+    let declaration = state.pending_exile_face_down.as_ref().or(state.declared_exile_face_down.as_ref())?;
+    let origin_game = state.checkpoint.as_ref().unwrap_or(game);
+    let kind = |kind: ironsmith::game_state::FaceDownCastKind| SyncExileFaceDownKind {
+        kind: kind.as_str().to_string(),
+        permission_source: kind.permission_source().map(|source| source.0),
+        permission_source_stable_id: kind.permission_source()
+            .and_then(|source| declaration.kind_source_public_ids.get(&source)).map(|id| id.0.0),
+    };
+    Some(SyncExileFaceDownDeclaration {
+        card_id: declaration.card_id.0, incarnation: declaration.incarnation,
+        card_stable_id: origin_game.object(declaration.card_id).map(|object| object.stable_id.0.0),
+        player: declaration.player.0,
+        permission: GrantSelectionRef { source: declaration.permission.source.0, index: declaration.permission.index },
+        permission_source_stable_id: origin_game.object(declaration.permission.source).map(|object| object.stable_id.0.0),
+        kinds: declaration.kinds.iter().copied().map(&kind).collect(),
+        // Accepted kinds remain public through payment rollback. Failed new
+        // declarations restore their command savepoint and add no kind lock.
+        declared_kind: declaration.declared_kind.map(kind),
+        choice_pending: state.pending_exile_face_down.is_some(),
+    })
+}
 
 fn sync_zone_name(zone: Zone) -> &'static str {
     match zone {
@@ -1059,6 +1173,10 @@ fn sync_grand_melee_state(host: &WasmGame) -> Option<SyncGrandMelee> {
                     },
                     consecutive_priority_passes,
                     priority_players_in_game,
+                    opened_exile_play: if focused { sync_opened_exile_play(&host.priority_state) }
+                        else { lane.and_then(|lane| sync_opened_exile_play(&lane.priority_state)) },
+                    exile_face_down: if focused { sync_exile_face_down(&host.priority_state, &host.game) }
+                        else { lane.and_then(|lane| sync_exile_face_down(&lane.priority_state, &host.game)) },
                 }
             })
             .collect(),
@@ -1231,6 +1349,7 @@ impl WasmGame {
                 "owner": info.owner.0,
                 "slot": public_slot,
                 "commitment": public_commitment,
+                "incarnation": info.incarnation,
                 "originSlot": info.origin_slot,
                 "originCommitment": info.origin_commitment,
             });
@@ -1269,6 +1388,7 @@ impl WasmGame {
                 .collect::<Vec<_>>(),
             "faceDown": self.game.is_face_down(id),
             "manifested": self.game.is_manifested(id),
+            "cloaked": self.game.is_cloaked(id),
             "foretold": self.game.is_foretold(id),
             "foretoldTurn": self.game.foretold_turn(id),
             "suspected": self.game.is_suspected(id),
@@ -1337,23 +1457,46 @@ impl WasmGame {
     }
 
 
+    fn sync_face_down_cast_claim(&self, object: ObjectId, kind: ironsmith::game_state::FaceDownCastKind) -> Result<SyncFaceDownCastClaim, String> {
+        let declaration = std::iter::once(&self.priority_state)
+            .chain(self.grand_melee_host_lanes.values().map(|lane| &lane.priority_state))
+            .flat_map(|state| [state.pending_exile_face_down.as_ref(), state.declared_exile_face_down.as_ref()])
+            .flatten().find(|declaration| declaration.card_id == object);
+        if let Some(declaration) = declaration {
+            if declaration.declared_kind != Some(kind) {
+                return Err("blind exile claim and accepted declaration disagree".into());
+            }
+            let card = self.game.object(object).ok_or_else(|| "blind exile claim lost its exact original object".to_string())?;
+            let permission_source_stable_id = kind.permission_source().map(|source|
+                declaration.kind_source_public_ids.get(&source).map(|id| id.0.0)
+                    .ok_or_else(|| "blind exile claim lost its captured permission source identity".to_string())).transpose()?;
+            return Ok(SyncFaceDownCastClaim {
+                object: None, kind: kind.as_str().to_string(), permission_source: None,
+                blind_exile_origin: Some(SyncBlindExileClaimOrigin {
+                    card_stable_id: card.stable_id.0.0, incarnation: declaration.incarnation,
+                    permission_source_stable_id,
+                }),
+            });
+        }
+        let (kind, permission_source) = sync_face_down_kind_fields(kind);
+        Ok(SyncFaceDownCastClaim { object: Some(object.0), kind, permission_source, blind_exile_origin: None })
+    }
+
     fn hidden_claim_ledger_rules_state(&self) -> Result<PublicAuditClaimState, String> {
         Ok(PublicAuditClaimState {
             hidden_identity_obligations: self.game.hidden_identity_obligations().iter()
                 .map(sync_hidden_identity_obligation).collect::<Result<_, _>>()?,
-            hidden_face_down_cast_claims: self
-                .game
-                .hidden_face_down_cast_claims()
-                .into_iter()
-                .map(|(object, kind)| {
-                    let (kind, permission_source) = sync_face_down_kind_fields(kind);
-                    SyncFaceDownCastClaim {
-                        object: object.0,
-                        kind,
-                        permission_source,
-                    }
-                })
-                .collect(),
+            hidden_face_down_cast_claims: {
+                let mut claims = self.game.hidden_face_down_cast_claims().into_iter()
+                    .map(|(object, kind)| self.sync_face_down_cast_claim(object, kind)).collect::<Result<Vec<_>, _>>()?;
+                // Legacy rows retain their prior raw-ID order. Blind rows use
+                // their explicit captured public origin, never local allocation order.
+                claims.sort_by_key(|claim| match &claim.blind_exile_origin {
+                    Some(origin) => (1, origin.card_stable_id, origin.incarnation),
+                    None => (0, claim.object.unwrap_or(0), None),
+                });
+                claims
+            },
             hidden_claim_subjects: self
                 .game
                 .hidden_claim_subjects()
@@ -1459,6 +1602,10 @@ impl WasmGame {
     pub(crate) fn try_build_public_audit_checkpoint(
         &self,
     ) -> Result<PublicAuditCheckpoint, JsValue> {
+        for state in std::iter::once(&self.priority_state)
+            .chain(self.grand_melee_host_lanes.values().map(|lane| &lane.priority_state)) {
+            validate_exile_face_down_public_sources(state).map_err(|error| JsValue::from_str(&error))?;
+        }
         let hidden_claim_ledger_digest = self
             .hidden_claim_ledger_rules_state()
             .and_then(|rules| hidden_claim_ledger_digest(&rules))
@@ -1505,9 +1652,9 @@ impl WasmGame {
                 // peers that opened it; hashing them would desync the peers
                 // that hold a placeholder. Face-down permanents and spells
                 // keep their stats: the face-down overlay makes them public.
-                let stats_public = self.public_audit_object_identity_is_public(id)
-                    || object.face_down_cast_state.is_some();
-                Some(PublicAuditObject {
+                let identity_public = self.public_audit_object_identity_is_public(id);
+                let stats_public = identity_public || object.face_down_cast_state.is_some();
+                Some((||Ok(PublicAuditObject {
                     id: object.id.0,
                     stable_id: object.stable_id.0.0,
                     owner: object.owner.0,
@@ -1516,6 +1663,8 @@ impl WasmGame {
                     zone: sync_zone_name(object.zone).to_string(),
                     identity: self.public_audit_object_identity(id, object),
                     chosen_subtype: self.game.chosen_subtype(id),
+                    numeric_choices: ironsmith::source_numbers::public_proof(&self.game,id,identity_public)
+                        .map_err(|error|JsValue::from_str(&format!("numeric choice proof unavailable: {error:?}")))?,
                     chosen_subtypes: {
                         let mut types: Vec<_> = self.game.chosen_subtypes(id)
                             .into_iter().flatten().copied().collect();
@@ -1547,6 +1696,7 @@ impl WasmGame {
                     flipped: self.game.is_flipped(id),
                     face_down: self.game.is_face_down(id) || self.game.is_face_down_conspiracy(id),
                     manifested: self.game.is_manifested(id),
+                    cloaked: self.game.is_cloaked(id),
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
@@ -1557,9 +1707,9 @@ impl WasmGame {
                     plotted_turn: self.game.plotted_turn(id),
                     damage_marked: self.game.damage_on(id),
                     commander: self.game.is_commander_object(id),
-                })
+                }))())
             })
-            .collect();
+            .collect::<Result<Vec<_>,JsValue>>()?;
 
         let mut hidden_zones = Vec::new();
         for player in &self.game.players {
@@ -1656,6 +1806,7 @@ impl WasmGame {
 
         Ok(PublicAuditCheckpoint {
             version: PUBLIC_AUDIT_VERSION,
+            hidden_incarnation_high_water: self.game.hidden_incarnation_high_water(),
             format: self.match_format,
             perspective: 0,
             snapshot_serial: 0,
@@ -1682,6 +1833,8 @@ impl WasmGame {
                     .map(|runner| runner.state().sync_name().to_string()),
                 consecutive_priority_passes,
                 priority_players_in_game,
+                opened_exile_play: sync_opened_exile_play(&self.priority_state),
+                exile_face_down: sync_exile_face_down(&self.priority_state, &self.game),
             },
             players,
             objects,
@@ -1806,6 +1959,93 @@ mod public_audit_tests {
     use ironsmith::game_state::HiddenCardInfo;
 
     #[test]
+    fn public_audit_v7_distinguishes_unset_zero_and_large_source_numbers_and_native_restore() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
+        let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+        let unset = checkpoint(&wasm);
+        assert_eq!(unset["version"], 7);
+        let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
+            pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
+            acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
+        wasm.game.set_number_for_acquisition(owner.clone(), 0).unwrap();
+        let zero = checkpoint(&wasm); assert_ne!(unset, zero);
+        let saved = wasm.game.clone();
+        wasm.game.set_number_for_acquisition(owner, u32::MAX).unwrap();
+        let large = checkpoint(&wasm); assert_ne!(zero, large);
+        let object = large["objects"].as_array().unwrap().iter().find(|object| object["id"] == id.0).unwrap();
+        assert_eq!(object["numericChoices"]["records"][0]["number"], u32::MAX);
+        assert_eq!(object["numericChoices"]["records"][0]["group"], 0);
+        wasm.game = saved; assert_eq!(checkpoint(&wasm), zero);
+    }
+
+    #[test]
+    fn public_audit_v7_retains_exact_manifest_and_cloak_provenance() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(
+            0, "Ornithopter".into(), "battlefield".into(), true,
+        ).unwrap());
+        wasm.game.set_face_down(id);
+        let baseline = wasm.game.clone();
+        let object_evidence = |wasm: &WasmGame| {
+            let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+            assert_eq!(checkpoint["version"], 7);
+            checkpoint["objects"].as_array().unwrap().iter()
+                .find(|object| object["id"] == id.0).unwrap().clone()
+        };
+        let ordinary = object_evidence(&wasm);
+        assert_eq!(ordinary["manifested"], false);
+        assert_eq!(ordinary["cloaked"], false);
+        wasm.game.set_manifested(id);
+        let manifested = object_evidence(&wasm);
+        assert_eq!(manifested["manifested"], true);
+        assert_eq!(manifested["cloaked"], false);
+        wasm.game = baseline;
+        wasm.game.set_cloaked(id);
+        let cloaked = object_evidence(&wasm);
+        assert_eq!(cloaked["manifested"], false);
+        assert_eq!(cloaked["cloaked"], true);
+        assert_ne!(manifested, cloaked);
+        assert_ne!(ordinary, cloaked);
+    }
+
+    #[test]
+    fn known_hidden_object_commitment_distinguishes_manifest_from_cloak() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+        let id = ObjectId::from_raw(wasm.add_card_to_zone(
+            0, "Forest".into(), "hand".into(), true,
+        ).unwrap());
+        assert!(wasm.game.hidden_card_info(id).is_none());
+        let baseline = wasm.game.clone();
+        let root = |wasm: &WasmGame| {
+            wasm.build_public_audit_checkpoint().hidden_zones.into_iter()
+                .find(|zone| zone.owner == 0 && zone.zone == "hand")
+                .unwrap().commitment_root.unwrap()
+        };
+        let ordinary = root(&wasm);
+        let entry = wasm.public_audit_hidden_zone_entry(0, id);
+        assert_eq!(entry["manifested"], false);
+        assert_eq!(entry["cloaked"], false);
+        wasm.game.set_manifested(id);
+        let manifested = root(&wasm);
+        wasm.game = baseline;
+        wasm.game.set_cloaked(id);
+        let cloaked = root(&wasm);
+        let entry = wasm.public_audit_hidden_zone_entry(0, id);
+        assert_eq!(entry["manifested"], false);
+        assert_eq!(entry["cloaked"], true);
+        assert_ne!(ordinary, manifested);
+        assert_ne!(ordinary, cloaked);
+        assert_ne!(manifested, cloaked);
+    }
+
+    #[test]
     fn public_audit_preserves_mana_spend_program_semantics_without_identity_graphs() {
         fn unit(life: i32) -> ironsmith::ability::RestrictedManaUnit {
             ironsmith::ability::RestrictedManaUnit {
@@ -1831,6 +2071,92 @@ mod public_audit_tests {
         assert_eq!(encoded, serde_json::to_value(repeated).unwrap());
         assert_ne!(encoded, serde_json::to_value(changed).unwrap());
         assert!(encoded.to_string().contains("GainLifeEffect"));
+    }
+
+    #[test]
+    fn public_audit_preserves_new_protection_programs_in_mana_spend_payloads() {
+        use ironsmith::ability::ProtectionFrom;
+        use ironsmith::effects::player::GrantNextSpellAbilityEffect;
+        use ironsmith::static_abilities::StaticAbility;
+        use ironsmith_core::{ObjectFilter, PlayerFilter};
+
+        fn unit(effects: Vec<ironsmith::Effect>) -> ironsmith::ability::RestrictedManaUnit {
+            ironsmith::ability::RestrictedManaUnit {
+                symbol: ironsmith::mana::ManaSymbol::Green,
+                source: ObjectId::from_raw(17),
+                source_controller: Some(PlayerId(0)),
+                source_chosen_creature_type: None,
+                restrictions: vec![ironsmith_core::ManaUsageRestriction::PaymentTransaction {
+                    restriction: Some(ironsmith_core::ManaPaymentPredicate::Any),
+                    on_spend: vec![ironsmith_core::ManaSpendPayload {
+                        predicate: ironsmith_core::ManaPaymentPredicate::Any,
+                        effects: ironsmith_core::ResolutionProgram::from_effects(effects),
+                        choices: vec![],
+                    }],
+                }],
+            }
+        }
+        let filter = ObjectFilter::creature().you_control();
+        let variants = [
+            ProtectionFrom::OwnColors,
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: None },
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: Some(ObjectId::from_raw(40)) },
+            ProtectionFrom::ColorsAmong { filter: filter.clone(), reference_source: Some(ObjectId::from_raw(41)) },
+            ProtectionFrom::ColorsAmongAtResolution(filter),
+        ];
+        let mut encoded = Vec::new();
+        for protection in variants {
+            let source = unit(vec![ironsmith::Effect::new(GrantNextSpellAbilityEffect::new(
+                PlayerFilter::You,
+                ObjectFilter::creature(),
+                StaticAbility::protection(protection).into(),
+            ))]);
+            let first = serde_json::to_value(sync_restricted_mana(&[source.clone()]).unwrap()).unwrap();
+            let repeated = serde_json::to_value(sync_restricted_mana(&[source]).unwrap()).unwrap();
+            assert_eq!(first, repeated, "projection must retain the same typed program");
+            for previous in &encoded {
+                assert_ne!(&first, previous, "different color sources and capture semantics remain distinct");
+            }
+            assert!(first.to_string().contains("GrantNextSpellAbilityEffect"));
+            encoded.push(first);
+        }
+        assert!(encoded[0].to_string().contains("OwnColors"));
+        assert!(encoded[1].to_string().contains("ColorsAmong"));
+        assert!(encoded[4].to_string().contains("ColorsAmongAtResolution"));
+
+        let source_filter = ObjectFilter::creature();
+        let restrictions = [
+            ironsmith_core::Restriction::BeTargetedPlayerFrom(PlayerFilter::You, source_filter.clone()),
+            ironsmith_core::Restriction::PlayerHexproofFrom(PlayerFilter::You, source_filter),
+        ];
+        let projected_restrictions: Vec<_> = restrictions.into_iter().map(|restriction| {
+            let source = unit(vec![ironsmith::Effect::new(GrantNextSpellAbilityEffect::new(
+                PlayerFilter::You,
+                ObjectFilter::creature(),
+                StaticAbility::from_model(ironsmith_core::StaticAbility::restriction(
+                    restriction, "targeting restriction",
+                )).into(),
+            ))]);
+            serde_json::to_value(sync_restricted_mana(&[source]).unwrap()).unwrap()
+        }).collect();
+        assert_ne!(projected_restrictions[0], projected_restrictions[1],
+            "source protection and retained-controller hexproof are distinct public programs");
+        assert!(projected_restrictions[1].to_string().contains("PlayerHexproofFrom"));
+
+        #[derive(Debug, Clone)]
+        struct UnencodedProgram;
+        impl ironsmith::effects::EffectExecutor for UnencodedProgram {
+            fn execute(
+                &self,
+                _game: &mut ironsmith::GameState,
+                _ctx: &mut ironsmith::effects::ExecutionContext,
+            ) -> Result<ironsmith::effect::EffectOutcome, ironsmith::effects::ExecutionError> {
+                panic!("audit encoding must never execute an opaque mana program");
+            }
+        }
+        let unsupported = unit(vec![ironsmith::Effect::new(UnencodedProgram)]);
+        assert!(sync_restricted_mana(&[unsupported]).is_err(),
+            "an unencodable on-spend body must not disappear from public evidence");
     }
 
     #[test]
@@ -2145,6 +2471,7 @@ mod public_audit_tests {
         game.game.set_hidden_card_info(
             object_id,
             HiddenCardInfo {
+                incarnation: Some(0),
                 owner: PlayerId::from_index(0),
                 zone: Zone::Hand,
                 slot: 42,

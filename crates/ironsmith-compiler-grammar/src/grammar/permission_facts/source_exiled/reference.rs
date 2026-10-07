@@ -54,6 +54,7 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
     primitives::phrase(&["exiled", "with", "this"]).parse_next(input)?;
     let source_kind = alt((
         primitives::kw("enchantment").value("enchantment"),
+        primitives::kw("class").value("Class"),
         primitives::kw("artifact").value("artifact"),
         primitives::kw("creature").value("creature"),
         primitives::kw("permanent").value("permanent"),
@@ -95,4 +96,74 @@ pub fn parse_cards_from_source_exiled_tokens(
         return None;
     }
     Some((reference, tail))
+}
+
+/// A complete static land-and-spell permission over one source-linked pool.
+/// Leave durations, price riders and narrower spell subjects to their owners.
+pub fn parse_play_lands_and_spells_from_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&[
+        "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "cards",
+    ]))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you || primitives::probe_all(tail, primitives::sentence_end(),
+        "source-linked land and spell permission").is_none() { return None; }
+    Some(reference)
+}
+
+/// The look and play clauses share the same source-linked antecedent. The
+/// grammar owns that relationship; lowering receives explicit inspection.
+pub fn parse_look_and_play_source_exiled_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["you", "may", "look", "at"]))?;
+    let (_, rest) = primitives::parse_prefix(rest,
+        (opt(primitives::kw("the")), primitives::kw("cards")))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you { return None; }
+    primitives::probe_all(tail, (opt(primitives::comma()), primitives::phrase(&[
+        "and", "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "those", "cards",
+    ]), primitives::sentence_end()).void(), "paired exile inspection and play permission")?;
+    Some(reference)
+}
+
+
+pub fn parse_look_source_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<SourceExiledReference> {
+    let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "look", "at", "cards"]))?;
+    let ((owned_by_you, reference), tail) = primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you { return None; }
+    primitives::probe_all(tail, primitives::sentence_end(), "standalone paired exile inspection")?;
+    Some(reference)
+}
+
+/// The conditional rider is part of the same static source-pool permission.
+pub fn parse_play_source_exiled_with_mana_tokens(tokens: &[OwnedLexToken])
+    -> Option<(SourceExiledReference, ironsmith_core::value_model::ManaSpendMode)> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [permission, rider] = sentences.as_slice() else { return None; };
+    let reference = parse_play_lands_and_spells_from_source_exiled_tokens(permission)?;
+    let mode = super::super::tagged_surface::parse_cast_this_way_mana_rider_tokens(rider)?;
+    Some((reference, mode))
+}
+
+/// A complete same-sentence rider over the same source-linked card pool.
+pub fn parse_play_source_exiled_inline_mana_tokens(tokens: &[OwnedLexToken])
+    -> Option<(SourceExiledReference, ironsmith_core::value_model::ManaSpendMode)> {
+    use super::super::tagged_surface::{parse_allow_any_color_for_cast_suffix_tokens, ManaSpendCastReference};
+    let suffix = parse_allow_any_color_for_cast_suffix_tokens(tokens)?;
+    if suffix.reference != ManaSpendCastReference::ThoseSpells { return None; }
+    let permission = trim_lexed_commas(suffix.body_tokens);
+    let reference = if let Some(reference) = parse_play_lands_and_spells_from_source_exiled_tokens(permission) {
+        reference
+    } else {
+        let (_, rest) = primitives::parse_prefix(permission, primitives::phrase(&["you", "may", "play"]))?;
+        let (reference, tail) = parse_cards_from_source_exiled_tokens(rest)?;
+        primitives::probe_all(tail, primitives::sentence_end(), "complete source-linked card permission")?;
+        reference
+    };
+    Some((reference, suffix.mana_spend_mode))
 }

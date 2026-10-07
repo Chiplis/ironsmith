@@ -43,6 +43,7 @@
 use crate::events::KeywordActionKind;
 
 pub mod check;
+pub(crate) mod acquisition;
 pub mod event;
 pub mod matcher_trait;
 mod model_interpreter;
@@ -65,10 +66,12 @@ pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, PendingDelayedTriggerPayment, TriggerIdentity,
     TriggerQueue, TriggeredAbilityEntry, TriggeredAbilitySourceKind, check_delayed_triggers,
     check_delayed_triggers_for_simultaneous_events, check_state_triggers, check_triggers,
+    check_triggers_checked,
     compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
     generate_step_trigger_events_for_active_players, player_filter_matches_with_context,
     verify_intervening_if,
 };
+pub use check::{verify_intervening_if_checked, verify_intervening_if_at_resolution_checked};
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
 pub use model_interpreter::TriggerModelConversionError;
@@ -222,7 +225,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
 ///
 /// This struct provides factory methods for creating common trigger types
 /// and implements the TriggerMatcher trait by delegating to the inner matcher.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TriggerIntroSurface {
     When,
     Whenever,
@@ -243,6 +246,10 @@ pub struct Trigger {
     matcher: Arc<dyn TriggerMatcher>,
     intro_surface: Option<TriggerIntroSurface>,
     retained_model: Option<Arc<ironsmith_core::trigger_model::Trigger>>,
+    acquisition: Option<acquisition::TriggerAcquisition>,
+    text_change_cache: Arc<std::sync::Mutex<std::collections::HashMap<
+        (ironsmith_core::TextChange, Option<TriggerIntroSurface>, Option<acquisition::TriggerAcquisition>),
+        Result<Trigger, crate::continuous::text_changes::TextChangeDomainError>>>>,
 }
 
 impl std::fmt::Debug for Trigger {
@@ -261,6 +268,8 @@ impl Clone for Trigger {
             matcher: Arc::clone(&self.matcher),
             intro_surface: self.intro_surface,
             retained_model: self.retained_model.clone(),
+            acquisition: self.acquisition.clone(),
+            text_change_cache: Arc::clone(&self.text_change_cache),
         }
     }
 }
@@ -301,7 +310,31 @@ impl Trigger {
             matcher: Arc::new(matcher),
             intro_surface,
             retained_model,
+            acquisition: None,
+            text_change_cache: Default::default(),
         }
+    }
+
+    /// Rewrite an immutable trigger definition once per directed change and
+    /// preserve the matcher captured by earlier stack entries. Presentation
+    /// is a cache dimension only, never an executable predicate.
+    pub fn with_text_change(&self, change: ironsmith_core::TextChange)
+        -> Result<Self, crate::continuous::text_changes::TextChangeDomainError>
+    {
+        let key = (change, self.intro_surface, self.acquisition.clone());
+        if let Some(value) = self.text_change_cache.lock().unwrap_or_else(|poison| poison.into_inner())
+            .get(&key).cloned() { return value; }
+        let value = crate::continuous::text_change_triggers::rewrite_trigger_words(self, change)
+            .map(|mut rewritten| {
+                rewritten.acquisition = self.acquisition.clone();
+                rewritten
+            });
+        if value.as_ref().is_ok_and(|rewritten| Arc::ptr_eq(&self.matcher, &rewritten.matcher)) {
+            // Caching the original clone would create an Arc ownership cycle.
+            return value;
+        }
+        let mut cache = self.text_change_cache.lock().unwrap_or_else(|poison| poison.into_inner());
+        cache.entry(key).or_insert_with(|| value.clone()).clone()
     }
 
     pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
@@ -318,6 +351,17 @@ impl Trigger {
             });
         }
         self
+    }
+
+    /// A definition-only quoted ability may be transformed before it is
+    /// granted. Active rules text additionally needs this acquisition proof.
+    pub(crate) fn acquired_identity(
+        &self,
+        definition: Option<ironsmith_core::LinkedExileDefinition>,
+    ) -> Option<TriggerIdentity> {
+        self.acquisition.as_ref()
+            .filter(|acquisition| Some(acquisition.definition) == definition)
+            .map(acquisition::TriggerAcquisition::identity)
     }
 
     /// The complete shared trigger vocabulary captured during model lowering.
@@ -373,6 +417,8 @@ impl Trigger {
         // Only successful mutable access invalidates the model. Failed type or
         // shared-ownership checks cannot discard otherwise valid transport data.
         self.retained_model = None;
+        self.acquisition = None;
+        self.text_change_cache = Default::default();
         Some(matcher)
     }
 
@@ -993,6 +1039,11 @@ impl Trigger {
     /// Create a "when [filter] deals combat damage to [player]" trigger.
     pub fn deals_combat_damage_to_player(filter: ObjectFilter, player: PlayerFilter) -> Self {
         Self::new(DealsCombatDamageToPlayerTrigger::new(filter, player))
+    }
+
+    pub fn deals_combat_damage_per_source_controller(filter: ObjectFilter, player: PlayerFilter,
+        each_damaged_player: bool) -> Self {
+        Self::new(DealsCombatDamageToPlayerTrigger::per_source_controller(filter, player, each_damaged_player))
     }
 
     /// Create a "when one or more [filter] deal combat damage to [player]" trigger.
@@ -2231,6 +2282,8 @@ mod native_random_trigger_model_contract_tests {
             ),
             TriggerEvent::new_with_provenance(
                 crate::events::CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player: bob,
                     source,
                     face: ironsmith_core::CoinFace::Heads,
@@ -2242,6 +2295,8 @@ mod native_random_trigger_model_contract_tests {
             ),
             TriggerEvent::new_with_provenance(
                 crate::events::CoinFlippedEvent {
+                    turn_ordinal: 0,
+                    instruction_ordinal: 0,
                     player: bob,
                     source,
                     face: ironsmith_core::CoinFace::Heads,

@@ -118,6 +118,36 @@ pub fn parse_base_power_toughness_each_equal_shape(
     )
 }
 
+/// A persistent base setting binds its own X, independently of a cast-time
+/// choice. Keep the whole definition span so unsupported tails cannot vanish.
+pub fn parse_base_power_toughness_where_x_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    crate::grammar::primitives::probe_all(tokens,
+        parse_base_power_toughness_where_x_lexed, "dynamic base power/toughness")
+}
+
+fn parse_base_power_toughness_where_x_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
+    let subject = take_until_have.parse_next(input)?;
+    parse_have.parse_next(input)?;
+    primitives::phrase(&["base", "power", "and", "toughness", "x/x"])
+        .parse_next(input)?;
+    winnow::combinator::opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["where", "x", "is"]).parse_next(input)?;
+    let value: &'a [OwnedLexToken] = rest.parse_next(input)?;
+    if subject.is_empty() || value.is_empty()
+        || !persistent_anthem_subject_facts(subject).accepted
+    {
+        return Err(primitives::backtrack_err(
+            "dynamic base power/toughness", "persistent subject and complete value",
+        ));
+    }
+    Ok((subject, value))
+}
+
 fn parse_base_power_toughness_each_equal_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {

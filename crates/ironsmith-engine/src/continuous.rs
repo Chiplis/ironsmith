@@ -33,6 +33,12 @@ pub use ability_origins::{
     AbilityEffectOrigin, AbilityOrigin, CalculatedAbilities, ContinuousAbilityOrigin,
 };
 mod layer_resolution;
+pub mod text_changes;
+pub(crate) mod text_change_predicates;
+pub(crate) mod text_change_programs;
+pub(crate) mod text_change_modifications;
+pub(crate) mod text_change_statics;
+pub(crate) mod text_change_triggers;
 pub(crate) mod value_context;
 use layer_resolution::*;
 pub(crate) use layer_resolution::{bind_effect_controller_to_layer_frame, resolve_value_direct};
@@ -63,6 +69,8 @@ pub(crate) fn next_turn_end_prediction_correction(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod text_change_spell_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DependencySortMode {
@@ -757,6 +765,10 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     /// CR305.7 rules-text/copy ability loss caused by setting basic land types.
     /// Other continuous grants survive; appended for serialized ordinal stability.
     RemoveLandRulesTextAbilities,
+
+    /// CR 612.2 replacement of authored color/type words in layer 3.
+    /// Appended to preserve the existing serialized variant ordinals.
+    RewriteText(ironsmith_core::TextChange),
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -794,6 +806,7 @@ impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
                 ContinuousModification::ChangeControllerToEffectController
             }
             Self::ChangeText { from, to } => ContinuousModification::ChangeText { from, to },
+            Self::RewriteText(change) => ContinuousModification::RewriteText(change),
             Self::SetTextBox(value) => ContinuousModification::SetTextBox(text(value)?),
             Self::SetName(value) => ContinuousModification::SetName(value),
             Self::InsertNameWords {
@@ -1014,6 +1027,7 @@ impl Modification {
                 Self::restriction(RestrictionKind::DoesntUntap)
             }
             ironsmith_core::CompiledContinuousModification::MakeColorless => Self::MakeColorless,
+            ironsmith_core::CompiledContinuousModification::RewriteText(change) => Self::RewriteText(change),
             ironsmith_core::CompiledContinuousModification::RemoveAllAbilities => {
                 Self::RemoveAllAbilities
             }
@@ -1032,6 +1046,7 @@ impl Modification {
             | Modification::ChangeControllerToEffectController => Layer::Control,
 
             Modification::ChangeText { .. }
+            | Modification::RewriteText(_)
             | Modification::SetTextBox(_)
             | Modification::SetName(_)
             | Modification::InsertNameWords { .. } => Layer::Text,
@@ -1089,6 +1104,7 @@ impl Modification {
         self,
         game: &crate::game_state::GameState,
         chooser_source: ObjectId,
+        static_grant: bool,
     ) -> Self {
         match self {
             Modification::AddAbility(ability) => {
@@ -1096,6 +1112,7 @@ impl Modification {
                     &ability,
                     game,
                     chooser_source,
+                    static_grant,
                 ) {
                     Some(bound) => Modification::AddAbility(bound),
                     None => Modification::AddAbility(ability),
@@ -1107,6 +1124,7 @@ impl Modification {
                         static_ability,
                         game,
                         chooser_source,
+                        static_grant,
                     )
                 {
                     ability.kind = crate::ability::AbilityKind::Static(bound);
@@ -1251,6 +1269,10 @@ pub struct ContinuousEffectManager {
     /// Next effect ID to assign
     next_id: u64,
 
+    /// Native identities reserved by a prospective entry, then consumed once
+    /// by its committed copy effect. Game checkpoints retain this set.
+    reserved_entry_ids: HashSet<ContinuousEffectId>,
+
     /// Next group ID to assign to layer-parts of one resolved effect.
     next_group_id: u64,
 
@@ -1283,6 +1305,14 @@ pub struct ContinuousEffectManager {
     attachment_timestamps: FxMap<ObjectId, u64>,
 }
 
+/// Entry-only projections are removed between preparation and commit while
+/// retaining their registration identities and duration-latch state.
+#[derive(Debug)]
+pub(crate) struct SuspendedEntryEffects {
+    effects: Vec<ContinuousEffect>,
+    latches: FxMap<ContinuousEffectId, ContinuousDurationLatch>,
+}
+
 type LatchedDurationState = ContinuousDurationLatch;
 
 impl ContinuousEffectManager {
@@ -1291,14 +1321,40 @@ impl ContinuousEffectManager {
         Self::default()
     }
 
-    /// Add a new continuous effect.
-    pub fn add_effect(&mut self, mut effect: ContinuousEffect) -> ContinuousEffectId {
+    /// Reserve one native acquisition before an as-entry choice runs. The
+    /// reservation is absent from active layers until a prospective clone or
+    /// the real commit consumes it.
+    pub(crate) fn reserve_entry_effect(&mut self) -> ContinuousEffectId {
         let id = ContinuousEffectId::new(self.next_id);
-        self.next_id = self
-            .next_id
-            .checked_add(1)
+        self.next_id = self.next_id.checked_add(1)
             .expect("continuous effect registration identity exhausted");
+        self.reserved_entry_ids.insert(id);
+        id
+    }
 
+    pub(crate) fn add_reserved_entry_effect(
+        &mut self,
+        id: ContinuousEffectId,
+        effect: ContinuousEffect,
+    ) -> Result<ContinuousEffectId, crate::effects::ExecutionError> {
+        if !self.reserved_entry_ids.remove(&id) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "entry copy lost its reserved native acquisition".into()));
+        }
+        Ok(self.add_effect_with_identity(id, effect))
+    }
+
+    /// Add a new continuous effect.
+    pub fn add_effect(&mut self, effect: ContinuousEffect) -> ContinuousEffectId {
+        let id = ContinuousEffectId::new(self.next_id);
+        self.next_id = self.next_id.checked_add(1)
+            .expect("continuous effect registration identity exhausted");
+        self.add_effect_with_identity(id, effect)
+    }
+
+    fn add_effect_with_identity(&mut self, id: ContinuousEffectId, mut effect: ContinuousEffect)
+        -> ContinuousEffectId
+    {
         effect.id = id;
         effect.registration_id = Some(id);
         if effect.timestamp == 0 {
@@ -1333,6 +1389,32 @@ impl ContinuousEffectManager {
             self.latched_duration_states.get_mut().remove(&id);
             self.revision += 1;
         }
+    }
+
+    pub(crate) fn suspend_entry_effects(&mut self, ids: &[ContinuousEffectId]) -> SuspendedEntryEffects {
+        let mut suspended = Vec::new();
+        Arc::make_mut(&mut self.effects).retain(|effect| {
+            if ids.contains(&effect.id) { suspended.push(effect.clone()); false } else { true }
+        });
+        let mut latches = FxMap::default();
+        for effect in &suspended {
+            if let Some(latch) = self.latched_duration_states.get_mut().remove(&effect.id) {
+                latches.insert(effect.id, latch);
+            }
+        }
+        if !suspended.is_empty() { self.revision += 1; }
+        SuspendedEntryEffects { effects: suspended, latches }
+    }
+
+    pub(crate) fn restore_entry_effects(&mut self, suspended: SuspendedEntryEffects)
+        -> Result<(), crate::effects::ExecutionError> {
+        if suspended.effects.iter().any(|effect| self.effects.iter().any(|active| active.id == effect.id)) {
+            return Err(crate::effects::ExecutionError::InternalError("entry projection was restored twice".into()));
+        }
+        if !suspended.effects.is_empty() { self.revision += 1; }
+        Arc::make_mut(&mut self.effects).extend(suspended.effects);
+        self.latched_duration_states.get_mut().extend(suspended.latches);
+        Ok(())
     }
 
     /// Move only the persistent sticker effect to the card's new public-zone identity.
@@ -1751,8 +1833,9 @@ impl ContinuousEffectManager {
         self.revision
     }
 
-    /// Get the next timestamp.
-    fn next_timestamp(&mut self) -> u64 {
+    /// Allocate from the shared clock for effects, object entry and live
+    /// ability acquisitions. Native state clones preserve the next value.
+    pub(crate) fn next_timestamp(&mut self) -> u64 {
         self.current_timestamp += 1;
         self.current_timestamp
     }
@@ -2030,7 +2113,11 @@ pub struct CalculatedCharacteristics {
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
+    pub(crate) numeric_choice_error: Option<&'static str>,
+    pub(crate) text_change_error: Option<text_changes::TextChangeDomainError>,
     pub name: SharedStr,
+    /// A second current split-card name, cleared when layer 1 replaces names.
+    pub alternate_name: Option<String>,
     pub mana_cost: Option<ManaCost>,
     /// Noncopiable linked-face mana value of the current view. Copy and
     /// face-down layers replace this even if both raw mana costs are absent.
@@ -2059,6 +2146,11 @@ pub struct CalculatedCharacteristics {
     /// Abilities the object has after layers, including conditional rules whose
     /// conditions are currently false. Actual ability-loss effects remove them.
     pub abilities: CalculatedAbilities,
+    /// Current layer-derived spell program. Raw object programs and captured
+    /// stack abilities remain immutable, separately owned definitions.
+    pub spell_effect: crate::snapshot::SpellProgramState<crate::effect::Effect>,
+    /// Directed substitutions used to reread a spell's announced target specs.
+    pub text_changes: Vec<ironsmith_core::TextChange>,
     /// Static abilities currently applying (including from effects).
     pub static_abilities: SharedVec<StaticAbility>,
     /// Ability templates that this object is prohibited from having or gaining
@@ -2072,6 +2164,12 @@ impl CalculatedCharacteristics {
     pub(crate) fn validate_numeric_range(
         &self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if let Some(error) = &self.text_change_error {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(error.clone()));
+        }
+        if let Some(detail)=self.numeric_choice_error {
+            return Err(crate::static_ability_processor::StaticEffectDiscoveryError::NumericChoiceEvidence{detail});
+        }
         if let Some((resource, value)) = self.numeric_range_error {
             Err(
                 crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
@@ -2377,6 +2475,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
+        alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
         linked_face_mana_value: object.linked_face_mana_value(),
@@ -2400,12 +2499,17 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         loyalty: object.base_loyalty,
         defense: object.base_defense,
         abilities: abilities.clone().into(),
+        spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
+        text_changes: Vec::new(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
+                numeric_choice_error: None,
+        text_change_error: None,
         ability_gain_prohibitions: Vec::new(),
         aura_attach_filter: object.aura_attach_filter_owned(),
         controller: object.initial_controller,
     };
+    chars.abilities.bind_host(object.id);
     chars.record_base_pt();
     chars
 }
@@ -2474,6 +2578,7 @@ fn apply_copy_effect_exceptions(
         .or_else(|| name_override.clone())
     {
         chars.name = name.clone().into();
+        chars.alternate_name = None;
     }
     for supertype in add_supertypes {
         if !chars.supertypes.contains(supertype) {
@@ -2489,20 +2594,15 @@ fn replace_rules_text_abilities(
     preserve_source_abilities: bool,
 ) {
     let previous = chars.abilities.clone();
-    chars.abilities = abilities.into();
-    chars.abilities.rebind_origin(origin);
+    chars.abilities.replace_with_origin(abilities, origin);
     for (index, ability) in previous.iter().enumerate() {
         let old_origin = previous.origin(index).expect("paired ability occurrence");
         let independent = old_origin.is_independent_early_grant();
-        let already_present = if independent {
-            chars
-                .abilities
-                .iter()
-                .enumerate()
-                .any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin))
-        } else {
-            chars.abilities.contains(ability)
-        };
+        // Equal text from distinct acquisitions is still a distinct ability.
+        // Preserve the occurrence, including its linked choice, unless that
+        // exact occurrence is already present in the replacement text box.
+        let already_present = chars.abilities.iter().enumerate()
+            .any(|(slot, _)| chars.abilities.origin(slot) == Some(old_origin));
         if (independent || preserve_source_abilities) && !already_present {
             chars
                 .abilities
@@ -2521,9 +2621,12 @@ fn copy_characteristics_from_copiable_values(
     origin: Option<AbilityEffectOrigin>,
 ) {
     chars.name = values.name.clone().into();
+    chars.alternate_name = None;
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
+    chars.spell_effect = values.spell_effect.clone();
+    chars.text_changes.clear();
     chars.ability_labels = values.ability_labels.clone().into();
     chars.power = values.power;
     chars.toughness = values.toughness;
@@ -2568,6 +2671,7 @@ fn apply_room_no_unlocked_door_layer(
         return;
     }
     chars.name = "".into();
+    chars.alternate_name = None;
     chars.mana_cost = None;
     chars.linked_face_mana_value = None;
     chars.abilities.clear();
@@ -2688,10 +2792,11 @@ fn add_intrinsic_basic_land_mana_abilities(chars: &mut CalculatedCharacteristics
         }
         let ability =
             Ability::basic_land_mana(subtype).expect("basic land type has intrinsic mana");
-        if !chars.abilities.contains(&ability) {
-            chars
-                .abilities
-                .push_with_origin(ability, AbilityOrigin::IntrinsicBasicLandMana(subtype));
+        let origin = AbilityOrigin::IntrinsicBasicLandMana(subtype);
+        // Equal printed or granted mana is a separate occurrence. Only an
+        // already supplied instance of this rule may suppress another one.
+        if !(0..chars.abilities.len()).any(|index| chars.abilities.origin(index) == Some(&origin)) {
+            chars.abilities.push_with_origin(ability, origin);
         }
     }
 }
@@ -3610,7 +3715,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, object);
             calc_guard.update(&chars);
         }
     }
@@ -3747,7 +3852,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, objects);
+            apply_text_box_modification_to_chars(effect, &mut chars, object);
             calc_guard.update(&chars);
         }
 
@@ -3757,13 +3862,14 @@ pub fn text_box_characteristics_with_effects(
         }
     }
 
+    if chars.text_change_error.is_some() { return None; }
     Some(chars)
 }
 
 fn apply_text_box_modification_to_chars(
     effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
-    _objects: &ObjectMap,
+    object: &Object,
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
@@ -3792,6 +3898,7 @@ fn apply_text_box_modification_to_chars(
             chars.controller = effect.controller;
         }
         Modification::ChangeText { .. } => {}
+        Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
@@ -3805,6 +3912,7 @@ fn apply_text_box_modification_to_chars(
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
+            chars.alternate_name = None;
         }
         Modification::InsertNameWords {
             words,
@@ -4788,6 +4896,7 @@ fn filter_reads_ability_characteristics(filter: &ObjectFilter) -> bool {
         || filter.no_abilities
         || !filter.static_abilities.is_empty()
         || !filter.excluded_static_abilities.is_empty()
+        || filter.has_cumulative_upkeep.is_some()
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
 }
@@ -5663,7 +5772,9 @@ pub(crate) fn static_ability_matches_variant_selector(
             }
             match ability.protection_from() {
                 Some(crate::ability::ProtectionFrom::Color(colors)) => !colors.is_empty(),
-                Some(crate::ability::ProtectionFrom::AllColors) => true,
+                Some(crate::ability::ProtectionFrom::AllColors
+                    | crate::ability::ProtectionFrom::OwnColors
+                    | crate::ability::ProtectionFrom::ColorsAmong { .. }) => true,
                 _ => false,
             }
         }
@@ -5915,8 +6026,9 @@ fn apply_modification_to_chars(
             chars.controller = effect.controller;
         }
         Modification::ChangeText { .. } => {
-            // Text changes are handled separately.
+            // Legacy wire vocabulary. New instructions use RewriteText.
         }
+        Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
         Modification::SetTextBox(overlay) => {
             chars.compiled_card_text = overlay.compiled_card_text.clone();
             chars.ability_labels = overlay.ability_labels.clone();
@@ -5930,6 +6042,7 @@ fn apply_modification_to_chars(
         }
         Modification::SetName(name) => {
             chars.name = name.clone().into();
+            chars.alternate_name = None;
         }
         Modification::InsertNameWords {
             words,
@@ -6011,8 +6124,7 @@ fn apply_modification_to_chars(
             }
         }
         Modification::SetAbilities(abilities) => {
-            chars.abilities = abilities.clone().into();
-            chars.abilities.rebind(effect);
+            chars.abilities.replace_with_origin(abilities.clone(), Some(effect.into()));
             chars.static_abilities.clear();
             for ability in abilities {
                 if let AbilityKind::Static(ref sa) = ability.kind {
@@ -6195,9 +6307,14 @@ fn apply_modification_to_chars(
                     continue;
                 }
 
-                for ability in &candidate_chars.abilities {
+                for (slot, ability) in candidate_chars.abilities.iter().enumerate() {
                     if matches!(ability.kind, AbilityKind::Triggered(_)) {
-                        chars.abilities.push(ability.clone());
+                        chars.abilities.push_with_origin(ability.clone(), AbilityOrigin::Borrowed {
+                            effect: effect.into(),
+                            source: candidate.id,
+                            origin: Box::new(candidate_chars.abilities.origin(slot)
+                                .expect("copied trigger retains its donor origin").clone()),
+                        });
                     }
                 }
             }
@@ -6257,7 +6374,7 @@ fn apply_modification_to_chars(
         Modification::SetPower { value, sublayer }
             if *sublayer == PtSublayer::CharacteristicDefining =>
         {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6267,12 +6384,15 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetToughness { value, sublayer }
             if *sublayer == PtSublayer::CharacteristicDefining =>
         {
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6282,6 +6402,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetPowerToughness {
@@ -6289,7 +6412,7 @@ fn apply_modification_to_chars(
             toughness,
             sublayer,
         } if *sublayer == PtSublayer::CharacteristicDefining => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power,
                 objects,
                 effects,
@@ -6299,8 +6422,11 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
                 objects,
                 effects,
@@ -6310,12 +6436,15 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin|&origin.ability),
             ));
         }
 
         // Layer 7b: Setting P/T
         Modification::SetPower { value, sublayer } if *sublayer == PtSublayer::Setting => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6325,10 +6454,13 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetToughness { value, sublayer } if *sublayer == PtSublayer::Setting => {
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 value,
                 objects,
                 effects,
@@ -6338,6 +6470,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
         Modification::SetPowerToughness {
@@ -6345,7 +6480,7 @@ fn apply_modification_to_chars(
             toughness,
             sublayer,
         } if *sublayer == PtSublayer::Setting => {
-            chars.power = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.power = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power,
                 objects,
                 effects,
@@ -6355,8 +6490,11 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
-            chars.toughness = Some(layer_resolution::resolve_value_direct_for_recipient(
+            chars.toughness = Some(layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness,
                 objects,
                 effects,
@@ -6366,6 +6504,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             ));
         }
 
@@ -6407,7 +6548,7 @@ fn apply_modification_to_chars(
             power: power_value,
             toughness: toughness_value,
         } => {
-            let p_delta = layer_resolution::resolve_value_direct_for_recipient(
+            let p_delta = layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 power_value,
                 objects,
                 effects,
@@ -6417,8 +6558,11 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             );
-            let t_delta = layer_resolution::resolve_value_direct_for_recipient(
+            let t_delta = layer_resolution::resolve_characteristic_value_direct_for_recipient(
                 toughness_value,
                 objects,
                 effects,
@@ -6428,6 +6572,9 @@ fn apply_modification_to_chars(
                 object.id,
                 effect_controller,
                 game,
+                &mut chars.numeric_range_error,
+                &mut chars.numeric_choice_error,
+                effect.originating_ability.as_ref().map(|origin| &origin.ability),
             );
             add_pt_checked(
                 &mut chars.power,
@@ -6638,3 +6785,7 @@ impl Modification {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "continuous/intrinsic_land_mana_tests.rs"]
+mod intrinsic_land_mana_tests;

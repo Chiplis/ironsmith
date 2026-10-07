@@ -1517,7 +1517,7 @@ pub(super) fn resolve_careful_consideration_targeting_bob(main_phase: bool) -> G
     let mut entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]);
     if main_phase {
         let mut paid = OptionalCostsPaid::default();
-        paid.mark_label_paid("CastDuringYourMainPhase");
+        paid.record_main_phase_cast(alice);
         game.object_mut(spell_id)
             .expect("Careful Consideration spell should exist")
             .optional_costs_paid = paid.clone();

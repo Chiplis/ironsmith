@@ -86,6 +86,17 @@ struct PaymentCompletion {
     inner: Box<dyn SimultaneousEffectCompletion>,
 }
 impl SimultaneousEffectCompletion for PaymentCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let Self { scope, inner } = *self;
+        let mut receipt = scope.run(ctx, |ctx| inner.prepare_draw_boundary_with_outputs(game, ctx, original))?;
+        receipt.completion = receipt.completion.map(|inner|
+            Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>);
+        Ok(receipt)
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -119,6 +130,18 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
     }
 }
 impl SimultaneousEffectProposal for PreparedPayment {
+    fn prepare_selection(
+        &mut self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.scope.run(ctx, |ctx| {
+            for component in &mut self.components {
+                component.proposal.prepare_selection(game, ctx)?;
+                if ctx.decision_maker.awaiting_choice() { break; }
+            }
+            Ok(())
+        })
+    }
+
     fn has_simultaneous_originals(&self) -> bool {
         self.components.len() > 1
             || self

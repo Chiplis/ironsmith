@@ -412,22 +412,14 @@ fn apply_self_replacement_declared_target_tags(
             .iter()
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
-                crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    )
-                }),
+                crate::effects::ResolvedTarget::Object(id) => game.object(*id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)),
                 crate::effects::ResolvedTarget::Player(_) => None,
             })
             .collect::<Vec<_>>();
         if snapshots.is_empty()
             && effect.target_selection_profile().is_some()
             && let Some(snapshot) = ctx.targets.iter().find_map(|target| match target {
-                crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    )
-                }),
+                crate::effects::ResolvedTarget::Object(id) => game.object(*id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)),
                 crate::effects::ResolvedTarget::Player(_) => None,
             })
         {
@@ -477,11 +469,7 @@ fn apply_self_replacement_referenced_target_tags(
     effects: &[Effect],
 ) {
     let Some(snapshot) = ctx.targets.iter().find_map(|target| match target {
-        crate::effects::ResolvedTarget::Object(id) => game.object(*id).map(|object| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                object, game,
-            )
-        }),
+        crate::effects::ResolvedTarget::Object(id) => game.object(*id).and_then(|object| crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)),
         crate::effects::ResolvedTarget::Player(_) => None,
     }) else {
         return;
@@ -721,7 +709,7 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
     let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = crate::effects::with_per_event_trigger_matching(
+    let mut result = crate::effects::with_per_event_trigger_matching(
         game,
         match_triggers_per_instruction,
         |game| {
@@ -739,6 +727,11 @@ pub(crate) fn execute_resolution_program_with_trigger_matching_typed(
             Ok(events)
         },
     );
+    // Empty programs and false conditions can bypass the leaf executor. They
+    // still own every incomplete capture recorded in this native scope.
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(error);
+    }
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(
             checkpoint,
@@ -760,13 +753,23 @@ fn execute_resolution_program_inner(
     valid_target_assignments: &[crate::game_state::TargetAssignment],
     match_triggers_per_instruction: bool,
 ) -> Result<Vec<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
+    if !program.has_complete_definition() {
+        return Err(crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(
+                crate::continuous::text_changes::TextChangeDomainError::SpellProgram)));
+    }
+    crate::linked_exile::validate_program_owner(program.linked_exile_pair, ctx.linked_exile_owner.as_ref())?;
+    if let Some(pair)=program.source_number_pair {
+        if !ctx.source_number_owner.as_ref().is_some_and(|owner|owner.host==ctx.source && owner.pair==pair) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence("numeric program admission omitted its exact source acquisition".into()));
+        }
+    }
     // CR 805.9: a singular "active player" in an ability is selected by that
     // ability's controller when its effect is applied. Bind the selection once
     // for this resolution so player filters, object filters, values, and nested
     // effects all observe the same active teammate.
     let program_debug = format!("{program:?}");
     let attacking_anchor = ctx.combat.attacking_player;
-    let defending_anchor = ctx.combat.defending_player;
     if !bind_singular_active_player_choice(game, ctx, program_debug.contains("Active"))
         || !bind_singular_combat_player_choice(
             game,
@@ -774,13 +777,6 @@ fn execute_resolution_program_inner(
             program_debug.contains("Attacking"),
             attacking_anchor,
             true,
-        )
-        || !bind_singular_combat_player_choice(
-            game,
-            ctx,
-            program_debug.contains("Defending"),
-            defending_anchor,
-            false,
         )
     {
         return Ok(Vec::new());
@@ -969,7 +965,7 @@ fn execute_resolution_program_inner(
                 all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
             }
-            if ctx.decision_maker.awaiting_choice() {
+            if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
                 all_events.append(&mut unmatched_outcome_events);
                 return Ok(all_events);
             }
@@ -980,7 +976,7 @@ fn execute_resolution_program_inner(
                     ctx,
                     next,
                     unmatched_outcome_events.iter(),
-                )
+                )?
             {
                 unmatched_outcome_events.clear();
             }
@@ -1081,7 +1077,10 @@ pub(super) fn resolve_stack_entry_full(
     let (resource_root, resource_meter) = game.begin_token_resource_scope();
     let checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.as_deref().cloned();
-    let result = resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
+    let mut result = resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
+    if let Some(error) = game.token_resource_failure() {
+        result = Err(GameLoopError::ExecutionFailed(error));
+    }
     if result.is_err() || decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(
             checkpoint,
@@ -1115,6 +1114,13 @@ fn resolve_stack_entry_full_inner(
     let mut entry = game
         .pop_from_stack()
         .ok_or_else(|| GameLoopError::InvalidState("Stack is empty".to_string()))?;
+    // A historically paired producer with missing acquisition evidence must
+    // fail before exiling anything. Otherwise a later complete reader would
+    // mistake that lost producer record for a known empty pair.
+    crate::linked_exile::validate_program_owner(
+        entry.ability_effects.as_ref().and_then(|program| program.linked_exile_pair),
+        entry.linked_exile_owner.as_ref(),
+    ).map_err(GameLoopError::ExecutionFailed)?;
     // Spells use their current controller (CR 109.5, 112.2); abilities keep
     // the controller captured when they were put on the stack (CR 113.8).
     if !entry.is_ability {
@@ -1147,6 +1153,8 @@ fn resolve_stack_entry_full_inner(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    ctx.linked_exile_owner = entry.linked_exile_owner.clone();
+    ctx.source_number_owner = entry.source_number_owner.clone();
     ctx.iteration = entry.iteration;
     // CR 400.7j: only objects this resolution moves are new objects its
     // instructions may still find.
@@ -1158,9 +1166,8 @@ fn resolve_stack_entry_full_inner(
     }
     ctx.effect_outcomes = entry.effect_outcomes.clone();
     ctx.ninjutsu_attack_target = entry.ninjutsu_attack_target.clone();
-    if let Some(defending) = entry.defending_player {
-        ctx = ctx.with_defending_player(defending);
-    }
+    ctx.combat.defending_player = entry.defending_player;
+    ctx.combat.defending_player_reference = entry.defending_player_reference;
     if let Some(triggering_event) = entry.triggering_event.clone() {
         if let Some(attacked) =
             triggering_event.downcast::<crate::events::combat::CreatureAttackedEvent>()
@@ -1197,6 +1204,8 @@ fn resolve_stack_entry_full_inner(
     if let Some(ability_index) = entry.ability_index {
         ctx = ctx.with_ability_index(ability_index);
     }
+    ctx.activation_origin = entry.activation_origin.clone();
+    ctx.activation_definition = entry.activation_definition;
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
@@ -1213,17 +1222,16 @@ fn resolve_stack_entry_full_inner(
             .entry(crate::tag::CHOSEN_OBJECTS_TAG.into())
             .or_insert_with(|| vec![chosen.clone()]);
     }
-    let source_exiled = game
-        .get_exiled_with_source_links(execution_source)
+    let linked = match &entry.linked_exile_owner {
+        Some(owner) => game.linked_exile_pair_members(owner).map_err(GameLoopError::ExecutionFailed)?,
+        None => game.get_exiled_with_source_links(execution_source),
+    };
+    let source_exiled = linked
         .iter()
-        .filter_map(|id| {
-            game.object(*id).map(|obj| {
-                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                    obj, game,
-                )
-            })
-        })
-        .collect::<Vec<_>>();
+        .filter_map(|id| game.object(*id))
+        .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(GameLoopError::ExecutionFailed)?;
     // A delayed trigger that captured "that card" when it was scheduled
     // (Portcullis: "Return that card ... when this artifact leaves the
     // battlefield") keeps its own exiled card, as long as that card is still
@@ -1242,7 +1250,7 @@ fn resolve_stack_entry_full_inner(
                             .any(|linked| linked.object_id == snapshot.object_id)
                     })
             });
-    if !source_exiled.is_empty() && !keeps_captured_subset {
+    if (entry.linked_exile_owner.is_some() || !source_exiled.is_empty()) && !keeps_captured_subset {
         tagged_objects.insert(source_exiled_tag, source_exiled);
     }
     if !tagged_objects.is_empty() {
@@ -1368,9 +1376,15 @@ fn resolve_stack_entry_full_inner(
 
     // Check intervening-if condition at resolution time
     // If the condition is false, the ability does nothing (but doesn't fizzle)
+    if entry.triggering_event.is_none() && entry.intervening_if.as_ref()
+        .is_some_and(crate::condition_eval::condition_requires_retained_attack_event)
+    {
+        return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+            "combat intervening-if has no retained triggering attack event".into())));
+    }
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
-        && !crate::triggers::verify_intervening_if_at_resolution(
+        && !crate::triggers::verify_intervening_if_at_resolution_checked(
             game,
             condition,
             entry.controller,
@@ -1378,25 +1392,25 @@ fn resolve_stack_entry_full_inner(
             execution_source,
             None,
             Some(&entry.optional_costs_paid),
-        )
+        ).map_err(GameLoopError::ExecutionFailed)?
     {
         // Condition no longer true - ability resolves but does nothing
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
-    // If no triggering event is set (shouldn't happen for triggered abilities),
-    // we allow the ability to proceed rather than creating a fake event
+    // Legacy event-independent conditions retain their existing no-event path.
+    // Required combat evidence is checked above, before any body can execute.
 
     ctx.all_targets_legal = valid_targets.len() == entry.targets.len();
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.clone())
-        .with_announced_target_assignments(entry.target_assignments.clone())
+        .with_announced_target_assignments(super::targeting::current_stack_entry_target_assignments(game, &entry)?)
         .with_target_distributions(entry.target_distributions.clone());
 
     // Snapshot target objects for "last known information" before effects execute
     // This allows effects to access power/controller of targets even after they're exiled
-    ctx.snapshot_targets(game);
+    ctx.try_snapshot_targets(game).map_err(GameLoopError::ExecutionFailed)?;
 
     // Get effects to execute
     // For abilities with stored effects (like triggered abilities), use those directly
@@ -1404,7 +1418,7 @@ fn resolve_stack_entry_full_inner(
     let program = if let Some(ref ability_effects) = entry.ability_effects {
         ability_effects.clone()
     } else if let Some(obj) = &obj {
-        get_effects_for_stack_entry(game, &entry, obj)
+        get_effects_for_stack_entry(game, &entry, obj)?
     } else {
         crate::resolution::ResolutionProgram::default()
     };
@@ -1442,7 +1456,7 @@ fn resolve_stack_entry_full_inner(
     }
     // Process events from effect outcomes for triggers
     if let Some(ref mut tq) = trigger_queue {
-        crate::game_loop::queue_triggers_from_reported_events(game, tq, all_events, false);
+        crate::game_loop::try_queue_triggers_from_reported_events(game, tq, all_events, false)?;
     }
 
     // Process pending primitive trigger events emitted by effects and zone changes.
@@ -1455,7 +1469,7 @@ fn resolve_stack_entry_full_inner(
     if let Some(ref mut tq) = trigger_queue {
         let completion =
             crate::effects::permanents::complete_crew_ability_resolution(game, &mut ctx, &entry)?;
-        crate::game_loop::queue_triggers_from_reported_events(game, tq, completion.events, false);
+        crate::game_loop::try_queue_triggers_from_reported_events(game, tq, completion.events, false)?;
     }
 
     if let Some(chapter_resolution) = chapter_resolution {
@@ -1913,7 +1927,7 @@ fn resolve_stack_entry_full_inner(
                 .map_or_else(
                     || {
                         matches!(
-                            entry.casting_method,
+                            entry.casting_method.origin_method(),
                             CastingMethod::Normal
                                 | CastingMethod::PlayFrom {
                                     zone: Zone::Hand,
@@ -1936,7 +1950,7 @@ fn resolve_stack_entry_full_inner(
 
             // Only methods which explicitly replace leaving the stack exile the spell.
             let should_exile = match entry.casting_method.origin_method() {
-                CastingMethod::AlternativePrice { .. } => false,
+                CastingMethod::AlternativePrice { .. } | CastingMethod::ExactPermission { .. } => false,
                 CastingMethod::Normal => false,
                 CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. } => false,
                 CastingMethod::SplitOtherHalf
@@ -2080,6 +2094,8 @@ fn resolve_stack_entry_full_inner(
                     game.effect_store
                         .delayed_triggers
                         .push(crate::triggers::DelayedTrigger {
+                            linked_exile_owner: None,
+                            source_number_owner: None,
                             trigger: crate::triggers::Trigger::beginning_of_upkeep(
                                 crate::target::PlayerFilter::Specific(entry.controller),
                             ),
@@ -2109,6 +2125,7 @@ fn resolve_stack_entry_full_inner(
                             tagged_players: std::collections::HashMap::new(),
                             prepayment: None,
                             prevention_shield: None,
+                            defending_player_reference: None,
                         });
                 }
                 completion_receipts.push((entry.object_id, receipt));
@@ -2247,9 +2264,7 @@ fn execute_resolved_permanent_annotation(
     effect: &Effect,
 ) -> Result<(), GameLoopError> {
     let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(parent);
-    let snapshot = game.object(source).map(|object| {
-        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
-    });
+    let snapshot = ObjectSnapshot::try_from_object_id(game, source)?;
     let mut ctx = ExecutionContext::new(source, controller, &mut *parent.decision_maker);
     checkpoint.restore(&mut ctx);
     ctx.source = source;
@@ -2280,9 +2295,7 @@ fn resolved_chapter_ability_event(
     let trigger_identity = entry.trigger_identity?;
     let source_snapshot = game
         .object(saga_id)
-        .map(|obj| {
-            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-        })
+        .and_then(|obj| crate::snapshot::ObjectSnapshot::capture_for_execution(obj, game))
         .or_else(|| entry.source_snapshot.clone())?;
     let final_chapter = crate::game_loop::final_chapter_number_from_abilities(
         source_snapshot.abilities.as_slice(),
@@ -2309,28 +2322,15 @@ fn resolved_chapter_ability_event(
 
 /// Get effects for a stack entry.
 pub(super) fn get_effects_for_stack_entry(
-    _game: &GameState,
+    game: &GameState,
     entry: &StackEntry,
-    obj: &crate::object::Object,
-) -> crate::resolution::ResolutionProgram {
-    // If this is an ability with stored effects, use those directly
-    if let Some(ref effects) = entry.ability_effects {
-        return effects.clone();
+    _obj: &crate::object::Object,
+) -> Result<crate::resolution::ResolutionProgram, crate::effects::ExecutionError> {
+    if entry.is_ability {
+        return Ok(entry.ability_effects.clone().unwrap_or_default());
     }
-
-    // For spells, check the spell_effect field (instants/sorceries)
-    if let Some(effects) = obj.spell_effect.as_ref() {
-        return effects.to_owned_value();
-    }
-
-    // Permanent spells (creatures, artifacts, enchantments, etc.) don't have effects
-    // that execute on resolution - they just enter the battlefield.
-    // Don't fall back to looking at their abilities.
-    if obj.is_permanent() {
-        return crate::resolution::ResolutionProgram::default();
-    }
-
-    crate::resolution::ResolutionProgram::default()
+    game.current_spell_program(entry.object_id)
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)
 }
 
 fn preserve_resolved_spell_ability_tags(
@@ -3059,7 +3059,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_combat_resolution_selects_singular_attacking_and_defending_players() {
+    fn shared_combat_resolution_selects_attacker_but_preserves_the_exact_defender() {
         let mut game = GameState::new(
             vec![
                 "Alice".into(),
@@ -3145,8 +3145,8 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("Alice").life, 20);
         assert_eq!(game.player(bob).expect("Bob").life, 21);
-        assert_eq!(game.player(charlie).expect("Charlie").life, 20);
-        assert_eq!(game.player(diana).expect("Diana").life, 21);
+        assert_eq!(game.player(charlie).expect("Charlie").life, 21);
+        assert_eq!(game.player(diana).expect("Diana").life, 20);
     }
 
     #[test]
@@ -4032,5 +4032,66 @@ mod counter_transfer_role_assignment_tests {
                 assert_eq!(next[1].range, 4..5);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod incomplete_capture_terminal_root_tests {
+    use super::*;
+
+    fn missing_capture(game: &GameState, source: ObjectId) -> crate::effects::ExecutionError {
+        ObjectSnapshot::try_from_object_with_known_characteristics(
+            game.object(source).unwrap(), game, None,
+        ).unwrap_err()
+    }
+
+    // Authored only: an empty program cannot turn a failed legacy capture into success.
+    #[test]
+    fn empty_program_root_propagates_preceding_capture_failure() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Capture source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        let (outer, meter) = game.begin_token_resource_scope();
+        game.record_token_resource_failure(&missing_capture(&game, source));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, player, &mut dm);
+        ctx.x_value = Some(17);
+        let before = game.player(player).unwrap().life;
+        let result = execute_resolution_program_with_trigger_matching_typed(
+            &mut game, &mut ctx, player, source,
+            &crate::resolution::ResolutionProgram::default(), None, &[], false,
+        );
+        assert!(matches!(result, Err(crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object }
+        )) if object == source));
+        assert_eq!(ctx.x_value, Some(17));
+        assert_eq!(game.player(player).unwrap().life, before);
+        game.end_token_resource_scope(outer, &meter);
+    }
+
+    #[test]
+    fn empty_ability_resolution_restores_stack_on_capture_failure() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let player = PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Empty ability source")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, player, Zone::Battlefield);
+        game.push_to_stack(StackEntry::ability(source, player, crate::resolution::ResolutionProgram::default()));
+        let target_id = game.stack.last().unwrap().target_id();
+        let (outer, meter) = game.begin_token_resource_scope();
+        game.record_token_resource_failure(&missing_capture(&game, source));
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let result = resolve_stack_entry_with(&mut game, &mut dm);
+        assert!(matches!(result, Err(GameLoopError::ExecutionFailed(
+            crate::effects::ExecutionError::ContinuousDiscovery(
+                crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object }
+            )
+        )) if object == source));
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack.last().unwrap().target_id(), target_id);
+        assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
+        game.end_token_resource_scope(outer, &meter);
     }
 }

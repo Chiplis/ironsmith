@@ -529,6 +529,23 @@ impl DamageActionBinding {
 /// each participant's execution context and rolls back the whole instruction
 /// if completion pauses for a decision or fails.
 pub trait SimultaneousEffectCompletion: Send {
+    /// Run only the non-draw prefix, retaining the owner's actual draw and tail.
+    /// Existing completion owners without a draw boundary finish normally.
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.complete_with_outputs(game, ctx, original).map(SimultaneousEffectCommit::finished)
+    }
+
+    fn prepare_draw_boundary(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.prepare_draw_boundary_with_outputs(game, ctx, original)
+            .map(SimultaneousEffectCommit::into_aggregate)
+    }
+
     /// Observe frozen originals before any participant executes additions.
     /// Scoped and compound completions preserve this phase for their children.
     /// This phase must not execute a deferred program or a physical action.
@@ -691,6 +708,11 @@ pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
             .collect()
     }
 
+    /// Resolve mutable preflight and selection for every participant before
+    /// any participant runs a replacement program or commits an original.
+    fn prepare_selection(&mut self, _game: &mut GameState, _ctx: &mut ExecutionContext)
+        -> Result<(), ExecutionError> { Ok(()) }
+
     /// Resolve a prepared proposal's replacement choices against the shared
     /// pre-mutation world. Owners run this for every participant before any
     /// commit; immutable choice-free proposals need no further preparation.
@@ -818,6 +840,22 @@ pub trait EffectExecutor:
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         self.execute(game, ctx)
             .map(CompletedEffectOutputs::aggregate_only)
+    }
+
+    /// Native action owners retain dynamically introduced draws and their tails.
+    fn supports_replacement_draw_continuation(&self) -> bool { false }
+
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.execute_with_outputs(game, ctx).map(SimultaneousEffectCommit::finished)
+    }
+
+    fn prepare_replacement_draw_continuation(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.prepare_replacement_draw_continuation_with_outputs(game, ctx)
+            .map(SimultaneousEffectCommit::into_aggregate)
     }
 
     /// Whether this effect can prepare an immutable proposal for a generic
@@ -1229,6 +1267,36 @@ pub trait EffectExecutor:
     /// provided by the default capability helpers below.
     fn visit_child_effects(&self, _visitor: &mut dyn FnMut(&Effect)) {}
 
+    /// Typed Suspend casting identity for this program's current source.
+    /// Only executors which perform that cast, or wrappers which preserve its
+    /// execution source, opt in. The generic child visitor also visits granted,
+    /// copied, deferred and source-rebound programs and is not safe here.
+    fn contains_current_source_suspend_cast(&self) -> bool {
+        false
+    }
+
+    /// Object inputs acquired by this instruction itself, excluding possible
+    /// future/deferred children exposed only for previews or target planning.
+    /// Native composite action owners declare their own inputs explicitly.
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        let mut has_children = false;
+        self.visit_child_effects(&mut |_| has_children = true);
+        if has_children { Vec::new() } else { self.get_target_spec().cloned().into_iter().collect() }
+    }
+
+    /// Direct role use, excluding optional/conditional children until they run.
+    fn directly_mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        let mut has_children = false;
+        self.visit_child_effects(&mut |_| has_children = true);
+        !has_children && self.get_target_spec().is_some_and(|spec| spec.mentions_player_filter(needle))
+    }
+    fn mentions_player_filter(&self, needle: &crate::target::PlayerFilter) -> bool {
+        let mut found = self.directly_mentions_player_filter(needle);
+        self.visit_child_effects(&mut |effect| found |= effect.0.mentions_player_filter(needle));
+        found
+    }
+
+
     /// Visit complete definitions directly owned by this executor. Composition
     /// traversal remains the caller's responsibility through child effects.
     fn visit_card_definitions(&self, _visitor: &mut dyn FnMut(&crate::cards::CardDefinition)) {}
@@ -1376,6 +1444,8 @@ pub enum CostValidationError {
     NotEnoughCards,
     /// Cannot sacrifice required permanent
     CannotSacrifice,
+    /// Checked execution failure retains its typed rollback contract.
+    ExecutionFailed(ExecutionError),
     /// Generic error with message
     Other(String),
 }

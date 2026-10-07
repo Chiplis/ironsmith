@@ -116,3 +116,29 @@ fn all_damage_reader_does_not_eat_a_shared_next_amount_or_trailing_instruction()
         assert!(parse_redirect_next_damage_tokens(&tokens).is_none(), "{text}");
     }
 }
+
+#[test]
+fn bounded_redirection_keeps_passive_forms_combat_pronouns_and_duration_position() {
+    for (text, combat) in [
+        ("The next time damage would be dealt to this creature and/or you this turn, that damage is dealt to any target instead.", false),
+        ("The next time it would deal combat damage this turn, it deals that damage to you instead.", true),
+        ("The next time target attacking creature would deal combat damage to this creature this turn, that creature deals that damage to itself instead.", true),
+        ("The next time this creature would deal combat damage to an opponent this turn, it deals that damage to target creature instead.", true),
+        ("The next time an instant or sorcery spell would deal damage to you this turn, that spell deals that damage to its controller instead.", false),
+    ] {
+        let tokens = lex(text);
+        let Some(RedirectNextDamageShape::NextTime { combat_only, .. }) = parse_redirect_next_damage_tokens(&tokens) else { panic!("{text}") };
+        assert_eq!(combat_only, combat);
+    }
+    for text in [
+        "The next X damage that would be dealt this turn to target white creature you control is dealt to this creature instead.",
+        "The next X damage that would be dealt to target white creature you control this turn is dealt to this creature instead.",
+    ] {
+        assert!(matches!(parse_redirect_next_damage_tokens(&lex(text)), Some(RedirectNextDamageShape::NextAmount { protected_tokens: Some(_), destination: RedirectDamageDestinationShape::SourceObject, .. })));
+    }
+    for text in [
+        "The next time damage would be dealt to this creature this turn, that damage is dealt to any target instead. Draw a card.",
+        "The next time damage would be dealt to this creature, that damage is dealt to any target instead.",
+        "The next time this creature would deal damage to you this turn, you may deal that damage to target creature instead.",
+    ] { assert!(parse_redirect_next_damage_tokens(&lex(text)).is_none(), "{text}"); }
+}

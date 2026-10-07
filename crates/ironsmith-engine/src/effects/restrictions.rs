@@ -218,10 +218,34 @@ fn normalize_restriction_for_resolution(
     game: &GameState,
 ) -> Restriction {
     match restriction {
+        Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            // A resolving ability's choice belongs to this resolution. A
+            // later activation may choose another color on the same source,
+            // but must not rewrite this restriction. Keep ordinary blocker
+            // characteristics live: creatures that enter later, or change
+            // power/color, must still be checked when blocks are declared.
+            let blockers = crate::static_abilities::bind_chosen_filter_qualities(
+                blockers,
+                game,
+                ctx.source,
+            )
+            .unwrap_or_else(|| blockers.clone());
+            Restriction::block_specific_attacker(
+                blockers,
+                collapse_tagged_filter_to_specific_objects(attacker, ctx, game),
+            )
+        }
         Restriction::BeBlocked(filter) => Restriction::be_blocked(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
         Restriction::BeCountered(filter) => Restriction::be_countered(
+            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+        ),
+        Restriction::MaximumBlockers { filter, maximum } => Restriction::MaximumBlockers {
+            filter: collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+            maximum: *maximum,
+        },
+        Restriction::MustBlock(filter) => Restriction::must_block(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
         ),
         Restriction::MustAttack(filter) => Restriction::must_attack(
@@ -290,6 +314,19 @@ impl crate::effects::SimultaneousEffectProposal for CantEffectProposal {
             outcome
         })
     }
+}
+
+/// A followup names the exact objects of its earlier instruction, not later
+/// incarnations found through the generic stable-card membership relation.
+fn exact_untap_subject(filter: &ObjectFilter) -> ObjectFilter {
+    let mut filter = filter.clone();
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+            constraint.relation = crate::filter::TaggedOpbjectRelation::SameObjectId;
+        }
+    }
+    filter.any_of = filter.any_of.iter().map(exact_untap_subject).collect();
+    filter
 }
 
 /// Effect that applies a restriction for a duration.
@@ -414,6 +451,8 @@ impl EffectExecutor for CantEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::tokens::execute_resource_transaction_atomically(game, ctx, |game, ctx| {
+        game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         let duration = if let Until::ForAsLongAs(predicate) = &self.duration {
             let Some(predicate) = crate::effects::continuous::materialize_duration_predicate(
                 predicate,
@@ -439,7 +478,27 @@ impl EffectExecutor for CantEffect {
         // A resolved player prohibition must retain its announced player after
         // this context and target slots disappear. The land set remains a rule
         // about future plays, not the currently visible lands.
-        let restriction = if let Restriction::PlayLandsMatching(player, filter) = restriction {
+        let restriction = if let Restriction::PlayerHexproofFrom(player, filter) = restriction {
+            // A temporary player grant must keep its resolved recipient after
+            // target slots and other execution-only references are gone.
+            let player = match player {
+                crate::target::PlayerFilter::Target(_)
+                | crate::target::PlayerFilter::AliasedTarget(_)
+                | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+                | crate::target::PlayerFilter::IteratedPlayer
+                | crate::target::PlayerFilter::TaggedPlayer(_)
+                | crate::target::PlayerFilter::ChosenPlayer => {
+                    crate::target::PlayerFilter::Specific(
+                        crate::effects::helpers::resolve_player_filter(game, &player, ctx)?,
+                    )
+                }
+                player => player,
+            };
+            let filter = crate::static_abilities::bind_chosen_filter_qualities(
+                &filter, game, ctx.source,
+            ).unwrap_or(filter);
+            Restriction::PlayerHexproofFrom(player, filter)
+        } else if let Restriction::PlayLandsMatching(player, filter) = restriction {
             let player = match player {
                 crate::target::PlayerFilter::Target(_)
                 | crate::target::PlayerFilter::AliasedTarget(_)
@@ -485,15 +544,17 @@ impl EffectExecutor for CantEffect {
                 crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
             ),
         };
-        if matches!(duration, Until::ControllersNextUntapStep)
+        if matches!(duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep)
             && let Restriction::Untap(filter) = &restriction
         {
+            let filter = exact_untap_subject(filter);
             let filter_ctx = ctx.filter_context(game);
             let targets: Vec<_> = game
                 .battlefield
                 .iter()
                 .filter_map(|object_id| {
                     let obj = game.object(*object_id)?;
+                    if game.is_phased_out(*object_id) { return None; }
                     if filter.matches(obj, &filter_ctx, game) {
                         Some((*object_id, game.controller_of(obj)))
                     } else {
@@ -502,21 +563,9 @@ impl EffectExecutor for CantEffect {
                 })
                 .collect();
 
-            if !targets.is_empty() {
-                for (object_id, controller) in targets {
-                    game.add_restriction_effect_with_start_and_tagged_objects(
-                        Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
-                        duration.clone(),
-                        ctx.source,
-                        controller,
-                        ctx.iteration.iterated_player,
-                        starts_next_turn_of,
-                        Default::default(),
-                    );
-                }
-            } else {
+            for (object_id, _) in targets {
                 game.add_restriction_effect_with_start_and_tagged_objects(
-                    self.restriction.clone(),
+                    Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
                     duration.clone(),
                     ctx.source,
                     ctx.controller,
@@ -524,7 +573,11 @@ impl EffectExecutor for CantEffect {
                     starts_next_turn_of,
                     Default::default(),
                 );
+                if matches!(duration, Until::ControllersNextUntapStep) {
+                    game.effect_store.restriction_effects.last_mut().unwrap().untap_step_object = Some(object_id);
+                }
             }
+            // A known empty affected set cannot become a future broad rule.
         } else {
             game.add_restriction_effect_with_start_and_tagged_objects(
                 restriction,
@@ -538,6 +591,7 @@ impl EffectExecutor for CantEffect {
         }
         game.update_cant_effects();
         Ok(EffectOutcome::resolved())
+        })
     }
 }
 
@@ -555,6 +609,119 @@ mod tests {
     use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn resolved_evasion_freezes_choice_but_keeps_blocker_characteristics_live() {
+        use crate::color::{Color, ColorSet};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = |game: &mut GameState, owner, color| {
+            let card = CardBuilder::new(CardId::new(), "Evasion participant")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .color_indicator(color).build();
+            game.create_object_from_card(&card, owner, Zone::Battlefield)
+        };
+        let source = creature(&mut game, alice, ColorSet::WHITE);
+        let red = creature(&mut game, bob, ColorSet::RED);
+        let blue = creature(&mut game, bob, ColorSet::BLUE);
+        let green = creature(&mut game, bob, ColorSet::GREEN);
+        let can_block = |game: &GameState, attacker, blocker| {
+            crate::rules::combat::can_block(
+                game.object(attacker).unwrap(), game.object(blocker).unwrap(), game,
+            )
+        };
+        let effect = CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+            ObjectFilter::creature().of_chosen_color(), ObjectFilter::source(),
+        ));
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        game.set_chosen_color(source, Color::Red);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        game.set_chosen_color(source, Color::Blue);
+        effect.execute(&mut game, &mut ctx).unwrap();
+        assert!(!can_block(&game, source, red));
+        assert!(!can_block(&game, source, blue));
+        assert!(can_block(&game, source, green));
+        let late_red = creature(&mut game, bob, ColorSet::RED);
+        game.refresh_continuous_state().unwrap();
+        assert!(!can_block(&game, source, late_red));
+        game.object_mut(green).unwrap().color_override = Some(ColorSet::RED);
+        game.refresh_continuous_state().unwrap();
+        assert!(!can_block(&game, source, green));
+        game.object_mut(red).unwrap().color_override = Some(ColorSet::GREEN);
+        game.refresh_continuous_state().unwrap();
+        assert!(can_block(&game, source, red));
+        game.cleanup_restrictions_end_of_turn();
+        game.refresh_continuous_state().unwrap();
+        assert!(can_block(&game, source, blue));
+        assert!(can_block(&game, source, green));
+    }
+
+    #[test]
+    fn absent_color_cannot_be_supplied_by_a_later_choice() {
+        use crate::color::{Color, ColorSet};
+        for blocker_colors in [ColorSet::RED, ColorSet::RED.with(Color::Blue)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let card = CardBuilder::new(CardId::new(), "Color witness")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .color_indicator(blocker_colors).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            let blocker = game.create_object_from_card(&card, bob, Zone::Battlefield);
+            let effect = CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+                ObjectFilter::creature().with_colors(ColorSet::RED).of_chosen_color(),
+                ObjectFilter::source(),
+            ));
+            effect.execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+            game.set_chosen_color(source, Color::Red);
+            game.refresh_continuous_state().unwrap();
+            assert!(crate::rules::combat::can_block(
+                game.object(source).unwrap(), game.object(blocker).unwrap(), &game,
+            ));
+        }
+    }
+
+    #[test]
+    fn fixed_and_chosen_colors_remain_conjunctive_after_resolution() {
+        use crate::color::{Color, ColorSet};
+        for require_green in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
+            let creature = |game: &mut GameState, owner, colors| {
+                let card = CardBuilder::new(CardId::new(), "Conjunctive color witness")
+                    .card_types(vec![CardType::Creature])
+                    .power_toughness(PowerToughness::fixed(2, 2))
+                    .color_indicator(colors).build();
+                game.create_object_from_card(&card, owner, Zone::Battlefield)
+            };
+            let source = creature(&mut game, alice, ColorSet::WHITE);
+            let red = creature(&mut game, bob, ColorSet::RED);
+            let blue = creature(&mut game, bob, ColorSet::BLUE);
+            let red_blue = creature(&mut game, bob, ColorSet::RED.with(Color::Blue));
+            let red_blue_green = creature(&mut game, bob, ColorSet::RED.with(Color::Blue).with(Color::Green));
+            let mut blockers = ObjectFilter::creature().with_colors(ColorSet::RED).of_chosen_color();
+            if require_green { blockers.required_colors = Some(ColorSet::GREEN); }
+            game.set_chosen_color(source, Color::Blue);
+            CantEffect::until_end_of_turn(Restriction::block_specific_attacker(
+                blockers, ObjectFilter::source(),
+            )).execute(&mut game, &mut ExecutionContext::new_default(source, alice)).unwrap();
+            for next_choice in [Color::Blue, Color::Red, Color::Green] {
+                game.set_chosen_color(source, next_choice);
+                game.refresh_continuous_state().unwrap();
+                let can_block = |blocker| crate::rules::combat::can_block(
+                    game.object(source).unwrap(), game.object(blocker).unwrap(), &game,
+                );
+                assert!(can_block(red));
+                assert!(can_block(blue));
+                assert_eq!(can_block(red_blue), require_green);
+                assert!(!can_block(red_blue_green));
+            }
+        }
+    }
 
     #[test]
     fn added_combat_restriction_waits_through_other_combats_and_expires() {

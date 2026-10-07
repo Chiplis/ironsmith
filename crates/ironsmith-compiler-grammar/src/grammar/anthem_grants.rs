@@ -79,6 +79,8 @@ pub use misc_shapes::{
 pub use soulbond_shapes::{SoulbondSharedEffect, parse_soulbond_shared_shape};
 pub use special_grant_shapes::{
     parse_anthem_goaded_shape, parse_anthem_no_defender_grant_tokens,
+    parse_base_pt_and_blocker_restriction_tokens,
+    parse_conditional_no_defender_and_unblockable_tokens,
     parse_colored_spell_protection_tokens, parse_commander_creature_subject_tokens,
     parse_no_defender_granted_fragment_tokens, parse_subject_color_and_grant_tokens,
     parse_unblockable_keyword_fragment_tokens,
@@ -95,6 +97,7 @@ pub use tail_static_shapes::{
     BasePowerToughnessConditionShape, IsntCreatureShapeError, parse_base_power_grant_shape,
     parse_base_power_toughness_each_equal_shape, parse_base_power_toughness_grant_shape, parse_base_power_toughness_shape,
     parse_base_power_toughness_type_addition_shape, parse_isnt_creature_shape,
+    parse_base_power_toughness_where_x_shape,
     parse_multi_subject_segments, persistent_anthem_subject_facts,
 };
 

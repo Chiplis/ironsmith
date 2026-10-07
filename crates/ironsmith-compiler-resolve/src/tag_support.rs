@@ -315,6 +315,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { target: Some(target) })
             | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::RemoveFromCombat {
                 target,
             })
@@ -381,7 +382,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 },
             )
             | SubjectVerbActionAst::DamagePrevention(
-                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target, .. },
+                DamagePreventionActionAst::RedirectNextTimeDamageToSource { target: Some(target), .. },
             )
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
@@ -1192,7 +1193,8 @@ pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
         | PredicateAst::TurnEvents(
             TurnEventPredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter),
         ) => filter_references_tag(filter, tag),
-        PredicateAst::TaggedMatches(found, filter) => {
+        PredicateAst::TaggedMatches(found, filter)
+        | PredicateAst::TaggedMatchedLastKnown(found, filter) => {
             found.as_str() == tag || filter_references_tag(filter, tag)
         }
         PredicateAst::TaggedWasCast(found)
@@ -1421,6 +1423,8 @@ fn target_references_event_derived_amount(target: &TargetAst) -> bool {
 
 fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
     match action {
+        SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => count_value.as_ref(),
+        SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => result_modifier.as_ref().map(|modifier| modifier.value()),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
             spec,
         }) => Some(&spec.delta),
@@ -1445,7 +1449,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, .. }) => {
             Some(amount)
         }
-        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount })
+        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. }) => {
@@ -1542,7 +1547,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects { .. })
         | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction { .. })
-        | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
@@ -1562,8 +1566,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Clash { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
-        | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
-        | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
         | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
@@ -1762,7 +1764,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         })
         | SubjectVerbActionAst::Grants(
-            GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. },
+            GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { .. },
         )
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
         | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -1904,6 +1907,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor)
         | SubjectVerbActionAst::Game(GameActionAst::ReverseTurnOrder)
         | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceUp { .. })
+        | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::TurnFaceDown { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary) => None,
     }
 }
@@ -2088,11 +2092,12 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                             || value_references_event_derived_amount(toughness)
                     }
                     SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                        filter,
                         stop_rule,
                         max_exposed,
                         ..
                     }) => {
-                        matches!(
+                        filter_references_event_derived_amount(filter) || matches!(
                             stop_rule,
                             crate::cards::builders::LibraryConsultStopRuleAst::MatchCount(value)
                             | crate::cards::builders::LibraryConsultStopRuleAst::TotalManaValue(value)
@@ -2509,7 +2514,8 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 ..
             })
             | SubjectVerbActionAst::Grants(
-                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. },
+                GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. }
+                | GrantActionAst::GrantPlayTaggedWhileSourceOnBattlefield { tag, .. },
             ) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
             SubjectVerbActionAst::Library(LibraryActionAst::PutRestOnBottomOfLibrary) => true,
             SubjectVerbActionAst::Cant { restriction, .. } => restriction_references_tag(
@@ -2713,11 +2719,14 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::MustAttack(filter)
+        | Restriction::MustBlock(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
         | Restriction::BeDestroyed(filter)
         | Restriction::BeRegenerated(filter)
         | Restriction::BeSacrificed(filter)
+        | Restriction::BecomeSuspected(filter)
+        | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::BeTargeted(filter)

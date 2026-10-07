@@ -107,9 +107,47 @@ pub(crate) fn execute_scoped_counter_placements_with_outputs(
     )
 }
 
+/// Prepare all scoped counter requests and commit their originals without
+/// freezing, observing, or completing any added program. The enclosing action
+/// owns grouping and rollback, and can compose zone bindings alongside this
+/// retained packet before freezing the complete simultaneous original world.
+pub(crate) fn commit_scoped_counter_placement_originals_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    programs: Vec<(crate::effects::ExecutionContextCheckpoint, Event)>,
+) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let empty = || SimultaneousEffectCommit::finished(
+        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+    );
+    if programs.is_empty() || ctx.decision_maker.awaiting_choice() {
+        return Ok(empty());
+    }
+    let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+    let result = (|| {
+        let mut prepared = Vec::with_capacity(programs.len());
+        for (context, event) in programs {
+            context.restore_ref(ctx);
+            let proposal = prepare_counter_placement(game, ctx, event)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(empty()); }
+            prepared.push((context, proposal));
+        }
+        let mut receipts = Vec::with_capacity(prepared.len());
+        for (context, proposal) in prepared {
+            context.restore_ref(ctx);
+            let receipt = commit_prepared_counter_original_with_outputs(game, ctx, proposal)?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(empty()); }
+            receipts.push(crate::effects::composition::with_original_execution_context(receipt, ctx));
+        }
+        Ok(crate::effects::composition::compose_original_commits_with_outputs(receipts))
+    })();
+    parent.restore(ctx);
+    result
+}
+
 pub(crate) struct PreparedCounterPlacement {
     result: TraitEventResult,
     original_is_object: bool,
+    limit: Option<(crate::ids::ObjectId, crate::object::CounterType, u32)>,
     before: GameState,
 }
 
@@ -125,11 +163,24 @@ pub(crate) fn prepare_counter_placement(
     ctx: &mut ExecutionContext,
     event: Event,
 ) -> Result<PreparedCounterPlacement, ExecutionError> {
+    prepare_counter_placement_with_limit(game, ctx, event, None)
+}
+
+pub(super) fn prepare_counter_placement_with_limit(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: Event,
+    maximum_total: Option<u32>,
+) -> Result<PreparedCounterPlacement, ExecutionError> {
     let before = game.clone();
     let counter = downcast_event::<PutCountersEvent>(event.inner()).ok_or_else(|| {
         ExecutionError::InternalError("counter preparation requires a counter event".into())
     })?;
     let original_is_object = matches!(counter.target, Target::Object(_));
+    let limit = match counter.target {
+        Target::Object(object) => maximum_total.map(|maximum| (object, counter.counter_type, maximum)),
+        Target::Player(_) => None,
+    };
     let allowed = match counter.target {
         Target::Object(object) => game.can_have_counter_type_placed(object, counter.counter_type),
         Target::Player(player) => {
@@ -148,6 +199,7 @@ pub(crate) fn prepare_counter_placement(
         return Ok(PreparedCounterPlacement {
             result: TraitEventResult::Prevented,
             original_is_object,
+            limit,
             before,
         });
     }
@@ -170,6 +222,7 @@ pub(crate) fn prepare_counter_placement(
     Ok(PreparedCounterPlacement {
         result,
         original_is_object,
+        limit,
         before,
     })
 }
@@ -190,6 +243,28 @@ struct CounterPlacementCompletion {
     programs: Vec<PreparedReplacementProgram>,
 }
 impl SimultaneousEffectCompletion for CounterPlacementCompletion {
+    fn prepare_draw_boundary_with_outputs(
+        self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        // A retained replacement original is already stopped at its real draw.
+        if self.original.is_some() {
+            return Ok(crate::effects::SimultaneousEffectCommit {
+                outcome: crate::effects::CompletedEffectOutputs::aggregate_only(original),
+                completion: Some(self),
+            });
+        }
+        let programs = self.programs.into_iter().map(|program| {
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: target(&program.context)?, object_tags: Vec::new(),
+            };
+            Ok((program, bindings))
+        }).collect::<Result<Vec<_>, ExecutionError>>()?;
+        crate::effects::replacement::prepare_zone_draw_tail_with_outputs(
+            game, ctx, original, programs, &[],
+        )
+    }
+
     fn observe_original(
         &mut self,
         game: &mut GameState,
@@ -325,11 +400,12 @@ pub(crate) fn commit_prepared_counter_original_with_outputs(
                 payload.project_aggregate(aggregate)
             }
         } else if prepared.original_is_object {
-            super::object_counter_placement::commit_object_counter_placement_with_frame_outputs(
+            super::object_counter_placement::commit_object_counter_placement_with_limit_outputs(
                 game,
                 ctx,
                 original,
                 Some(&prepared.before),
+                prepared.limit,
             )?
         } else {
             super::player_counter_placement::commit_player_counter_placement_with_outputs(

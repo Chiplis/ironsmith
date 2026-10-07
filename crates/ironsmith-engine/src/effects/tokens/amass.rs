@@ -44,15 +44,17 @@ fn army_creature_candidates(game: &GameState, controller: PlayerId) -> Vec<Objec
         .collect()
 }
 
-fn army_token_definition(subtype: Subtype) -> CardDefinition {
-    let name = format!("{subtype} Army");
-    CardDefinitionBuilder::new(CardId::new(), &name)
+fn army_token_definition(subtype: Subtype) -> Result<CardDefinition, ExecutionError> {
+    let subtypes = vec![subtype, Subtype::Army];
+    let name = ironsmith_core::subtype_derived_token_name(&subtypes).ok_or_else(||
+        ExecutionError::IncompleteEvidence("amass token name requires canonical subtype spellings".into()))?;
+    Ok(CardDefinitionBuilder::new(CardId::new(), &name)
         .token()
         .card_types(vec![CardType::Creature])
-        .subtypes(vec![subtype, Subtype::Army])
+        .subtypes(subtypes)
         .color_indicator(ColorSet::BLACK)
         .power_toughness(PowerToughness::fixed(0, 0))
-        .build()
+        .build())
 }
 
 impl EffectExecutor for AmassEffect {
@@ -88,8 +90,12 @@ impl EffectExecutor for AmassEffect {
 
                 let mut army_candidates = army_creature_candidates(game, ctx.controller);
                 if army_candidates.is_empty() {
+                    let token = army_token_definition(amass_subtype)?;
+                    let roles = ironsmith_core::TokenTextRoles::rules_implied(
+                        ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len(),
+                    );
                     let create_outcome =
-                        CreateTokenEffect::you(army_token_definition(amass_subtype), 1)
+                        CreateTokenEffect::you(token, 1).with_text_roles(roles)
                             .execute_child_with_outputs(game, ctx)?;
                     outcomes.push(create_outcome.outcome.clone());
                     outputs.retain_owned_child(create_outcome);
@@ -222,6 +228,41 @@ mod tests {
     }
 
     #[test]
+    fn native_amass_token_blueprints_use_canonical_rules_names_without_added_abilities() {
+        for (subtype, expected) in [(Subtype::Goblin, "Goblin Army Token"), (Subtype::Orc, "Orc Army Token"),
+            (Subtype::Zombie, "Zombie Army Token")] {
+            let token = army_token_definition(subtype).unwrap();
+            assert_eq!(token.card.name, expected);
+            assert_eq!(token.card.subtypes, vec![subtype, Subtype::Army]);
+            assert!(token.abilities.is_empty());
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            AmassEffect::new(Some(subtype), 3).execute(&mut game,
+                &mut ExecutionContext::new_default(source, alice)).unwrap();
+            let army = army_creature_candidates(&game, alice)[0];
+            assert_eq!(game.object(army).unwrap().name, expected);
+            assert_eq!(game.current_power(army), Some(3));
+            assert_eq!(game.current_toughness(army), Some(3));
+            assert_eq!(game.current_colors(army), Some(ColorSet::BLACK));
+        }
+    }
+
+    #[test]
+    fn unsupported_native_amass_subtype_name_fails_before_creating_any_token() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let next = game.next_object_id_counter();
+        let result = AmassEffect::new(Some(Subtype::Ajani), 3).execute(&mut game,
+            &mut ExecutionContext::new_default(source, alice));
+        assert!(matches!(result, Err(ExecutionError::IncompleteEvidence(_))));
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.next_object_id_counter(), next);
+        assert!(game.take_pending_trigger_events().is_empty());
+    }
+
+    #[test]
     fn amass_creates_zombie_army_when_none_exists() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -236,6 +277,7 @@ mod tests {
         let armies: Vec<ObjectId> = army_creature_candidates(&game, alice);
         assert_eq!(armies.len(), 1, "expected exactly one Army creature");
         let army = game.object(armies[0]).expect("army should exist");
+        assert_eq!(army.name, "Zombie Army Token");
         assert!(
             army.subtypes.contains(&Subtype::Zombie),
             "expected classic amass to create Zombie Army"
@@ -283,6 +325,7 @@ mod tests {
             "expected existing Army to keep prior creature subtype"
         );
         let army = game.object(existing).expect("existing army should exist");
+        assert_eq!(army.name, "Army Test Creature", "amass preserves the existing object's name");
         assert!(!army.subtypes.contains(&Subtype::Orc), "not a copiable value");
         assert_eq!(
             army.counters

@@ -1,0 +1,80 @@
+[
+  {
+    "name": "Artifact Ward",
+    "oracle_id": "9bd3a4bb-cc12-4e5f-a33f-77ab0c7788db",
+    "mana_cost": "{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nEnchanted creature can't be blocked by artifact creatures.\nPrevent all damage that would be dealt to enchanted creature by artifact sources.\nEnchanted creature can't be the target of abilities from artifact sources.",
+    "scryfall_uri": "https://scryfall.com/card/atq/3/artifact-ward?utm_source=api"
+  },
+  {
+    "name": "Energy Field",
+    "oracle_id": "fbf7a7f4-9915-4a53-84b3-e55e9f487323",
+    "mana_cost": "{1}{U}",
+    "type_line": "Enchantment",
+    "oracle_text": "Prevent all damage that would be dealt to you by sources you don't control.\nWhen a card is put into your graveyard from anywhere, sacrifice this enchantment.",
+    "scryfall_uri": "https://scryfall.com/card/plst/USG-73/energy-field?utm_source=api"
+  },
+  {
+    "name": "Energy Storm",
+    "oracle_id": "567d3de7-8d56-4b6d-a59a-f8674172f595",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Cumulative upkeep {1} (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)\nPrevent all damage that would be dealt by instant and sorcery spells.\nCreatures with flying don't untap during their controllers' untap steps.",
+    "scryfall_uri": "https://scryfall.com/card/ptc/et24sb/energy-storm?utm_source=api"
+  },
+  {
+    "name": "Gideon's Intervention",
+    "oracle_id": "02fe8ed4-3c5d-4875-b584-b33b819c47be",
+    "mana_cost": "{2}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "As this enchantment enters, choose a card name.\nYour opponents can't cast spells with the chosen name.\nPrevent all damage that would be dealt to you and permanents you control by sources with the chosen name.",
+    "scryfall_uri": "https://scryfall.com/card/pakh/15s/gideons-intervention?utm_source=api"
+  },
+  {
+    "name": "Goblin Furrier",
+    "oracle_id": "3f086b72-6e7c-40d4-b995-d5f94c494462",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Goblin Warrior",
+    "oracle_text": "Prevent all damage that this creature would deal to snow creatures.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/csp/82/goblin-furrier?utm_source=api"
+  },
+  {
+    "name": "Indentured Oaf",
+    "oracle_id": "d82bde29-1576-4736-a755-df9c37765202",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Ogre Warrior",
+    "oracle_text": "Prevent all damage that this creature would deal to red creatures.",
+    "power": "4",
+    "toughness": "3",
+    "scryfall_uri": "https://scryfall.com/card/rav/133/indentured-oaf?utm_source=api"
+  },
+  {
+    "name": "Light of Sanction",
+    "oracle_id": "c34cf404-729d-46ef-8661-1095e5581766",
+    "mana_cost": "{1}{W}{W}",
+    "type_line": "Enchantment",
+    "oracle_text": "Prevent all damage that would be dealt to creatures you control by sources you control.",
+    "scryfall_uri": "https://scryfall.com/card/rav/24/light-of-sanction?utm_source=api"
+  },
+  {
+    "name": "Prismatic Ward",
+    "oracle_id": "ad5e2cb0-00d7-4dad-b20e-23bd41ada398",
+    "mana_cost": "{1}{W}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant creature\nAs this Aura enters, choose a color.\nPrevent all damage that would be dealt to enchanted creature by sources of the chosen color.",
+    "scryfall_uri": "https://scryfall.com/card/5ed/53/prismatic-ward?utm_source=api"
+  },
+  {
+    "name": "Wall of Vapor",
+    "oracle_id": "7d08d128-863c-4cca-837f-847ff44acef5",
+    "mana_cost": "{3}{U}",
+    "type_line": "Creature — Wall",
+    "oracle_text": "Defender (This creature can't attack.)\nPrevent all damage that would be dealt to this creature by creatures it's blocking.",
+    "power": "0",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/chr/27/wall-of-vapor?utm_source=api"
+  }
+]

@@ -301,6 +301,11 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
     let Some(parsed) = parse_keywords_and_cant_be_blocked_by_more_than_clause(tokens) else {
         return Ok(None);
     };
+    // A prior stat predicate is not part of the subject. The complete anthem
+    // tail production owns `gets +P/+T, has ..., and can't ...`.
+    if anthem_grant_grammar::parse_anthem_modifier_head(parsed.subject_tokens).is_some() {
+        return Ok(None);
+    }
     let clause_words = crate::lexer::token_word_refs(tokens);
     let Some(actions) = parse_ability_line(parsed.keyword_tokens) else {
         return Ok(None);
@@ -347,15 +352,9 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
             },
         })
         .collect::<Vec<_>>();
-    let restriction = StaticAbility::cant_be_blocked_by_more_than(maximum_blockers);
-    granted.push(match subject {
-        AnthemSubjectAst::Source => StaticAbilityAst::Static(restriction),
-        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-            filter,
-            ability: Box::new(StaticAbilityAst::Static(restriction)),
-            condition: None,
-        },
-    });
+    granted.push(maximum_blockers_rule_for_subject(
+        &fixed_anthem_clause(subject, 0, 0, None), maximum_blockers,
+    ));
     Ok(Some(granted))
 }
 
@@ -902,9 +901,9 @@ fn split_union_grant_subjects(
 
 fn player_you_hexproof_static() -> StaticAbility {
     StaticAbility::restriction(
-        crate::effect::Restriction::be_targeted_player_from(
+        crate::effect::Restriction::player_hexproof_from(
             PlayerFilter::You,
-            ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+            ObjectFilter::default(),
         ),
         "You have hexproof".to_string(),
     )
@@ -1093,9 +1092,122 @@ fn granted_protection_source_filter(ability: &StaticAbilityAst) -> Option<Object
     }
 }
 
+fn extract_grant_spec_from_subject(
+    subject_tokens: &[OwnedLexToken],
+    grantable: crate::model::CompilerGrantableCore,
+) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
+    let subject = parse_anthem_subject(subject_tokens)?;
+    let AnthemSubjectAst::Filter(mut filter) = subject else {
+        return Ok(None);
+    };
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    filter.zone = None;
+    Ok(Some(crate::model::CompilerGrantSpecCore::new(
+        grantable, filter, zone,
+    )))
+}
+
+fn parse_granted_miracle_cost_reduction_tail(
+    trailing_tokens: &[OwnedLexToken],
+) -> Result<Option<u32>, CardTextError> {
+    let trailing_word_refs = crate::lexer::token_word_refs(trailing_tokens);
+    let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
+        return Ok(None);
+    };
+
+    let Some((cost, used)) =
+        crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    };
+    if used != parsed.reduction_cost_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    }
+    let generic = cost.generic_mana_total();
+    if generic == 0 || cost.mana_value() != generic {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported miracle cost reduction clause (clause: '{}')",
+            trailing_word_refs.join(" ")
+        )));
+    }
+    Ok(Some(generic))
+}
+
+/// Own both the granted keyword and its complete cost-definition sentence.
+/// Both registry routes return this same typed grant, so no reader can turn
+/// only the first sentence into a removable marker or lose the derived price.
+fn parse_complete_miracle_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
+    if sentences.len() < 2 { return Ok(None); }
+    let first = sentences[0];
+    let Some(verb) = anthem_grant_grammar::parse_granted_keyword_verb_facts(first) else { return Ok(None); };
+    let have = verb.have_token;
+    let keyword_tokens = &first[have + 1..];
+    if anthem_grant_grammar::parse_granted_alternative_cast_keyword_tokens(keyword_tokens)
+        != Some(anthem_grant_grammar::GrantedAlternativeCastKeyword::Miracle)
+    { return Ok(None); }
+    if sentences.len() != 2 {
+        return Err(CardTextError::ParseError("Miracle cost grant has an unowned trailing sentence".into()));
+    }
+    let Some(reduction) = parse_granted_miracle_cost_reduction_tail(sentences[1])? else {
+        return Err(CardTextError::ParseError("Miracle cost grant requires its complete derived-cost sentence".into()));
+    };
+    let (condition, subject_start) = parse_anthem_prefix_condition(first, have)?;
+    let subject = &first[subject_start..have];
+    // This complete owner cannot use the anthem reader's tolerant suffix
+    // recovery. Prove the original subject, including punctuation/symbols.
+    let mut quoted = false;
+    for token in subject {
+        if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+        if !quoted && matches!(token.kind, crate::lexer::TokenKind::ManaGroup | crate::lexer::TokenKind::Colon) {
+            return Err(CardTextError::ParseError("unexpected symbol in Miracle grant subject".into()));
+        }
+    }
+    let mut filter = parse_object_filter(subject, false)?;
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    filter.zone = None;
+    let spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::miracle_from_cards_mana_cost_reduced_by(reduction), filter, zone);
+    let ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+    Ok(Some(vec![match condition {
+        Some(condition) => StaticAbilityAst::ConditionalStaticAbility { ability: Box::new(ability), condition },
+        None => ability,
+    }]))
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::clause_support::validate_protection_static_line(tokens)?;
+    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    }
+    if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
+
+    // A complete as-entry characteristic replacement is not a keyword grant
+    // to the descriptor at its tail (for example a Dinosaur creature).
+    if matches!(parse_as_enters_becomes_characteristics_for_filter_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
+    // A complete comma-separated predicate list owns every clause and every
+    // local condition; this family cannot suffix-match one of its `has` verbs.
+    if complete_composed_anthem_owns_line(tokens) {
+        return Ok(None);
+    }
+    if matches!(parse_base_pt_and_blocker_restriction_line(tokens), Ok(Some(_)))
+        || matches!(parse_conditional_no_defender_and_unblockable_line(tokens), Ok(Some(_)))
+    {
+        return Ok(None);
+    }
     // A complete attack-permission effect owns its hypothetical `have`.
     // In particular, `this turn` belongs to the duration, not to a subject
     // that may be recovered as the suffix `it didn't`. Do not let either
@@ -1122,7 +1234,15 @@ pub fn parse_granted_keyword_static_line(
         }
         !inside_quotes && token.is_word("where")
     });
-    if let Some(where_index) = unquoted_where {
+    // A keyword owns its complete local X definition. Only the earlier
+    // grant threshold may consume this binding at the outer grant level.
+    let keyword_owned_definition = tokens.iter().enumerate().any(|(index, token)| {
+        token.is_any_word(&["bolster", "mobilize"])
+            && !tokens[..index].iter().any(|token| token.is_word("x"))
+            && crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(&tokens[index..])
+                .is_some_and(|shape| shape.definition.is_some())
+    });
+    if let Some(where_index) = unquoted_where.filter(|_| !keyword_owned_definition) {
         let binding_tokens = trim_edge_punctuation(&tokens[where_index..]);
         let Some(value) = parse_value_binding_clause(&binding_tokens) else {
             return Ok(None);
@@ -1193,21 +1313,6 @@ pub fn parse_granted_keyword_static_line(
     if matches!(parse_all_have_indestructible_line(tokens), Ok(Some(_))) {
         return Ok(None);
     }
-    fn extract_grant_spec_from_subject(
-        subject_tokens: &[OwnedLexToken],
-        grantable: crate::model::CompilerGrantableCore,
-    ) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
-        let subject = parse_anthem_subject(subject_tokens)?;
-        let AnthemSubjectAst::Filter(mut filter) = subject else {
-            return Ok(None);
-        };
-        let zone = filter.zone.unwrap_or(Zone::Battlefield);
-        filter.zone = None;
-        Ok(Some(crate::model::CompilerGrantSpecCore::new(
-            grantable, filter, zone,
-        )))
-    }
-
     fn parse_granted_escape_cost_tail(
         trailing_tokens: &[OwnedLexToken],
     ) -> Result<Option<u32>, CardTextError> {
@@ -1229,38 +1334,6 @@ pub fn parse_granted_keyword_static_line(
             )));
         }
         Ok(Some(count))
-    }
-
-    fn parse_granted_miracle_cost_reduction_tail(
-        trailing_tokens: &[OwnedLexToken],
-    ) -> Result<Option<u32>, CardTextError> {
-        let trailing_word_refs = crate::lexer::token_word_refs(trailing_tokens);
-        let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
-            return Ok(None);
-        };
-
-        let Some((cost, used)) =
-            crate::util::leading_mana_cost_from_tokens(parsed.reduction_cost_tokens)
-        else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        };
-        if used != parsed.reduction_cost_tokens.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        }
-        let generic = cost.generic_mana_total();
-        if generic == 0 || cost.mana_value() != generic {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported miracle cost reduction clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        }
-        Ok(Some(generic))
     }
 
     fn parse_granted_alternative_cast_static(
@@ -1437,6 +1510,35 @@ pub fn parse_granted_keyword_static_line(
         (Some(cond), None) | (None, Some(cond)) => Some(cond),
         (None, None) => None,
     };
+
+    // A fixed flashback price belongs to the ordinary alternative-cast
+    // model. Source grants are explicitly self/graveyard scoped; the live
+    // predicate is retained by the conditional static owner.
+    if keyword_tokens.first().is_some_and(|token| token.is_word("flashback"))
+        && keyword_tokens.len() > 1 && trailing_clause_tokens.is_empty()
+        && let Some(method) = crate::util::parse_flashback_line(&keyword_tokens)?
+    {
+        let spec = match parse_anthem_subject(&subject_tokens)? {
+            AnthemSubjectAst::Source => crate::model::CompilerGrantSpecCore::new(
+                crate::model::CompilerGrantableCore::AlternativeCast(method),
+                ObjectFilter::source(), Zone::Graveyard,
+            ),
+            AnthemSubjectAst::Filter(mut filter) => {
+                let zone = filter.zone.unwrap_or(Zone::Graveyard);
+                filter.zone = None;
+                crate::model::CompilerGrantSpecCore::new(
+                    crate::model::CompilerGrantableCore::AlternativeCast(method), filter, zone,
+                )
+            }
+        };
+        let ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+        return Ok(Some(vec![match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability), condition,
+            },
+            None => ability,
+        }]));
+    }
 
     let keyword_kind = anthem_grant_grammar::classify_granted_keyword_tokens(&keyword_tokens);
     if keyword_kind == anthem_grant_grammar::GrantedKeywordTokenKind::Blitz
@@ -2503,6 +2605,7 @@ fn granted_scavenge_abilities_from_subject(
     let ability = Ability {
         kind: AbilityKind::Activated(
             crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+                keyword: None,
                 mana_cost: ironsmith_core::TotalCost::from_costs(vec![
                     crate::model::CompilerCost::DynamicMana(
                         ironsmith_core::DynamicManaCost::from_source_mana_cost(),
@@ -4666,6 +4769,13 @@ pub fn parse_anthem_and_type_color_addition_line(
             additions.subtypes,
         ));
     }
+    // The condition guards the whole coordinated predicate, including the
+    // type/color layer. The anthem already carries it in its typed payload.
+    if let Some(condition) = clause.condition {
+        for ability in result.iter_mut().skip(1) {
+            *ability = ability.clone().with_condition(condition.clone());
+        }
+    }
     Ok(Some(result))
 }
 
@@ -4978,7 +5088,7 @@ mod dynamic_anthem_tests {
         };
 
         assert!(
-            format!("{player_hexproof:?}").contains("BeTargetedPlayerFrom(You"),
+            format!("{player_hexproof:?}").contains("PlayerHexproofFrom(You"),
             "the player member must compile as a typed targeting restriction: {player_hexproof:#?}"
         );
         assert_eq!(filter.controller, Some(PlayerFilter::You));

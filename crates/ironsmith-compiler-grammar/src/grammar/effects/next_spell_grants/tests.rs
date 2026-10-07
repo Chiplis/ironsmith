@@ -68,3 +68,32 @@ fn parses_uncounterable_surface() {
         ))
     ));
 }
+
+#[test]
+fn cast_and_play_timing_surfaces_preserve_distinct_consumption_domains() {
+    for (text, surface, card_type) in [
+        ("The next sorcery spell you cast this turn can be cast as though it had flash.", NextSpellGrantAbilitySurface::CastTiming, Some(crate::types::CardType::Sorcery)),
+        ("The next creature spell you cast this turn can be cast as though it had flash.", NextSpellGrantAbilitySurface::CastTiming, Some(crate::types::CardType::Creature)),
+        ("The next creature card you play this turn can be played as though it had flash.", NextSpellGrantAbilitySurface::PlayTiming, Some(crate::types::CardType::Creature)),
+        ("The next spell you cast this turn can be cast as though it had flash.", NextSpellGrantAbilitySurface::CastTiming, None),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let parsed = parse_next_spell_grant_tokens(&tokens).unwrap().unwrap();
+        assert_eq!(parsed.ability, surface);
+        let [filter] = parsed.filters.as_slice() else { panic!("single next selector required"); };
+        assert_eq!(filter.card_types, card_type.into_iter().collect::<Vec<_>>());
+        assert!(!filter.has_mana_cost, "a play permission can match a creature land without a mana cost");
+        assert_eq!(filter.zone, (surface == NextSpellGrantAbilitySurface::CastTiming).then_some(Zone::Stack));
+        assert_eq!(filter.stack_kind, (surface == NextSpellGrantAbilitySurface::CastTiming).then_some(StackObjectKind::Spell));
+    }
+    let chosen = lex_line("The next spell of the chosen type you cast this turn can be cast as though it had flash.", 0).unwrap();
+    assert!(parse_next_spell_grant_tokens(&chosen).unwrap().unwrap().filters[0].chosen_creature_type);
+    for text in [
+        "The next creature card you play this turn can be cast as though it had flash.",
+        "The next creature spell you cast this turn can be played as though it had flash.",
+        "The next creature card you play this turn has cascade.",
+        "The next creature card you play can be played as though it had flash.",
+    ] {
+        assert!(parse_next_spell_grant_tokens(&lex_line(text, 0).unwrap()).unwrap().is_none(), "{text}");
+    }
+}

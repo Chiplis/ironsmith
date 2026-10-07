@@ -2223,6 +2223,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             };
             format!("this spell was cast from {zone_text}")
         }
+        Condition::ThisSpellWasForetold => "this spell was foretold".to_string(),
         Condition::ThisSpellWasCastFromNonHand => {
             "this spell was cast from anywhere other than your hand".to_string()
         }
@@ -2282,6 +2283,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TriggeringSpellWasKicked => "that spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
+            if label.requires_current_turn() {
+                let mut unrestricted = label.clone();
+                unrestricted.payment_window = Default::default();
+                return format!("{} this turn", describe_condition(&Condition::ThisSpellPaidLabel(unrestricted)));
+            }
             if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
                 return match reference.surface() {
                     ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(
@@ -2808,6 +2814,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     format!("{description} card")
                 };
                 return format!("it's {card_description}");
+            }
+            if let Some(surface) = filter.shared_type_antecedent_surface()
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+                && constraint.tag.as_str() == "triggering"
+            {
+                let mut remaining = filter.clone(); remaining.tagged_constraints.clear();
+                if remaining == ObjectFilter::default() { return format!("it shares a card type with {}", surface.phrase()); }
             }
             if crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed") {
                 let mut remainder = filter.clone();
@@ -3442,6 +3456,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceFirstCrewedThisTurn => {
             "this is the first time this source was crewed this turn".to_string()
         }
+        Condition::ThisAbilityActivatedThisTurnAtLeast(count) => format!(
+            "this ability has been activated {} or more times this turn", small_number_word(*count).unwrap_or_else(|| count.to_string())
+        ),
         Condition::ThisAbilityResolvedThisTurnExactly(count) => format!(
             "this is the {} time this ability has resolved this turn",
             ordinal_number_word(*count)
@@ -3452,6 +3469,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::DoThisMaxTimesEachTurn(limit) => {
             format!("this effect has been used fewer than {limit} times this turn")
         }
+        Condition::CombatParticipant(condition) => match condition {
+            ironsmith_core::CombatParticipantCondition::YouAreDefendingPlayer => "you're the defending player",
+            ironsmith_core::CombatParticipantCondition::AttackingPlayerAttackedYouOrYourPlaneswalker => "they attacked you and/or a planeswalker you control",
+            ironsmith_core::CombatParticipantCondition::AttackingPlayerIsNotAttackingYou => "they aren't attacking you",
+            ironsmith_core::CombatParticipantCondition::AnyAttackedPlayerIsPoisoned => "one or more players being attacked are poisoned",
+            ironsmith_core::CombatParticipantCondition::TriggeringCreatureAttacksMostLifePlayer => "it's attacking the player with the most life or tied for most life",
+        }.into(),
         Condition::TriggeringEventCausedBy { controller, effect_like_only } => format!(
             "the triggering action was caused by {} controlled by {}",
             if *effect_like_only { "a spell or ability" } else { "a source" },
@@ -4248,6 +4272,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "this permanent came under your control since the beginning of your last upkeep"
                 .to_string()
         }
+        Condition::SourceAttackedOrBlockedThisCombat => {
+            "this creature attacked or blocked this combat".to_string()
+        }
         Condition::SourceAttackedOrBlockedThisTurn => {
             "this creature attacked or blocked this turn".to_string()
         }
@@ -4500,6 +4527,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) {
                 "you cast this spell any time a sorcery couldn't have been cast".to_string()
             } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref() {
+                if label.requires_current_turn() {
+                    let mut unrestricted = label.clone();
+                    unrestricted.payment_window = Default::default();
+                    return format!("{} this turn", describe_condition(&Condition::Not(Box::new(Condition::ThisSpellPaidLabel(unrestricted)))));
+                }
                 if let crate::cost::OptionalCostKind::AlternativeCast(reference) = &label.kind {
                     return match reference.surface() {
                         ironsmith_core::AlternativeCostReferenceSurface::ManaCost => format!(

@@ -75,6 +75,12 @@ pub enum EffectMetric {
     /// original recipient's pre-damage life/loyalty or current creature
     /// toughness. Auxiliary replacement programs are separate instructions.
     DamageDealtCappedByRecipient,
+    CoinFlipsWon,
+    CoinFlipsLost,
+    CoinHeads,
+    CoinTails,
+    /// Number of retained authored flips, excluding ignored replacement coins.
+    CoinFlipsTotal,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -116,6 +122,10 @@ pub enum PriorEffectAction {
     Rolled,
     /// An original zone move that actually arrived in a hand, not a draw or reveal.
     PutIntoHand,
+    /// A retained local coin batch, distinct from ambient win/loss triggers.
+    Flipped,
+    /// The original removals belonging to a move of this counter kind.
+    CountersMoved(crate::counter::CounterType),
 }
 
 /// A metric over the last-known-information memory emitted by one exact
@@ -124,6 +134,11 @@ pub enum PriorEffectAction {
 /// `filter` is evaluated against captured object memory rather than live game
 /// objects. `player` optionally selects a per-player memory partition before
 /// the filter and aggregate are applied.
+/// Exact local color decision used to filter a separate producer's result set.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ColorChoiceReference { Pending, Effect(EffectId) }
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PriorEffectMetricQuery {
@@ -136,6 +151,12 @@ pub struct PriorEffectMetricQuery {
     /// identity still comes from `effect_id`; this preserves wording such as
     /// "stun counters removed this way".
     pub counter_type: Option<CounterType>,
+    /// Read the producer's original arrivals in this actual destination,
+    /// rather than its selected set, source LKI, or replacement-added moves.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub original_destination: Option<crate::zone::Zone>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub color_choice: Option<ColorChoiceReference>,
 }
 
 impl PriorEffectMetricQuery {
@@ -146,6 +167,8 @@ impl PriorEffectMetricQuery {
             filter: None,
             player: None,
             action: None,
+            original_destination: None,
+            color_choice: None,
             counter_type: None,
         }
     }
@@ -875,6 +898,10 @@ pub enum Value {
     /// Actual mana of this color allocated to X in this spell's completed
     /// cast payment, including Assist and excluding fixed/base/tax payments.
     ManaSpentOnX(Color),
+    /// The last actual number chosen by this source's linked entry/reselection
+    /// instruction. `if_unset` applies only to a known never-made choice. Missing
+    /// historical evidence is an error, not an invented zero.
+    SourceChosenNumber { if_unset: Option<i32>, pair: Option<crate::LinkedExilePair> },
 }
 
 impl Value {
@@ -1145,6 +1172,24 @@ pub enum Restriction {
     /// A continuous combat rule, independent of removable granted abilities.
     /// Its matching set is re-evaluated while the rule's duration is active.
     MustAttack(ObjectFilter),
+    /// Matching permanents cannot receive the suspected designation.
+    /// Appended to preserve existing serialized variant ordinals.
+    BecomeSuspected(ObjectFilter),
+    /// A rule limiting the number of creatures that can block each matching
+    /// attacker. This is independent of abilities on the affected attacker.
+    /// Appended to preserve existing serialized variant ordinals.
+    MaximumBlockers {
+        filter: ObjectFilter,
+        maximum: usize,
+    },
+    /// A source-owned positive blocking requirement, independent of abilities
+    /// on the matching creatures. Appended to preserve serialized ordinals.
+    MustBlock(ObjectFilter),
+    /// Player hexproof, optionally qualified by the source's characteristics.
+    /// The targeting spell/ability's controller is compared with the protected
+    /// player; it is not part of the physical source-quality filter.
+    /// Appended to preserve existing serialized variant ordinals.
+    PlayerHexproofFrom(PlayerFilter, ObjectFilter),
 }
 
 /// How mana may be spent relative to its produced type.
@@ -1162,6 +1207,8 @@ pub enum ManaSpendMode {
 }
 
 impl ManaSpendMode {
+    pub fn is_normal(&self) -> bool { *self == Self::Normal }
+
     pub fn allows_any_color(self) -> bool {
         matches!(self, Self::AnyColor | Self::AnyType)
     }
@@ -1483,6 +1530,10 @@ impl Restriction {
         Self::MustBlockSpecificAttacker { blockers, attacker }
     }
 
+    pub fn must_block(filter: ObjectFilter) -> Self {
+        Self::MustBlock(filter)
+    }
+
     pub fn must_attack(filter: ObjectFilter) -> Self {
         Self::MustAttack(filter)
     }
@@ -1540,6 +1591,10 @@ impl Restriction {
 
     pub fn be_targeted_player_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
         Self::BeTargetedPlayerFrom(player, source_filter)
+    }
+
+    pub fn player_hexproof_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
+        Self::PlayerHexproofFrom(player, source_filter)
     }
 
     pub fn be_countered(filter: ObjectFilter) -> Self {
@@ -2141,6 +2196,8 @@ pub enum Condition {
     /// fact rather than a counter so counter effects can't change it.
     SourceCameUnderYourControlSinceYourLastUpkeep,
     SourceAttackedOrBlockedThisTurn,
+    /// An actual declaration by this exact object in the current combat.
+    SourceAttackedOrBlockedThisCombat,
     SourceIsUntapped,
     SourceIsAttacking,
     SourceIsBlocking,
@@ -2179,6 +2236,27 @@ pub enum Condition {
     PlayerWasMonarchAtTurnStart {
         player: PlayerFilter,
     },
+    /// Pre-cast exile designation; appended to preserve published wire ordinals.
+    ThisSpellWasForetold,
+    /// Current-turn activations of this exact resolving ability acquisition.
+    /// Appended to preserve existing serialized condition discriminants.
+    ThisAbilityActivatedThisTurnAtLeast(u32),
+    /// Combat participant identities come from the triggering declaration;
+    /// current combat roles, life and poison are checked again on resolution.
+    CombatParticipant(CombatParticipantCondition),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum CombatParticipantCondition {
+    YouAreDefendingPlayer,
+    /// Past tense: the retained declaring player attacked you or a
+    /// planeswalker you controlled when that declaration completed.
+    AttackingPlayerAttackedYouOrYourPlaneswalker,
+    /// Present tense: the retained declaring player is not attacking you now.
+    AttackingPlayerIsNotAttackingYou,
+    AnyAttackedPlayerIsPoisoned,
+    TriggeringCreatureAttacksMostLifePlayer,
 }
 
 #[cfg(test)]

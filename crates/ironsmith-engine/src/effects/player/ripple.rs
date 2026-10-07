@@ -218,7 +218,7 @@ impl EffectExecutor for RippleEffect {
                             ctx.controller,
                             option.from_zone,
                             provenance,
-                        );
+                        )?;
                         // Later cast costs can remove a watcher or alter the spell.
                         // Retain this completed cast's matches and history now.
                         crate::effects::capture_triggers_before_added_program(

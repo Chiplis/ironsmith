@@ -22,6 +22,7 @@ pub enum ProtectionTargetKind {
     },
     /// "each mana value other than the chosen number" (Haktos the Unscarred).
     ManaValuesOtherThanChosenNumber,
+    ManaValueParity(ironsmith_core::ParityRequirement),
     Spell,
     PermanentCastThisTurn,
     ManaValue {
@@ -38,6 +39,10 @@ pub enum ProtectionTargetKind {
     ExiledCardTypes,
     /// "protection from the chosen card type" (Serra's Emissary).
     ChosenCardType,
+    OwnColors,
+    EachColorAmong { filter_word_first: usize },
+    Monocolored,
+    Snow,
     Colorless,
     /// "protection from multicolored" (Argentum Masticore, Stonecoil Serpent).
     Multicolored,
@@ -57,6 +62,8 @@ pub struct ProtectionTarget<'a> {
     pub value: &'a str,
     pub target_word: usize,
     pub target_token_first: usize,
+    pub target_word_end: usize,
+    pub target_token_end: usize,
     pub kind: ProtectionTargetKind,
 }
 
@@ -185,16 +192,49 @@ pub fn parse_protection_chain_tokens(tokens: &[OwnedLexToken]) -> Option<Protect
     let words = view.word_refs();
     let from_words = parse_protection_from_words(&words)?;
     let mut targets = Vec::with_capacity(from_words.len());
-    for from_word in from_words {
+    for (index, from_word) in from_words.iter().copied().enumerate() {
         let target_word = from_word + 1;
         let value = *words.get(target_word)?;
         let target_token_first = *view.token_start_indices().get(target_word)?;
-        targets.push(ProtectionTarget {
-            value,
-            target_word,
-            target_token_first,
-            kind: classify_protection_target(&words, target_word),
-        });
+        if target_token_first != view.token_start_indices().get(from_word)? + 1 { return None; }
+        if index == 0 && tokens[..target_token_first].iter().any(|token| token.as_word().is_none()) {
+            return None;
+        }
+        let mut target_word_end = from_words.get(index + 1).copied().unwrap_or(words.len());
+        let mut target_token_end = from_words.get(index + 1)
+            .and_then(|word| view.token_start_indices().get(*word)).copied().unwrap_or(tokens.len());
+        if index + 1 < from_words.len() {
+            // A list separator is required. The commas belong to the whole
+            // protection production, never to independent keyword lines.
+            let last = tokens.get(target_token_end.checked_sub(1)?)?;
+            if !last.is_any_word(&["and", "or"]) && last.kind != TokenKind::Comma { return None; }
+            if matches!(words.get(target_word_end.checked_sub(1)?), Some(&("and" | "or"))) {
+                target_word_end -= 1;
+                let conjunction = *view.token_start_indices().get(target_word_end)?;
+                if conjunction + 1 != target_token_end { return None; }
+                target_token_end = conjunction;
+            }
+            if target_token_end > target_token_first && tokens[target_token_end - 1].kind == TokenKind::Comma {
+                target_token_end -= 1;
+            }
+        } else if target_token_end > target_token_first && tokens[target_token_end - 1].kind == TokenKind::Period {
+            target_token_end -= 1;
+        }
+        if target_word_end <= target_word || target_token_end <= target_token_first { return None; }
+        let kind = classify_protection_target(&words[..target_word_end], target_word);
+        // Fixed qualities own their complete token span. A word-only view
+        // cannot erase mana symbols, punctuation, or an unrecognized tail.
+        let fixed = !matches!(kind,
+            ProtectionTargetKind::EachManaValueAmong { .. }
+            | ProtectionTargetKind::EachColorAmong { .. }
+            | ProtectionTargetKind::ManaValue { .. }
+            | ProtectionTargetKind::PermanentWithCounter { .. }
+            | ProtectionTargetKind::Named);
+        if (fixed || target_word_end == target_word + 1)
+            && tokens[target_token_first..target_token_end].iter().any(|token| token.as_word().is_none())
+        { return None; }
+        targets.push(ProtectionTarget { value, target_word, target_token_first,
+            target_word_end, target_token_end, kind });
     }
     (!targets.is_empty()).then_some(ProtectionChain { targets })
 }
@@ -372,6 +412,15 @@ fn parse_protection_head_word_stream(
 
 fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionTargetKind {
     let tail = words.get(target_word..).unwrap_or_default();
+    let parity = match tail {
+        ["odd", "mana", "values"] => Some(ironsmith_core::ParityRequirement::Odd),
+        ["even", "mana", "values"] => Some(ironsmith_core::ParityRequirement::Even),
+        ["each", "mana", "value", "of", "the", "chosen", "quality"] => Some(ironsmith_core::ParityRequirement::Chosen),
+        _ => None,
+    };
+    if let Some(parity) = parity {
+        return ProtectionTargetKind::ManaValueParity(parity);
+    }
     if matches!(
         tail,
         [
@@ -385,14 +434,10 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
             filter_word_first: target_word + 4,
         };
     }
-    if word_phrase_prefix(tail, &["spell"]) || word_phrase_prefix(tail, &["spells"]) {
+    if matches!(tail, ["spell" | "spells"]) {
         return ProtectionTargetKind::Spell;
     }
-    if word_phrase_prefix(tail, &["permanent", "that", "were", "cast", "this", "turn"])
-        || word_phrase_prefix(
-            tail,
-            &["permanents", "that", "were", "cast", "this", "turn"],
-        )
+    if matches!(tail, ["permanent" | "permanents", "that", "were", "cast", "this", "turn"])
     {
         return ProtectionTargetKind::PermanentCastThisTurn;
     }
@@ -415,30 +460,23 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     ) {
         return ProtectionTargetKind::Opponents;
     }
-    if word_phrase_prefix(tail, &["the", "chosen", "player"]) {
+    if tail == ["the", "chosen", "player"] {
         return ProtectionTargetKind::ChosenPlayer;
     }
-    if word_phrase_prefix(tail, &["the", "chosen", "color"])
-        || word_phrase_prefix(tail, &["the", "last", "chosen", "color"])
+    if tail == ["the", "chosen", "color"]
+        || tail == ["the", "last", "chosen", "color"]
     {
         return ProtectionTargetKind::ChosenColor;
     }
-    if word_phrase_prefix(
-        tail,
-        &["each", "of", "the", "exiled", "cards", "card", "types"],
-    ) || word_phrase_prefix(
-        tail,
-        &["each", "of", "the", "exiled", "card's", "card", "types"],
-    ) || word_phrase_prefix(
-        tail,
-        &["each", "of", "the", "exiled", "card", "s", "card", "types"],
-    ) {
-        return ProtectionTargetKind::ExiledCardTypes;
-    }
-    if word_phrase_prefix(tail, &["the", "chosen", "card", "type"])
-        || word_phrase_prefix(tail, &["the", "chosen", "type"])
-    {
-        return ProtectionTargetKind::ChosenCardType;
+    if matches!(tail,
+        ["each", "of", "the", "exiled", "cards" | "card's", "card", "types"]
+        | ["each", "of", "the", "exiled", "card", "s", "card", "types"])
+    { return ProtectionTargetKind::ExiledCardTypes; }
+    if matches!(tail, ["the", "chosen", "card", "type"] | ["the", "chosen", "type"])
+    { return ProtectionTargetKind::ChosenCardType; }
+    if tail == ["each", "of", "its", "colors"] { return ProtectionTargetKind::OwnColors; }
+    if word_phrase_prefix(tail, &["each", "color", "among"]) {
+        return ProtectionTargetKind::EachColorAmong { filter_word_first: target_word + 3 };
     }
     if word_phrase_prefix(tail, &["each", "color"]) && tail.len() > 2 {
         let qualifier = &tail[2..];
@@ -452,23 +490,22 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
                 "commanders" | "commander's" | "commander’s",
                 "color",
                 "identity",
-                ..
             ]
         ) {
             return ProtectionTargetKind::ColorsOutsideCommanderIdentity;
         }
         return ProtectionTargetKind::UnsupportedEachColor;
     }
-    if word_phrase_prefix(tail, &["all", "color"])
-        || word_phrase_prefix(tail, &["all", "colors"])
-        || word_phrase_prefix(tail, &["each", "color"])
+    if matches!(tail, ["all", "color" | "colors"] | ["each", "color"])
     {
         return ProtectionTargetKind::AllColors;
     }
-    match words.get(target_word).copied() {
-        Some("colorless") => ProtectionTargetKind::Colorless,
-        Some("multicolored") => ProtectionTargetKind::Multicolored,
-        Some("everything") => ProtectionTargetKind::Everything,
+    match tail {
+        ["monocolored"] => ProtectionTargetKind::Monocolored,
+        ["snow"] => ProtectionTargetKind::Snow,
+        ["colorless"] => ProtectionTargetKind::Colorless,
+        ["multicolored"] => ProtectionTargetKind::Multicolored,
+        ["everything"] => ProtectionTargetKind::Everything,
         _ => ProtectionTargetKind::Named,
     }
 }

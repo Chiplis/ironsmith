@@ -67,6 +67,12 @@ pub(super) const REGISTRY: RuleId = RuleId::new("object-filter-lexed-inner-regis
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("quantified-spell-cost-or-target-suffix"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(super::filter_shape_readings::read_quantified_spell_suffix(input.tokens, input.other)),
+    },
+    Reading {
         id: RuleId::new("attack-destination-relation"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -141,6 +147,9 @@ pub(super) fn read(input: &FilterPhrase<'_>) -> ParseOutcome<RuleMatch<ObjectFil
                 matched.span,
             )),
             ParseOutcome::NoMatch => {}
+            ParseOutcome::Error(diagnostic) if reading.id.as_str() == "quantified-spell-cost-or-target-suffix" => {
+                return ParseOutcome::Error(diagnostic);
+            }
             ParseOutcome::Error(diagnostic) => diagnostics.push(diagnostic),
         }
     }

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Heat Stroke",
+    "oracle_id": "a8127c04-f67f-4780-86bf-bb24480ec51a",
+    "mana_cost": "{2}{R}",
+    "type_line": "Enchantment",
+    "oracle_text": "At end of combat, destroy each creature that blocked or was blocked this turn."
+  },
+  {
+    "name": "You Cannot Pass!",
+    "oracle_id": "8e94ccdb-5978-440b-b7cd-11c7ca6b2c98",
+    "mana_cost": "{W}",
+    "type_line": "Instant",
+    "oracle_text": "Destroy target creature that blocked or was blocked by a legendary creature this turn."
+  }
+]

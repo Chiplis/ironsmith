@@ -41,20 +41,10 @@ pub(super) fn requires_target_selection(spec: &ChooseSpec) -> bool {
     }
 }
 
-pub(super) fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Vec<crate::effect::Effect> {
-    if let Some(ref effects) = entry.ability_effects {
-        return effects.to_vec();
-    }
-
-    let Some(obj) = game.object(entry.object_id) else {
-        return Vec::new();
-    };
-
-    if let Some(ref effects) = obj.spell_effect {
-        return effects.to_vec();
-    }
-
-    Vec::new()
+pub(super) fn effects_for_stack_entry(game: &GameState, entry: &StackEntry) -> Result<Vec<crate::effect::Effect>, ExecutionError> {
+    if entry.is_ability { return Ok(entry.ability_effects.clone().unwrap_or_default().to_vec()); }
+    game.current_spell_program(entry.object_id).map(|program| program.to_vec())
+        .map_err(ExecutionError::ContinuousDiscovery)
 }
 
 /// The target requirements of a stack object whose targets are being changed
@@ -104,7 +94,7 @@ pub(super) fn stack_entry_retarget_requirements(
     game: &GameState,
     entry: &StackEntry,
     keep_unchanged: bool,
-) -> Option<Vec<RetargetSlot>> {
+) -> Result<Option<Vec<RetargetSlot>>, ExecutionError> {
     let view = crate::derived_view::DerivedGameView::new(game);
     let slot_requirement =
         |spec: &ChooseSpec, range: &Range<usize>, computed: Vec<Target>, relative: bool| {
@@ -150,10 +140,11 @@ pub(super) fn stack_entry_retarget_requirements(
         };
 
     if !entry.target_assignments.is_empty() {
+        let current_assignments = crate::game_loop::current_stack_entry_target_assignments(game, entry)?;
         let mut slots = Vec::with_capacity(entry.target_assignments.len());
         for (index, assignment) in entry.target_assignments.iter().enumerate() {
             if assignment.range.end > entry.targets.len() {
-                return None;
+                return Ok(None);
             }
             // The "another target" exclusion is against the earlier slots'
             // *new* targets, so it is checked on the combined proposal rather
@@ -162,20 +153,20 @@ pub(super) fn stack_entry_retarget_requirements(
                 legal_targets,
                 relative_object_target,
                 ..
-            } = crate::game_loop::stack_entry_assignment_legal_targets(game, entry, index, &view);
+            } = crate::game_loop::stack_entry_assignment_legal_targets(game, entry, index, &view)?;
             slots.push(slot_requirement(
-                &assignment.spec,
+                &current_assignments[index].spec,
                 &assignment.range,
                 legal_targets,
                 relative_object_target,
             ));
         }
-        return Some(slots);
+        return Ok(Some(slots));
     }
 
     // Entries without announced assignments: derive the slots from the
     // object's top-level target specs.
-    let effects = effects_for_stack_entry(game, entry);
+    let effects = effects_for_stack_entry(game, entry)?;
     let mut specs = Vec::new();
     let mut probe_requirements = Vec::new();
     for effect in &effects {
@@ -208,17 +199,17 @@ pub(super) fn stack_entry_retarget_requirements(
         });
         specs.push(spec.clone());
     }
-    let ranges = assigned_target_ranges(&probe_requirements, &entry.targets).or_else(|| {
+    let Some(ranges) = assigned_target_ranges(&probe_requirements, &entry.targets).or_else(|| {
         assigned_target_ranges_ignoring_current_legality(&probe_requirements, &entry.targets)
-    })?;
-    Some(
+    }) else { return Ok(None); };
+    Ok(Some(
         specs
             .iter()
             .zip(probe_requirements)
             .zip(ranges.iter())
             .map(|((spec, probe), range)| slot_requirement(spec, range, probe.legal_targets, false))
             .collect(),
-    )
+    ))
 }
 
 fn filter_targets_with_restriction(
@@ -388,7 +379,7 @@ impl EffectExecutor for RetargetStackObjectEffect {
             // (CR 115.7a).
             let keep_unchanged =
                 matches!(self.mode, RetargetMode::All) && !self.require_change;
-            let Some(slots) = stack_entry_retarget_requirements(game, &entry, keep_unchanged)
+            let Some(slots) = stack_entry_retarget_requirements(game, &entry, keep_unchanged)?
             else {
                 continue;
             };

@@ -32,6 +32,8 @@ pub(crate) use prepared_move::{
     prepare_zone_moves, resolve_zone_move_objects,
 };
 mod battlefield_entry;
+mod continuation;
+pub(crate) use continuation::{ZoneInstructionDraws, prepare_zone_instruction_completion, complete_zone_instruction};
 mod become_plotted;
 pub use become_plotted::BecomePlottedEffect;
 mod destroy;
@@ -514,6 +516,53 @@ pub(crate) fn apply_zone_change_with_context_and_additional_effects(
     )
 }
 
+/// Native movement owners can retain event-created draws while keeping the
+/// exact normal zone preparation/commit and additional-program receipts.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_zone_change_with_context_and_draws(
+    game: &mut GameState, object: ObjectId, from: Zone, to: Zone,
+    cause: crate::events::cause::EventCause, ctx: &mut crate::effects::ExecutionContext,
+    additional: &[ReplacementEffect], draws: &mut ZoneInstructionDraws,
+) -> Result<PreparedEventOutcome<AppliedZoneChange>, crate::effects::ExecutionError> {
+    if !draws.prepared.contains_key(&object) {
+        prepare_zone_change_with_context_and_draws(game, object, from, to, cause, ctx, additional, draws)?;
+    }
+    let Some(mut prepared) = draws.prepared.remove(&object) else {
+        return Ok(PreparedEventOutcome::pure(EventOutcome::NotApplicable));
+    };
+    if matches!(&prepared.original, EventOutcome::Proceed(_))
+        && !game.object(object).is_some_and(|current| current.zone == from)
+    {
+        prepared.original = EventOutcome::NotApplicable;
+    }
+    commit_zone_change_proposal(game, object, prepared, &mut *ctx.decision_maker)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn prepare_zone_change_with_context_and_draws(
+    game: &mut GameState, object: ObjectId, from: Zone, to: Zone,
+    cause: crate::events::cause::EventCause, ctx: &mut crate::effects::ExecutionContext,
+    additional: &[ReplacementEffect], draws: &mut ZoneInstructionDraws,
+) -> Result<(), crate::effects::ExecutionError> {
+    let snapshot = match draws.snapshots.get(&object) {
+        Some(snapshot) => Some(snapshot.clone()),
+        None => game.object(object).map(|object|
+            crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?,
+    };
+    if let Some(snapshot) = &snapshot { draws.snapshots.insert(object, snapshot.clone()); }
+    let scope = ReplacementEventContext::with_scope(game,
+        crate::events::Event::zone_change(object, from, to, cause.clone(), snapshot.clone())
+            .with_provenance(ctx.provenance), &ctx.replacement);
+    let start = draws.draws.0.len();
+    let prepared = crate::events::processing::prepare_zone_change_scoped_with_draws(
+        game, object, from, to, cause, &mut *ctx.decision_maker, additional, snapshot,
+        Some(&scope), Vec::new(), None, Some(&mut draws.draws),
+    )?;
+    draws.record(object, start);
+    draws.prepared.insert(object, prepared);
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_zone_change_with_context_and_additional_effects_and_snapshot(
     game: &mut GameState,
@@ -761,52 +810,65 @@ pub(crate) fn finish_zone_change_receipts_with_outputs(
     finish_zone_change_receipts_frozen_with_outputs(game, ctx, outcome, frozen)
 }
 
-pub(crate) struct FrozenZoneChangeReceipts(
-    Vec<(
-        ObjectId,
-        Vec<ObjectId>,
-        Vec<crate::snapshot::ObjectSnapshot>,
-        Vec<crate::events::processing::PreparedReplacementProgram>,
-    )>,
-);
+pub(crate) struct FrozenZoneChangeReceipts(Result<Vec<(ObjectId, Vec<ObjectId>, Vec<crate::snapshot::ObjectSnapshot>, Vec<crate::events::processing::PreparedReplacementProgram>)>, crate::effects::ExecutionError>);
 
 pub(crate) fn freeze_zone_change_receipts(
-    game: &mut GameState,
-    receipts: Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
+    game: &mut GameState, receipts: Vec<(ObjectId, PreparedEventOutcome<AppliedZoneChange>)>,
 ) -> FrozenZoneChangeReceipts {
-    let mut prepared = Vec::new();
-    for (object, receipt) in receipts {
-        if receipt.programs.is_empty() {
-            continue;
-        }
-        let mut ids = match &receipt.original {
-            EventOutcome::Proceed(change) => change.new_object_ids.clone(),
-            _ => Vec::new(),
-        };
-        if ids.is_empty() {
-            // An Instead movement can retain its own exact arrival receipt.
-            // Read and restore it; never chase a later object by stable ID.
-            ids = game.take_zone_change_results(object);
-            if !ids.is_empty() {
-                game.record_zone_change_results(object, ids.clone());
+    let captured = (|| {
+        let mut prepared = Vec::new();
+        for (object, receipt) in receipts {
+            if receipt.programs.is_empty() { continue; }
+            let mut ids = match &receipt.original {
+                EventOutcome::Proceed(change) => change.new_object_ids.clone(),
+                _ => Vec::new(),
+            };
+            if ids.is_empty() {
+                // An Instead movement can retain its own exact arrival receipt.
+                // Read and restore it; never chase a later object by stable ID.
+                ids = game.take_zone_change_results(object);
+                if !ids.is_empty() { game.record_zone_change_results(object, ids.clone()); }
             }
+            if ids.is_empty() { ids.push(object); }
+            let snapshots = ids.iter().filter_map(|id| game.object(*id).map(|object|
+                crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)))
+                .collect::<Result<Vec<_>, crate::effects::ExecutionError>>()?;
+            prepared.push((object, ids, snapshots, receipt.programs));
         }
-        if ids.is_empty() {
-            ids.push(object);
+        Ok(prepared)
+    })();
+    if let Err(error) = &captured { game.record_token_resource_failure(error); }
+    FrozenZoneChangeReceipts(captured)
+}
+
+pub(crate) fn bind_frozen_zone_programs(
+    frozen: FrozenZoneChangeReceipts,
+) -> Result<Vec<(crate::events::processing::PreparedReplacementProgram,
+    crate::effects::replacement::ReplacementProgramBindings)>, crate::effects::ExecutionError> {
+    let mut bound = Vec::new();
+    for (object, ids, snapshots, programs) in frozen.0? {
+        for program in programs {
+            let context = &program.context;
+            let zone = context.zone_change_context.as_ref().or_else(||
+                crate::events::downcast_event::<crate::events::ZoneChangeEvent>(context.event.inner()));
+            let matches = zone.is_some_and(|zone| zone.objects.as_slice() == [object])
+                || crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(context.event.inner())
+                    .is_some_and(|entry| entry.object == object);
+            if !matches {
+                return Err(crate::effects::ExecutionError::InternalError(
+                    "zone addition lost its original object context".into()));
+            }
+            let captured = if snapshots.is_empty() {
+                zone.and_then(|zone| zone.snapshot.clone()).into_iter().collect::<Vec<_>>()
+            } else { snapshots.clone() };
+            let bindings = crate::effects::replacement::ReplacementProgramBindings {
+                targets: Some(ids.iter().copied().map(crate::effects::ResolvedTarget::Object).collect()),
+                object_tags: vec![("it".to_owned(), captured.clone()), ("__it__".to_owned(), captured)],
+            };
+            bound.push((program, bindings));
         }
-        let snapshots = ids
-            .iter()
-            .filter_map(|id| {
-                game.object(*id).map(|object| {
-                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                        object, game,
-                    )
-                })
-            })
-            .collect::<Vec<_>>();
-        prepared.push((object, ids, snapshots, receipt.programs));
     }
-    FrozenZoneChangeReceipts(prepared)
+    Ok(bound)
 }
 
 pub(crate) fn finish_zone_change_receipts_frozen(
@@ -836,7 +898,7 @@ pub(crate) fn finish_zone_change_receipts_frozen_with_outputs(
     );
     let primary = outcome.value.clone();
     let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
-    let prepared = frozen.0;
+    let prepared = frozen.0?;
     for (object, ids, snapshots, programs) in prepared {
         let completed =
             crate::effects::replacement::complete_deferred_replacement_programs_with_bindings(
@@ -894,6 +956,7 @@ pub(crate) fn finish_zone_change_receipts_frozen_with_outputs(
 
 pub(crate) use battlefield_entry::{
     BattlefieldEntryOptions, BattlefieldEntryOutcome, BattlefieldEntryReceipt,
+    PreparedBattlefieldEntryBatch, prepare_battlefield_entry_batch,
     finish_battlefield_entry_receipts, finish_battlefield_entry_receipts_with_outputs,
     move_to_battlefield_batch_with_companions, move_to_battlefield_batch_with_options,
     move_to_battlefield_with_options, resolve_battlefield_entry_counters,

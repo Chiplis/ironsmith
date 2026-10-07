@@ -6,7 +6,7 @@ use crate::events::{Event, PutCountersEvent};
 use crate::game_state::{GameState, Target};
 
 #[derive(Debug, Clone)]
-struct CounterPlacement(Event);
+struct CounterPlacement(Event, Option<u32>);
 
 impl EffectExecutor for CounterPlacement {
     fn execute(
@@ -30,10 +30,11 @@ impl EffectExecutor for CounterPlacement {
             .target;
         match recipient {
             Target::Object(_) => {
-                super::object_counter_placement::execute_object_counter_placement_with_outputs(
+                super::object_counter_placement::execute_object_counter_placement_with_limit_outputs(
                     game,
                     ctx,
                     self.0.clone(),
+                    self.1,
                 )
             }
             Target::Player(_) => {
@@ -52,7 +53,16 @@ pub(crate) fn execute_counter_placement_with_outputs(
     ctx: &mut ExecutionContext,
     event: Event,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
-    CounterPlacement(event).execute_child_with_outputs(game, ctx)
+    execute_counter_placement_with_limit_outputs(game, ctx, event, None)
+}
+
+pub(super) fn execute_counter_placement_with_limit_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    event: Event,
+    maximum_total: Option<u32>,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    CounterPlacement(event, maximum_total).execute_child_with_outputs(game, ctx)
 }
 
 /// Share one grouping identity without moving counter replacements to a new
@@ -83,10 +93,21 @@ pub(crate) fn execute_counter_batch_with_outputs(
     ctx: &mut ExecutionContext,
     events: Vec<Event>,
 ) -> Result<Vec<CompletedEffectOutputs>, ExecutionError> {
+    execute_counter_batch_with_limit_outputs(game, ctx, events, None)
+}
+
+pub(super) fn execute_counter_batch_with_limit_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    events: Vec<Event>,
+    maximum_total: Option<u32>,
+) -> Result<Vec<CompletedEffectOutputs>, ExecutionError> {
     crate::effects::composition::execute_transaction(game, ctx, Vec::new, |game, ctx| {
         let mut prepared = Vec::with_capacity(events.len());
         for event in events {
-            prepared.push(super::prepare_counter_placement(game, ctx, event)?);
+            prepared.push(super::prepared_placement::prepare_counter_placement_with_limit(
+                game, ctx, event, maximum_total,
+            )?);
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(Vec::new());
             }

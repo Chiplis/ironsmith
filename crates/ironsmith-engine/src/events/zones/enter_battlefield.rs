@@ -62,6 +62,9 @@ pub struct EnterBattlefieldEvent {
     pub(crate) program_choices: crate::game_state::PreparedEtbChoices,
     /// As-entry choices already collected against this provisional object.
     pub(crate) prepared_choices: Option<crate::game_state::PreparedEtbChoices>,
+    /// Frozen paid-cost evidence for this exact stack-to-battlefield
+    /// incarnation; it is not part of the permanent's copiable values.
+    pub emerge_sacrifice: Option<Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 impl EnterBattlefieldEvent {
@@ -70,6 +73,7 @@ impl EnterBattlefieldEvent {
         Self {
             object,
             completed_snapshot: None,
+            emerge_sacrifice: None,
             from,
             enters_tapped: false,
             enters_with_counters: Vec::new(),
@@ -98,6 +102,7 @@ impl EnterBattlefieldEvent {
         Self {
             object,
             completed_snapshot: None,
+            emerge_sacrifice: None,
             from,
             enters_tapped: true,
             enters_with_counters: Vec::new(),
@@ -161,10 +166,12 @@ impl EnterBattlefieldEvent {
 
     /// Return a new event where the object enters as a copy of `source_id`.
     pub fn with_copy_of(&self, source_id: ObjectId) -> Self {
-        Self {
-            enters_as_copy_of: Some(source_id),
-            ..self.clone()
-        }
+        let mut next = self.clone();
+        next.enters_as_copy_of = Some(source_id);
+        // A later replacement copy is a new text acquisition even when its
+        // definition is identical. Never borrow an earlier copy's choice.
+        next.program_choices.entry_copy_registration = None;
+        next
     }
 
     pub fn with_copy_followups(&self, followups: &[ironsmith_core::EnterAsCopyFollowup]) -> Self {
@@ -363,6 +370,34 @@ impl EnterBattlefieldEvent {
                     object.counters.insert(*counter_type, *count);
                 }
             }
+        }
+
+        // A duration copy is one acquired text box. Reuse the reservation
+        // owned by entry preparation so choices, prospective CDA/restrictions,
+        // and the committed layer-one effect have the same native owner.
+        if let (Some(copy_source), Some(duration)) = (self.enters_as_copy_of, self.copy_duration.clone()) {
+            let values = crate::snapshot::CopiableValues::from_object(prospective.object(self.object)?);
+            let controller = self.controller_override
+                .or_else(|| prospective.current_controller(self.object))?;
+            let registration = self.program_choices.entry_copy_registration
+                .or_else(|| self.prepared_choices.as_ref().and_then(|choices| choices.entry_copy_registration))
+                .unwrap_or_else(|| prospective.effect_store.continuous_effects.reserve_entry_effect());
+            let expires = matches!(&duration, crate::effect::Until::EndOfTurn
+                | crate::effect::Until::YourNextTurn | crate::effect::Until::YourNextUpkeep
+                | crate::effect::Until::ControllersNextUntapStep)
+                .then_some(prospective.turn.turn_number).unwrap_or(u32::MAX);
+            let effect = crate::continuous::ContinuousEffect::new(self.object, controller,
+                crate::continuous::EffectTarget::Specific(self.object),
+                crate::continuous::Modification::CopyOf {
+                    target_id: copy_source, copiable_values: Box::new(values),
+                    preserve_source_abilities: false, name_override: None,
+                    name_override_surface: None, add_supertypes: Vec::new(),
+                }).until(duration).with_expires_end_of_turn(expires)
+                .with_source_type(crate::continuous::EffectSourceType::Resolution {
+                    locked_targets: vec![self.object],
+                });
+            prospective.effect_store.continuous_effects
+                .add_reserved_entry_effect(registration, effect).ok()?;
         }
 
         if !prospective.battlefield.contains(&self.object) {

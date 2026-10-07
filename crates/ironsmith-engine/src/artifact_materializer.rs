@@ -1,9 +1,14 @@
 //! Materialization of versioned compiled-card artifacts into engine values.
 
 use ironsmith_compiled_artifact as wire;
+#[path = "artifact_continuous_word_codec.rs"]
+mod continuous_word_codec;
+#[path = "artifact_text_program_codec.rs"]
+mod text_program_codec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArtifactMaterializationError {
+    InvalidArtifact(wire::ArtifactValidationError),
     UnsupportedEffect { detail: String },
     UnsupportedStaticAbility { detail: String },
     UnsupportedTrigger { detail: String },
@@ -12,6 +17,7 @@ pub enum ArtifactMaterializationError {
 impl std::fmt::Display for ArtifactMaterializationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidArtifact(error) => error.fmt(formatter),
             Self::UnsupportedEffect { detail } => {
                 write!(formatter, "artifact effect is unsupported: {detail}")
             }
@@ -127,6 +133,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "CastTaggedEffect" => decode_as::<T, ironsmith_core::CastTaggedEffect<wire::WireCost>>(effect),
         "ChooseCardNameEffect" => decode_as::<T, ironsmith_core::ChooseCardNameEffect>(effect),
         "ChooseCardTypeEffect" => decode_as::<T, ironsmith_core::ChooseCardTypeEffect>(effect),
+        "ChangeTextEffect" => decode_as::<T, ironsmith_core::ChangeTextEffect>(effect),
         "ChooseColorEffect" => decode_as::<T, ironsmith_core::ChooseColorEffect>(effect),
         "RevealChosenSubtypeEffect" => {
             decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect)
@@ -292,6 +299,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "ForEachTaggedPlayerEffect" => {
             decode_as::<T, ironsmith_core::ForEachTaggedPlayerEffect<wire::WireEffect>>(effect)
+        }
+        "CollectManaPaymentsEffect" => {
+            decode_as::<T, ironsmith_core::CollectManaPaymentsEffect<wire::WireEffect>>(effect)
         }
         "ForPlayersEffect" => {
             decode_as::<T, ironsmith_core::ForPlayersEffect<wire::WireEffect>>(effect)
@@ -637,6 +647,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "TargetOnlyEffect" => decode_as::<T, ironsmith_core::TargetOnlyEffect>(effect),
         "TicketCountersEffect" => decode_as::<T, ironsmith_core::TicketCountersEffect>(effect),
         "TransformEffect" => decode_as::<T, ironsmith_core::TransformEffect>(effect),
+        "TurnFaceDownEffect" => decode_as::<T, ironsmith_core::TurnFaceDownEffect>(effect),
         "TurnFaceUpEffect" => decode_as::<T, ironsmith_core::TurnFaceUpEffect>(effect),
         "UnattachObjectsEffect" => decode_as::<T, ironsmith_core::UnattachObjectsEffect>(effect),
         "UnearthEffect" => decode_as::<T, ironsmith_core::UnearthEffect>(effect),
@@ -949,6 +960,11 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
             cast_this_way_filter: spec.cast_this_way_filter,
             on_use_effects: spec.on_use_effects.into_iter().map(|effect|
                 runtime_effect_from_core_model_with_card_definitions(effect, self.card_definition)).collect::<Result<_, _>>()?,
+            requires_linked_exile_pair: spec.requires_linked_exile_pair,
+            may_look_at_linked_exile: spec.may_look_at_linked_exile,
+            cast_mana_spend_mode: spec.cast_mana_spend_mode,
+            linked_exile_pair: spec.linked_exile_pair,
+            linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
             top_card_only: spec.top_card_only,
@@ -1223,6 +1239,11 @@ fn combine_level_ability_statics(
 const CLASS_LEVEL_MARKER_PREFIX: &str = "__ironsmith_class_level:";
 
 fn class_level_marker(ability: &crate::ability::ActivatedAbility) -> Option<u32> {
+    if let Some(ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level)) = ability.keyword {
+        return Some(level);
+    }
+    // Previously admitted definitions retain their legacy runtime route. New
+    // definition-local pairing consumes only the typed keyword above.
     ability
         .additional_restrictions
         .iter()
@@ -1521,6 +1542,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TargetOnlyEffect,
             crate::effects::TicketCountersEffect,
             crate::effects::TransformEffect,
+            crate::effects::TurnFaceDownEffect,
             crate::effects::TurnFaceUpEffect,
             crate::effects::UnattachObjectsEffect,
             crate::effects::UnearthEffect,
@@ -1558,6 +1580,40 @@ pub fn encode_runtime_effect(
         };
     }
     with_native_direct_effect_types!(encode_direct);
+    if let Some(payload) = effect.downcast_ref::<crate::effects::RedirectNextTimeDamageToSourceEffect>() {
+        let source = match &payload.source {
+            crate::effects::RedirectNextTimeDamageSource::Choice => ironsmith_core::RedirectNextTimeDamageSource::Choice,
+            crate::effects::RedirectNextTimeDamageSource::Filter(filter) => ironsmith_core::RedirectNextTimeDamageSource::Filter(filter.clone()),
+            crate::effects::RedirectNextTimeDamageSource::Target(target) => ironsmith_core::RedirectNextTimeDamageSource::Target(target.clone()),
+        };
+        let destination = match payload.destination {
+            crate::effects::RedirectNextTimeDamageDestination::DamageSource => ironsmith_core::RedirectNextTimeDamageDestination::DamageSource,
+            crate::effects::RedirectNextTimeDamageDestination::SourceObject => ironsmith_core::RedirectNextTimeDamageDestination::SourceObject,
+            crate::effects::RedirectNextTimeDamageDestination::Controller => ironsmith_core::RedirectNextTimeDamageDestination::Controller,
+            crate::effects::RedirectNextTimeDamageDestination::SourceController => ironsmith_core::RedirectNextTimeDamageDestination::SourceController,
+            crate::effects::RedirectNextTimeDamageDestination::TargetObject => ironsmith_core::RedirectNextTimeDamageDestination::TargetObject,
+        };
+        let converted = ironsmith_core::RedirectNextTimeDamageToSourceEffect {
+            source,
+            combat_only: payload.combat_only,
+            target: payload.target.clone(),
+            destination,
+            destination_target: payload.destination_target.clone(),
+            all_this_turn: payload.all_this_turn,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("RedirectNextTimeDamageToSourceEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::GrantNextSpellAbilityEffect>() {
+        let converted = ironsmith_core::GrantNextSpellAbilityEffect::new(
+            payload.player.clone(), payload.filter.clone(),
+            encode_runtime_ability(payload.ability.clone())?,
+        ).with_mode(payload.mode);
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("GrantNextSpellAbilityEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
         let converted = payload.clone().try_map_effects(encode_runtime_effect)?;
         return serde_json::to_value(converted)
@@ -1575,7 +1631,7 @@ pub fn encode_runtime_effect(
 
     if let Some(payload) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
         let ironsmith_core::CreateTokenEffect {
-            token, count, controller, controller_target, use_source_chosen_color,
+            token, text_roles, count, controller, controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
             enters_attacking, attack_target_mode, enters_blocking,
@@ -1584,7 +1640,7 @@ pub fn encode_runtime_effect(
             next_end_step_player, link_source_exiled_this_resolution,
         } = payload.clone();
         let converted = ironsmith_core::CreateTokenEffect {
-            token: encode_runtime_definition(token)?, count, controller,
+            token: encode_runtime_definition(token)?, text_roles, count, controller,
             controller_target, use_source_chosen_color,
             use_source_chosen_creature_type, actor_surface_explicit,
             suppress_aura_attachment_choice, ability_presentation, enters_tapped,
@@ -1597,6 +1653,47 @@ pub fn encode_runtime_effect(
             .map(|payload| wire::WireEffect::new("CreateTokenEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
+    // These native composition owners preserve exactly the same recursive
+    // typed payload as compilation, including order flags and scoped tags.
+    if let Some(payload) = effect.downcast_ref::<crate::effects::CollectManaPaymentsEffect>() {
+        let converted = ironsmith_core::CollectManaPaymentsEffect::new(
+            payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        );
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("CollectManaPaymentsEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let converted = ironsmith_core::SequenceEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            surface: payload.surface, result_label: payload.result_label.clone(),
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("SequenceEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        let converted = ironsmith_core::ForPlayersEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            filter: payload.filter.clone(), sequential: payload.sequential,
+            starting_with_controller: payload.starting_with_controller,
+            stop_after_first_happened: payload.stop_after_first_happened,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("ForPlayersEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+        let converted = ironsmith_core::ForEachTaggedEffect {
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+            tag: payload.tag.clone(), controller_at_last_blocked_by: payload.controller_at_last_blocked_by.clone(),
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("ForEachTaggedEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
+    if let Some(model) = text_program_codec::encode_text_changed_native_effect(&effect)? { return Ok(model); }
+    if let Some(model) = continuous_word_codec::encode_continuous_native_effect(&effect)? { return Ok(model); }
     Err(RuntimePayloadEncodingError::MissingModel { component: "effect" })
 }
 
@@ -1667,16 +1764,18 @@ pub fn restore_runtime_ability(
 /// Encode every copy characteristic and executable ability model.
 pub fn encode_runtime_copy_values(
     values: crate::snapshot::CopiableValues,
-) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility>, RuntimePayloadEncodingError>
+) -> Result<crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>, RuntimePayloadEncodingError>
 {
-    crate::snapshot::RetainedCopiableValues::from(values).try_map_abilities(encode_runtime_ability)
+    crate::snapshot::RetainedCopiableValues::from(values).try_map_abilities(encode_runtime_ability)?
+        .try_map_effects(encode_runtime_effect)
 }
 
 pub fn restore_runtime_copy_values(
-    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility>,
+    values: crate::snapshot::RetainedCopiableValues<wire::WireAbility, wire::WireEffect>,
 ) -> Result<crate::snapshot::CopiableValues, ArtifactMaterializationError> {
     values
-        .try_map_abilities(restore_runtime_ability)
+        .try_map_abilities(restore_runtime_ability)?
+        .try_map_effects(materialize_effect)
         .map(Into::into)
 }
 
@@ -1752,6 +1851,10 @@ pub fn materialize_definition(
 pub fn materialize_artifact(
     artifact: &wire::CompiledCardArtifact,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
+    // Direct callers need the same version/schema/checksum gate as registry
+    // admission. In particular, pre-provenance definitions are not migratable
+    // merely because their executable abilities still decode structurally.
+    artifact.validate().map_err(ArtifactMaterializationError::InvalidArtifact)?;
     let mut definition = runtime_definition_from_core_model(artifact.payload.definition.clone())?;
     definition.canonical_text = artifact.payload.canonical_text.clone();
     definition.ability_labels = artifact.payload.ability_labels.clone();
@@ -1952,6 +2055,7 @@ mod native_effect_payload_codec_tests {
             .token().card_types(vec![crate::types::CardType::Creature])
             .power_toughness(crate::card::PowerToughness::fixed(1, 1)).flying().build();
         let mut token = crate::effects::CreateTokenEffect::new(definition, 3, crate::target::PlayerFilter::You);
+        token.text_roles = Some(ironsmith_core::TokenTextRoles::authored(ironsmith_core::TokenNameTextRole::Explicit, 1));
         token.controller_target = Some(crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Any));
         token.use_source_chosen_color = true;
         token.use_source_chosen_creature_type = true;
@@ -2012,6 +2116,11 @@ mod native_direct_payload_codec_tests {
     #[test]
     fn native_direct_payload_codec_bounded_number_preserves_bounds_and_chooser() {
         check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::Specific(crate::ids::PlayerId::from_index(1)), 0, 13));
+    }
+    #[test]
+    fn native_direct_payload_codec_source_owned_number_keeps_unbounded_domain() {
+        check(ironsmith_core::ChooseNumberEffect::unbounded(crate::target::PlayerFilter::You).with_source_retention());
+        check(ironsmith_core::ChooseNumberEffect::new(crate::target::PlayerFilter::You, 0, 7).with_source_retention());
     }
     #[test]
     fn native_direct_payload_codec_note_activation_mana() {

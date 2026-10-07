@@ -115,7 +115,9 @@ pub enum DamagePreventionActionAst {
     },
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,
-        target: TargetAst,
+        combat_only: bool,
+        /// Absent for damage to any recipient of the next occurrence.
+        target: Option<TargetAst>,
         destination: RedirectNextTimeDamageDestinationAst,
         destination_target: Option<TargetAst>,
         all_this_turn: bool,

@@ -1,4 +1,4 @@
-/// One announced casting/activation transaction whose public hand information
+/// One announced casting/activation/special-action transaction whose public information
 /// cannot be taken back. The authoritative pending state and continuation own
 /// the source/payer/X/targets/cost choices; this commitment prevents their
 /// checkpoint from being replaced by the pre-announcement game on failure.
@@ -6,7 +6,8 @@
 pub(super) struct PaymentDisclosureCommitment {
     source: ObjectId,
     payer: PlayerId,
-    hand_objects: std::collections::BTreeSet<ObjectId>,
+    /// Hand payment cards and a face-down source opened by its native action.
+    disclosed_objects: std::collections::BTreeSet<ObjectId>,
     /// A failed, already-disclosing command must be retried as the same native
     /// decision answer, rather than using a restored prompt to substitute it.
     required_retry: Option<String>,
@@ -40,15 +41,21 @@ impl WasmGame {
         if let Some(committed) = self.payment_disclosure.as_ref() {
             disclosed.extend(
                 committed
-                    .hand_objects
+                    .disclosed_objects
                     .iter()
-                    .map(|id| (committed.payer, *id)),
+                    // Ownership comes from the native pre-command checkpoint.
+                    // A controlled face-down source need not belong to its payer,
+                    // and later movement must not redefine who owned the disclosure.
+                    .filter_map(|id| checkpoint.game.object(*id).map(|object| (object.owner, *id))),
             );
         }
         for (owner, id) in disclosed {
             let Some(original) = checkpoint.game.object(id) else {
                 continue;
             };
+            if original.owner != owner {
+                continue;
+            }
             let stable = original.stable_id;
             let known = [
                 Some(disclosed_game),
@@ -90,6 +97,19 @@ impl WasmGame {
     }
 
     fn payment_transaction_subject(&self) -> Option<(ObjectId, PlayerId)> {
+        // Casting moves to a new ObjectId. The original opaque exile
+        // incarnation and actor own this whole disclosure transaction.
+        if let Some(opened) = self.priority_state.opened_exile_play.as_ref() {
+            return Some((opened.card_id, opened.player));
+        }
+        if let Some(declared) = self.priority_state.declared_exile_face_down.as_ref() {
+            return Some((declared.card_id, declared.player));
+        }
+        if let Some(DecisionContext::SelectObjects(objects)) = self.pending_decision.as_ref()
+            && let Some(payment) = objects.cost_payment
+        {
+            return Some((payment.source, payment.payer));
+        }
         if let Some(activation) = self.priority_state.pending_activation.as_ref() {
             return Some((activation.source, activation.activator));
         }
@@ -107,7 +127,11 @@ impl WasmGame {
         match root {
             Some(PriorityResponse::PriorityAction(
                 LegalAction::ActivateAbility { source, .. }
-                | LegalAction::ActivateManaAbility { source, .. },
+                | LegalAction::ActivateManaAbility { source, .. }
+                | LegalAction::TurnFaceUp { creature_id: source, .. }
+                | LegalAction::SpecialAction(ironsmith::special_actions::SpecialAction::TurnFaceUp {
+                    permanent_id: source, ..
+                }),
             )) => {
                 let payer = self
                     .pending_action_checkpoint
@@ -200,11 +224,36 @@ impl WasmGame {
         &mut self,
         context: &DecisionContext,
         answer: &ReplayDecisionAnswer,
-    ) {
+    ) -> Result<(), String> {
         let game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
         let mut subject = self.payment_transaction_subject();
         let mut disclosed = Vec::new();
         match (context, answer) {
+            (DecisionContext::Priority(_), ReplayDecisionAnswer::Priority(
+                LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission },
+            )) => {
+                ironsmith::alternative_cast::blind_play::validate_incarnation(game, *card_id, *incarnation)
+                    .map_err(|error| error.to_string())?;
+                let actor = ironsmith::alternative_cast::blind_play::priority_actor(game, *card_id, permission)
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "blind exile opening no longer belongs to a priority actor".to_string())?;
+                subject = Some((*card_id, actor));
+                disclosed.push(*card_id);
+            }
+            (
+                DecisionContext::Priority(priority),
+                ReplayDecisionAnswer::Priority(
+                    LegalAction::TurnFaceUp { creature_id: source, .. }
+                    | LegalAction::SpecialAction(ironsmith::special_actions::SpecialAction::TurnFaceUp {
+                        permanent_id: source, ..
+                    }),
+                ),
+            ) if game.is_face_down(*source) && game.hidden_card_info(*source).is_some() => {
+                // The existing transport opens the command's face-down
+                // source before replay. Its payer may differ from its owner.
+                subject = Some((*source, priority.player));
+                disclosed.push(*source);
+            }
             (
                 DecisionContext::Priority(priority),
                 ReplayDecisionAnswer::Priority(
@@ -229,21 +278,22 @@ impl WasmGame {
             _ => {}
         }
         let Some((source, payer)) = subject else {
-            return;
+            return Ok(());
         };
         if disclosed.is_empty() {
-            return;
+            return Ok(());
         }
         let committed =
             self.payment_disclosure
                 .get_or_insert_with(|| PaymentDisclosureCommitment {
                     source,
                     payer,
-                    hand_objects: Default::default(),
+                    disclosed_objects: Default::default(),
                     required_retry: None,
                 });
-        committed.hand_objects.extend(disclosed);
+        committed.disclosed_objects.extend(disclosed);
         self.cached_snapshot = None;
+        Ok(())
     }
 
     /// All accepted commands use the same lossless, per-command error boundary.
@@ -264,14 +314,19 @@ impl WasmGame {
             .pending_decision
             .clone()
             .ok_or_else(|| payment_disclosure_error("no pending decision to dispatch"))?;
-        let may_disclose = match &context {
+        let may_disclose = matches!(&command, UiCommand::PriorityAction { action_ref: Some(PriorityActionRef::OpenExiledCardForPlay { .. }), .. }) || match &context {
             DecisionContext::Priority(priority) => {
                 priority.actions.iter().any(|action| match action {
+                    LegalAction::OpenExiledCardForPlay { .. } => true,
                     LegalAction::ActivateAbility { source, .. }
                     | LegalAction::ActivateManaAbility { source, .. } => self
                         .game
                         .object(*source)
                         .is_some_and(|object| object.zone == Zone::Hand),
+                    LegalAction::TurnFaceUp { creature_id: source, .. }
+                    | LegalAction::SpecialAction(ironsmith::special_actions::SpecialAction::TurnFaceUp {
+                        permanent_id: source, ..
+                    }) => self.game.is_face_down(*source) && self.game.hidden_card_info(*source).is_some(),
                     _ => false,
                 }) || matches!(&command,
                     UiCommand::PriorityAction { action_ref: Some(
@@ -293,18 +348,24 @@ impl WasmGame {
             }
             _ => false,
         };
-        if self.payment_disclosure.is_none() && !may_disclose {
+        let face_down_declaration = self.priority_state.pending_exile_face_down.is_some()
+            || self.priority_state.declared_exile_face_down.is_some();
+        if self.payment_disclosure.is_none() && !may_disclose && !face_down_declaration {
             return self.dispatch_routed_command(command, command_decode_ms);
         }
         let before = RuntimeSavepoint::capture(self);
         let answer = self.command_to_replay_answer(&context, command.clone())?;
         self.payment_disclosure_precheck(&answer)
             .map_err(|error| payment_disclosure_error(&error))?;
-        self.commit_payment_command_disclosure(&context, &answer);
+        self.commit_payment_command_disclosure(&context, &answer)
+            .map_err(|error| payment_disclosure_error(&error))?;
         let committed = self.payment_disclosure.clone();
         let committed_generation = self.payment_disclosure_generation;
         let result = self.dispatch_routed_command(command, command_decode_ms);
         if result.is_err() {
+            // Restore the command's accepted prefix exactly. An unsuccessful
+            // nondisclosing kind choice cannot create a local-only kind lock;
+            // an already accepted kind is retained by this savepoint itself.
             before.restore(self);
             // The transport pins the same unaccepted signed command before
             // sending its openings. The native continuation retains that same
@@ -345,12 +406,13 @@ impl WasmGame {
             let before = self
                 .payment_disclosure
                 .as_ref()
-                .map(|committed| committed.hand_objects.clone())
+                .map(|committed| committed.disclosed_objects.clone())
                 .unwrap_or_default();
             let answer = self.command_to_replay_answer(&context, command)?;
             self.payment_disclosure_precheck(&answer)
                 .map_err(|error| payment_disclosure_error(&error))?;
-            self.commit_payment_command_disclosure(&context, &answer);
+            self.commit_payment_command_disclosure(&context, &answer)
+            .map_err(|error| payment_disclosure_error(&error))?;
             #[derive(Serialize)]
             struct Disclosure {
                 required: bool,
@@ -362,7 +424,7 @@ impl WasmGame {
                 .as_ref()
                 .map(|committed| {
                     committed
-                        .hand_objects
+                        .disclosed_objects
                         .difference(&before)
                         .map(|object| object.0)
                         .collect::<Vec<_>>()
@@ -383,6 +445,39 @@ impl WasmGame {
 }
 
 impl WasmGame {
+    /// Both browser and JSON snapshots project the same already-public facts.
+    fn include_payment_disclosure_views(&self, snapshot: &mut GameSnapshot) {
+        let game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
+        for view in [self.payment_disclosure_view(), self.payment_disclosure_source_view()]
+            .into_iter().flatten()
+        {
+            snapshot.include_payment_disclosure(game, &view, &self.snapshot_object_view_cache);
+        }
+    }
+
+    /// The source may be owned by someone other than the payer. Keep its
+    /// already-public identity inspectable while a failed/pending payment
+    /// leaves its rules characteristics face down.
+    fn payment_disclosure_source_view(&self) -> Option<ActiveViewedCards> {
+        let committed = self.payment_disclosure.as_ref()?;
+        if !committed.disclosed_objects.contains(&committed.source) { return None; }
+        let game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
+        let source = game.object(committed.source)?;
+        if !matches!(source.zone, Zone::Battlefield | Zone::Exile) || !game.is_face_down(source.id)
+            || game.is_hidden_card_placeholder(source.id) { return None; }
+        Some(ActiveViewedCards {
+            viewer: committed.payer,
+            subject: source.owner,
+            zone: source.zone,
+            cards: vec![source.id],
+            card_stable_ids: vec![source.stable_id],
+            public: true,
+            acknowledged_by: Vec::new(),
+            source: Some(source.id),
+            description: "Disclosed source of committed action".into(),
+        })
+    }
+
     /// Presentation of already disclosed payment identities after a retry
     /// restores their pre-command zones. The real GameState/audit hash remains
     /// the canonical accepted prefix; only these exact public cards are shown.
@@ -390,7 +485,7 @@ impl WasmGame {
         let committed = self.payment_disclosure.as_ref()?;
         let game = self.pending_decision_game.as_deref().unwrap_or(&self.game);
         let cards = committed
-            .hand_objects
+            .disclosed_objects
             .iter()
             .copied()
             .filter(|id| {
@@ -426,6 +521,12 @@ impl WasmGame {
         let command: UiCommand = serde_wasm_bindgen::from_value(command).map_err(|error| {
             payment_disclosure_error(&format!("invalid payment recovery command: {error}"))
         })?;
+        self.retain_payment_disclosure_command(command)
+    }
+}
+
+impl WasmGame {
+    fn retain_payment_disclosure_command(&mut self, command: UiCommand) -> Result<JsValue, JsValue> {
         let context = self
             .pending_decision
             .clone()
@@ -433,9 +534,10 @@ impl WasmGame {
         let answer = self.command_to_replay_answer(&context, command)?;
         self.payment_disclosure_precheck(&answer)
             .map_err(|error| payment_disclosure_error(&error))?;
-        self.commit_payment_command_disclosure(&context, &answer);
+        self.commit_payment_command_disclosure(&context, &answer)
+            .map_err(|error| payment_disclosure_error(&error))?;
         let committed = self.payment_disclosure.as_mut().ok_or_else(|| {
-            payment_disclosure_error("recovery command does not describe a hand-disclosing payment")
+            payment_disclosure_error("recovery command does not describe an identity-disclosing payment")
         })?;
         committed.required_retry = Some(format!("{answer:?}"));
         self.cached_snapshot = None;

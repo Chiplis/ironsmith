@@ -39,6 +39,10 @@ struct RecordOriginalOutcome {
 }
 
 impl super::OriginalOutcomeAdapter for RecordOriginalOutcome {
+    fn cancel(self: Box<Self>, _game: &mut GameState, ctx: &mut ExecutionContext) {
+        ctx.effect_outcomes.remove(&self.id);
+        if let Some(previous) = self.previous { ctx.store_outcome(self.id, previous); }
+    }
     fn finish(
         self: Box<Self>,
         _game: &mut GameState,
@@ -104,6 +108,14 @@ impl crate::effects::SimultaneousEffectProposal for WithIdProposal {
 
     fn declared_life_payments(&self) -> Vec<(crate::ids::PlayerId, u32)> {
         self.inner.declared_life_payments()
+    }
+
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        with_unpublished_result_slot(ctx, self.id, |ctx| self.inner.prepare_selection(game, ctx))
     }
 
     fn prepare_original(
@@ -203,6 +215,16 @@ fn finish_recording_outcome(
 }
 
 impl EffectExecutor for WithIdEffect {
+    fn supports_replacement_draw_continuation(&self) -> bool {
+        crate::effects::replacement::replacement_effect_supported(&self.effect)
+    }
+    fn prepare_replacement_draw_continuation_with_outputs(
+        &self, game: &mut GameState, ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+        let cursor = self.select_prepared_action_program(game, ctx)?;
+        super::object_iteration::prepare_iteration_continuation(cursor, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         self.effect.0.supports_prepared_action_program()
     }
@@ -244,6 +266,12 @@ impl EffectExecutor for WithIdEffect {
             .0
             .as_cost_executable()
             .map(|_| self as &dyn CostExecutableEffect)
+    }
+
+    fn cost_description(&self) -> Option<String> { self.effect.0.cost_description() }
+    fn references_cost_x(&self) -> bool { self.effect.0.references_cost_x() }
+    fn max_cost_x(&self, game: &GameState, source: crate::ids::ObjectId, controller: crate::ids::PlayerId) -> Option<u32> {
+        self.effect.0.max_cost_x(game, source, controller)
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {

@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import { replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame } from "../src/lib/audit-replay.js";
-import { buildPrivateDeckManifest, publicCheckpointHash } from "../src/lib/multiplayer-audit.js";
+import { CURRENT_AUDIT_PROTOCOL_VERSION, CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION,
+  buildPrivateDeckManifest, publicCheckpointHash } from "../src/lib/multiplayer-audit.js";
 import { buildZiffleRuntimeManifest } from "../src/lib/ziffle-runtime-manifest.js";
 
 function clone(value) {
@@ -11,6 +12,7 @@ function clone(value) {
 
 function checkpointFor({ config, commands = [], openings = [], seeds = [], shuffles = [], forfeits = [] }) {
   return {
+    version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION,
     config,
     commands,
     openings,
@@ -29,7 +31,7 @@ class FakeReplayGame {
     this.shuffles = [];
     this.forfeits = [];
     this.perspective = 0;
-    this.checkpoint = { live: true };
+    this.checkpoint = { version: CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION, live: true };
     this.restoredPerspective = null;
   }
 
@@ -104,13 +106,6 @@ class FakeReplayGame {
     if (command?.type !== "priority_action") return [];
     return [
       {
-        id: "shuffle-1",
-        type: "verifiable_shuffle",
-        owner: 0,
-        zone: "library",
-        afterOrder: [2, 1, 0],
-      },
-      {
         id: "rng-1",
         type: "fair_random",
       },
@@ -153,6 +148,7 @@ class FakeReplayGame {
 
 function replayMatch() {
   return {
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
     players: [
       { name: "Alice" },
       { name: "Bob" },
@@ -194,10 +190,8 @@ async function actionHashForTranscript(match, action) {
     hiddenDeckManifests: clone(match.runtimeHiddenDeckManifests),
     openingHandSize: 7,
   });
-  const requirements = await game.previewCryptoRequirements(action.command);
   await game.injectTranscriptRandomSeeds({
     seeds: [
-      String(action.audit.shuffleProofs[0].deckHash),
       String(action.audit.rngReveals[0].combinedSeedHex),
     ],
   });
@@ -209,12 +203,6 @@ async function actionHashForTranscript(match, action) {
     recomputeDecision: true,
   });
   await game.dispatch({ type: "priority_action", action_index: 0 });
-  await game.applyVerifiedHiddenLibraryShuffle({
-    owner: 0,
-    deckHash: "deck-hash-1",
-    afterOrder: requirements[0].afterOrder,
-    enforceLibraryOrder: true,
-  });
   return publicCheckpointHash(await game.exportPublicAuditCheckpoint(), webcrypto);
 }
 
@@ -236,15 +224,6 @@ test("replays transcript actions through the engine and restores the complete li
           timing: "pre",
         },
       ],
-      shuffleProofs: [
-        {
-          requirementId: "shuffle-1",
-          owner: 0,
-          zone: "library",
-          deckHash: "deck-hash-1",
-          afterOrder: [2, 1, 0],
-        },
-      ],
       rngReveals: [
         {
           requirementId: "rng-1",
@@ -255,6 +234,7 @@ test("replays transcript actions through the engine and restores the complete li
   };
   action.audit.publicCheckpointHash = await actionHashForTranscript(match, action);
   const transcript = {
+    protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
     match,
     initialPublicCheckpointHash,
     actions: [action],
@@ -289,6 +269,7 @@ test("restores the complete live runtime after replay rejects an initial hash mi
     () => replayAuditTranscriptWithGame({
       game,
       transcript: {
+        protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION,
         match: replayMatch(),
         initialPublicCheckpointHash: "wrong-hash",
         actions: [],
@@ -313,7 +294,8 @@ test("replay preserves complete sideboard slots in runtime manifests and the fal
     const match = replayMatch();
     delete match.runtimeHiddenDeckManifests;
     match[field] = [runtime];
-    await startAuditTranscriptReplayWithGame({ game, transcript: { match }, cryptoImpl: webcrypto });
+    await startAuditTranscriptReplayWithGame({ game,
+      transcript: { protocolVersion: CURRENT_AUDIT_PROTOCOL_VERSION, match }, cryptoImpl: webcrypto });
     assert.deepEqual(game.config.hiddenDeckManifests, [runtime]);
     assert.equal(game.config.hiddenDeckManifests[0].slotCommitments[2].commitment, manifest.slotCommitments[2].commitment);
   }

@@ -248,7 +248,7 @@ fn advance_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Re
     ironsmith::turn::execute_untap_step(g);
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
     ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    for e in ironsmith::turn::execute_draw_step_with(g, dm) {
+    for e in ironsmith::turn::execute_draw_step_with(g, dm).unwrap() {
         for t in ironsmith::triggers::check_triggers(g, &e) {
             q.add(t);
         }
@@ -449,7 +449,7 @@ fn run(
     let expected = json!({"resolution_error":null,"ward_triggers":if mode==11{0}else{1},"ward_mana_paid":if paid_expected{ward_mana}else{0},"payer_resources_tapped":if paid_expected{branch as usize}else{0},"unagi_battlefield":!resolves,"unagi_owner_hand":resolves,"opposing_unagi_tapped":false,"unsummon_caster_graveyard":true,"remaining_stack":0});
     let actual = json!({"resolution_error":error,"ward_triggers":ward_count,"ward_mana_paid":paid_ward,"payer_resources_tapped":tapped,"unagi_battlefield":source_bf,"unagi_owner_hand":source_hand,"opposing_unagi_tapped":g.is_tapped(source),"unsummon_caster_graveyard":g.player(caster).unwrap().graveyard.iter().any(|id|g.object(*id).is_some_and(|o|o.name=="Unsummon")),"remaining_stack":g.stack.len()});
     Ok(
-        json!({"expected":expected,"actual":actual,"state_evidence":{"branch":branch,"kind":kind,"resource_count":resource_count,"source_paid":source_paid,"spell_paid":spell_paid,"payer":caster.index(),"ward_mana_before":ward_mana,"actual_resource_producers":producer_trace,"held_stack":held_stack,"ward_choice_trace":dm.trace[choice_start..],"branch_scope":"Exact resource+mana budgets make at most one OneOf branch payable. No cost flattening or unavailable alternative selection is used; insufficient budgets have total capacity three, so no branch may be paid."},"execution_trace":dm.trace}),
+        json!({"expected":expected,"actual":actual,"state_evidence":{"branch":branch,"kind":kind,"resource_count":resource_count,"source_paid":source_paid,"spell_paid":spell_paid,"payer":caster.index(),"ward_mana_before":ward_mana,"actual_resource_producers":producer_trace,"held_stack":held_stack,"ward_choice_trace":dm.trace[choice_start..],"branch_scope":"Exact resource+mana budgets constrain the typed Waterbend allocation. No cost flattening or unavailable alternative selection is used; insufficient budgets have total capacity three, so the Waterbend obligation cannot be paid."},"execution_trace":dm.trace}),
     )
 }
 #[test]

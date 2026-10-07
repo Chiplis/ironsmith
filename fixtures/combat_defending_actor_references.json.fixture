@@ -1,0 +1,106 @@
+[
+  {
+    "name": "Falkenrath Perforator",
+    "oracle_id": "6e991808-fea4-46a8-9e87-7b5917f33ce8",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Vampire",
+    "oracle_text": "Whenever this creature attacks, it deals 1 damage to defending player.",
+    "power": "2",
+    "toughness": "1",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Generous Plunderer",
+    "oracle_id": "91c835d1-22ca-4c90-9ba6-c8e01bbc0347",
+    "mana_cost": "{1}{R}",
+    "type_line": "Creature — Human Rogue",
+    "oracle_text": "Menace\nAt the beginning of your upkeep, you may create a Treasure token. When you do, target opponent creates a tapped Treasure token.\nWhenever this creature attacks, it deals damage to defending player equal to the number of artifacts they control.",
+    "power": "2",
+    "toughness": "2",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Simian Sling",
+    "oracle_id": "e49c4d9a-6413-440f-ba5b-396fea6c03d9",
+    "mana_cost": "{R}",
+    "type_line": "Artifact Creature — Equipment Monkey",
+    "oracle_text": "Equipped creature gets +1/+1.\nWhenever this creature or equipped creature becomes blocked, it deals 1 damage to defending player.\nReconfigure {2} ({2}: Attach to target creature you control; or unattach from a creature. Reconfigure only as a sorcery. While attached, this isn't a creature.)",
+    "power": "1",
+    "toughness": "1",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Tormentor's Helm",
+    "oracle_id": "4f5f0988-0b1f-4f4b-bcee-cc76fa484d9e",
+    "mana_cost": "{R}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Equipped creature gets +1/+1.\nWhenever equipped creature becomes blocked, it deals 1 damage to defending player.\nEquip {1} ({1}: Attach to target creature you control. Equip only as a sorcery.)",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Memory Vampire",
+    "oracle_id": "6031d854-10a8-43da-b5c4-b561194bcd4e",
+    "mana_cost": "{4}{U}{B}",
+    "type_line": "Creature — Vampire Detective",
+    "oracle_text": "Flying\nWhenever this creature deals combat damage to a player, any number of target players each mill that many cards. Then you may collect evidence 9. When you do, you may cast target nonland card from defending player's graveyard without paying its mana cost.",
+    "power": "4",
+    "toughness": "4",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Auton Soldier",
+    "oracle_id": "94357494-4ccc-43d4-b2d4-351581cbf9b6",
+    "mana_cost": "{4}{U}{U}",
+    "type_line": "Artifact Creature — Alien Soldier",
+    "oracle_text": "You may have this creature enter as a copy of any creature on the battlefield, except it isn't legendary, is an artifact in addition to its other types, and has myriad. (Whenever it attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)",
+    "power": "0",
+    "toughness": "0",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Barret Wallace",
+    "oracle_id": "913672bc-cc88-4964-a331-7dbce40f2bda",
+    "mana_cost": "{3}{R}",
+    "type_line": "Legendary Creature — Human Rebel",
+    "oracle_text": "Reach\nWhenever Barret Wallace attacks, it deals damage equal to the number of equipped creatures you control to defending player.",
+    "power": "4",
+    "toughness": "4",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Blue Mage's Cane",
+    "oracle_id": "6290233b-b015-4909-8aba-bf8d65cc37b5",
+    "mana_cost": "{2}{U}",
+    "type_line": "Artifact — Equipment",
+    "oracle_text": "Job select\nEquipped creature gets +0/+2, is a Wizard in addition to its other types, and has \"Whenever this creature attacks, exile up to one target instant or sorcery card from defending player's graveyard. If you do, copy it. You may cast the copy by paying {3} rather than paying its mana cost.\"\nSpirit of the Whalaqee — Equip {2}",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  },
+  {
+    "name": "Lord Xander, the Collector",
+    "oracle_id": "d17bfa94-5046-46ae-80af-be5d1d35af13",
+    "mana_cost": "{4}{U}{B}{R}",
+    "type_line": "Legendary Creature — Vampire Demon Noble",
+    "oracle_text": "When Lord Xander enters, target opponent discards half the cards in their hand, rounded down.\nWhenever Lord Xander attacks, defending player mills half their library, rounded down.\nWhen Lord Xander dies, target opponent sacrifices half the nonland permanents they control of their choice, rounded down.",
+    "power": "6",
+    "toughness": "6",
+    "source_coverage_status": "implemented_pending_full_corpus_validation",
+    "validation": "authored_not_run",
+    "source_review_commit": "dca28322f1aa20d974f0fc561bf9186761abf5fd"
+  }
+]

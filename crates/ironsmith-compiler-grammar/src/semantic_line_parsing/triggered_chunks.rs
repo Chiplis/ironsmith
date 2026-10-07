@@ -121,6 +121,7 @@ fn merge_spell_cast_trigger_filter(base: &mut ObjectFilter, overlay: ObjectFilte
     }
     base.has_mana_cost |= overlay.has_mana_cost;
     base.has_phyrexian_mana_symbol |= overlay.has_phyrexian_mana_symbol;
+    if base.mana_symbol_count.is_none() { base.mana_symbol_count = overlay.mana_symbol_count; }
     for card_type in overlay.card_types {
         if !base.card_types.contains(&card_type) {
             base.card_types.push(card_type);
@@ -356,6 +357,9 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
             ..
         }) => vec![*origin],
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
+        TriggerSpec::CounterRemovedFrom { filter, .. } if filter.source && filter.zone.is_some() => {
+            vec![filter.zone.expect("guarded source zone")]
+        }
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,
             ..

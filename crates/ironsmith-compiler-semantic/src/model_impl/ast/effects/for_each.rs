@@ -66,6 +66,7 @@ pub enum ForEachEffectAst {
     ForEachTaggedPlayer {
         tag: TagRef,
         effects: Vec<EffectAst>,
+        require_evidence: bool,
     },
     RepeatProcess {
         effects: Vec<EffectAst>,

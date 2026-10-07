@@ -22,22 +22,37 @@ pub(super) fn parse_prior_effect_where_lexed<'a>(
             .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
 
-    if parsed_metric == Some(EffectMetric::FirstManaValue)
+    if let Some(metric) = parsed_metric
         && exact_exiled_card_reference(reference_tokens)
     {
-        return Ok(WhereXValueShape::SourceExiledManaValue);
+        let metric = match metric {
+            EffectMetric::FirstPower => WhereXMetricShape::Power,
+            EffectMetric::FirstToughness => WhereXMetricShape::Toughness,
+            EffectMetric::FirstManaValue => WhereXMetricShape::ManaValue,
+            _ => unreachable!("only characteristic metrics are parsed above"),
+        };
+        return Ok(WhereXValueShape::SourceExiledCharacteristic(metric));
     }
     let source = prior_effect_source(reference_tokens)
         .ok_or_else(|| primitives::backtrack_err("prior effect reference", "remembered objects"))?;
     let metric = parsed_metric.unwrap_or(EffectMetric::Count);
-    // Counter removal can be an activation cost rather than a preceding effect.
-    // In that established shape, X is supplied by the cost payment itself; do
-    // not turn it into a pending prior-effect query that has no producer to
-    // bind to during reference resolution.
-    if parsed_metric.is_none() && removed_counters_this_way(reference_tokens) {
-        return Ok(WhereXValueShape::RemovedCountersThisWay);
+    // A cost or a resolution instruction may supply this receipt. Preserve
+    // the exact counter kind; the shared resolver binds the actual removal,
+    // which can differ from an announced quantity after a replacement.
+    if parsed_metric.is_none()
+        && let Some(counter_type) = removed_counters_this_way(reference_tokens)
+    {
+        let mut query = PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::Count)
+            .with_action(ironsmith_core::PriorEffectAction::Removed);
+        query.counter_type = counter_type;
+        return Ok(WhereXValueShape::PriorEffectMetric(query));
     }
     let reference_words = parser_token_word_refs(reference_tokens);
+    if reference_words.iter().any(|word| matches!(*word, "counter" | "counters"))
+        && reference_words.contains(&"removed")
+    {
+        return Err(primitives::backtrack_err("removed-counter quantity", "complete typed counter descriptor and this-way scope"));
+    }
     if let Some(this_way_start) =
         crate::word_primitives::parse_sequence_start(&reference_words, &["this", "way"])
     {

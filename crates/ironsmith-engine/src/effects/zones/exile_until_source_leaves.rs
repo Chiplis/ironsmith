@@ -29,7 +29,7 @@ fn object_not_on_battlefield(game: &GameState, object_id: ObjectId) -> bool {
 /// The source permanent this "until this leaves the battlefield" duration
 /// watches. A zone-change trigger follows its recorded destination object;
 /// any other source that is no longer the same object has already left.
-fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
+pub(super) fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
     let source = if game.object(ctx.source).is_some() {
         ctx.source
     } else if ctx
@@ -45,6 +45,29 @@ fn current_source_watcher(game: &GameState, ctx: &ExecutionContext) -> Option<Ob
 }
 
 impl EffectExecutor for ExileUntilEffect {
+    fn own_preflight_object_specs(&self) -> Vec<ChooseSpec> {
+        vec![self.spec.clone()]
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        if self.duration != ExileUntilDuration::SourceLeavesBattlefield || self.leave_watcher.is_some()
+            || self.face_down || self.explicit_return_surface || self.return_zone != Zone::Battlefield
+            || self.spec.is_target() || !self.spec.count().is_single() || self.spec.count().is_random()
+            || self.spec.count_value().is_some() { return false; }
+        let ChooseSpec::Object(filter) = self.spec.base() else { return false; };
+        let mut plain = filter.clone();
+        if plain.zone.take() != Some(Zone::Hand) || plain.owner.take() != Some(crate::target::PlayerFilter::IteratedPlayer) { return false; }
+        plain == crate::target::ObjectFilter::default()
+    }
+
+    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+        -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        if !self.supports_simultaneous_player_action() {
+            return Err(ExecutionError::IncompleteEvidence("unproved simultaneous exile-until scope".into()));
+        }
+        Ok(super::movement_instruction::prepare_movement_instruction(self.clone(), ctx))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -54,47 +77,66 @@ impl EffectExecutor for ExileUntilEffect {
             .map(CompletedEffectOutputs::into_outcome)
     }
 
-    fn execute_with_outputs(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        let result = crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
+    fn execute_with_outputs(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<CompletedEffectOutputs, ExecutionError> {
+        super::movement_instruction::execute_movement_instruction(self.clone(), game, ctx)
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.spec.is_target() {
+            Some(&self.spec)
+        } else {
+            None
+        }
+    }
+
+    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
+        if self.spec.is_target() {
+            Some(self.spec.count())
+        } else {
+            None
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target to exile"
+    }
+}
+
+impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
+    fn select(&self, game: &mut GameState, ctx: &mut ExecutionContext)
+        -> Result<super::movement_instruction::SelectedZoneMovement, ExecutionError> {
                 let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield
                 {
                     if let Some(watcher_spec) = &self.leave_watcher {
                         let watchers = match resolve_objects_for_effect(game, ctx, watcher_spec) {
                             Ok(watchers) => watchers,
                             Err(ExecutionError::InvalidTarget) => {
-                                return Ok(CompletedEffectOutputs::aggregate_only(
+                                return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                                     EffectOutcome::count(0),
                                 ));
                             }
                             Err(error) => return Err(error),
                         };
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
+                            return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                                 EffectOutcome::count(0),
                             ));
                         }
                         let Some(&watcher) = watchers.first() else {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
+                            return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                                 EffectOutcome::count(0),
                             ));
                         };
                         if object_not_on_battlefield(game, watcher) {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
+                            return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                                 EffectOutcome::count(0),
                             ));
                         }
                         watcher
                     } else {
                         let Some(watcher) = current_source_watcher(game, ctx) else {
-                            return Ok(CompletedEffectOutputs::aggregate_only(
+                            return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                                 EffectOutcome::count(0),
                             ));
                         };
@@ -104,9 +146,13 @@ impl EffectExecutor for ExileUntilEffect {
                     ctx.source
                 };
 
-                let objects = resolve_objects_for_effect(game, ctx, &self.spec)?;
+                let objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
+                    Ok(objects) => objects,
+                    Err(ExecutionError::InvalidTarget) if !self.spec.is_target() => Vec::new(),
+                    Err(error) => return Err(error),
+                };
                 if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
+                    return Ok(super::movement_instruction::SelectedZoneMovement::Finished(
                         EffectOutcome::count(0),
                     ));
                 }
@@ -129,7 +175,8 @@ impl EffectExecutor for ExileUntilEffect {
                         })
                     })
                     .collect();
-                super::execute_zone_moves_with_outputs(game, ctx, moves, |game, ctx, receipts| {
+        let effect = self.clone();
+        Ok(super::movement_instruction::SelectedZoneMovement::moves(moves, move |game, ctx, receipts, _| {
                     let mut exiled_count = 0_i32;
                     let mut monarch_duration_stable_ids = Vec::new();
                     for (object_id, receipt) in receipts {
@@ -138,10 +185,13 @@ impl EffectExecutor for ExileUntilEffect {
                             && result.final_zone == Zone::Exile
                         {
                             for &new_id in &result.new_object_ids {
-                                if self.face_down {
+                                if let Some(owner) = &ctx.linked_exile_owner {
+                                    game.add_linked_exile_pair_member(owner.clone(), new_id);
+                                }
+                                if effect.face_down {
                                     game.set_face_down(new_id);
                                 }
-                                if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+                                if effect.duration == ExileUntilDuration::SourceLeavesBattlefield {
                                     game.add_exiled_with_source_link_returning_to(
                                         leave_watcher,
                                         new_id,
@@ -150,7 +200,7 @@ impl EffectExecutor for ExileUntilEffect {
                                 } else {
                                     game.add_exiled_with_source_link(ctx.source, new_id);
                                 }
-                                if (self.duration != ExileUntilDuration::SourceLeavesBattlefield
+                                if (effect.duration != ExileUntilDuration::SourceLeavesBattlefield
                                     || leave_watcher == ctx.source)
                                     && let Some(object) = game.object(new_id)
                                 {
@@ -163,7 +213,7 @@ impl EffectExecutor for ExileUntilEffect {
                                         snapshot,
                                     );
                                 }
-                                if self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                                if effect.duration == ExileUntilDuration::OpponentBecomesMonarch
                                     && let Some(exiled) = game.object(new_id)
                                 {
                                     monarch_duration_stable_ids.push(exiled.stable_id);
@@ -174,49 +224,21 @@ impl EffectExecutor for ExileUntilEffect {
                     }
 
                     if exiled_count > 0
-                        && self.duration == ExileUntilDuration::SourceLeavesBattlefield
+                        && effect.duration == ExileUntilDuration::SourceLeavesBattlefield
                     {
                         game.mark_return_exiled_when_source_leaves(leave_watcher);
                     }
                     if !monarch_duration_stable_ids.is_empty()
-                        && self.duration == ExileUntilDuration::OpponentBecomesMonarch
+                        && effect.duration == ExileUntilDuration::OpponentBecomesMonarch
                     {
                         game.track_exiled_until_opponent_becomes_monarch(
                             ctx.controller,
                             monarch_duration_stable_ids,
-                            self.return_zone,
+                            effect.return_zone,
                         );
                     }
                     Ok(EffectOutcome::count(exiled_count))
-                })
-            },
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::count(0),
-            ));
-        }
-        result
-    }
-
-    fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        if self.spec.is_target() {
-            Some(&self.spec)
-        } else {
-            None
-        }
-    }
-
-    fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
-        if self.spec.is_target() {
-            Some(self.spec.count())
-        } else {
-            None
-        }
-    }
-
-    fn target_description(&self) -> &'static str {
-        "target to exile"
+        }))
     }
 }
 

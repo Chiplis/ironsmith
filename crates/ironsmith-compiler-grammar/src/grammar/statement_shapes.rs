@@ -52,6 +52,38 @@ pub fn is_extra_die_ignore_lowest(tokens: &[OwnedLexToken]) -> bool {
     ]
 }
 
+/// Complete bounded coin replacements; these are static instructions, not
+/// conditional effects whose coin text may be split into executable clauses.
+fn complete_coin_modifier(tokens: &[OwnedLexToken], expected: &[&str], comma_after: usize) -> bool {
+    let mut word = 0;
+    let mut comma = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if word < expected.len() && token.is_word(expected[word]) {
+            word += 1;
+        } else if token.is_comma() && word == comma_after && !comma {
+            comma = true;
+        } else if token.is_period() && index + 1 == tokens.len() && word == expected.len() {
+            // The outer line owner may already have removed this terminal.
+        } else {
+            return false;
+        }
+    }
+    word == expected.len()
+}
+
+pub fn is_extra_coin_ignore_one(tokens: &[OwnedLexToken]) -> bool {
+    complete_coin_modifier(tokens, &[
+        "if", "you", "would", "flip", "a", "coin", "instead", "flip", "two", "coins", "and", "ignore", "one",
+    ], 6)
+}
+
+pub fn is_first_coin_batch_heads_win(tokens: &[OwnedLexToken]) -> bool {
+    complete_coin_modifier(tokens, &[
+        "the", "first", "time", "you", "flip", "one", "or", "more", "coins", "each", "turn",
+        "those", "coins", "come", "up", "heads", "and", "you", "win", "those", "flips",
+    ], 11)
+}
+
 pub fn parse_die_roll_adjustment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<DieRollAdjustmentShape> {

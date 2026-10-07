@@ -48,7 +48,7 @@ pub fn parse_take_extra_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     Ok(replacement_grammar::parse_extra_turn_shape(tokens)
-        .map(|shape| EffectAst::subject_verb_extra_turn_after_turn(shape.player, shape.anchor)))
+        .map(replacement_grammar::ExtraTurnShape::into_effect))
 }
 
 pub fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
@@ -472,6 +472,7 @@ pub fn parse_you_and_each_opponent_voted_with_you_sentence(
     });
 
     let opponent_effect = EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+                require_evidence: false,
         tag: crate::tag::CompilerReferenceTag::VotedWithYou.bind(),
         effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
             effects: vec![EffectAst::subject_verb(

@@ -26,6 +26,10 @@ pub fn parse_cycling_line_lexed(
     else {
         return Ok(None);
     };
+    // A keyword-scoped cost modifier is a static line, not a cycling price.
+    if word_refs.get(1).is_some_and(|word| matches!(*word, "abilities" | "costs")) {
+        return Ok(None);
+    }
     if cycling_head.context == ActivatedCyclingContext::Granted {
         return Ok(None);
     }
@@ -103,6 +107,7 @@ pub fn parse_cycling_line_lexed(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Cycling),
                 mana_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![effect]),
                 choices: Vec::new(),
@@ -142,13 +147,13 @@ pub fn parse_craft_line_lexed(
     };
     let material_text = crate::lexer::token_word_refs(spec.material_tokens).join(" ");
     let (material_filter, material_count) = match spec.material {
-        CraftMaterialKind::Artifact => (
-            craft_battlefield_or_graveyard_filter(CardType::Artifact),
-            ChoiceCount::exactly(1),
+        CraftMaterialKind::CardType { card_type, count } => (
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_type(card_type)),
+            ChoiceCount::exactly(count as usize),
         ),
-        CraftMaterialKind::Creature => (
-            craft_creature_battlefield_or_graveyard_filter(),
-            ChoiceCount::exactly(1),
+        CraftMaterialKind::Subtype { subtype, count } => (
+            craft_battlefield_or_graveyard_filter(ObjectFilter::default().with_subtype(subtype)),
+            ChoiceCount::exactly(count as usize),
         ),
         CraftMaterialKind::OneOrMore => (
             craft_any_battlefield_or_graveyard_filter(),
@@ -189,6 +194,7 @@ pub fn parse_craft_line_lexed(
     Ok(Some(ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: None,
                 mana_cost: ironsmith_core::TotalCost::from_costs(merged_costs),
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![return_transformed]),
                 choices: Vec::new(),
@@ -209,16 +215,16 @@ pub fn parse_craft_line_lexed(
     }))
 }
 
-fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
+fn craft_battlefield_or_graveyard_filter(material: ObjectFilter) -> ObjectFilter {
     let mut filter = ObjectFilter::default();
+    // One distinct selection across both zones. The battlefield branch uses
+    // control, the graveyard branch ownership; neither can include the source.
     filter.any_of = vec![
-        ObjectFilter::default()
-            .with_type(card_type)
+        material.clone()
             .in_zone(Zone::Battlefield)
             .controlled_by(PlayerFilter::You)
             .other(),
-        ObjectFilter::default()
-            .with_type(card_type)
+        material
             .in_zone(Zone::Graveyard)
             .owned_by(PlayerFilter::You)
             .other(),
@@ -227,18 +233,7 @@ fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
 }
 
 fn craft_any_battlefield_or_graveyard_filter() -> ObjectFilter {
-    let mut filter = ObjectFilter::default();
-    filter.any_of = vec![
-        ObjectFilter::permanent()
-            .in_zone(Zone::Battlefield)
-            .controlled_by(PlayerFilter::You)
-            .other(),
-        ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You)
-            .other(),
-    ];
-    filter
+    craft_battlefield_or_graveyard_filter(ObjectFilter::default())
 }
 
 fn craft_red_instant_or_sorcery_graveyard_filter() -> ObjectFilter {
@@ -248,25 +243,6 @@ fn craft_red_instant_or_sorcery_graveyard_filter() -> ObjectFilter {
         .with_colors(ColorSet::from_color(crate::color::Color::Red))
         .with_type(CardType::Instant)
         .with_type(CardType::Sorcery)
-}
-
-fn craft_creature_battlefield_or_graveyard_filter() -> ObjectFilter {
-    let mut filter = ObjectFilter::default();
-    filter.any_of = vec![
-        // CR 702.167a: the materials come from among *other* permanents you
-        // control (an animated craft artifact can't exile itself as one).
-        ObjectFilter::default()
-            .with_type(CardType::Creature)
-            .in_zone(Zone::Battlefield)
-            .controlled_by(PlayerFilter::You)
-            .other(),
-        ObjectFilter::default()
-            .with_type(CardType::Creature)
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You)
-            .other(),
-    ];
-    filter
 }
 
 fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
@@ -446,6 +422,7 @@ fn build_equip_ability(
     ParsedAbility {
         ability: Ability {
             kind: AbilityKind::Activated(ActivatedAbility {
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
                 mana_cost: total_cost,
                 effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                     EffectAst::subject_verb_attach(TargetAst::Source(None), target),
@@ -500,6 +477,7 @@ pub fn parse_reconfigure_line_lexed(
         .map(|(branch, target)| ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
+                    keyword: None,
                     mana_cost: total_cost.clone(),
                     effects: ironsmith_core::ResolutionProgram::from_effects(vec![
                         EffectAst::subject_verb(

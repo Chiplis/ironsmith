@@ -97,6 +97,10 @@ fn parse_combat_damage_trigger_lexed(
         .or_else(|| this_source_surface_for_words(&subject_words));
     let player_subject = trigger_subject_player_selector_lexed(subject_tokens).is_some();
     let one_or_more = has_leading_one_or_more(subject_tokens) || player_subject;
+    // The singular controller is quantified outside the group of creatures.
+    // A plural opponent qualifier intentionally retains one aggregate group.
+    let per_source_controller = one_or_more && subject_words.windows(3).any(|words|
+        matches!(words, ["an", "opponent", "controls"] | ["a", "player", "controls"]));
     let source_filter = parse_attack_trigger_subject_filter_lexed(subject_tokens)?;
     let Some(damage_idx_rel) =
         trigger_atom_token(&tokens[deals_idx + 1..], TriggerClauseAtom::Damage)
@@ -171,6 +175,7 @@ fn parse_combat_damage_trigger_lexed(
                 source,
                 player,
                 each_damaged_player,
+                per_source_controller,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -188,6 +193,7 @@ fn parse_combat_damage_trigger_lexed(
                 source,
                 player,
                 each_damaged_player,
+                per_source_controller,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None if player == PlayerFilter::Any => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -4193,6 +4199,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 player,
                 filter,
                 from_source,
+                first_draw_pair: None,
             });
         }
     }

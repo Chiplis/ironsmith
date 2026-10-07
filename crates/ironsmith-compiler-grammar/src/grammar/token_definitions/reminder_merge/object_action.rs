@@ -4,7 +4,36 @@ pub fn merge_token_reminder_definition(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
 ) -> bool {
-    match definition {
+    merge_token_definition_facts(definition, reminder, false)
+}
+
+/// The caller owns an explicit outer description or quoted ability, rather
+/// than an inferred parenthetical reminder definition.
+pub fn merge_authored_token_definition_facts(
+    definition: &mut TokenDefinitionSpec,
+    facts: &TokenReminderFacts,
+) -> bool {
+    merge_token_definition_facts(definition, facts, true)
+}
+
+fn merge_token_definition_facts(
+    definition: &mut TokenDefinitionSpec,
+    reminder: &TokenReminderFacts,
+    authored: bool,
+) -> bool {
+    let before = definition.clone();
+    if authored && !reminder.definition.keywords.is_empty()
+        && let TokenDefinitionSpec::Builtin(template) = definition
+    {
+        *definition = TokenDefinitionSpec::ModifiedBuiltin(ModifiedBuiltinTokenShape::new(*template));
+    }
+    let imported = match definition {
+        TokenDefinitionSpec::ModifiedBuiltin(shape) => {
+            for keyword in &reminder.definition.keywords {
+                if !shape.keywords.contains(keyword) { shape.keywords.push(*keyword); }
+            }
+            !reminder.definition.keywords.is_empty()
+        }
         TokenDefinitionSpec::Vehicle(VehicleTokenShape {
             flying,
             crew_amount,
@@ -63,5 +92,10 @@ pub fn merge_token_reminder_definition(
             has_definition_facts
         }
         _ => false,
-    }
+    };
+    // This legacy merge also imports implied reminder definitions. Until its
+    // caller retains exact source roles, newly imported facts cannot inherit
+    // the explicit-description evidence of the original template.
+    if !authored && *definition != before { definition.mark_unproven_ability_words(); }
+    imported
 }

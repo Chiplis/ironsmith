@@ -168,12 +168,10 @@ impl CostExecutableEffect for PayEnergyEffect {
         ctx: &mut ExecutionContext,
         _reason: crate::costs::PaymentReason,
     ) -> Result<(), CostValidationError> {
-        let payer = resolve_player_from_spec(game, &self.player, ctx).map_err(|error| {
-            CostValidationError::Other(format!("unable to resolve energy payer: {error:?}"))
-        })?;
-        let needed = resolve_nonnegative_u32(game, &self.amount, ctx).map_err(|error| {
-            CostValidationError::Other(format!("unable to resolve energy amount: {error:?}"))
-        })?;
+        let payer = resolve_player_from_spec(game, &self.player, ctx)
+            .map_err(CostValidationError::ExecutionFailed)?;
+        let needed = resolve_nonnegative_u32(game, &self.amount, ctx)
+            .map_err(CostValidationError::ExecutionFailed)?;
         let player = game
             .player(payer)
             .ok_or_else(|| CostValidationError::Other("unable to resolve payer".into()))?;

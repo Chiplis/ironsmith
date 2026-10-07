@@ -123,6 +123,7 @@ mod prepared_placement;
 pub(crate) use prepared_placement::{
     PreparedCounterPlacement, commit_prepared_counter_original_with_outputs,
     execute_scoped_counter_placements, prepare_counter_placement,
+    commit_scoped_counter_placement_originals_with_outputs,
 };
 
 mod placement;
@@ -176,38 +177,45 @@ pub(crate) fn transfer_counters_with_outputs(
         ctx,
         || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| {
-            let mut children = Vec::new();
-            if let Some((id, _)) = source {
-                children.push(remove_moved_counters_with_outputs(
-                    game, ctx, id, kind, budget,
-                )?);
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
+            let removal = source.map(|(id, _)| {
+                let event = crate::events::Event::remove_counters(id, kind, budget)
+                    .with_provenance(ctx.provenance);
+                prepare_counter_removal(game, ctx, event)
+            }).transpose()?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
-            children.push(put_moved_counters_with_outputs(
+            let placement = prepare_counter_placement(
                 game,
                 ctx,
-                destination,
-                kind,
-                budget,
-            )?);
+                crate::events::Event::put_counters(destination, kind, budget, ctx.cause.clone())
+                    .with_provenance(ctx.provenance),
+            )?;
             if ctx.decision_maker.awaiting_choice() {
-                return Ok(CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
+                return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
-            let outcome = EffectOutcome::aggregate_with_primary_result(
-                EffectOutcome::count(budget),
-                children.iter().map(|child| child.outcome.clone()),
-            );
-            let mut outputs = CompletedEffectOutputs::aggregate_only(outcome);
-            for child in children {
-                outputs.retain_owned_child(child);
+            let children = crate::effects::composition::execute_simultaneous_originals_with_default_outputs(
+                game,
+                ctx,
+                true,
+                |game, ctx| {
+                    let mut originals = Vec::new();
+                    if let Some(removal) = removal {
+                        originals.push(commit_prepared_counter_removal_original_with_outputs(
+                            game, ctx, removal,
+                        )?);
+                        if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
+                    }
+                    originals.push(commit_prepared_counter_original_with_outputs(game, ctx, placement)?);
+                    Ok(originals)
+                },
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
             }
-            Ok(outputs)
+            // MoveAll/MoveOne keep their historical budget receipt while the
+            // counted transfer instruction owns its actual-removal projection.
+            Ok(CompletedEffectOutputs::with_primary_result(EffectOutcome::count(budget), children))
         },
     )
 }

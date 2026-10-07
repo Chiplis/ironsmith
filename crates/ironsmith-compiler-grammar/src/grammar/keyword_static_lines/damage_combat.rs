@@ -10,6 +10,7 @@ use super::super::{leaf, primitives};
 pub enum DamageSourceControllerKind {
     None,
     You,
+    NotYou,
     Opponent,
 }
 
@@ -844,4 +845,102 @@ fn parse_passive_damage_prevention_head_lexed<'a>(input: &mut LexStream<'a>)
         combat_only: kind == Some(true),
         noncombat_only: kind == Some(false),
     })
+}
+
+
+/// A permanent prevention instruction, including the full recipient and optional
+/// damage-source noun phrase. Conditions, durations, and additional sentences
+/// are deliberately not part of this production.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PermanentDamagePreventionShape<'a> {
+    /// Empty only in a source-only sentence, which applies to every recipient.
+    pub damaged_tokens: &'a [OwnedLexToken],
+    pub source: Option<DamageSourceShape<'a>>,
+    pub combat_only: bool,
+    pub noncombat_only: bool,
+}
+
+pub fn parse_permanent_damage_prevention_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PermanentDamagePreventionShape<'_>> {
+    primitives::probe_all(tokens, parse_permanent_damage_prevention_lexed,
+        "permanent damage prevention instruction")
+}
+
+fn parse_permanent_damage_prevention_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PermanentDamagePreventionShape<'a>> {
+    primitives::phrase(&["prevent", "all"]).parse_next(input)?;
+    let kind = opt(alt((primitives::kw("combat").value(true),
+        primitives::kw("noncombat").value(false)))).parse_next(input)?;
+    primitives::phrase(&["damage", "that"]).parse_next(input)?;
+    let (damaged_tokens, source) = if opt(primitives::phrase(&["would", "be", "dealt"]))
+        .parse_next(input)?.is_some()
+    {
+        let damaged: &'a [OwnedLexToken] = if opt(primitives::kw("to")).parse_next(input)?.is_some() {
+            repeat_till::<_, _, (), _, _, _, _>(
+                1.., any.void(), peek(alt((primitives::kw("by").void(),
+                    primitives::sentence_end().void()))),
+            ).map(|((), _)| ()).take().parse_next(input)?
+        } else { &[] };
+        let source = if opt(primitives::kw("by")).parse_next(input)?.is_some() {
+            let tokens = repeat_till::<_, _, (), _, _, _, _>(
+                1.., any.void(), peek(primitives::sentence_end()),
+            ).map(|((), _)| ()).take().parse_next(input)?;
+            Some(permanent_prevention_source_shape(tokens)?)
+        } else { None };
+        if damaged.is_empty() && source.is_none() {
+            return Err(primitives::backtrack_err("permanent prevention", "a recipient or source"));
+        }
+        (damaged, source)
+    } else {
+        let source_tokens = repeat_till::<_, _, (), _, _, _, _>(
+            1.., any.void(), peek(primitives::phrase(&["would", "deal", "to"])),
+        ).map(|((), _)| ()).take().parse_next(input)?;
+        primitives::phrase(&["would", "deal", "to"]).parse_next(input)?;
+        let damaged = repeat_till::<_, _, (), _, _, _, _>(
+            1.., any.void(), peek(primitives::sentence_end()),
+        ).map(|((), _)| ()).take().parse_next(input)?;
+        (damaged, Some(permanent_prevention_source_shape(source_tokens)?))
+    };
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PermanentDamagePreventionShape {
+        damaged_tokens, source, combat_only: kind == Some(true), noncombat_only: kind == Some(false),
+    })
+}
+
+fn permanent_prevention_source_shape<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> WResult<DamageSourceShape<'a>> {
+    if tokens.iter().any(|token| matches!(token.kind,
+        crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Comma)) {
+        return Err(primitives::backtrack_err("permanent prevention source", "one complete noun phrase"));
+    }
+    // An explicit source noun has any-zone scope. Its controller and trailing
+    // qualities are kept separate for the shared semantic filter mapper.
+    if let Some(index) = tokens.iter().position(|token| token.is_any_word(&["source", "sources"])) {
+        let (controller, tail) = primitives::parse_prefix(&tokens[index + 1..], opt(alt((
+            primitives::phrase(&["you", "control"]).value(DamageSourceControllerKind::You),
+            alt((primitives::phrase(&["you", "don't", "control"]),
+                primitives::phrase(&["you", "dont", "control"])))
+                .value(DamageSourceControllerKind::NotYou),
+            alt((primitives::phrase(&["an", "opponent", "controls"]),
+                primitives::phrase(&["your", "opponents", "control"])))
+                .value(DamageSourceControllerKind::Opponent),
+        )))).ok_or_else(|| primitives::backtrack_err("damage source controller", "optional controller"))?;
+        let prefix = &tokens[..index];
+        let filter_tokens = if prefix.len() == 1 && prefix[0].is_any_word(&["a", "an", "any"]) {
+            &prefix[..0]
+        } else { prefix };
+        Ok(DamageSourceShape {
+            source_noun: true, filter_tokens,
+            controller: controller.unwrap_or(DamageSourceControllerKind::None),
+            trailing_filter_tokens: tail,
+        })
+    } else {
+        Ok(DamageSourceShape {
+            source_noun: false, filter_tokens: tokens,
+            controller: DamageSourceControllerKind::None, trailing_filter_tokens: &[],
+        })
+    }
 }

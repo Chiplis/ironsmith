@@ -261,6 +261,31 @@ fn token_rule_target_is_self(target_tokens: &[OwnedLexToken], named_token: Optio
         || named_token.is_some_and(|name| trimmed_render(target_tokens).eq_ignore_ascii_case(name))
 }
 
+fn parse_self_maximum_blockers_rule(
+    tokens: &[OwnedLexToken],
+    named_token: Option<&str>,
+) -> Option<TokenEmbeddedRuleShape> {
+    let negation = tokens.iter().position(|token| {
+        token.is_any_word(&["cant", "can't", "cannot"])
+    })?;
+    let subject = &tokens[..negation];
+    if !token_rule_target_is_self(subject, named_token) {
+        return None;
+    }
+    // The ordinary complete blocking grammar owns the quantity. Only the
+    // token's own subject is removed here; no token name selects a mechanic.
+    let crate::grammar::activation_costs::cant_shapes::BlockingCantFact::MaximumBlockers {
+        maximum_blockers, ..
+    } = crate::grammar::activation_costs::cant_shapes::parse_blocking_cant_fact_tokens(
+        &tokens[negation..],
+    )? else {
+        return None;
+    };
+    Some(TokenEmbeddedRuleShape::MaximumBlockers {
+        maximum: maximum_blockers,
+    })
+}
+
 pub fn parse_embedded_token_rule_tokens(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
@@ -268,6 +293,9 @@ pub fn parse_embedded_token_rule_tokens(
     let body_tokens = effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
         .map(|shape| shape.body_tokens)
         .unwrap_or(tokens);
+    if let Some(rule) = parse_self_maximum_blockers_rule(body_tokens, named_token) {
+        return Some(rule);
+    }
     for parser in [
         parse_reciprocal_non_subtype_blocking_rule,
         parse_dies_create_builtin_token_rule,
@@ -332,6 +360,32 @@ mod tests {
     use super::*;
     use crate::lexer::lex_line;
     use crate::types::Subtype;
+
+    #[test]
+    fn named_token_maximum_blockers_keeps_the_complete_typed_quantity() {
+        for (text, name, maximum) in [
+            ("The Tiger God can't be blocked by more than one creature.", Some("The Tiger God"), 1),
+            ("Unlisted Guardian can't be blocked by more than two creatures.", Some("Unlisted Guardian"), 2),
+            ("This token can't be blocked by more than three creatures.", None, 3),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let Some(TokenEmbeddedRuleShape::MaximumBlockers { maximum: actual, .. }) =
+                parse_embedded_token_rule_tokens(&tokens, name)
+            else {
+                panic!("complete self-restriction should retain its bound");
+            };
+            assert_eq!(actual, maximum);
+        }
+        for text in [
+            "Other Guardian can't be blocked by more than one creature.",
+            "The Tiger God can't be blocked by creatures with power 2 or less.",
+            "The Tiger God can't be blocked by more than one creature this turn.",
+            "The Tiger God can't be blocked by more than one creature and has flying.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert!(parse_embedded_token_rule_tokens(&tokens, Some("The Tiger God")).is_none());
+        }
+    }
 
     #[test]
     fn reciprocal_non_subtype_blocking_rule_is_typed() {
