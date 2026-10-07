@@ -368,6 +368,27 @@ impl UnlessPaysProgram {
     }
 }
 impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
+    fn finish_stopped(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        self.pending = None;
+        let mut facts = Vec::new();
+        if self.payment.is_none() && self.result.is_none() {
+            self.result = Some(if let Some(consequence) = self.consequence.take() {
+                let completed = consequence.finish_stopped(game, ctx)?;
+                facts = completed.facts;
+                completed.outputs
+            } else {
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
+            });
+        }
+        let mut completed = self.finish()?;
+        completed.facts.extend(facts);
+        Ok(completed)
+    }
+
     fn take_preparations(&mut self) -> Vec<crate::effects::ProgramPreparation> {
         std::mem::take(&mut self.preparations)
     }
@@ -1009,6 +1030,60 @@ mod tests {
 
         assert_ne!(result.status, crate::effect::OutcomeStatus::Declined);
         assert_eq!(game.player(alice).expect("alice exists").life, 15);
+    }
+
+    // UNRUN main/campaign integration regression: Stop preserves the actual
+    // prefix packet while its aggregate and child view share one history event.
+    #[test]
+    fn stopped_unless_consequence_retains_actual_prefix_without_duplicate_history() {
+        #[derive(Debug, Clone)]
+        struct Stop;
+        impl EffectExecutor for Stop {
+            fn execute(
+                &self,
+                _game: &mut GameState,
+                ctx: &mut ExecutionContext,
+            ) -> Result<EffectOutcome, ExecutionError> {
+                ctx.stop_resolution();
+                Ok(EffectOutcome::count(7))
+            }
+        }
+
+        for dispatched in [false, true] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let effect = UnlessPaysEffect::new_total_cost(
+                vec![Effect::gain_life(2), Effect::new(Stop), Effect::gain_life(9)],
+                PlayerFilter::You,
+                TotalCost::from_cost(Cost::life(30)),
+            );
+            let outputs = if dispatched {
+                crate::effects::execute_effect_with_outputs(
+                    &mut game,
+                    &Effect::new(effect),
+                    &mut ctx,
+                )
+            } else {
+                effect.execute_with_outputs(&mut game, &mut ctx)
+            }
+            .expect("successful Stop retains the completed consequence prefix");
+
+            assert!(ctx.resolution_stopped());
+            assert_eq!(game.player(alice).expect("alice exists").life, 22);
+            assert_eq!(outputs.outcome.events_of_type::<crate::events::LifeGainEvent>().count(), 1);
+            let event = outputs.outcome.events.iter()
+                .find(|event| event.downcast::<crate::events::LifeGainEvent>().is_some())
+                .expect("the stopped aggregate retains its real life-gain event");
+            let child = outputs.shared.iter()
+                .find(|child| child.outputs.outcome.events.iter().any(|owned| owned.ptr_eq(event)))
+                .expect("the original child packet retains the same event identity");
+            assert!(matches!(&child.ownership, crate::effects::SharedOutcomeOwnership::Batch));
+            assert_eq!(child.outputs.outcome.events_of_type::<crate::events::LifeGainEvent>().count(), 1);
+            assert_eq!(game.turn_store.turn_history.event_kind_count(crate::events::EventKind::LifeGain), 1);
+            assert_eq!(game.turn_store.turn_history.total_life_gained_for_players(&[alice]), 2);
+        }
     }
 
     #[test]

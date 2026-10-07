@@ -149,10 +149,14 @@ pub fn plan_prompt_mana_payment(
         // Simple boards finish the ordinary first-plan search in a handful of
         // nodes. Only a search that exceeds this deterministic budget opens
         // unfunded and leaves the funded proposal to the background worker.
-        if let Some(Ok(plan)) =
-            ManaPaymentAnalysis::new(game, request.clone()).step(PROMPT_FIRST_PLAN_BUDGET)
-        {
-            return Ok(plan);
+        match ManaPaymentAnalysis::new(game, request.clone()).step(PROMPT_FIRST_PLAN_BUDGET) {
+            Some(Ok(plan)) => return Ok(plan),
+            Some(Err(ManaPaymentFailure::NoLegalPlan
+                | ManaPaymentFailure::SearchLimitReached
+                | ManaPaymentFailure::ConflictingPreferences)) | None => {}
+            // An incomplete calculation is not an unpaid offer. Preserve the
+            // same typed failure boundary as the ordinary foreground planner.
+            Some(Err(error)) => return Err(error),
         }
         return Ok(unfunded_mana_payment_plan(game, request));
     }
@@ -7471,6 +7475,45 @@ mod token_resource_failure_tests {
             assert!(!game.is_tapped(source));
             assert_eq!(game.battlefield.len(), 1);
         }
+    }
+
+    // UNRUN: new-main foreground slicing must keep the campaign's typed
+    // resource/evidence failure boundary while leaving the live game intact.
+    #[test]
+    fn deferred_prompt_preserves_resource_and_waterbend_evidence_failures() {
+        struct RestoreDeferred(bool);
+        impl Drop for RestoreDeferred {
+            fn drop(&mut self) {
+                crate::game_loop::set_priority_analysis_deferred(self.0);
+            }
+        }
+        let _restore = RestoreDeferred(crate::game_loop::priority_analysis_deferred());
+        crate::game_loop::set_priority_analysis_deferred(true);
+        let (game, player, source, request) = fixture();
+        let next_id = game.next_object_id_counter();
+        let history = game.turn_store.turn_history.event_records.len();
+        assert!(matches!(
+            plan_prompt_mana_payment(&game, &request, true),
+            Err(ManaPaymentFailure::EffectExecutionFailed(
+                ExecutionError::ResourceLimitExceeded { .. }
+            ))
+        ));
+        let overflowing = ManaPaymentRequest::new(
+            player, source, crate::costs::PaymentReason::Effect,
+            crate::mana::ManaCost::from_symbols(vec![ManaSymbol::X; 2]).with_waterbend(),
+        ).with_x(u32::MAX);
+        assert!(matches!(
+            plan_prompt_mana_payment(&game, &overflowing, true),
+            Err(ManaPaymentFailure::EffectExecutionFailed(
+                ExecutionError::IncompleteEvidence(_)
+            ))
+        ));
+        assert!(!game.is_tapped(source));
+        assert_eq!(game.battlefield.len(), 1);
+        assert_eq!(game.player(player).unwrap().mana_pool.total(), 0);
+        assert_eq!(game.next_object_id_counter(), next_id);
+        assert_eq!(game.turn_store.turn_history.event_records.len(), history);
+        assert!(game.effect_store.pending_trigger_events.is_empty());
     }
 
     #[test]
