@@ -135,7 +135,15 @@ fn capture_counter_payment_with_projection(
         payable,
         record_zero_quantity,
         nominal_quantity,
-        cause: EventCause::from_cost(ctx.source, ctx.controller),
+        // Cost execution has already captured the requesting instruction's
+        // cause. Keep that source/controller/spell for effect-requested costs,
+        // using the same ordinary-cost fallback as every other payment owner.
+        cause: crate::costs::payment_event_cause(
+            ctx.source,
+            ctx.controller,
+            ctx.mana.payment_reason.unwrap_or_default(),
+            Some(&ctx.cause),
+        ),
         prepared: None,
     }))
 }
@@ -187,7 +195,9 @@ impl SimultaneousEffectProposal for CapturedCounterPayment {
             .all(|claim| matches!(claim, PaymentResourceClaim::Counters { count: 0, .. }))
         {
             let outcome = if self.record_zero_quantity {
-                EffectOutcome::count(0).with_requested_amount(0u32)
+                EffectOutcome::count(0)
+                    .with_requested_amount(0u32)
+                    .with_execution_fact(crate::effect::ExecutionFact::Accepted)
             } else {
                 EffectOutcome::count(0)
             };
@@ -195,7 +205,12 @@ impl SimultaneousEffectProposal for CapturedCounterPayment {
             return Ok(());
         }
         let prepared = with_payment_cause(ctx, &self.cause, |ctx| {
-            super::placement::prepare_counter_removal_cost(game, ctx, self.events.clone())
+            // The quantity-exporting counter owners distinguish physical
+            // removal from nominal X. Energy's existing result means paid
+            // energy and keeps its nominal count, including chosen-number use.
+            super::placement::prepare_counter_removal_cost(
+                game, ctx, self.events.clone(), self.record_zero_quantity,
+            )
         })?;
         if !ctx.decision_maker.awaiting_choice() {
             self.prepared = Some(prepared);
@@ -303,5 +318,121 @@ impl SimultaneousEffectCompletion for PaymentCompletion {
         with_payment_cause(ctx, &cause, |ctx| {
             inner.complete_with_outputs(game, ctx, original)
         })
+    }
+}
+
+#[cfg(test)]
+mod retained_payment_cause_tests {
+    use super::*;
+
+    struct PendingChoice(bool);
+    impl crate::decision::DecisionMaker for PendingChoice {
+        fn awaiting_choice(&self) -> bool { self.0 }
+        fn decide_boolean(
+            &mut self, _: &GameState, _: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.0 = true;
+            false
+        }
+    }
+
+    struct ScopedCompletion {
+        expected: EventCause,
+        terminal: u8,
+    }
+
+    impl SimultaneousEffectCompletion for ScopedCompletion {
+        fn prepare_draw_boundary_with_outputs(
+            self: Box<Self>, _: &mut GameState, ctx: &mut ExecutionContext,
+            original: EffectOutcome,
+        ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+            assert_eq!(ctx.cause, self.expected);
+            Ok(SimultaneousEffectCommit {
+                outcome: CompletedEffectOutputs::aggregate_only(original),
+                completion: Some(self),
+            })
+        }
+
+        fn observe_original(
+            &mut self, _: &mut GameState, ctx: &mut ExecutionContext,
+            original: &mut EffectOutcome,
+        ) -> Result<(), ExecutionError> {
+            assert_eq!(ctx.cause, self.expected);
+            assert_eq!(original.count_or_zero(), 4);
+            Ok(())
+        }
+
+        fn freeze(&mut self, _: &mut GameState) -> Result<(), ExecutionError> { Ok(()) }
+
+        fn complete(
+            self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+            original: EffectOutcome,
+        ) -> Result<EffectOutcome, ExecutionError> {
+            self.complete_with_outputs(game, ctx, original).map(CompletedEffectOutputs::into_outcome)
+        }
+
+        fn complete_with_outputs(
+            self: Box<Self>, game: &mut GameState, ctx: &mut ExecutionContext,
+            original: EffectOutcome,
+        ) -> Result<CompletedEffectOutputs, ExecutionError> {
+            assert_eq!(ctx.cause, self.expected);
+            if self.terminal == 1 {
+                return Err(ExecutionError::InternalError("counter completion test failure".into()));
+            }
+            if self.terminal == 2 {
+                let prompt = crate::decisions::context::BooleanContext::new(
+                    ctx.controller, Some(ctx.source), "Pending counter completion",
+                );
+                ctx.decision_maker.decide_boolean(game, &prompt);
+            }
+            let mut outputs = CompletedEffectOutputs::aggregate_only(original);
+            outputs.retain_owned_child(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(3)));
+            Ok(outputs)
+        }
+    }
+
+    // UNRUN: the completion adapter must keep the captured requesting cause
+    // through observation, a retained boundary, success, error and suspension.
+    #[test]
+    fn captured_counter_completion_restores_caller_scope_and_retains_owned_receipts() {
+        let payer = crate::PlayerId::from_index(1);
+        let requester = crate::PlayerId::from_index(0);
+        let source = crate::ObjectId::from_raw(10);
+        let request_source = crate::ObjectId::from_raw(20);
+        let caller_cause = EventCause::from_effect(source, payer);
+        let captured = EventCause {
+            cause_type: crate::events::cause::CauseType::Cost,
+            ..EventCause::from_spell_resolution(request_source, requester)
+        };
+        for terminal in 0..3 {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let mut decisions = PendingChoice(false);
+            let mut ctx = ExecutionContext::new(source, payer, &mut decisions).with_cause(caller_cause.clone());
+            let mut completion = Box::new(PaymentCompletion {
+                cause: captured.clone(),
+                inner: Box::new(ScopedCompletion { expected: captured.clone(), terminal }),
+            });
+            let mut original = EffectOutcome::count(4);
+            completion.observe_original(&mut game, &mut ctx, &mut original).unwrap();
+            assert_eq!(ctx.cause, caller_cause);
+            let boundary = completion.prepare_draw_boundary_with_outputs(&mut game, &mut ctx, original).unwrap();
+            assert_eq!(ctx.cause, caller_cause);
+            assert_eq!(boundary.outcome.outcome.count_or_zero(), 4);
+            let result = boundary.completion.unwrap().complete_with_outputs(
+                &mut game, &mut ctx, boundary.outcome.into_outcome(),
+            );
+            assert_eq!(ctx.cause, caller_cause);
+            assert_eq!(ctx.source, source);
+            assert_eq!(ctx.controller, payer);
+            assert_eq!(ctx.decision_maker.awaiting_choice(), terminal == 2);
+            if terminal == 1 {
+                assert!(matches!(result, Err(ExecutionError::InternalError(ref detail)) if detail == "counter completion test failure"));
+            } else {
+                let outputs = result.unwrap();
+                assert_eq!(outputs.outcome.count_or_zero(), 4);
+                assert_eq!(outputs.shared.len(), 1);
+                assert_eq!(outputs.shared[0].outputs.outcome.count_or_zero(), 3);
+            }
+        }
     }
 }

@@ -510,7 +510,8 @@ mod replacement_battlefield_owner_contract_tests {
             .power_toughness(crate::card::PowerToughness::fixed(2,2)).build();
         game.create_object_from_card(&card, owner, zone)
     }
-    fn check(return_all: bool, mode: u8) {
+    fn check(return_all: bool, mode: u8) { check_controller(return_all, mode, false); }
+    fn check_controller(return_all: bool, mode: u8, other_controller: bool) {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
         let parent = card(&mut game, "Battlefield parent", alice, Zone::Battlefield);
@@ -539,7 +540,8 @@ mod replacement_battlefield_owner_contract_tests {
         let effect = if return_all {
             Effect::new(crate::effects::ReturnAllToBattlefieldEffect::new(ObjectFilter::creature()
                 .in_zone(Zone::Graveyard).owned_by(crate::target::PlayerFilter::You), true))
-        } else { Effect::new(PutOntoBattlefieldEffect::you_control(ChooseSpec::tagged("selected"), true)) };
+        } else { Effect::new(PutOntoBattlefieldEffect::new(ChooseSpec::tagged("selected"), true,
+            if other_controller { crate::target::PlayerFilter::Specific(bob) } else { crate::target::PlayerFilter::You })) };
         let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
         if mode == 1 { assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_)))); }
         else if mode == 2 { assert!(ctx.decision_maker.awaiting_choice()); }
@@ -556,6 +558,8 @@ mod replacement_battlefield_owner_contract_tests {
             if mode == 4 { assert_eq!(game.object(first).unwrap().zone, Zone::Graveyard); }
             let second_arrived = game.find_object_by_stable_id(stable[1]).unwrap();
             assert_eq!(game.object(second_arrived).unwrap().zone, destination);
+            assert_eq!(game.object(second_arrived).unwrap().owner, alice);
+            assert_eq!(game.current_controller(second_arrived), Some(if other_controller { bob } else { alice }));
             assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
         }
         assert_eq!(ctx.get_tagged_all("it").unwrap()[0].object_id, sentinel.object_id);
@@ -583,4 +587,112 @@ mod replacement_battlefield_owner_contract_tests {
     #[test] fn return_all_addition_error_restores_owner() { check(true,1); }
     #[test] fn return_all_addition_pending_replays_owner() { check(true,2); }
     #[test] fn return_all_addition_binds_arrival() { check(true,3); }
+    // UNRUN: explicit destination controller is retained by the same native
+    // proposal through replacement completion, rollback, and resumed entry.
+    #[test] fn relative_controller_addition_sees_whole_batch() { check_controller(false,0,true); }
+    #[test] fn relative_controller_late_error_restores_originals() { check_controller(false,1,true); }
+    #[test] fn relative_controller_pending_replays_exact_entry() { check_controller(false,2,true); }
+    #[test] fn relative_controller_addition_binds_arrival() { check_controller(false,3,true); }
+
+    #[test]
+    fn relative_entry_resource_failure_rolls_back_every_original_and_can_retry() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId(0); let bob = PlayerId(1);
+        let source = card(&mut game, "Entry source", alice, Zone::Battlefield);
+        let originals = [card(&mut game, "First arrival", alice, Zone::Graveyard),
+            card(&mut game, "Second arrival", alice, Zone::Graveyard)];
+        let stable = originals.map(|id| game.object(id).unwrap().stable_id);
+        let mut shields = Vec::new();
+        for original in originals {
+            shields.push(game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(
+                source, bob, crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(original), Some(Zone::Graveyard), Some(Zone::Battlefield)),
+                ReplacementAction::Additionally(vec![Effect::new(crate::effects::InvestigateEffect::you(1))]),
+            )));
+        }
+        let snapshots = originals.iter().map(|id| ObjectSnapshot::from_object(game.object(*id).unwrap(), &game)).collect();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("entries", snapshots);
+        let effect = Effect::new(PutOntoBattlefieldEffect::new(ChooseSpec::tagged("entries"), true,
+            crate::target::PlayerFilter::Specific(bob)));
+        game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
+            max_created_tokens: 1, ..Default::default()
+        });
+        let before_ids = game.next_object_id_counter();
+        game.take_pending_trigger_events();
+        assert!(matches!(crate::effects::execute_effect(&mut game, &effect, &mut ctx),
+            Err(ExecutionError::ResourceLimitExceeded { .. })));
+        assert_eq!(game.next_object_id_counter(), before_ids);
+        assert!(originals.iter().all(|id| game.object(*id).unwrap().zone == Zone::Graveyard));
+        assert!(shields.iter().all(|id| game.effect_store.replacement_effects.get_effect(*id).is_some()));
+        assert!(game.take_pending_trigger_events().is_empty());
+        game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
+            max_created_tokens: 2, ..Default::default()
+        });
+        crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+        for original in stable {
+            let arrived = game.find_object_by_stable_id(original).unwrap();
+            assert_eq!(game.current_controller(arrived), Some(bob));
+            assert_eq!(game.object(arrived).unwrap().owner, alice);
+            assert!(game.is_tapped(arrived));
+        }
+        assert!(shields.iter().all(|id| game.effect_store.replacement_effects.get_effect(*id).is_none()));
+    }
+
+    #[test]
+    fn source_zone_qualification_is_an_exact_reference_without_a_selection_prompt() {
+        struct NoObjectChoice;
+        impl crate::decision::DecisionMaker for NoObjectChoice {
+            fn decide_objects(&mut self, _: &GameState, _: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+                panic!("the source reference is fixed, not a choice from its graveyard");
+            }
+        }
+        for zone in [Zone::Graveyard, Zone::Hand] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId(0); let bob = PlayerId(1);
+            let source = card(&mut game, "Same name", alice, zone);
+            let decoy = card(&mut game, "Same name", alice, Zone::Graveyard);
+            let stable = game.object(source).unwrap().stable_id;
+            let filter = ObjectFilter::source().in_zone(Zone::Graveyard)
+                .owned_by(crate::target::PlayerFilter::OwnerOf(crate::target::ObjectRef::Source));
+            let effect = Effect::new(PutOntoBattlefieldEffect::new(ChooseSpec::Object(filter), false,
+                crate::target::PlayerFilter::Specific(bob)));
+            let mut dm = NoObjectChoice;
+            let mut ctx = ExecutionContext::new(source, bob, &mut dm);
+            crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+            let current = game.find_object_by_stable_id(stable).unwrap();
+            assert_eq!(game.object(current).unwrap().zone, if zone == Zone::Graveyard { Zone::Battlefield } else { Zone::Hand });
+            assert_eq!(game.object(decoy).unwrap().zone, Zone::Graveyard);
+            if zone == Zone::Graveyard {
+                assert_eq!(game.current_controller(current), Some(bob));
+                assert_eq!(game.object(current).unwrap().owner, alice);
+                // The old source reference cannot follow another incarnation.
+                let hand = game.move_object_by_effect(current, Zone::Hand).unwrap();
+                let grave = game.move_object_by_effect(hand, Zone::Graveyard).unwrap();
+                crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
+                assert_eq!(game.object(grave).unwrap().zone, Zone::Graveyard);
+            }
+        }
+    }
+
+    #[test]
+    fn missing_player_or_object_binding_returns_a_checked_error_without_moving_cards() {
+        for missing_player in [false, true] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId(0);
+            let source = card(&mut game, "Bound source", alice, Zone::Graveyard);
+            let mut missing_collection = ObjectFilter::exact_tagged("missing").in_zone(Zone::Graveyard);
+            missing_collection.match_captured_public_destination = true;
+            let effect = Effect::new(PutOntoBattlefieldEffect::new(
+                if missing_player { ChooseSpec::Source } else { ChooseSpec::Object(missing_collection) }, false,
+                if missing_player { crate::target::PlayerFilter::AliasedTarget(Box::new(crate::target::PlayerFilter::Opponent)) }
+                    else { crate::target::PlayerFilter::You }));
+            let before_ids = game.next_object_id_counter();
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
+            assert!(matches!(result, Err(ExecutionError::InvalidTarget | ExecutionError::IncompleteEvidence(_))));
+            assert_eq!(game.object(source).unwrap().zone, Zone::Graveyard);
+            assert_eq!(game.next_object_id_counter(), before_ids);
+        }
+    }
 }

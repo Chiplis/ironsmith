@@ -231,6 +231,26 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        // "Enchanted creature" is the object currently attached to this
+        // replacement's source. An old damage snapshot may remember an Aura
+        // which has since moved; it cannot restore that obsolete relationship
+        // or substitute a new incarnation of the same creature.
+        // Singular source phrases compile to an identity tag, whereas some
+        // other attachment filters use the explicit inverse relation. Neither
+        // form may fall through to historical or intrinsic attachment evidence.
+        let requires_current_attachment = self.source_filter.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }) || self.source_filter.with_attached_object.as_deref().is_some_and(|filter| filter.source);
+        if requires_current_attachment {
+            let attached = ctx.source.and_then(|source| ctx.game.object(source))
+                .filter(|source| source.zone == Zone::Battlefield && !ctx.game.is_phased_out(source.id))
+                .and_then(|source| source.attached_to)
+                .and_then(|target| target.object_id());
+            if attached != Some(damage.source) {
+                return false;
+            }
+        }
         // A resolved source target retains its exact identity rather than
         // requiring that object to remain in its old zone or combat role.
         if self.source_filter == ObjectFilter::specific(damage.source) { return true; }

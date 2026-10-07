@@ -31,7 +31,7 @@ pub fn static_ability_zone_defaults(
             Zone::Exile,
             Zone::Command,
         ],
-        Some(SetColors | AddColors | MakeColorless) if source_only => all_zones(),
+        Some(SetColors | AddColors | MakeColorless | AddSubtypes) if source_only => all_zones(),
         Some(
             CharacteristicDefiningPT
             | ShuffleIntoLibraryFromGraveyard
@@ -48,6 +48,16 @@ fn all_zones() -> Vec<Zone> {
 }
 
 impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond> {
+    /// Subtypes an unconditional source-only ability defines (CR 604.3).
+    /// Printed/copied origin is checked separately from this structural fact.
+    pub fn characteristic_defining_subtypes(&self) -> Option<&[crate::Subtype]> {
+        match &self.payload {
+            StaticAbilityPayload::AddSubtypes { filter, subtypes }
+                if filter.is_source_only() && !subtypes.is_empty() => Some(subtypes),
+            _ => None,
+        }
+    }
+
     /// Colors a printed, unconditional source-only ability defines (CR 604.3).
     /// Callers must separately establish that the ability belongs to the
     /// object's rules text; an ordinary grant is not a CDA.
@@ -74,7 +84,8 @@ impl<T, E, C, Cond, ICond> StaticAbilityFunctionalZones for StaticAbility<T, E, 
         let source_only = match &self.payload {
             StaticAbilityPayload::ExileToExileInsteadOfGraveyard { filter, .. }
             | StaticAbilityPayload::ExileWouldDieInstead { filter, .. } => filter.source,
-            _ => self.characteristic_defining_colors().is_some(),
+            _ => self.characteristic_defining_colors().is_some()
+                || self.characteristic_defining_subtypes().is_some(),
         };
         let source_grant_zone = match &self.payload {
             StaticAbilityPayload::Grants(spec) if spec.filter.source => Some(spec.zone),
@@ -103,5 +114,28 @@ mod color_tests {
         assert_eq!(conditional.characteristic_defining_colors(), None);
         let restricted = ObjectFilter::source().in_zone(Zone::Battlefield);
         assert!(!restricted.is_source_only());
+    }
+}
+
+#[cfg(test)]
+mod subtype_tests {
+    use super::*;
+    use crate::{ObjectFilter, Subtype};
+    type TestStaticAbility = StaticAbility<(), (), (), (), crate::Condition>;
+    #[test]
+    fn only_unconditional_source_subtype_additions_have_all_zone_defaults() {
+        let source = TestStaticAbility::add_subtypes(ObjectFilter::source(), vec![Subtype::Wizard]);
+        assert_eq!(source.default_functional_zones(), all_zones());
+        assert_eq!(source.characteristic_defining_subtypes(), Some(&[Subtype::Wizard][..]));
+        let ordinary = TestStaticAbility::add_subtypes(ObjectFilter::creature(), vec![Subtype::Wizard]);
+        assert_eq!(ordinary.default_functional_zones(), vec![Zone::Battlefield]);
+        let conditional = source.with_condition(crate::Condition::YourTurn);
+        assert_eq!(conditional.default_functional_zones(), vec![Zone::Battlefield]);
+        assert_eq!(conditional.characteristic_defining_subtypes(), None);
+        let restricted = TestStaticAbility::add_subtypes(ObjectFilter::source().in_zone(Zone::Battlefield), vec![Subtype::Wizard]);
+        assert_eq!(restricted.default_functional_zones(), vec![Zone::Battlefield]);
+        let chosen = TestStaticAbility::add_chosen_creature_type(ObjectFilter::source(), "chosen type");
+        assert_eq!(chosen.default_functional_zones(), vec![Zone::Battlefield]);
+        assert_eq!(chosen.characteristic_defining_subtypes(), None);
     }
 }

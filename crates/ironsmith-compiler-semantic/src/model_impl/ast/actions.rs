@@ -1008,10 +1008,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 amount,
                 target,
                 duration,
+                combat_only,
                 follow_up_effects,
                 ..
             }) => f
                 .debug_struct("PreventDamage")
+                .field("combat_only", combat_only)
                 .field("amount", amount)
                 .field("target", target)
                 .field("duration", duration)
@@ -1045,9 +1047,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     target,
                     duration,
                     source_filter,
+                    of_chosen_color,
                 },
             ) => f
                 .debug_struct("PreventAllDamageToTargetFromSourceFilter")
+                .field("of_chosen_color", of_chosen_color)
                 .field("target", target)
                 .field("duration", duration)
                 .field("source_filter", source_filter)

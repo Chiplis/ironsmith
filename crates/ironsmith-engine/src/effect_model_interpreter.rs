@@ -790,13 +790,15 @@ where
             payload.target.clone(),
             payload.until.clone(),
         )
+        .with_filter(payload.damage_filter.clone())
         .with_follow_up_effects(convert_effects(
             payload.follow_up_effects.iter().cloned(),
             hooks,
         )?);
         if payload.combat_only {
-            prevent = prevent.with_filter(crate::prevention::DamageFilter::combat());
+            prevent.damage_filter.combat_only = true;
         }
+        prevent.source_color_of_your_choice = payload.source_color_of_your_choice;
         return Ok(Effect::new(prevent));
     }
     if let Some(payload) =
@@ -807,6 +809,7 @@ where
             payload.target.clone(),
             payload.until.clone(),
         )
+        .with_filter(payload.damage_filter.clone())
         .with_follow_up_effects(convert_effects(
             payload.follow_up_effects.iter().cloned(),
             hooks,
@@ -831,6 +834,11 @@ where
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RemoveAnyCountersAmongEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RemoveAnyCountersFromSourceEffect>(&effect)
     {
         return Ok(converted);
     }

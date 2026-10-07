@@ -2253,13 +2253,28 @@ pub(super) fn demonic_torment_compiled_text_keeps_combat_prevention_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn demonic_torment_grants_combat_only_damage_prevention_to_enchanted_creature() {
+pub(super) fn demonic_torment_owns_combat_only_damage_prevention_for_enchanted_creature() {
     let def = parse_oracle_card_definition("Demonic Torment");
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("PreventAllCombatDamageDealtByThisPermanent"),
-        "expected Demonic Torment to grant combat-only prevention, got {debug}"
+        debug.contains("PreventMatchingDamage") && debug.contains("combat_only: true"),
+        "expected Aura-owned combat-only prevention over its live attachment, got {debug}"
     );
+    let prevention = def.abilities.iter().find_map(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Static(ability) => {
+            let model = ability.canonical_model()?;
+            match model.payload {
+                ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) => Some(spec),
+                _ => None,
+            }
+        }
+        _ => None,
+    }).expect("expected Aura-owned prevention");
+    assert_eq!(prevention.source_filter.tagged_constraints, vec![ironsmith_core::TaggedObjectConstraint {
+        tag: "enchanted".into(),
+        relation: ironsmith_core::TaggedOpbjectRelation::IsTaggedObject,
+    }]);
+    assert!(prevention.source_filter.with_attached_object.is_none());
     assert!(
         !debug.contains("PreventAllDamageDealtByThisPermanent"),
         "expected Demonic Torment to avoid all-damage prevention, got {debug}"

@@ -788,6 +788,7 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
     };
     if !matches!(initial_prevention.target.unhinted(), ChooseSpec::AnyTarget)
         || initial_prevention.until != crate::effect::Until::EndOfTurn
+        || initial_prevention.damage_filter != ironsmith_core::DamageFilter::all()
         || !initial_prevention.follow_up_effects.is_empty()
         || initial_prevention.source_of_your_choice
         || initial_prevention.protect_you_and_permanents_you_control
@@ -867,6 +868,7 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
             matches!(prevention.target.base(), ChooseSpec::Tagged(tag) if tag == &initial.tag)
         }))
         || !prevention.follow_up_effects.is_empty()
+        || prevention.damage_filter != ironsmith_core::DamageFilter::all()
         || prevention.source_of_your_choice
         || prevention.protect_you_and_permanents_you_control
     {

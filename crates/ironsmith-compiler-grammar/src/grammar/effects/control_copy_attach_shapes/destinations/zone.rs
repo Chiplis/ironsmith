@@ -7,6 +7,10 @@ pub fn parse_onto_battlefield_destination_shape(
         permission_shapes::contains_tokens(tokens, &["from", "command", "zone"])
             || permission_shapes::contains_tokens(tokens, &["from", "the", "command", "zone"]);
     let normalized = word_tokens(tokens);
+    let owner_relative = permission_shapes::contains_tokens(&normalized, &["control", "of", "that"]);
+    if owner_relative && crate::util::trim_edge_punctuation_tokens(tokens).iter()
+        .any(|token| token.as_word().is_none())
+    { return None; }
     let (_, tail) = primitives::parse_prefix(&normalized, primitives::kw("battlefield").void())?;
     let mut destination_tail = tail.to_vec();
     let tapped = primitives::contains_word(&destination_tail, "tapped");
@@ -31,7 +35,11 @@ pub fn parse_onto_battlefield_destination_shape(
     destination_tail = cleaned;
 
     let mut controller = None;
-    if let Some(parsed) = parse_battlefield_controller_prefix(&destination_tail) {
+    let mut relative_controller = false;
+    if let Some(rest) = super::super::common::parse_relative_battlefield_controller_prefix(&destination_tail) {
+        relative_controller = true;
+        destination_tail = rest.to_vec();
+    } else if let Some(parsed) = parse_battlefield_controller_prefix(&destination_tail) {
         controller = Some(parsed.controller);
         destination_tail = parsed.rest.to_vec();
     }
@@ -44,7 +52,7 @@ pub fn parse_onto_battlefield_destination_shape(
         attached_to_tokens = Some(trim_lexed_commas(rest).to_vec());
         destination_tail.clear();
     }
-    if let Some((index, _, _)) =
+    if !relative_controller && !owner_relative && let Some((index, _, _)) =
         primitives::find_prefix(&destination_tail, || primitives::kw("instead"))
     {
         destination_tail.truncate(index);
@@ -64,7 +72,7 @@ pub fn parse_onto_battlefield_destination_shape(
         destination_tail.clear();
     }
 
-    if controller.is_none()
+    if controller.is_none() && !relative_controller
         && let Some(parsed) = parse_battlefield_controller_prefix(&destination_tail)
     {
         controller = Some(parsed.controller);
@@ -79,6 +87,7 @@ pub fn parse_onto_battlefield_destination_shape(
         attached_to_tokens,
         rest_graveyard_target,
         controller,
+        relative_controller,
         supported_tail,
     })
 }

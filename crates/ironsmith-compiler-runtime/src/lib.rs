@@ -4,6 +4,8 @@ use ironsmith_compiled_artifact::{
 };
 use ironsmith_compiler as compiler;
 #[cfg(test)]
+mod remove_any_source_counter_payload_tests;
+#[cfg(test)]
 use ironsmith_runtime_catalog::CardRegistryArtifactExt as _;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

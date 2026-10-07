@@ -150,6 +150,11 @@ pub fn parse_exile_top_then_put_from_among_tokens(
     else {
         return Ok(None);
     };
+    if control_copy_attach_shapes::has_relative_collection_entry_controller(second) {
+        return Err(CardTextError::ParseError(
+            "contextual-controller exiled collection entry requires an actor-owned selection program".into(),
+        ));
+    }
     let Some((
         mut count,
         mut filter,

@@ -168,12 +168,53 @@ fn pay_loyalty_crew_alternative(
     if ctx.decision_maker.awaiting_choice() {
         return Ok(payment);
     }
-    if payment.outcome.instruction_result().count_or_zero() != 1 {
+    if payment.outcome.requested_amount() != Some(1)
+        || payment.outcome.instruction_result().status != crate::effect::OutcomeStatus::Succeeded
+    {
         return Err(ExecutionError::Impossible(
             "No loyalty counter could be removed to pay crew cost".to_string(),
         ));
     }
     Ok(payment)
+}
+
+#[cfg(test)]
+mod loyalty_counter_payment_receipt_tests {
+    use super::*;
+
+    // UNRUN: replacement changes the physical action, not acceptance of the
+    // nominal loyalty cost that was available when this payment began.
+    #[test]
+    fn loyalty_crew_accepts_prevented_or_reduced_counter_payment() {
+        for prevented in [false, true] {
+            let payer = PlayerId::from_index(0);
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let vehicle = crate::card::CardBuilder::new(crate::CardId::new(), "Crew source")
+                .card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&vehicle, payer, crate::Zone::Battlefield);
+            let card = crate::card::CardBuilder::new(crate::CardId::new(), "Loyalty payer")
+                .card_types(vec![CardType::Planeswalker]).loyalty(3).build();
+            let walker = game.create_object_from_card(&card, payer, crate::Zone::Battlefield);
+            game.object_mut(walker).unwrap().counters.insert(CounterType::Loyalty, 3);
+            let action = if prevented { crate::replacement::ReplacementAction::Prevent }
+                else { crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Subtract(1)) };
+            let shield = game.effect_store.replacement_effects.add_one_shot_effect(
+                crate::replacement::ReplacementEffect::with_matcher(source, payer,
+                    crate::events::counters::matchers::WouldRemoveCountersMatcher::new(
+                        crate::target::ObjectFilter::specific(walker), Some(CounterType::Loyalty)), action));
+            let mut ctx = ExecutionContext::new_default(source, payer);
+            let payment = pay_loyalty_crew_alternative(&mut game, &mut ctx).unwrap();
+            assert_eq!(payment.outcome.requested_amount(), Some(1));
+            assert_eq!(payment.outcome.instruction_result().count_or_zero(), 1,
+                "the legacy direct caller retains its nominal payment result");
+            assert_eq!(payment.shared.len(), 1);
+            assert_eq!(payment.shared[0].outputs.outcome.instruction_result().count_or_zero(), 0,
+                "the physical child still records no loyalty removal");
+            assert_eq!(payment.outcome.instruction_result().status, crate::effect::OutcomeStatus::Succeeded);
+            assert_eq!(game.counter_count(walker, CounterType::Loyalty), 3);
+            assert!(game.effect_store.replacement_effects.get_effect(shield).is_none());
+        }
+    }
 }
 
 /// CR 702.122b: the "crews a Vehicle" event for one creature tapped to pay a

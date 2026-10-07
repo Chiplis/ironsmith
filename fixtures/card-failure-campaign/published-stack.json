@@ -1347,6 +1347,24 @@
       "draft": true,
       "validation_status": "UNVALIDATED_deferred_full_corpus",
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/862"
+    },
+    {
+      "series": "20261007-next",
+      "batch": "payment-analysis-prerequisite",
+      "branch": "wip/card-repair-next-main-payment-c5db2279",
+      "base": "main",
+      "working_main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "source_integration_commit": "c5db22796fdd42b3dc0807508320a7c1e6d01d86",
+      "remote_commit": "44e501aad0c0834c6f09e36adcc1c7c5e917f532",
+      "tree": "14e1d9e17c7fef8a2d5a3c8a24f926162cc6662b",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 866,
+      "draft": true,
+      "validation_status": "UNVALIDATED_source_reviewed_new_scenarios_UNRUN",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/866",
+      "new_source_card_credit": 0,
+      "verified_at": "2026-10-07T13:18:24Z"
     }
   ]
 }

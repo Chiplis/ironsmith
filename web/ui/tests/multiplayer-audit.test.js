@@ -443,8 +443,8 @@ test("canonicalJson sorts object keys recursively", () => {
 });
 
 test("historical signed audits remain signature-only evidence with their original checkpoint bytes", async () => {
-  for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22, 23]) {
-    const checkpoint = { version: protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : protocolVersion === 21 ? 4 : protocolVersion >= 19 ? 3 : 2, players: [], stack: [],
+  for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22, 23, 24]) {
+    const checkpoint = { version: protocolVersion === 24 ? 7 : protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : protocolVersion === 21 ? 4 : protocolVersion >= 19 ? 3 : 2, players: [], stack: [],
       objects: [{ id: 7, stableId: 7, manifested: true }] };
     if (protocolVersion >= 21) {
       checkpoint.objects[0].cloaked = false;
@@ -471,7 +471,7 @@ test("historical signed audits remain signature-only evidence with their origina
     assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "cloaked"), protocolVersion >= 21);
     assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "numericChoices"), protocolVersion >= 21);
     if (protocolVersion >= 21) {
-      assert.equal(transcript.finalPublicCheckpoint.version, protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : 4);
+      assert.equal(transcript.finalPublicCheckpoint.version, protocolVersion === 24 ? 7 : protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : 4);
       assert.equal(transcript.finalPublicCheckpoint.hiddenClaimLedgerDigest,
         "7".repeat(64));
       assert.equal(transcript.finalPublicCheckpoint.objects[0].numericChoices.records[0].number, 0);
@@ -497,6 +497,59 @@ test("historical signed audits remain signature-only evidence with their origina
     await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, { requireEngineReplay: false }),
       /genesis payload hash mismatch/);
   }
+});
+
+// Source-authored and UNRUN. This is signed synthetic model-shape evidence,
+// not a captured historical game or proof that old native projection worked.
+test("protocol24 counter payload evidence stays signature-only under the counter and Aura semantic boundary", async () => {
+  const effect = { kind: "RemoveAnyCountersFromSourceEffect", payload: {
+    counter_type: "PlusOnePlusOne", display_x: true, remove_all: false,
+  } };
+  const checkpoint = { version: 7, players: [{ id: 0, restrictedMana: [{
+    symbol: "Green", source: 17, source_controller: 0, source_chosen_creature_type: null,
+    restrictions: [{ PaymentTransaction: { restriction: "Any", on_spend: [{
+      predicate: "Any", effects: {
+        segments: [{ default_effects: [effect], self_replacements: [], starts_new_source_line: false }],
+        flattened_default_effects: [effect],
+      }, choices: [],
+    }] } }],
+  }] }], objects: [], stack: [], hiddenClaimLedgerDigest: "c".repeat(64) };
+  const checkpointHash = await publicCheckpointHash(checkpoint, webcrypto);
+  const transcript = await buildCurrentProtocolTranscript({
+    matchId: "historical-counter-static-semantics", players: [], actions: [],
+    protocolVersion: 24, initialPublicCheckpointHash: checkpointHash,
+  });
+  transcript.finalPublicCheckpoint = checkpoint;
+  const bytes = canonicalJson(transcript);
+  const report = await verifyLiveAuditTranscript(transcript, webcrypto, { requireEngineReplay: false });
+  assert.equal(report.valid, true);
+  assert.equal(report.engineReplay, null);
+  assert.equal(canonicalJson(transcript), bytes);
+  assert.equal(await publicCheckpointHash(transcript.finalPublicCheckpoint, webcrypto), checkpointHash);
+  let callbacks = 0;
+  for (const requireEngineReplay of [false, true]) {
+    await assert.rejects(verifyLiveAuditTranscript(transcript, webcrypto, {
+      requireEngineReplay, replayTranscript: async () => { callbacks++; },
+    }), /requires audit protocol 25/);
+  }
+  assert.equal(callbacks, 0);
+  const changed = cloneTestPayload(transcript);
+  const program = changed.finalPublicCheckpoint.players[0].restrictedMana[0]
+    .restrictions[0].PaymentTransaction.on_spend[0].effects;
+  program.segments[0].default_effects[0].payload.remove_all = true;
+  program.flattened_default_effects[0].payload.remove_all = true;
+  await assert.rejects(verifyLiveAuditTranscript(changed, webcrypto, { requireEngineReplay: false }),
+    /final public checkpoint hash mismatch/);
+  const relabeled = cloneTestPayload(transcript);
+  relabeled.protocolVersion = 25;
+  relabeled.match.protocolVersion = 25;
+  await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, { requireEngineReplay: false }),
+    /genesis payload hash mismatch/);
+  await assert.rejects(verifyLiveAuditTranscript(relabeled, webcrypto, {
+    requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
+  }), /checkpoint version 8/);
+  assert.equal(callbacks, 0);
+  assert.equal(canonicalJson(transcript), bytes);
 });
 
 test("auditStateHash is stable across key insertion order", async () => {

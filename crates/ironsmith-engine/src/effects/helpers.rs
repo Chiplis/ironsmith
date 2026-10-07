@@ -2938,6 +2938,16 @@ pub fn resolve_objects_for_effect_with_choice_description(
     spec: &ChooseSpec,
     choice_description: Option<String>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    if !spec.is_target()
+        && let ChooseSpec::Object(filter) = spec.base()
+        && filter.source
+    {
+        // An explicitly qualified source is a reference, never a choice from
+        // the named zone. Reuse the exact source/death-arrival resolver and
+        // preserve its zone and owner predicates instead of scanning by name
+        // or stable identity after another zone change.
+        return resolve_objects_from_spec(game, spec, ctx);
+    }
     if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
         && !crate::object_query::require_captured_public_collections(game, filter, &ctx.filter_context(game))
     {
@@ -3881,6 +3891,16 @@ pub fn resolve_objects_from_spec(
 
         // Object filter (non-targeted choice) - generally supplied via previous selection,
         // but some tags only effects resolve from tagged objects and filters.
+        ChooseSpec::Object(filter) if filter.source => {
+            let Some(id) = resolve_source_object_id(game, ctx) else {
+                return Ok(Vec::new());
+            };
+            let mut filter_ctx = ctx.filter_context(game);
+            filter_ctx.source = Some(id);
+            Ok(game.object(id)
+                .filter(|object| filter.matches(object, &filter_ctx, game))
+                .map(|_| vec![id]).unwrap_or_default())
+        }
         ChooseSpec::Object(filter) => {
             if filter.tagged_constraints.is_empty() {
                 let objects: Vec<ObjectId> = ctx

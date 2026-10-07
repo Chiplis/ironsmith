@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact11 and signed audit24. Restricted mana carries new
-// activation/combat models; blind-exile declarations add exact public evidence.
-// Historical digests retain their bytes; native recovery is unchanged.
-const PUBLIC_AUDIT_VERSION: u32 = 7;
+// Coordinated with artifact12 and signed audit25. Typed restricted-mana programs
+// expose prevention filters/color choices and constructed functional zones.
+// Historical digests retain their bytes; this is never a gameplay importer.
+const PUBLIC_AUDIT_VERSION: u32 = 8;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -69,6 +69,11 @@ fn sync_restricted_mana(
 #[cfg(test)]
 mod public_audit_boundary_11_7_24_tests {
     include!("public_audit_boundary_11_7_24_tests.rs");
+}
+
+#[cfg(test)]
+mod public_audit_boundary_12_8_25_tests {
+    include!("public_audit_boundary_12_8_25_tests.rs");
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1966,7 +1971,7 @@ mod public_audit_tests {
         let id = ObjectId::from_raw(wasm.add_card_to_zone(0, "Ornithopter".into(), "battlefield".into(), true).unwrap());
         let checkpoint = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         let unset = checkpoint(&wasm);
-        assert_eq!(unset["version"], 7);
+        assert_eq!(unset["version"], 8);
         let owner=ironsmith::linked_exile::LinkedExileOwner{host:id,
             pair:ironsmith_core::LinkedExilePair{definition:ironsmith_core::LinkedExileDefinition([81;32]),pair:0},
             acquisition:ironsmith::linked_exile::LinkedExileAcquisition::Printed};
@@ -1993,7 +1998,7 @@ mod public_audit_tests {
         let baseline = wasm.game.clone();
         let object_evidence = |wasm: &WasmGame| {
             let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-            assert_eq!(checkpoint["version"], 7);
+            assert_eq!(checkpoint["version"], 8);
             checkpoint["objects"].as_array().unwrap().iter()
                 .find(|object| object["id"] == id.0).unwrap().clone()
         };

@@ -630,16 +630,15 @@ pub fn parse_attached_conditional_keyword_otherwise_line(
         return Ok(None);
     };
     let prevention_tokens = trim_edge_punctuation(&second[prevention_start..]);
-    let Some(mut prevention) =
+    let Some(prevention) =
         parse_attached_prevent_all_damage_dealt_by_attached_line(&prevention_tokens)?
     else {
         return Ok(None);
     };
-    let StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. } = &mut prevention else {
-        return Ok(None);
-    };
-    *condition = Some(otherwise_condition);
-    grants.push(prevention);
+    grants.push(StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(prevention),
+        condition: otherwise_condition,
+    });
     Ok(Some(grants))
 }
 

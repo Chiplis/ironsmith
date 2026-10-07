@@ -155,6 +155,11 @@ pub(super) fn selection_shape(
     sentence: &SentenceInput,
     owner: PlayerAst,
 ) -> Result<Option<Selection>, CardTextError> {
+    if crate::grammar::effects::control_copy_attach_shapes::has_relative_collection_entry_controller(sentence.lowered()) {
+        return Err(CardTextError::ParseError(
+            "contextual-controller viewed collection entry requires an actor-owned selection program".into(),
+        ));
+    }
     if sentence.lowered().iter().any(|token| token.is_word("rest")) {
         return Ok(None);
     }
@@ -271,6 +276,9 @@ pub(super) fn same_sentence_shape(
     LookedRemainderShape,
 )> {
     let tokens = crate::lexer::trim_lexed_commas(sentence.lowered());
+    if crate::grammar::effects::control_copy_attach_shapes::has_relative_collection_entry_controller(tokens) {
+        return None;
+    }
     let action = sentence_markers::parse_leading_may_action_tokens(tokens, &["put"], true)?;
     let remainder = triple_grammar::parse_looked_remainder_shape(tokens)?;
     parse_counted_from_looked_cards_action(action.tail_tokens)?;

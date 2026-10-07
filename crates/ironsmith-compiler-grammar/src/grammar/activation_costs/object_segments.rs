@@ -338,6 +338,17 @@ pub fn parse_unattach_segment_tokens(
     match shape {
         UnattachCostShape::Source { reference_tokens } => {
             let source_words = primitives::TokenWordView::new(reference_tokens).word_refs();
+            // A named attachment inside its quoted grant is normalized to
+            // this marker. The creature owns the ability, but its granting
+            // Equipment is the object paid by the unattach cost.
+            if source_words == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+                return Ok(ActivationCostSegmentCst::UnattachChosen {
+                    count: 1,
+                    filter: ObjectFilter::tagged(
+                        crate::tag::CompilerReferenceTag::GrantingSource.key(),
+                    ).in_zone(Zone::Battlefield),
+                });
+            }
             if !contextual_source_reference(&source_words) {
                 return Err(unsupported(tokens, "unattach"));
             }
@@ -765,6 +776,10 @@ fn parse_sacrifice_count<'a>(input: &mut LexStream<'a>) -> WResult<ChoiceCount> 
 #[cfg(test)]
 #[path = "object_segments/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "object_segments/granting_unattach_tests.rs"]
+mod granting_unattach_tests;
 
 #[path = "object_segments/reference.rs"]
 mod reference_programs;

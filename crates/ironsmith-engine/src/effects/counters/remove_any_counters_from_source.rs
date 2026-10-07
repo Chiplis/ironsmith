@@ -10,84 +10,33 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
 
-/// Remove any number of counters from the source permanent.
-///
-/// Used for costs like:
-/// - "Remove any number of charge counters from this artifact"
-/// - "Remove X storage counters from this land"
-#[derive(Debug, Clone, PartialEq)]
-pub struct RemoveAnyCountersFromSourceEffect {
-    /// Optional counter type restriction.
-    pub counter_type: Option<CounterType>,
-    /// Whether display should use `X` instead of `any number`.
-    pub display_x: bool,
-    /// Whether this cost must remove every available matching counter.
-    pub remove_all: bool,
-}
+// Keep the compiler, artifact decoder, and runtime on the same typed payload.
+pub use ironsmith_core::RemoveAnyCountersFromSourceEffect;
 
-impl RemoveAnyCountersFromSourceEffect {
-    pub fn any_number(counter_type: Option<CounterType>) -> Self {
-        Self {
-            counter_type,
-            display_x: false,
-            remove_all: false,
-        }
+fn max_removable(
+    effect: &RemoveAnyCountersFromSourceEffect,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> Result<u32, String> {
+    let obj = game
+        .object(source)
+        .ok_or_else(|| "source not found".to_string())?;
+    if obj.zone != crate::zone::Zone::Battlefield {
+        return Err("source must be on the battlefield".to_string());
     }
 
-    pub fn x(counter_type: Option<CounterType>) -> Self {
-        Self {
-            counter_type,
-            display_x: true,
-            remove_all: false,
-        }
-    }
-
-    pub fn all(counter_type: Option<CounterType>) -> Self {
-        Self {
-            counter_type,
-            display_x: false,
-            remove_all: true,
-        }
-    }
-
-    fn max_removable(&self, game: &GameState, source: crate::ids::ObjectId) -> Result<u32, String> {
-        let obj = game
-            .object(source)
-            .ok_or_else(|| "source not found".to_string())?;
-        if obj.zone != crate::zone::Zone::Battlefield {
-            return Err("source must be on the battlefield".to_string());
-        }
-
-        Ok(if let Some(counter_type) = self.counter_type {
-            obj.counters.get(&counter_type).copied().unwrap_or(0)
-        } else {
-            obj.counters
-                .values()
-                .copied()
-                .try_fold(0u32, |total, count| {
-                    total.checked_add(count).ok_or_else(|| {
-                        "counter total exceeds the supported count range".to_string()
-                    })
-                })?
-        })
-    }
-
-    pub fn cost_display(&self) -> String {
-        let amount_text = if self.remove_all {
-            "all"
-        } else if self.display_x {
-            "X"
-        } else {
-            "any number of"
-        };
-        match self.counter_type {
-            Some(counter_type) => format!(
-                "Remove {amount_text} {} counters from this source",
-                counter_type.description(),
-            ),
-            None => format!("Remove {amount_text} counters from this source"),
-        }
-    }
+    Ok(if let Some(counter_type) = effect.counter_type {
+        obj.counters.get(&counter_type).copied().unwrap_or(0)
+    } else {
+        obj.counters
+            .values()
+            .copied()
+            .try_fold(0u32, |total, count| {
+                total.checked_add(count).ok_or_else(|| {
+                    "counter total exceeds the supported count range".to_string()
+                })
+            })?
+    })
 }
 
 impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
@@ -108,7 +57,7 @@ impl EffectExecutor for RemoveAnyCountersFromSourceEffect {
         if !self.references_cost_x() {
             return None;
         }
-        self.max_removable(game, source).ok()
+        max_removable(self, game, source).ok()
     }
 
     fn execute(
@@ -166,8 +115,7 @@ fn select_source_counter_removal(
     game: &GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<SourceCounterSelection, ExecutionError> {
-    let max_removable = effect
-        .max_removable(game, ctx.source)
+    let max_removable = max_removable(effect, game, ctx.source)
         .map_err(ExecutionError::Impossible)?;
 
     let description = if effect.remove_all {
@@ -392,7 +340,7 @@ impl CostExecutableEffect for RemoveAnyCountersFromSourceEffect {
         source: crate::ids::ObjectId,
         _controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        self.max_removable(game, source)
+        max_removable(self, game, source)
             .map(|_| ())
             .map_err(CostValidationError::Other)
     }

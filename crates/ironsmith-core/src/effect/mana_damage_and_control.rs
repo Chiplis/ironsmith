@@ -315,10 +315,57 @@ impl DiscardEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+/// Remove counters from the source permanent, including variable counter costs.
 pub struct RemoveAnyCountersFromSourceEffect {
+    /// Optional counter type restriction.
     pub counter_type: Option<crate::counter::CounterType>,
+    /// Whether display should use `X` instead of `any number`.
     pub display_x: bool,
+    /// Whether this cost must remove every available matching counter.
     pub remove_all: bool,
+}
+
+impl RemoveAnyCountersFromSourceEffect {
+    pub fn any_number(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+            remove_all: false,
+        }
+    }
+
+    pub fn x(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: true,
+            remove_all: false,
+        }
+    }
+
+    pub fn all(counter_type: Option<crate::counter::CounterType>) -> Self {
+        Self {
+            counter_type,
+            display_x: false,
+            remove_all: true,
+        }
+    }
+
+    pub fn cost_display(&self) -> String {
+        let amount_text = if self.remove_all {
+            "all"
+        } else if self.display_x {
+            "X"
+        } else {
+            "any number of"
+        };
+        match self.counter_type {
+            Some(counter_type) => format!(
+                "Remove {amount_text} {} counters from this source",
+                counter_type.description(),
+            ),
+            None => format!("Remove {amount_text} counters from this source"),
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -606,6 +653,9 @@ pub struct PreventDamageEffect<E> {
     pub amount: Value,
     pub target: ChooseSpec,
     pub until: Until,
+    /// Retained damage-kind/source restrictions on this finite shield.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub damage_filter: DamageFilter,
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
     pub protect_you_and_permanents_you_control: bool,
@@ -617,6 +667,7 @@ impl<E> PreventDamageEffect<E> {
             amount,
             target,
             until,
+            damage_filter: DamageFilter::all(),
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
@@ -630,6 +681,11 @@ impl<E> PreventDamageEffect<E> {
 
     pub fn with_source_of_your_choice(mut self) -> Self {
         self.source_of_your_choice = true;
+        self
+    }
+
+    pub fn with_filter(mut self, filter: DamageFilter) -> Self {
+        self.damage_filter = filter;
         self
     }
 
@@ -648,6 +704,12 @@ pub struct PreventAllDamageToTargetEffect<E> {
     /// Only combat damage is prevented (Inkshield).
     #[cfg_attr(feature = "serde", serde(default))]
     pub combat_only: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub damage_filter: DamageFilter,
+    /// Choose a color as this effect resolves, without changing the source's
+    /// stored choice or declaring another target.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_color_of_your_choice: bool,
 }
 
 impl<E> PreventAllDamageToTargetEffect<E> {
@@ -657,11 +719,23 @@ impl<E> PreventAllDamageToTargetEffect<E> {
             until,
             follow_up_effects: Vec::new(),
             combat_only: false,
+            damage_filter: DamageFilter::all(),
+            source_color_of_your_choice: false,
         }
     }
 
     pub fn combat_only(mut self) -> Self {
         self.combat_only = true;
+        self
+    }
+
+    pub fn with_filter(mut self, filter: DamageFilter) -> Self {
+        self.damage_filter = filter;
+        self
+    }
+
+    pub fn with_source_color_choice(mut self) -> Self {
+        self.source_color_of_your_choice = true;
         self
     }
 

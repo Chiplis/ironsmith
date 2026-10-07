@@ -2065,7 +2065,7 @@ fn resolve_choose_spec_it_tag_preserving_selection(
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(resolve_it_tag_key(tag, refs)?)),
         ChooseSpec::Object(filter) => {
             let resolved = resolve_it_tag(filter, refs)?;
-            if resolved.source && resolved.zone != Some(Zone::Exile) {
+            if resolved.source && resolved.zone.is_none() {
                 Ok(source_reference_hinted_spec(
                     ChooseSpec::Source,
                     resolved.source_surface.clone(),

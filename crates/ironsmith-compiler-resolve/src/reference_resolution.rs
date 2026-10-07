@@ -2525,6 +2525,12 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "targeted"));
                     }
                 }
+                SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { target, .. },
+                ) => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    remember_explicit_object_target_binding(target, frame);
+                }
                 SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventAllDamageToTarget {
                     target,
                     source_target,

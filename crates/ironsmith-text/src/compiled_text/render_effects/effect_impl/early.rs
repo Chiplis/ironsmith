@@ -2085,7 +2085,7 @@
             }
             Zone::Battlefield => {
                 let source_from_exile_target =
-                    describe_source_card_from_exile_target(&move_to_zone.target);
+                    describe_source_card_from_qualified_zone_target(&move_to_zone.target);
                 let target = if let Some(target) = source_from_exile_target {
                     target.to_string()
                 } else if let ChooseSpec::All(filter) = &move_to_zone.target
@@ -2233,12 +2233,16 @@
     if let Some(put_onto_battlefield) =
         effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
     {
-        let target = describe_source_card_from_exile_target(&put_onto_battlefield.target)
+        let target = describe_source_card_from_qualified_zone_target(&put_onto_battlefield.target)
             .map(str::to_string)
             .unwrap_or_else(|| describe_choose_spec(&put_onto_battlefield.target));
         let mut text = format!("Put {target} onto the battlefield");
         if put_onto_battlefield.tapped {
             text.push_str(" tapped");
+        }
+        if !matches!(&put_onto_battlefield.controller, PlayerFilter::You) {
+            text.push_str(&format!(" under {} control",
+                describe_possessive_player_filter(&put_onto_battlefield.controller)));
         }
         return text;
     }

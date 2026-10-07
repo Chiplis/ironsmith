@@ -2,7 +2,11 @@
 
 UNVALIDATED. No build, compilation, tests, code probes, formatters, generated
 artifacts, browser or replay execution ran. This cumulative source proposal
-follows published PR864 on the same f711839e main and frozen e8740178 corpus.
+records the historical published865 admission following PR864 on f711839e main
+and the frozen e8740178 corpus. The first recovered-body stack now starts on main
+5cc46c1; its fresh compatibility and actual recovery owners are documented in
+`card-failure-next-series-01-compatibility.md`. The source counts below describe
+that historical stage99 admission and are not updated by the compatibility gate.
 
 ## Fifteen new full-body proposals
 
@@ -54,7 +58,7 @@ Final compatibility and authored test review clears
 bcb508bab15ae49e4bfd40d67ab2e418635fbd55. No review here is executed proof or an
 exhaustive rules audit.
 
-The coordinated boundary is **artifact11 /public digest7 /signed audit24**;
+The historical stage99 boundary is **artifact11 /public digest7 /signed audit24**;
 **Manabrew3 is unchanged** because its actual serialized prompts and responses
 keep their existing shapes. Schema fingerprint:
 `cf9f06e2cea9c4facdfe9b4aad19eaa4bca1062e4e9c9f28d22de18920cbd401`.
@@ -64,8 +68,14 @@ contracts, historical23/6 signature-only preservation and required regeneration.
 The two new controller-grouping fields default missing input to false and emit
 explicit false/true. This is not byte-preserving model migration. Old artifacts
 and old-schema relabels are rejected at both envelope and actual materializer/
-registry admission. Native savepoints and authenticated full-genesis transcript
-replay remain gameplay recovery; public audit has no gameplay importer.
+registry admission. Native root/lane savepoints remain gameplay recovery. Current
+main also preserves exact local same-build WASM memory/global/reference images
+for trusted analysis seeds and checked persisted recovery. These are distinct from
+the removed generic gameplay serializer and public audit, which has no gameplay
+importer. Authenticated recovery verifies genesis/envelopes, accepted-prefix
+signatures and the resulting signed/public head; it may use verified local anchors
+plus suffix replay, with accepted-genesis full replay as fallback. Generated exact
+WASM glue/build/layout provenance remains an unverified execution prerequisite.
 
 Authored tests cover actual Serde variant indices and named JSON, public restricted
 mana predicates and direct/delayed typed programs, unencodable nested bodies,

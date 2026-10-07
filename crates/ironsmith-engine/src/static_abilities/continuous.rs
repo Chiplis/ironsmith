@@ -5376,6 +5376,11 @@ impl StaticAbilityKind for AddSubtypesForFilter {
         StaticAbilityId::AddSubtypes
     }
 
+    fn characteristic_defining_subtypes(&self) -> Option<&[Subtype]> {
+        (self.condition.is_none() && self.filter.is_source_only() && !self.subtypes.is_empty())
+            .then_some(self.subtypes.as_slice())
+    }
+
     fn display(&self) -> String {
         if self.filter == ObjectFilter::land()
             && let [subtype] = self.subtypes.as_slice()

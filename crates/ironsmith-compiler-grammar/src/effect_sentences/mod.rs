@@ -4,6 +4,8 @@ mod text_changes;
 mod characteristic_assertions;
 mod declared_any_target;
 mod duration_source_prevention;
+#[cfg(test)]
+mod temporary_prevention_binding_tests;
 pub(crate) mod life_unit_programs;
 mod temporary_attack_requirement;
 mod timed_draw_replacement;

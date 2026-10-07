@@ -54,6 +54,33 @@ pub fn parse_put_into_hand(
         tokens
     };
 
+    // The source zone may follow the destination: "put a card onto the
+    // battlefield from their hand". Move the complete bounded location in
+    // front of `onto` so every native target/filter reader sees the same
+    // source restriction. Do not accept arbitrary destination residue.
+    if let Some(onto) = tokens.iter().position(|token| token.is_word("onto"))
+        && let Some(from) = tokens.iter().enumerate().skip(onto + 1)
+            .find_map(|(index, token)| token.is_word("from").then_some(index))
+    {
+        let words = crate::lexer::token_word_refs(&tokens[from..]);
+        let source_location = matches!(words.as_slice(),
+            ["from", "your" | "their", "hand" | "graveyard" | "library"]
+            | ["from", "that", "player" | "players" | "player's", "hand" | "graveyard" | "library"]
+        );
+        if source_location {
+            let source_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[from..]);
+            if source_tokens.iter()
+                .any(|token| token.as_word().is_none())
+            {
+                return Err(CardTextError::ParseError("unsupported token in battlefield source location".into()));
+            }
+            let mut reordered = tokens[..onto].to_vec();
+            reordered.extend_from_slice(source_tokens);
+            reordered.extend_from_slice(&tokens[onto..from]);
+            return parse_put_into_hand(&reordered, subject);
+        }
+    }
+
     // "put a creature card and/or a land card from your hand onto the
     // battlefield" (Yuna's Decision): each articled card is its own optional
     // selection, so either or both may be put.

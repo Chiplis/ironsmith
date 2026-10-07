@@ -184,6 +184,9 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
                 DamagePreventionActionAst::PreventAllDamageToTarget { target, .. },
             )
             | SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventAllDamageToTargetFromSourceFilter { target, .. },
+            )
+            | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::PreventDamageToTargetPutCounters { target, .. },
             )
             | SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
@@ -389,7 +392,7 @@ pub fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
                         .with_surface_hint(ChooseSpecSurfaceHint::SacrificedObject(surface.kind));
                 }
             }
-            let spec = if filter.source && filter.zone != Some(Zone::Exile) {
+            let spec = if filter.source && filter.zone.is_none() {
                 source_reference_hinted_spec(ChooseSpec::Source, filter.source_surface.clone())
             } else if explicit_target_span.is_some() {
                 ChooseSpec::target(ChooseSpec::Object(filter.clone()))

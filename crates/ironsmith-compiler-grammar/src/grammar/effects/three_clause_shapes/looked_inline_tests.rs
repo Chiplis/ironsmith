@@ -1,4 +1,14 @@
 use super::*;
+
+// UNRUN: an unrecognized contextual controller is not the default controller.
+#[test]
+fn contextual_battlefield_collection_controllers_require_an_owner() {
+    for controller in ["their", "that player's"] {
+        let text = format!("a creature card from among them onto the battlefield under {controller} control");
+        let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+        assert!(parse_looked_move_action_shape(&tokens).is_none());
+    }
+}
 use crate::lexer::{lex_line, split_lexed_sentences};
 
 #[test]

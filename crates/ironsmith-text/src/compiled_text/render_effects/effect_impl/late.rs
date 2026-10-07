@@ -2896,17 +2896,26 @@
                 .from_card_types
                 .as_ref()
                 .is_none_or(|types| types.is_empty());
-        let damage_text = if is_default_filter {
+        let described_damage = if is_default_filter {
             "damage".to_string()
         } else {
-            describe_damage_filter(filter)
+            describe_damage_filter(filter).trim_start_matches("all ").to_string()
         };
+        let (damage_text, mut source_tail) = match described_damage.split_once(" from ") {
+            Some((damage, sources)) => (damage.to_string(), format!(" by {sources}")),
+            None => (described_damage, String::new()),
+        };
+        if prevent_all_target.source_color_of_your_choice {
+            if source_tail.is_empty() { source_tail.push_str(" by sources"); }
+            source_tail.push_str(" of the color of your choice");
+        }
         let timing = if matches!(prevent_all_target.duration, Until::EndOfTurn) {
             "this turn".to_string()
         } else {
             describe_until(&prevent_all_target.duration)
         };
-        if let Some(put) = prevention_put_counters_follow_up(&prevent_all_target.follow_up_effects)
+        if source_tail.is_empty()
+            && let Some(put) = prevention_put_counters_follow_up(&prevent_all_target.follow_up_effects)
         {
             if matches!(prevent_all_target.target.base(), ChooseSpec::Tagged(_)) {
                 return format!(
@@ -2928,10 +2937,11 @@
             );
         }
         let mut rendered = format!(
-            "Prevent all {} that would be dealt to {} {}",
+            "Prevent all {} that would be dealt to {} {}{}",
             damage_text,
             describe_choose_spec(&prevent_all_target.target),
-            timing
+            timing,
+            source_tail
         );
         if !prevent_all_target.follow_up_effects.is_empty() {
             rendered.push_str(&format!(

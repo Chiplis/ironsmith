@@ -6,8 +6,9 @@ Full-body source admission is recorded separately in
 `card-failure-stage99-source-admission.md`. The integrated corrections and boundary
 have bounded source review; actual runtime verification remains deferred.
 
-The successor is compiled artifact **11**, public audit digest **7**, and signed
-audit protocol **24**. Manabrew remains **3**. These numbers describe separate
+This historical published865 successor is compiled artifact **11**, public audit digest **7**, and signed
+audit protocol **24**. Manabrew remains **3**. The first current-main recovered-body successor is recorded
+in `card-failure-next-series-01-compatibility.md`. These numbers describe separate
 surfaces and do not imply executed compatibility or a gameplay serializer.
 
 ## Compiled semantics

@@ -1,0 +1,248 @@
+{
+  "changed_compiled_definition_entries": 30336,
+  "compile_acceptance_is_not_gameplay_correctness": true,
+  "current_strict_compiled_lossy_entries": 4,
+  "current_unique_cards": 32138,
+  "current_unique_compile_failures": 1994,
+  "current_unique_unresolved_including_lossy_and_permissive": 2005,
+  "dataset": {
+    "added_compile_entry_names": [],
+    "comparison_scope": "All selected source entries. Oracle text compared top-level and every face; semantic metadata projection includes fields consumed by loader and all faces. Other Scryfall record changes can include printing, prices, imagery and ranks.",
+    "current_alias_excess": 71,
+    "current_dataset_sha256": "de4cedd51e320d2983d80b38713213c0273fc7272d5e2a89908ec050061aeca5",
+    "current_entries_without_top_level_oracle_id": 71,
+    "current_multifaced_layout_counts": {
+      "adventure": 151,
+      "flip": 20,
+      "modal_dfc": 98,
+      "prepare": 67,
+      "reversible_card": 71,
+      "split": 123,
+      "transform": 388
+    },
+    "current_multifaced_source_entries": 918,
+    "current_nonnull_top_level_oracle_ids": 32138,
+    "current_semantic_projection_sha256": "8bcc5e77799e10c86a66efc1719c11645633985f985b5d16cfd5c3c26bb8b517",
+    "current_source_entries": 32209,
+    "current_source_face_entries": 33127,
+    "current_source_layout_counts": {
+      "adventure": 151,
+      "case": 13,
+      "class": 34,
+      "flip": 20,
+      "leveler": 25,
+      "meld": 21,
+      "modal_dfc": 98,
+      "mutate": 34,
+      "normal": 30965,
+      "prepare": 67,
+      "prototype": 19,
+      "reversible_card": 71,
+      "saga": 180,
+      "split": 123,
+      "transform": 388
+    },
+    "current_unique_oracle_identities_including_reversible_aliases": 32138,
+    "genuinely_new_oracle_identities": 0,
+    "identity_rule": "Top-level Oracle ID, otherwise unique face Oracle ID; reversible aliases are retained as compile entries and collapse only for unique-card counts.",
+    "linked_face_note": "Canonical status rows compile the selected front payload; other linked/back/adventure/prepared faces are not independently measured by this refresh.",
+    "matched_oracle_identities": 32138,
+    "missing_cards": [],
+    "missing_compile_entry_names": [],
+    "missing_original_oracle_identities": 0,
+    "new_cards": [],
+    "oracle_text_changed_compile_entries": 0,
+    "original_dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "original_semantic_projection_sha256": "8bcc5e77799e10c86a66efc1719c11645633985f985b5d16cfd5c3c26bb8b517",
+    "original_source_entries": 32209,
+    "original_unique_oracle_identities_including_reversible_aliases": 32138,
+    "renamed_or_alias_changed": [],
+    "renamed_or_alias_changed_oracle_identities": 0,
+    "semantic_metadata_changed_compile_entries": 0,
+    "source_records_changed_in_any_field": 32069
+  },
+  "default_audit": {
+    "completed": true,
+    "exit_code": 0,
+    "finished_at": "2026-10-07T13:34:12.785232+00:00",
+    "full_coverage": true,
+    "processes": 1,
+    "snapshot_sha256": "46124348e86cfd4a0c80f3a502dd78ad5ac1c911f96d06425ae1cef24c3cb183",
+    "started_at": "2026-10-07T12:21:39.944056+00:00"
+  },
+  "entry_regression_signal_counts": {
+    "new_semantic_mismatch_heuristic": 593,
+    "previously_supported_entry_now_unresolved": 153,
+    "similarity_score_decrease": 854
+  },
+  "entry_summary": {
+    "canonical_card_count": 32209,
+    "diagnostic_group_count": 912,
+    "diagnostic_route_counts": {
+      "oracle_only:compiled": 1,
+      "oracle_only:failed": 1905,
+      "parse_input:failed": 1906
+    },
+    "diagnostic_route_record_count": 3812,
+    "failing_card_count": 2008,
+    "failure_category_counts": {
+      "allow_unsupported_fallback": 7,
+      "compiler_panic": 1,
+      "lossy_compilation": 4,
+      "parser_failure": 1905,
+      "semantic_output_failure": 88,
+      "strict_compiled": 30201,
+      "unsupported_mechanic": 3
+    },
+    "parse_lossy_card_count": 1916,
+    "parse_status_counts": {
+      "compiled_with_allow_unsupported": 7,
+      "parse_failed": 1997,
+      "strict_compiled": 30205
+    },
+    "parser_route_count": null,
+    "parser_route_count_note": "The status DB does not record parser-route identities; diagnostic groups are not routes.",
+    "semantic_mismatch_card_count": 1343,
+    "supported_card_count": 30201
+  },
+  "historical_40_current_status": {
+    "currently_unresolved": 0,
+    "missing": 0,
+    "still_supported": 40
+  },
+  "historical_source_proposed_1256_current_status": {
+    "missing": 0,
+    "supported": 1201,
+    "unresolved": 55
+  },
+  "linked_faces_independently_measured": false,
+  "local_new_cohort_current_main_counts": [
+    {
+      "current_main_supported": 2,
+      "current_main_unresolved": 11,
+      "family_id": "copular-characteristic-statics",
+      "identities": 13
+    },
+    {
+      "current_main_supported": 0,
+      "current_main_unresolved": 3,
+      "family_id": "battlefield-destination-references",
+      "identities": 3
+    },
+    {
+      "current_main_supported": 6,
+      "current_main_unresolved": 5,
+      "family_id": "temporary-prevention-bindings",
+      "identities": 11
+    }
+  ],
+  "matched_original_identity_comparison": {
+    "recovered": 1379,
+    "regressed": 151,
+    "still_failing": 1854,
+    "still_supported": 28754
+  },
+  "matched_original_identity_comparison_oracle_unchanged": {
+    "recovered": 1379,
+    "regressed": 151,
+    "still_failing": 1854,
+    "still_supported": 28754
+  },
+  "old_historical_counts": {
+    "baseline_unique_unresolved": 3233,
+    "previously_measured_recoveries": 40,
+    "previously_measured_remainder": 3193,
+    "source_claimed_coverage_is_not_measured": 1256
+  },
+  "original_unique_unresolved": 3233,
+  "prior_55_gate_counts": {
+    "authoritative_status_counts": {
+      "compiled_with_allow_unsupported": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      },
+      "parse_failed": {
+        "compile_entries": 55,
+        "unique_oracle_ids": 54
+      }
+    },
+    "diagnostic_category_counts": {
+      "allow_unsupported_fallback": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      },
+      "parser_failure": {
+        "compile_entries": 40,
+        "unique_oracle_ids": 40
+      },
+      "semantic_output_failure": {
+        "compile_entries": 14,
+        "unique_oracle_ids": 13
+      },
+      "unsupported_mechanic": {
+        "compile_entries": 1,
+        "unique_oracle_ids": 1
+      }
+    },
+    "failing_compile_entries": 56,
+    "note": "Authoritative parse_failed includes semantic-output-marker rejections and generated unsupported mechanics. These are not extra failures and are distinct from accepted semantic_mismatch heuristic flags. The primary unresolved gate is unchanged: strict_compiled with no parse error, parse loss or unimplemented content. One Oracle identity can have multiple alias entry outcomes, so status/category unique counts are not additive.",
+    "tag_provenance": {
+      "download_uri": "https://data.scryfall.io/oracle-tags/oracle-tags-20261003090035.jsonl.gz",
+      "functional_selection_sha256": "fd85705c197a2654c38e421b07545e7e1a45af417665a7d37118e60fdb5632e4",
+      "metadata_sha256": "56373622482be80972a84ee2cdc71784eaecb825e0202fe8bdc414fe64ddb39c",
+      "raw_file": "oracle-tags-20261003090035.jsonl.gz",
+      "raw_sha256": "1a6c699e871041a077a7f20f964fb1a9679906fb2184e7941b8bc2ea9c43c6a1",
+      "source_uri": "https://api.scryfall.com/bulk-data/bd8df61e-5d0a-47a2-9086-40137a645b98",
+      "updated_at": "2026-10-03T09:00:35.876+00:00"
+    },
+    "tag_scope": "Pinned October 3 selected functional categories; card-level overlapping triage hints, not root-cause or runtime correctness proof. Ancestor-only labels are derived.",
+    "unique_rehold_identities": 55
+  },
+  "root_diagnostic_group_count": 923,
+  "scryfall_provenance": {
+    "download_uri": "https://data.scryfall.io/default-cards/default-cards-20261007090547.jsonl.gz",
+    "filter_rules": {
+      "additional_field": "first_printed_set_name from earliest eligible printing",
+      "deduplication": "oracle_id; fallback exact name when missing",
+      "formats": [
+        "commander",
+        "standard",
+        "modern",
+        "legacy",
+        "vintage"
+      ],
+      "legality": "legal in at least one supported format",
+      "paper": "reject games list excluding paper; reject digital=true",
+      "print_preference": "English, paper, non-digital, non-full-art, latest released_at/set/collector_number/id"
+    },
+    "filter_source_sha256": {
+      "download_scryfall_cards.py": "673033fd72aeae43d7db7fe6f1a84fc9c0dfdffc9ce88ea74eea3ac3683f92a1",
+      "stream_scryfall_blocks.py": "3c86e0b585bcf5a60df6efe2ef3ef685665ac5f401ee72c9b2ca88546aa0977f"
+    },
+    "filtered_bytes": 166744940,
+    "filtered_path": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/data/cards-current.json",
+    "filtered_sha256": "de4cedd51e320d2983d80b38713213c0273fc7272d5e2a89908ec050061aeca5",
+    "finished_at": "2026-10-07T12:17:06.673884+00:00",
+    "kept_cards": 32209,
+    "metadata_source_url": "https://api.scryfall.com/bulk-data/default-cards",
+    "raw_bytes": 78779281,
+    "raw_path": "/workspace/scratch/bc560e8d90ff/ironsmith-card-refresh-20261007/reports/current-refresh-20261007/data/default-cards-20261007090547.jsonl.gz",
+    "raw_sha256": "43da5fff200a7c8087eaa5b7bf80a64cc17998a7f92ad6b9d7508bafaef5f0d0",
+    "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_updated_at": "2026-10-07T09:05:47.951+00:00",
+    "started_at": "2026-10-07T12:16:28.782430+00:00",
+    "total_entries": 118601
+  },
+  "semantic_mismatch_by_compile_status": {
+    "compiled_with_allow_unsupported": 2,
+    "strict_compiled": 1341
+  },
+  "single_refresh_only": true,
+  "source": {
+    "commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "status": "",
+    "tree": "2ef96adada1e40b7f39922f24a1e4788de1a7386"
+  },
+  "tests_and_gameplay_verification": "not run; implementation-first policy resumes",
+  "unique_oracle_identity_regression_signals": 1003
+}

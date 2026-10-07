@@ -6170,6 +6170,7 @@ pub(super) fn describe_player_protection_from_everything_pair(
     if !same_player
         || prevent.duration != cant.duration
         || prevent.damage_filter != crate::prevention::DamageFilter::all()
+        || prevent.source_color_of_your_choice
         || !prevent.follow_up_effects.is_empty()
     {
         return None;

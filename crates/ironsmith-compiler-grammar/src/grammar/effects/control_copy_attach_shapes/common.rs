@@ -41,8 +41,7 @@ fn you_controller(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()> {
 
 fn owner_controller(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()> {
     primitives::kw("under").parse_next(input)?;
-    alt((
-        (
+    (
             alt((
                 primitives::kw("its"),
                 primitives::kw("his"),
@@ -56,19 +55,63 @@ fn owner_controller(input: &mut LexStream<'_>) -> winnow::error::ModalResult<()>
                 primitives::kw("owners'"),
             )),
         )
-            .void(),
-        primitives::phrase(&["that", "players"]),
-        primitives::phrase(&["that", "player"]),
-    ))
     .void()
     .parse_next(input)?;
     control_action.parse_next(input)
+}
+
+/// The pronoun denotes the acting/previously identified player, not the
+/// entering card's owner. Consume only the controller phrase; callers still
+/// have to account for every remaining destination token.
+pub fn parse_relative_battlefield_controller_prefix(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    for words in [
+        &["under", "their", "control"][..],
+        &["under", "that", "player", "control"][..],
+        &["under", "that", "players", "control"][..],
+        &["under", "that", "player's", "control"][..],
+    ] {
+        if let Some(((), rest)) = primitives::parse_prefix(tokens, primitives::phrase(words)) {
+            return Some(trim_lexed_commas(rest));
+        }
+    }
+    None
+}
+
+/// A collection selection cannot ignore a contextual entry controller merely
+/// because its older owner/you-only prefix reader does not recognize it.
+pub fn has_relative_collection_entry_controller(tokens: &[OwnedLexToken]) -> bool {
+    // This is a rejection boundary, not a semantic parser: a malformed token
+    // inside a recognizable contextual suffix must not evade the rejection.
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    permission_shapes::contains_tokens(tokens, &["from", "among"])
+        && tokens.iter().any(|token| token.is_word("battlefield"))
+        && crate::word_primitives::any_sequence_occurs(&words, &[
+            &["under", "their", "control"],
+            &["under", "that", "player", "control"],
+            &["under", "that", "players", "control"],
+            &["under", "that", "player's", "control"],
+        ])
 }
 
 pub fn parse_battlefield_controller_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldControllerPrefix<'_>> {
     let tokens = trim_lexed_commas(tokens);
+    // This possessive is the owner of each moved card, not an earlier player.
+    // Keep it distinct from "under that player's control".
+    for words in [
+        &["under", "control", "of", "that", "cards", "owner"][..],
+        &["under", "control", "of", "that", "card's", "owner"][..],
+    ] {
+        if let Some(((), rest)) = primitives::parse_prefix(tokens, primitives::phrase(words)) {
+            return Some(BattlefieldControllerPrefix {
+                controller: BattlefieldControllerShape::Owner,
+                rest: trim_lexed_commas(rest),
+            });
+        }
+    }
     if let Some(((), rest)) = primitives::parse_prefix(tokens, you_controller) {
         return Some(BattlefieldControllerPrefix {
             controller: BattlefieldControllerShape::You,

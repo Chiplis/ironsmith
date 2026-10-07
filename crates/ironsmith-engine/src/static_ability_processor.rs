@@ -397,12 +397,13 @@ fn source_abilities(
         let Some(ability) = grant.materialize() else { continue; };
         let origin = object.temporary_static_ability_grants.origin(index)
             .expect("temporary grant has a paired origin").clone();
-        // A temporary grant is not printed/copied rules text. Color setters
-        // use the host's ordinary zone (CR 113.6), not a CDA's all-zone default.
+        // A temporary grant is not printed/copied rules text. Source color and
+        // subtype definitions use the host's ordinary zone (CR 113.6), not a CDA's all-zone default.
         // Other grant families keep their existing policy.
-        let is_color_definition = ability.characteristic_defining_colors().is_some();
+        let is_characteristic_definition = ability.characteristic_defining_colors().is_some()
+            || ability.characteristic_defining_subtypes().is_some();
         let ability = crate::ability::Ability::static_ability(ability);
-        let ability = if is_color_definition {
+        let ability = if is_characteristic_definition {
             let zone = if object.has_card_type(crate::types::CardType::Instant)
                 || object.has_card_type(crate::types::CardType::Sorcery)
             { Zone::Stack } else { Zone::Battlefield };

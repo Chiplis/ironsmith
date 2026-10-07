@@ -117,14 +117,12 @@ pub fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     {
         return Ok(None);
     }
-    let display = "prevent all damage that would be dealt by enchanted creature".to_string();
-    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
-        ability: Box::new(StaticAbilityAst::Static(StaticAbility::new(
-            crate::static_abilities::PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT,
-        ))),
-        display,
-        condition: None,
-    }))
+    // This instruction belongs to the Aura. A grant would move the prevention
+    // source/controller to the enchanted creature and let ability removal on
+    // that creature disable it. Share the persistent reader's exact payload so
+    // both complete registry readings agree without choosing an arbitrary one.
+    Ok(crate::keyword_static::parse_persistent_filtered_damage_prevention_line(tokens)?
+        .map(StaticAbilityAst::Static))
 }
 
 pub fn parse_attached_prevent_all_damage_dealt_to_and_by_attached_line(
@@ -154,14 +152,8 @@ pub fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
     {
         return Ok(None);
     }
-    let display = "prevent all combat damage that would be dealt by enchanted creature".to_string();
-    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
-        ability: Box::new(StaticAbilityAst::Static(StaticAbility::new(
-            crate::static_abilities::PREVENT_ALL_COMBAT_DAMAGE_DEALT_BY_THIS_PERMANENT,
-        ))),
-        display,
-        condition: None,
-    }))
+    Ok(crate::keyword_static::parse_persistent_filtered_damage_prevention_line(tokens)?
+        .map(StaticAbilityAst::Static))
 }
 
 pub fn parse_attached_prevent_all_damage_dealt_to_attached_line(

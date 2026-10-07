@@ -15,6 +15,37 @@ fn parses_prevent_next_damage_shape() {
     assert!(shape.protects_you_and_permanents_you_control);
 }
 
+// Authored for the source-only campaign; execution is deferred.
+#[test]
+fn finite_prevention_retains_combat_kind_and_both_turn_positions() {
+    for text in [
+        "Prevent the next 1 combat damage that would be dealt to you this turn.",
+        "Prevent the next 4 combat damage that would be dealt this turn to target creature you control.",
+    ] {
+        let tokens = lex(text);
+        let shape = parse_prevent_next_damage_tokens(&tokens).expect("complete finite shield");
+        assert!(shape.combat_only);
+        assert!(!shape.source_of_your_choice);
+    }
+    let tokens = lex("Prevent the next 4 damage that would be dealt this turn to target creature you control.");
+    let shape = parse_prevent_next_damage_tokens(&tokens).unwrap();
+    assert!(!shape.combat_only);
+    assert_eq!(crate::lexer::token_word_refs(shape.target_tokens),
+        ["target", "creature", "you", "control"]);
+}
+
+#[test]
+fn finite_shield_shape_rejects_unowned_durations_and_trailing_instructions() {
+    for text in [
+        "Prevent the next 1 combat damage that would be dealt to you until your next turn.",
+        "Prevent the next 1 combat damage that would be dealt to you this turn unless you pay 1 life.",
+        "Prevent the next 1 combat damage that would be dealt to you this turn. Draw a card.",
+        "Prevent the next 1 combat damage that would be dealt by this artifact this turn.",
+    ] {
+        assert!(parse_prevent_next_damage_tokens(&lex(text)).is_none(), "{text}");
+    }
+}
+
 #[test]
 fn parses_passive_next_damage_destroy_replacement() {
     let tokens = lex(

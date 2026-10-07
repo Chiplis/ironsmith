@@ -4,6 +4,32 @@ use crate::cards::builders::ConditionalEffectAst;
 use crate::cards::builders::ObjectChoiceEffectAst;
 use super::*;
 
+/// Fixed source/tag references have no production that consumes mana tokens
+/// or internal punctuation. Their word-only recognizers cannot establish raw
+/// token ownership. Number tokens remain words; ordinary object filters retain
+/// their own typed numeric/mana-qualification grammar.
+fn validate_fixed_entry_reference_tokens(
+    tokens: &[OwnedLexToken],
+    target: &TargetAst,
+) -> Result<(), CardTextError> {
+    let fixed = match target {
+        TargetAst::Source(_) | TargetAst::Tagged(..) => true,
+        TargetAst::Object(filter, ..) => filter.source,
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            return validate_fixed_entry_reference_tokens(tokens, inner);
+        }
+        _ => false,
+    };
+    if fixed && crate::util::trim_edge_punctuation_tokens(tokens).iter()
+        .any(|token| token.as_word().is_none())
+    {
+        return Err(CardTextError::ParseError(
+            "unsupported token in fixed battlefield-entry source reference".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn read_tagged_into_hand(
     input: &PutClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -538,6 +564,13 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             .transpose()?;
 
         if let Some(rest_target_tokens) = destination_shape.rest_graveyard_target.as_deref() {
+            if destination_shape.relative_controller
+                || destination_shape.controller == Some(cca_shapes::BattlefieldControllerShape::Owner)
+            {
+                return Err(CardTextError::ParseError(
+                    "explicit player/owner battlefield partition requires a complete partition owner".into(),
+                ));
+            }
             let primary_target = if cca_shapes::is_tagged_object_reference(target_tokens) {
                 TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
@@ -596,6 +629,71 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 clause_words.join(" ")
             )))
             .map(Some);
+        }
+        if destination_shape.relative_controller {
+            // A player-relative controller belongs to the existing typed
+            // PutOntoBattlefield owner. It must not become each card's owner.
+            // This owner currently represents a plain/tapped entry; other
+            // destination modifiers must stay on their complete native path.
+            let destination_words = crate::lexer::token_word_refs(destination_slice);
+            let destination_words = destination_words.iter().copied()
+                .filter(|word| *word != "the").collect::<Vec<_>>();
+            let plain_destination = matches!(destination_words.as_slice(),
+                ["battlefield", "under", "their", "control"]
+                | ["battlefield", "tapped", "under", "their", "control"]
+                | ["battlefield", "under", "their", "control", "tapped"]
+                | ["battlefield", "under", "that", "player" | "players" | "player's", "control"]
+                | ["battlefield", "tapped", "under", "that", "player" | "players" | "player's", "control"]
+                | ["battlefield", "under", "that", "player" | "players" | "player's", "control", "tapped"]
+            );
+            if !plain_destination || crate::util::trim_edge_punctuation_tokens(destination_slice).iter()
+                .any(|token| token.as_word().is_none())
+                || destination_shape.attacking || destination_shape.face_down
+                || attached_to_target.is_some()
+                || cca_shapes::starts_with_all_or_each(target_tokens)
+            {
+                return Err(CardTextError::ParseError(format!(
+                    "relative-controller battlefield destination requires a complete entry owner (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            let mut target = if cca_shapes::is_tagged_object_reference(target_tokens) {
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(target_tokens))
+            } else {
+                parse_target_phrase(target_tokens)?
+            };
+            validate_fixed_entry_reference_tokens(target_tokens, &target)?;
+            target = expand_graveyard_or_hand_disjunction(target, target_tokens);
+            apply_explicit_source_location(&mut target, target_tokens);
+            if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
+                && let Some(filter) = crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
+            {
+                crate::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);
+            }
+            fn announced_target(target: &TargetAst) -> bool {
+                match target {
+                    TargetAst::Object(_, Some(_), _) => true,
+                    TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => announced_target(inner),
+                    _ => false,
+                }
+            }
+            let fixed_reference = matches!(&target, TargetAst::Source(_) | TargetAst::Tagged(..))
+                || matches!(&target, TargetAst::Object(filter, None, _) if filter.source);
+            if !fixed_reference && !announced_target(&target) {
+                return Err(CardTextError::ParseError(
+                    "relative-controller battlefield put requires an announced target or fixed object reference; resolution choices need an actor-owned selection".into(),
+                ));
+            }
+            let controller = match player {
+                PlayerAst::Implicit | PlayerAst::You => PlayerAst::That,
+                actor => actor,
+            };
+            let effect = EffectAst::subject_verb_put_onto_battlefield(
+                controller, target, destination_shape.tapped, ReturnControllerAst::Preserve,
+            );
+            return Ok(Some(if let Some(predicate) = trailing_predicate {
+                EffectAst::Conditionals(ConditionalEffectAst::TrailingIf { predicate, effects: vec![effect] })
+            } else { effect }));
         }
         let battlefield_controller = destination_shape
             .controller
@@ -681,6 +779,14 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         }
 
         if cca_shapes::starts_with_all_or_each(target_tokens) {
+            // ReturnAll carries tapped/face-down/controller entry options, but
+            // has no attacking or attachment destination. Do not admit those
+            // tails and quietly turn them into ordinary battlefield entries.
+            if destination_shape.attacking || attached_to_target.is_some() {
+                return Err(CardTextError::ParseError(
+                    "all/each battlefield entry with attacking or attachment modifiers requires a complete entry owner".into(),
+                ));
+            }
             let mut filter = parse_object_filter(&target_tokens[1..], false)?;
             if cca_shapes::contains_from_it(&target_tokens[1..]) {
                 filter.zone = Some(Zone::Hand);
@@ -732,6 +838,16 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         } else {
             parse_target_phrase(target_tokens)?
         };
+        // Only the newly admitted per-card-owner spelling joins the relative
+        // route's fixed-reference guard. Existing unrelated destinations keep
+        // their established readers.
+        if destination_shape.controller == Some(cca_shapes::BattlefieldControllerShape::Owner)
+            && crate::grammar::permission_shapes::contains_tokens(
+                destination_slice, &["control", "of", "that"],
+            )
+        {
+            validate_fixed_entry_reference_tokens(target_tokens, &target)?;
+        }
         target = expand_graveyard_or_hand_disjunction(target, target_tokens);
         apply_explicit_source_location(&mut target, target_tokens);
         if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
