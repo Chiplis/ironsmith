@@ -95,7 +95,7 @@ fn hostile_has_two_sequential_finite_exile_groups_and_keeps_the_full_life_loss_t
                             assert_eq!(game.object(id).unwrap().zone, if chosen == index { Zone::Hand } else { Zone::Graveyard });
                         }
                     }
-                    assert_eq!(game.player(A).unwrap().library, all[..available.saturating_sub(6)]);
+                    assert_eq!(game.player(A).unwrap().library.as_slice(), &all[..available.saturating_sub(6)]);
                     assert_eq!(game.player(A).unwrap().hand.len(), dm.expected[chosen].len());
                 }
             }
@@ -143,7 +143,7 @@ fn prevented_first_exile_makes_the_second_group_from_the_new_actual_top() {
                 ironsmith::replacement::ReplacementAction::Prevent));
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
         assert_eq!(game.player(A).unwrap().hand.len(), 3);
-        assert_eq!(game.player(A).unwrap().library, all[..3]);
+        assert_eq!(game.player(A).unwrap().library.as_slice(), &all[..3]);
         assert_eq!(game.player(A).unwrap().life, 17);
         let current = game.find_object_by_stable_id(identity).unwrap();
         assert_eq!(game.object(current).unwrap().zone, Zone::Hand);
@@ -197,7 +197,7 @@ fn hostile_full_native_owner_and_peer_wait_for_the_exact_selected_exile_opening(
                     assert!(game.stack.is_empty());
                     assert_eq!(game.player(A).unwrap().life, 17);
                     assert_eq!(game.player(A).unwrap().hand.len(), 3);
-                    assert_eq!(game.player(A).unwrap().library, all[..2]);
+                    assert_eq!(game.player(A).unwrap().library.as_slice(), &all[..2]);
                     assert_eq!(dm.openings[0], dm.openings[1], "replay requests the same physical pile");
                     if !owner_view && chosen != exposed {
                         for identity in &dm.expected[chosen] {

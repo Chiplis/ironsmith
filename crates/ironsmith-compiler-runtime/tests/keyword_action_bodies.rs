@@ -6,7 +6,7 @@ use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker, 
 use ironsmith::decisions::context::{BooleanContext, ProliferateContext, SelectObjectsContext, TargetsContext};
 use ironsmith::decisions::specs::ProliferateResponse;
 use ironsmith::effect::{Effect, EffectOutcome};
-use ironsmith::effects::{EffectContext, EffectExecutor, ExecutionContext, ExecutionError, execute_effect};
+use ironsmith::effects::{EffectContext, EffectExecutor, ExecutionError, execute_effect};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::mana::ManaSymbol;
@@ -361,7 +361,7 @@ fn targeted_repeated_investigate_pending_and_resource_error_restore_whole_instru
             let mut dm = Choices { pause_at: pending.then_some(2), ..Default::default() };
             let effect = ironsmith::effects::InvestigateEffect::new(2, PlayerFilter::Specific(B));
             let next = game.next_object_id_counter();
-            let mut ctx = ExecutionContext::new(source, A, &mut dm);
+            let mut ctx = EffectContext::new(source, A, &mut dm);
             let outcome = if dispatched { execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx) }
                 else { effect.execute(&mut game, &mut ctx) };
             if pending { assert!(outcome.unwrap().events.is_empty()); assert!(ctx.decision_maker.awaiting_choice()); }
@@ -374,7 +374,7 @@ fn targeted_repeated_investigate_pending_and_resource_error_restore_whole_instru
             drop(ctx);
             game.set_token_creation_limits(Default::default());
             let mut replay = Choices::default();
-            let result = effect.execute(&mut game, &mut ExecutionContext::new(source, A, &mut replay)).unwrap();
+            let result = effect.execute(&mut game, &mut EffectContext::new(source, A, &mut replay)).unwrap();
             assert_eq!(tokens(&game, B, Subtype::Clue).len(), 2);
             assert_eq!(game.player(A).unwrap().life, 20);
             assert_eq!(game.player(B).unwrap().life, 16, "the investigating player owns the tokens and entry payments");
@@ -447,7 +447,7 @@ fn repeated_proliferate_rolls_back_the_first_choice_while_the_second_is_pending(
         ];
         let mut dm = Choices { proliferate: choices.clone(), pause_proliferate_at: Some(2), ..Default::default() };
         let effect = ironsmith::effects::ProliferateEffect::new(2);
-        let mut ctx = ExecutionContext::new(source, A, &mut dm);
+        let mut ctx = EffectContext::new(source, A, &mut dm);
         let outcome = if dispatched { execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx) }
             else { effect.execute(&mut game, &mut ctx) }.unwrap();
         assert!(ctx.decision_maker.awaiting_choice());
@@ -458,7 +458,7 @@ fn repeated_proliferate_rolls_back_the_first_choice_while_the_second_is_pending(
         drop(ctx);
         assert!(dm.observed[1].contains(&(first, 2)), "the second pending decision saw the first action before rollback");
         let mut replay = Choices { proliferate: choices, ..Default::default() };
-        effect.execute(&mut game, &mut ExecutionContext::new(source, A, &mut replay)).unwrap();
+        effect.execute(&mut game, &mut EffectContext::new(source, A, &mut replay)).unwrap();
         assert_eq!(game.counter_count(first, CounterType::Charge), 2);
         assert_eq!(game.counter_count(second, CounterType::Charge), 2);
         assert_eq!(replay.observed.len(), 2);

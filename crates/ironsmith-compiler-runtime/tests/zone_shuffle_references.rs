@@ -688,7 +688,7 @@ fn molten_psyche_checks_metalcraft_and_the_whole_turns_draw_history_per_opponent
             let source = vanilla(&mut game, A, Zone::Battlefield, "Earlier draw source", true);
             let mut earlier = Choices::default();
             for (player, count) in [(B, 2), (C, 1)] {
-                let mut ctx = ironsmith::effects::ExecutionContext::new(source, A, &mut earlier);
+                let mut ctx = ironsmith::effects::EffectContext::new(source, A, &mut earlier);
                 ironsmith::effects::execute_effect(&mut game,
                     &ironsmith::effect::Effect::target_draws(count, ironsmith::target::PlayerFilter::Specific(player)),
                     &mut ctx).unwrap();

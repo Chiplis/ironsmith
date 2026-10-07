@@ -371,7 +371,7 @@ fn silver_fur_full_anthem_and_ninjutsu_keep_colored_cost_unblocked_return_and_de
             mana(&mut game, A, ManaSymbol::Black, 1);
             assert!(action(&game, A, source, n).is_none(), "ninjutsu still requires an unblocked attacker");
             let attacker = creature(&mut game, "Borrowed attacker", B, Zone::Battlefield);
-            game.object_mut(attacker).unwrap().controller = A;
+            game.object_mut(attacker).unwrap().initial_controller = A;
             let returned_stable = game.object(attacker).unwrap().stable_id;
             unblocked(&mut game, attacker, C);
             assert_price(&game, A, source, n, vec![ManaSymbol::Generic(1), ManaSymbol::Blue, ManaSymbol::Black]);
@@ -614,7 +614,7 @@ fn hulk_entry_turn_intrinsic_discount_combines_with_another_hulks_other_creature
         assert_eq!(total.dynamic_mana_cost().unwrap().base,
             ManaCost::from_symbols(vec![ManaSymbol::Generic(3), ManaSymbol::Red, ManaSymbol::Green]));
         assert!(action(&game, A, source, n).is_some(),
-            "the other Hulk removes {3}; the intrinsic entry reduction removes the remaining {3}{R}{G}");
+            "the other Hulk removes {{3}}; the intrinsic entry reduction removes the remaining {{3}}{{R}}{{G}}");
         activate(&mut game, A, source, n, &mut Choices::default());
         resolve(&mut game, &mut Choices::default());
         assert_eq!(game.counter_count(source, CounterType::PlusOnePlusOne), 5);

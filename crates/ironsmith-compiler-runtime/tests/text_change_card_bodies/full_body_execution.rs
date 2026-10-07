@@ -10,7 +10,8 @@ use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_c
 use ironsmith::mana::ManaSymbol;
 use ironsmith::static_abilities::StaticAbility;
 use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
-use ironsmith::{CardId, CardType, Color, ColorSet, CounterType, GameProgress, GameState, ObjectId, Phase, PlayerId, StableId, Subtype, Target, Zone};
+use ironsmith::ids::StableId;
+use ironsmith::{CardId, CardType, Color, ColorSet, CounterType, GameProgress, GameState, ObjectId, Phase, PlayerId, Subtype, Target, Zone};
 use std::collections::VecDeque;
 
 const A: PlayerId = PlayerId::from_index(0);

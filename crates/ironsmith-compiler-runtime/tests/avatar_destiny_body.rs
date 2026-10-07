@@ -7,7 +7,8 @@ use ironsmith::game_loop::{check_and_apply_sbas, put_triggers_on_stack_with_dm, 
 use ironsmith::object::AttachmentTarget;
 use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{GameState, ObjectId, PlayerId, StableId, Subtype, Zone};
+use ironsmith::{GameState, ObjectId, PlayerId, Subtype, Zone};
+use ironsmith::ids::StableId;
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
@@ -314,7 +315,8 @@ fn an_unqualified_milled_card_reference_keeps_face_down_public_identity_and_expl
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let source = card(&mut game, "Source", A, Zone::Battlefield, false);
     card(&mut game, "Milled creature", A, Zone::Library, true);
-    let mut ctx = EffectContext::new(source, A, &mut SelectFirstDecisionMaker);
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = EffectContext::new(source, A, &mut dm);
     execute_effect(&mut game, &Effect::new(ExileInsteadOfGraveyardEffect::you()), &mut ctx).unwrap();
     execute_effect(&mut game, &Effect::mill(1).tag("milled"), &mut ctx).unwrap();
     let exact = ctx.get_tagged_all("milled").unwrap()[0].object_id;
@@ -347,7 +349,7 @@ fn missing_public_mill_collection_is_incomplete_even_when_no_candidate_exists_or
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let mut dm = SelectFirstDecisionMaker;
         let mut ctx = EffectContext::new(ObjectId::new(), A, &mut dm);
-        if known_empty { ctx.set_tagged_objects("milled".into(), vec![]); }
+        if known_empty { ctx.set_tagged_objects(ironsmith::tag::TagKey::from("milled"), vec![]); }
         let filter = ObjectFilter {
             match_captured_public_destination: true,
             tagged_constraints: vec![TaggedObjectConstraint { tag: "milled".into(), relation: TaggedOpbjectRelation::IsTaggedObject }],

@@ -60,10 +60,10 @@ fn kheru_keeps_payment_decline_empty_pool_and_returned_identity_separate() {
                     assert!(game.object(own.unwrap()).is_none());
                     let returned = game.battlefield.iter().find(|id| **id != source).copied().unwrap();
                     has_riders(&game, returned, true);
-                    assert_eq!(game.delayed_triggers.len(), 1);
+                    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
                 } else {
                     assert_eq!(game.battlefield, vec![source]);
-                    assert!(game.delayed_triggers.is_empty());
+                    assert!(game.effect_store.delayed_triggers.is_empty());
                     if let Some(own) = own { assert_eq!(game.object(own).unwrap().zone, Zone::Graveyard); }
                 }
             }
@@ -92,7 +92,7 @@ fn kheru_rider_survives_source_departure_and_uses_ability_controllers_end_step()
         assert_eq!(game.stack[0].controller, A);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
         assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Exile);
-        assert!(game.delayed_triggers.is_empty());
+        assert!(game.effect_store.delayed_triggers.is_empty());
     }
 }
 #[test]

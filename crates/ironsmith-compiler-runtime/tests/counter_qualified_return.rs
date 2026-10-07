@@ -115,7 +115,7 @@ fn the_counter_filter_and_affected_set_are_read_at_resolution() {
         let loses_stable = game.object(loses_counter).unwrap().stable_id;
         cast(&mut game, &definition);
         game.add_counters(gains_counter, CounterType::PlusOnePlusOne, 1);
-        game.remove_counters(loses_counter, CounterType::PlusOnePlusOne, 1);
+        game.remove_counters(loses_counter, CounterType::PlusOnePlusOne, 1, None, None);
         let later = object(&mut game, B, CardType::Creature);
         let later_stable = game.object(later).unwrap().stable_id;
         resolve_stack_entry_with(&mut game, &mut NoTargets).unwrap();

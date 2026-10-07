@@ -641,8 +641,8 @@ fn granted_suspend_uses_current_abilities_and_disappears_on_expiry_loss_or_conce
 #[test]
 fn retained_native_suspend_bodies_preserve_typed_identity_without_labels_or_new_fields() {
     use ironsmith::ability::{AbilityKind, PresentationKeyword, PresentationLabel};
-    use ironsmith::artifact_materializer::{encode_runtime_ability, restore_runtime_ability};
-    use ironsmith::cards::CardDefinitionBuilder;
+    use ironsmith_runtime_catalog::artifact_materializer::{encode_runtime_ability, restore_runtime_ability};
+    use ironsmith::cards::builders::CardDefinitionBuilder;
     use ironsmith::effects::CastSourceEffect;
     for restored in [false, true] {
         let mut legacy = if restored {

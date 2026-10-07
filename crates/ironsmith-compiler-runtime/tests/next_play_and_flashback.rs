@@ -6,7 +6,7 @@ use ironsmith::cards::CardDefinition;
 use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
 use ironsmith::decisions::context::{BooleanContext, NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext};
 use ironsmith::effect::Effect;
-use ironsmith::effects::{EffectContext, EffectExecutor, ExecutionContext, execute_effect};
+use ironsmith::effects::{EffectContext, EffectExecutor, execute_effect};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response, apply_priority_response_with_dm, put_triggers_on_stack_with_dm,
     resolve_stack_entry_with};
@@ -339,7 +339,7 @@ fn flashback_costs(game: &GameState, id: ObjectId) -> Vec<String> {
 }
 fn combat_hit(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
     let events = ironsmith::effects::DealDamageEffect::new(2, ChooseSpec::SpecificPlayer(B))
-        .with_combat(true).execute(game, &mut ExecutionContext::new_default(source, A)).unwrap().events;
+        .with_combat(true).execute(game, &mut EffectContext::new_default(source, A)).unwrap().events;
     for event in events { game.queue_trigger_event(Default::default(), event); }
     put_triggers_on_stack_with_dm(game, &mut TriggerQueue::new(), dm).unwrap();
 }
@@ -412,7 +412,7 @@ fn newt_full_saddle_activation_pays_other_creatures_and_remains_sorcery_timed() 
 fn newt_missing_or_unknown_departure_evidence_errors_instead_of_choosing_a_price() {
     let mut game = game();
     let unknown = game.new_object_id();
-    let context = ExecutionContext::new_default(unknown, A);
+    let context = EffectContext::new_default(unknown, A);
     assert!(matches!(ironsmith::condition_eval::evaluate_condition_resolution(&game,
         &ironsmith::ConditionExpr::SourceIsSaddled, &context),
         Err(ironsmith::effects::ExecutionError::IncompleteEvidence(_))));
@@ -422,7 +422,7 @@ fn newt_missing_or_unknown_departure_evidence_errors_instead_of_choosing_a_price
     game.move_object_by_effect(source, Zone::Graveyard).unwrap();
     // A retained trigger snapshot alone cannot establish the later departure
     // designation. Exact departure history, when present, wins over this one.
-    let context = ExecutionContext::new_default(source, A).with_source_snapshot(snapshot);
+    let context = EffectContext::new_default(source, A).with_source_snapshot(snapshot);
     assert!(!ironsmith::condition_eval::evaluate_condition_resolution(&game,
         &ironsmith::ConditionExpr::SourceIsSaddled, &context).unwrap());
 }
@@ -668,7 +668,7 @@ fn unknown_saddle_snapshot_round_trip_remains_unknown_and_cannot_serve_as_false_
     ), game.provenance_graph_mut().alloc_root_event(ironsmith::events::EventKind::ZoneChange));
     game.turn_store.turn_history.record_event(&event, Some(snapshot), None);
     assert!(matches!(ironsmith::condition_eval::evaluate_condition_resolution(&game,
-        &ironsmith::ConditionExpr::SourceIsSaddled, &ExecutionContext::new_default(source, A)),
+        &ironsmith::ConditionExpr::SourceIsSaddled, &EffectContext::new_default(source, A)),
         Err(ironsmith::effects::ExecutionError::IncompleteEvidence(_))));
 }
 
@@ -791,7 +791,7 @@ fn effect_driven_land_plays_consume_matching_scout_grants_on_the_selected_face()
                 let mut effect = ironsmith::effects::CastTaggedEffect::new("selected", PlayerFilter::You).allow_land();
                 if as_copy { effect = effect.as_copy(); }
                 off_main(&mut game);
-                let mut ctx = ExecutionContext::new_default(source, A);
+                let mut ctx = EffectContext::new_default(source, A);
                 ctx.set_tagged_objects("selected", vec![selected]);
                 let outcome = effect.execute(&mut game, &mut ctx).unwrap();
                 let arrival = outcome.objects().unwrap()[0];
@@ -846,7 +846,7 @@ fn effect_driven_land_reservations_precede_additions_and_restore_on_pending_or_e
                 if as_copy { effect = effect.as_copy(); }
                 let mut dm = Choices { pause_boolean: completion == Completion::Pending,
                     expected_budgets: Some(vec![0, 0, 1]), ..Default::default() };
-                let mut ctx = ExecutionContext::new(source, A, &mut dm);
+                let mut ctx = EffectContext::new(source, A, &mut dm);
                 ctx.set_tagged_objects("selected", vec![selected.clone()]);
                 ctx.set_tagged_objects("it", vec![sentinel.clone()]);
                 let result = effect.execute(&mut game, &mut ctx);
@@ -880,7 +880,7 @@ fn effect_driven_land_reservations_precede_additions_and_restore_on_pending_or_e
                 drop(ctx);
                 if completion == Completion::Pending {
                     let mut retry = Choices { expected_budgets: Some(vec![0, 0, 1]), ..Default::default() };
-                    let mut ctx = ExecutionContext::new(source, A, &mut retry);
+                    let mut ctx = EffectContext::new(source, A, &mut retry);
                     ctx.set_tagged_objects("selected", vec![selected]);
                     let outcome = effect.execute(&mut game, &mut ctx).unwrap();
                     assert_eq!(outcome.objects().unwrap().len(), 1);

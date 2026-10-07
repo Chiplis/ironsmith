@@ -310,7 +310,7 @@ fn bolas_other_loyalty_bodies_keep_opponent_and_exiled_card_scopes() {
         let untouched = fixture(&mut game, C, CardType::Sorcery, Zone::Library);
         let matched_stable = game.object(matched).unwrap().stable_id;
         let land_stable = game.object(land).unwrap().stable_id;
-        game.player_mut(B).unwrap().library = vec![matched, land];
+        game.player_mut(B).unwrap().library = vec![matched, land].into();
         let mut dm = Pick { chosen: Target::Player(B), expected: vec![Target::Player(B), Target::Player(C)], prompts: 0 };
         activate(&mut game, source, 0, &mut dm);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();

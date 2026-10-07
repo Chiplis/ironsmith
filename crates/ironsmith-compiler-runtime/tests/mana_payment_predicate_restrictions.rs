@@ -333,7 +333,7 @@ fn qarsi_uses_exact_origin_and_announced_turn_up_method() {
             let effect = ironsmith::effect::Effect::new(ironsmith::effects::ManifestTopCardOfLibraryEffect {
                 player: ironsmith_core::PlayerFilter::You, cloak,
             });
-            let mut context = ironsmith::effects::ExecutionContext::new_default(source, alice);
+            let mut context = ironsmith::effects::EffectContext::new_default(source, alice);
             let outcome = ironsmith::effects::execute_effect(&mut g, &effect, &mut context).unwrap();
             let target = outcome.value.objects().unwrap()[0];
             assert_eq!(g.is_manifested(target), !cloak);

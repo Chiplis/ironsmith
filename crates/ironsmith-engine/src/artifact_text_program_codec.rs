@@ -394,13 +394,13 @@ mod tests {
         token.enters_tapped = true;
         let id = token.token.card.id;
         let source = Effect::new(token);
-        let changed = source.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Elf, Subtype::Human).unwrap()).unwrap();
+        let changed = source.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Elf, ironsmith_core::Subtype::Human).unwrap()).unwrap();
         let changed = changed.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap();
         assert_eq!(changed.count, count);
         assert_eq!(changed.token.card.id, id);
         let wire = crate::artifact_materializer::encode_runtime_effect(Effect::new(changed.clone())).unwrap();
         let restored = crate::artifact_materializer::materialize_effect(wire).unwrap();
-        let restored = restored.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Human, Subtype::Zombie).unwrap()).unwrap();
+        let restored = restored.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Human, ironsmith_core::Subtype::Zombie).unwrap()).unwrap();
         let actual = restored.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap();
         assert_eq!(actual.count, count);
         assert_eq!(actual.token.card.id, id);

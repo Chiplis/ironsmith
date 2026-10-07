@@ -8,7 +8,7 @@ fn blind_exile_fixture(kind: CardType, price: u32, alternative: bool) -> (WasmGa
     wasm.game.turn.priority_player = Some(actor);
     let source = wasm.game.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(), "Public permission")
         .card_types(vec![CardType::Enchantment]).build(), actor, Zone::Battlefield);
-    let mut definition = CardDefinitionBuilder::new(CardId::new(), "Unseen exile face")
+    let mut definition = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Unseen exile face")
         .card_types(vec![kind]).mana_cost(ManaCost::new().add_generic(price));
     if alternative { definition = definition.alternative_cast(ironsmith::alternative_cast::AlternativeCastingMethod::alternative_cost(
         "Hidden alternative", Some(ManaCost::new().add_generic(3)), Vec::new())); }
@@ -82,7 +82,7 @@ fn blind_exile_exact_ref_rejects_wrong_grant_stale_card_and_wrong_priority_holde
     let (mut wasm, source, card) = blind_exile_fixture(CardType::Sorcery, 1, false);
     let Some(DecisionContext::Priority(priority)) = wasm.pending_decision.clone() else { panic!("priority"); };
     let UiCommand::PriorityAction { action_ref: Some(reference), .. } = blind_exile_command(&wasm, card) else { unreachable!(); };
-    let mut deferred = priority.clone(); deferred.analysis_complete = false; deferred.actions.clear();
+    let mut deferred = priority.clone(); deferred.analysis_complete = false; deferred.actions = ironsmith::decisions::context::PreparedPriorityActions::new(&wasm.game, Vec::new()).unwrap();
     assert!(resolve_priority_action(&wasm.game, &deferred, None, Some(&reference)).unwrap().is_some());
     for (bad_card, bad_source, bad_index) in [(source.0, source.0, 0), (card.0, card.0, 0), (card.0, source.0, 1)] {
         let forged = PriorityActionRef::OpenExiledCardForPlay { card_id: bad_card, incarnation: Some(0),
@@ -217,7 +217,7 @@ fn blind_exile_target_prompt_and_failed_land_replay_keep_the_opening_commitment(
     let definition = CardDefinitionBuilder::new(CardId::new(), "Opened targeted spell")
         .card_types(vec![CardType::Sorcery]).mana_cost(ManaCost::new().add_generic(1))
         .with_spell_effect(vec![ironsmith::Effect::deal_damage(1, ironsmith::target::ChooseSpec::target_player())]).build();
-    wasm.game.object_mut(card).unwrap().spell_effect = definition.spell_effect.clone();
+    wasm.game.object_mut(card).unwrap().spell_effect = definition.spell_effect.clone().map(Into::into);
     wasm.game.player_mut(PlayerId(1)).unwrap().mana_pool.colorless = 1;
     blind_exile_priority(&mut wasm);
     let command = blind_exile_command(&wasm, card); disclosure_command(&mut wasm, command).unwrap();

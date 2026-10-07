@@ -177,7 +177,7 @@ fn tomb_tyrant_keeps_anthem_activation_restrictions_costs_and_resolution_pool() 
         settle(&mut game, &mut dm);
         assert_eq!(game.irreversible_random_count(), before_random + 1);
         assert_eq!(game.player(A).unwrap().graveyard.len(), 3);
-        let own_creatures: Vec<_> = game.battlefield.iter().copied().filter(|id| game.object(*id).unwrap().controller == A).collect();
+        let own_creatures: Vec<_> = game.battlefield.iter().copied().filter(|id| game.controller_of(game.object(*id).unwrap()) == A).collect();
         assert_eq!(own_creatures.len(), 2);
         let returned = own_creatures.into_iter().find(|id| *id != source).unwrap();
         assert_eq!(game.current_power(returned), Some(3));

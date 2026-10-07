@@ -6,7 +6,7 @@ use ironsmith::decision::{compute_legal_actions, DecisionMaker, LegalAction, Sel
 use ironsmith::decisions::context::TargetsContext;
 use ironsmith::effect::Effect;
 use ironsmith::effects::{execute_effect, DealDamageEffect, EffectContext};
-use ironsmith::filter::{FilterContext, ObjectFilter};
+use ironsmith::filter::ObjectFilter;
 use ironsmith::game_loop::{apply_decision_context_with_dm, apply_priority_response_with_dm,
     put_triggers_on_stack_with_dm, resolve_stack_entry_with, PriorityLoopState, PriorityResponse};
 use ironsmith::mana::ManaSymbol;
@@ -119,6 +119,13 @@ fn zone_of(game: &GameState, stable: ironsmith::ids::StableId) -> Zone {
     game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone
 }
 
+/// Match through the public target validator: a non-target object spec is
+/// exactly the filter evaluated in the context's filter view.
+fn filter_matches(game: &ironsmith::GameState, viewer: ironsmith::PlayerId, filter: &ironsmith::target::ObjectFilter, object: ironsmith::ObjectId) -> bool {
+    let ctx = ironsmith::effects::EffectContext::new_default(object, viewer);
+    ironsmith::effects::validate_target(game, &ironsmith::effects::ResolvedTarget::Object(object),
+        &ironsmith::target::ChooseSpec::Object(filter.clone()), &ctx)
+}
 #[test]
 fn arrow_uses_the_dealer_not_the_recipient_for_combat_and_noncombat_damage() {
     for definition in definitions("Avenging Arrow") {
@@ -222,7 +229,7 @@ fn damage_history_never_transfers_to_a_new_incarnation_and_clears_each_turn() {
     assert!(!game.source_dealt_combat_damage_to_player_this_turn(new));
     let mut dealer_filter = ObjectFilter::creature();
     dealer_filter.dealt_damage_this_turn = true;
-    assert!(!dealer_filter.matches(game.object(new).unwrap(), &FilterContext::new(A), &game));
+    assert!(!filter_matches(&game, A, &dealer_filter, new));
     game = saved;
     assert!(game.source_dealt_damage_this_turn(old));
     assert!(game.source_dealt_damage_to_player_this_turn(old, A));

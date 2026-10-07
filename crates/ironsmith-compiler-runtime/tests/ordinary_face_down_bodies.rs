@@ -2,14 +2,14 @@
 use ironsmith::ability::{Ability, AbilityKind};
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::card::{LinkedFaceLayout, PowerToughness};
-use ironsmith::cards::{CardDefinition, CardDefinitionBuilder};
+use ironsmith::cards::CardDefinition;
+use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::continuous::Modification;
 use ironsmith::cost::TotalCost;
 use ironsmith::decision::{compute_legal_actions, DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::{BooleanContext, ManaPaymentContext, SelectObjectsContext, SelectOptionsContext, TargetsContext};
 use ironsmith::effect::Until;
 use ironsmith::effects::{ApplyContinuousEffect, EffectContext, EffectExecutor, TurnFaceDownEffect, TurnFaceUpEffect};
-use ironsmith::filter::{FilterContext, ObjectFilterExt};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm, apply_priority_response_with_dm, generate_and_queue_step_triggers, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::object::{AttachmentTarget, CounterType};
@@ -133,9 +133,16 @@ fn morph_filter() -> ObjectFilter {
     filter
 }
 fn matches_morph(g: &GameState, id: ObjectId) -> bool {
-    morph_filter().matches(g.object(id).unwrap(), &FilterContext::new(A), g)
+    filter_matches(&g, A, &morph_filter(), id)
 }
 
+/// Match through the public target validator: a non-target object spec is
+/// exactly the filter evaluated in the context's filter view.
+fn filter_matches(game: &ironsmith::GameState, viewer: ironsmith::PlayerId, filter: &ironsmith::target::ObjectFilter, object: ironsmith::ObjectId) -> bool {
+    let ctx = ironsmith::effects::EffectContext::new_default(object, viewer);
+    ironsmith::effects::validate_target(game, &ironsmith::effects::ResolvedTarget::Object(object),
+        &ironsmith::target::ChooseSpec::Object(filter.clone()), &ctx)
+}
 #[test]
 fn all_complete_bodies_round_trip_with_keywords_costs_and_companion_effects() {
     for (name, fragments) in [
@@ -163,7 +170,7 @@ fn source_activations_preserve_incarnation_counters_attachments_control_tap_and_
         for definition in definitions(name) {
             let mut g = game();
             let source = g.create_object_from_definition(&definition, B, Zone::Battlefield);
-            g.object_mut(source).unwrap().controller = A;
+            g.object_mut(source).unwrap().initial_controller = A;
             g.object_mut(source).unwrap().add_counters(CounterType::PlusOnePlusOne, 1);
             g.tap(source);
             let attachment = object(&mut g, A, Zone::Battlefield, "Orientation Equipment", "Type: Artifact — Equipment");
@@ -172,7 +179,7 @@ fn source_activations_preserve_incarnation_counters_attachments_control_tap_and_
             let mut defender = ObjectFilter::creature();
             defender.static_abilities.push(StaticAbilityId::Defender);
             if name == "Wall of Deceit" {
-                assert!(defender.matches(g.object(source).unwrap(), &FilterContext::new(A), &g));
+                assert!(filter_matches(&g, A, &defender, source));
             }
             let mana = g.player(A).unwrap().mana_pool.total();
             let mut dm = Choices::default();
@@ -188,7 +195,7 @@ fn source_activations_preserve_incarnation_counters_attachments_control_tap_and_
             assert_eq!(g.counter_count(source, CounterType::PlusOnePlusOne), 1);
             assert_eq!(g.current_power(source), Some(3));
             assert_eq!(g.current_toughness(source), Some(3));
-            assert!(!defender.matches(g.object(source).unwrap(), &FilterContext::new(A), &g));
+            assert!(!filter_matches(&g, A, &defender, source));
             assert_eq!(g.object(attachment).unwrap().attached_to, Some(AttachmentTarget::Object(source)));
             assert!(!g.is_manifested(source));
             assert!(!g.object(source).unwrap().face_down_cast_state.as_ref().unwrap().disguise_ward);
@@ -200,7 +207,7 @@ fn source_activations_preserve_incarnation_counters_attachments_control_tap_and_
             assert_eq!(g.current_power(source), Some(power + 1));
             assert_eq!(g.current_toughness(source), Some(toughness + 1));
             if name == "Wall of Deceit" {
-                assert!(defender.matches(g.object(source).unwrap(), &FilterContext::new(A), &g));
+                assert!(filter_matches(&g, A, &defender, source));
             }
             assert!(g.is_tapped(source));
             assert_eq!(g.object(source).unwrap().stable_id, stable);
@@ -434,10 +441,11 @@ fn aether_discount_applies_to_own_face_down_casts_and_disappears_after_its_activ
 fn ordinary_turn_down_rejects_double_faced_cards_but_does_not_change_face_down_entry() {
     for transforming in [false, true] {
         let mut g = game();
-        let definition = CardDefinitionBuilder::new(CardId::new(), "DFC orientation control")
+        let card = ironsmith::card::CardBuilder::new(CardId::new(), "DFC orientation control")
             .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(4, 4))
             .other_face(CardId::new()).other_face_name("Other face")
             .linked_face_layout(LinkedFaceLayout::TransformLike).transforming_dfc(transforming).build();
+        let definition = CardDefinition::with_abilities(card, Vec::new());
         let dfc = g.create_object_from_definition(&definition, A, Zone::Battlefield);
         let stable = g.object(dfc).unwrap().stable_id;
         let result = TurnFaceDownEffect::new(ChooseSpec::SpecificObject(dfc)).execute(&mut g, &mut EffectContext::new_default(dfc, A)).unwrap();
@@ -474,13 +482,13 @@ fn pending_selection_makes_no_partial_orientation_change_and_can_resume() {
 fn merged_orientation_checks_buried_dfc_and_turns_all_single_face_components_together() {
     for buried_dfc in [false, true] {
         let mut g = game();
-        let mut base = CardDefinitionBuilder::new(CardId::new(), "Merged orientation base")
+        let mut base = ironsmith::card::CardBuilder::new(CardId::new(), "Merged orientation base")
             .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(3, 3));
         if buried_dfc {
             base = base.other_face(CardId::new()).other_face_name("Buried other face")
                 .linked_face_layout(LinkedFaceLayout::TransformLike).transforming_dfc(true);
         }
-        let base = base.build();
+        let base = CardDefinition::with_abilities(base.build(), Vec::new());
         let host = g.create_object_from_definition(&base, A, Zone::Battlefield);
         let top = CardDefinitionBuilder::new(CardId::new(), "Merged visible single face")
             .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(4, 4)).build();

@@ -183,7 +183,7 @@ fn five_complete_frozen_bodies_keep_both_compilation_paths_and_semantic_surfaces
     for row in rows() {
         let name = row["name"].as_str().unwrap();
         for definition in definitions(name) {
-            let text = ironsmith::compiled_text::compiled_text_lines(&definition).join("\n")
+            let text = ironsmith_text::compiled_text::compiled_text_lines(&definition).join("\n")
                 .to_lowercase().replace("more than 1 creature", "more than one creature");
             assert!(text.contains("can't be blocked"), "{name}: {text}");
             for marker in match name {

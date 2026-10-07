@@ -13,7 +13,7 @@ fn default_shapes_and_explicit_modes_survive_direct_and_artifact_materializers()
     for mode in [ManaSpendMode::AnyColor, ManaSpendMode::AnyType] {
         let mut compiled = ironsmith_compiler::CompilerFacade::new().compile_definition(
             ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Carrier probe"),
-            source.into(), ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
+            source, ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
         let mut found = false;
         for ability in &mut compiled.abilities {
             if let AbilityKind::Static(ability) = &mut ability.kind
@@ -66,7 +66,7 @@ fn admitted_non_normal_grants_without_new_surface_keep_canonical_and_public_obje
         let (baseline, _) = compile_to_artifact("Legacy typed mana surface", source, false).unwrap();
         let parsed = ironsmith_compiler::CompilerFacade::new().compile_definition(
             ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Legacy typed mana surface"),
-            source.into(), ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
+            source, ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
         let old_runtime = into_runtime_definition(parsed.clone()).unwrap();
         let old_rendered = ironsmith_text::canonical_compiled_lines(&old_runtime);
         let mut game = ironsmith::GameState::new(vec!["A".into(), "B".into()], 20);
@@ -107,7 +107,7 @@ fn absent_class_scope_preserves_admitted_grants_and_legacy_class_activations_kee
     let source = "Mana cost: {R}\nType: Enchantment — Class\n{1}{R}: Level 2\nCreatures you control have menace.\n{2}{R}: Level 3\nCreatures you control have haste.";
     let (baseline, current) = compile_to_artifact("Existing Class shape", source, false).unwrap();
     let mut legacy = ironsmith_compiler::CompilerFacade::new().compile_definition(
-        ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Existing Class shape"), source.into(),
+        ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Existing Class shape"), source,
         ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
     let mut count = 0;
     for ability in &mut legacy.abilities { if let AbilityKind::Activated(ability) = &mut ability.kind {

@@ -20,12 +20,12 @@ fn compile(name: &str, text: &str, route: Route) -> CardDefinition {
     match route {
         Route::Direct => {
             let (result, loss) = ironsmith_compiler::parse_loss::capture(||
-                ironsmith_registry::compile_builder_to_runtime_definition(builder(), text.into(), false));
+                ironsmith_registry::compile_builder_to_runtime_definition(builder(), text, false));
             assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text()); result.unwrap()
         }
         Route::Artifact => {
             let (result, loss) = ironsmith_compiler::parse_loss::capture(||
-                ironsmith_registry::compile_builder_to_artifact(builder(), text.into(), false));
+                ironsmith_registry::compile_builder_to_artifact(builder(), text, false));
             assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
             let (artifact, _) = result.unwrap(); artifact.validate().unwrap();
             let decoded = serde_json::from_slice(&serde_json::to_vec(&artifact).unwrap()).unwrap();

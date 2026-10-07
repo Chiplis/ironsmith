@@ -106,6 +106,12 @@ impl<E> SpellProgramState<E> {
     feature = "serialization",
     derive(serde::Serialize, serde::Deserialize)
 )]
+// `spell_effect` defaults to `Unavailable` for any `E`; serde would otherwise
+// infer an `E: Default` bound from its `default` attribute.
+#[cfg_attr(
+    feature = "serialization",
+    serde(bound(deserialize = "A: serde::Deserialize<'de>, E: serde::Deserialize<'de>"))
+)]
 pub struct RetainedCopiableValues<A, E = ()> {
     pub name: String,
     #[cfg_attr(

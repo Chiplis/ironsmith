@@ -158,7 +158,7 @@ fn ghostfire_casts_for_red_mana_but_hits_monocolored_hexproof_as_a_colorless_spe
         let sphinx = game.create_object_from_definition(&definitions("Sphinx of the Guildpact")[route], B, Zone::Battlefield);
         cast(&mut game, &definitions("Ghostfire")[route], Target::Object(sphinx));
         assert_eq!(game.damage_on(sphinx), 3);
-        let mut game = game();
+        let mut game = self::game();
         cast(&mut game, &definitions("Ghostfire")[route], Target::Player(B));
         assert_eq!(game.player(B).unwrap().life, 17);
     }

@@ -5,7 +5,7 @@ use ironsmith::cards::CardDefinition;
 use ironsmith::combat_state::{AttackTarget, CombatState};
 use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration, DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::{NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext};
-use ironsmith::effects::{EffectExecutor, ExecutionContext};
+use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};
 use ironsmith::events::{DamageEvent, DamageTarget};
 use ironsmith::events::cause::EventCause;
 use ironsmith::events::processing::{SimultaneousDamageEvent, process_simultaneous_damage_assignments_with_event};

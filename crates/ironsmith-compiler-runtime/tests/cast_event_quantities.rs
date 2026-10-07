@@ -925,7 +925,7 @@ fn namor_power_counts_controlled_noncreature_kindred_merfolk_on_the_battlefield(
     for definition in definitions("Namor the Sub-Mariner") {
         let power = definition.abilities.iter().find_map(|ability| {
             let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind else { return None; };
-            match &ability.payload {
+            match &ability.compiled_model()?.payload {
                 ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, .. } => Some(power),
                 _ => None,
             }

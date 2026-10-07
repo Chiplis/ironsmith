@@ -8229,6 +8229,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Stack(StackActionAst::ScaleXValue { target, .. }) => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, .. }) => {
+                bind_unresolved_it_in_target(target, seed_tag)
+            }
             SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
                 count,
                 tags,

@@ -979,7 +979,7 @@ fn mirror_haste_occurs_after_entry_observation_for_original_and_replacement_adde
         let mirror = g.create_object_from_definition(&definition, A, Zone::Battlefield);
         object(&mut g, A, Zone::Battlefield, "Additional Frog",
             "Type: Artifact\nIf one or more tokens would be created under your control, those tokens plus a 1/1 green Frog creature token are created instead.");
-        let observer = ironsmith::cards::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Haste entry observer")
+        let observer = ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Haste entry observer")
             .card_types(vec![ironsmith::CardType::Enchantment])
             .with_ability(ironsmith::ability::Ability::triggered(
                 ironsmith::triggers::Trigger::enters_battlefield(
@@ -1059,7 +1059,7 @@ fn yusri_chosen_count_owns_wins_losses_and_only_five_wins_grant_temporary_free_h
                 assert_eq!(g.player(A).unwrap().life, 30, "the free alternative does not waive an additional cost");
                 let other = object(&mut g, B, Zone::Hand, "Opponent has no grant", "Mana cost: {6}{B}\nType: Instant\nYou gain 1 life.");
                 assert!(free_hand_action(&g, B, other).is_none());
-                g.turn.phase = ironsmith::Phase::SecondMain;
+                g.turn.phase = ironsmith::Phase::NextMain;
                 g.turn.step = None;
                 assert!(free_hand_action(&g, A, sorcery).is_some());
                 ironsmith::turn::execute_cleanup_step(&mut g);

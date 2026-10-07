@@ -7,7 +7,7 @@ use ironsmith::decision::DecisionMaker;
 use ironsmith::decisions::context::{ProliferateContext, TargetsContext};
 use ironsmith::decisions::specs::ProliferateResponse;
 use ironsmith::effect::{EventValueSpec, Value};
-use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, ExecutionContext, ExecutionError, ProliferateEffect};
+use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, EffectContext as ExecutionContext, ExecutionError, ProliferateEffect};
 use ironsmith::game_loop::{GameLoopError, try_drain_pending_trigger_events, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::Target;
 use ironsmith::target::ChooseSpec;

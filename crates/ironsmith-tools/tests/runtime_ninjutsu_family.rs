@@ -33,7 +33,7 @@ fn is_ninjutsu(ability: &ActivatedAbility) -> bool {
         .any(|effect| effect.downcast_ref::<NinjutsuEffect>().is_some())
         && ability.mana_cost.non_mana_costs().any(|cost| {
             cost.downcast_ref::<CostEffect>()
-                .is_some_and(|cost| cost.effect.downcast_ref::<NinjutsuCostEffect>().is_some())
+                .is_some_and(|cost| cost.effect().downcast_ref::<NinjutsuCostEffect>().is_some())
         })
 }
 

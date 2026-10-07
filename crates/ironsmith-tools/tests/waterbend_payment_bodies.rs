@@ -1134,7 +1134,7 @@ fn native_mana_ability_with_an_independent_tap_cost_needs_a_second_waterbend_res
         board.pool(ALICE, &[]);
         assert!(!compute_legal_actions(&board.game, ALICE).unwrap().iter().any(|action|
             matches!(action, LegalAction::ActivateManaAbility { source: candidate, .. } if *candidate == source)),
-            "the source reserved for {T} cannot also pay the Waterbend pip");
+            "the source reserved for {{T}} cannot also pay the Waterbend pip");
         assert!(!board.game.is_tapped(source));
         assert!(waterbend_receipts(&board.game).is_empty());
         let helper = board.permanent("Memnite", ALICE);

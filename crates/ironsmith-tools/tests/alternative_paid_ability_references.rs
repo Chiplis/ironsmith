@@ -435,7 +435,7 @@ fn mayhem_requires_exact_discard_origin_time_and_real_cost_and_changes_the_affec
 
 #[test]
 fn copied_spells_retain_alternative_payment_and_x_without_another_cast() {
-    use ironsmith::effects::{EffectExecutor, ExecutionContext, ResolvedTarget};
+    use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext, ResolvedTarget};
     for name in ["Monastery Raid", "Sandman's Quicksand"] {
         for definition in definitions(name) {
             for paid in [false, true] {
@@ -496,7 +496,7 @@ fn receipt_transport_survives_lki_but_permanent_copy_and_new_incarnation_start_u
 #[test]
 fn undated_legacy_paid_receipts_error_under_positive_and_negated_resolution_gates() {
     use ironsmith::effect::{Condition, Value};
-    use ironsmith::effects::{ExecutionContext, ExecutionError};
+    use ironsmith::effects::{EffectContext as ExecutionContext, ExecutionError};
     use ironsmith_core::{AlternativeCostReference, OptionalCostKind, OptionalCostRef, OptionalCostsPaid};
     let mut game = setup(); let source = creature(&mut game, A, ironsmith::Subtype::Ninja, Zone::Battlefield);
     let reference = OptionalCostRef::new(OptionalCostKind::AlternativeCast(AlternativeCostReference::by_name("Sneak", None)));

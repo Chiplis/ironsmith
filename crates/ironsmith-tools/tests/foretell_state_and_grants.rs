@@ -195,7 +195,7 @@ fn starnheim_replaces_the_single_token_and_pays_both_x_pips() {
             for id in &game.battlefield {
                 let token = game.object(*id).unwrap();
                 assert!(token.subtypes.contains(&ironsmith::Subtype::Angel) && token.subtypes.contains(&ironsmith::Subtype::Warrior));
-                assert_eq!(token.base_power, Some(4)); assert_eq!(token.base_toughness, Some(4));
+                assert_eq!(token.base_power, Some(ironsmith::card::PtValue::Fixed(4))); assert_eq!(token.base_toughness, Some(ironsmith::card::PtValue::Fixed(4)));
                 assert!(game.object_has_static_ability_id(*id, ironsmith::static_abilities::StaticAbilityId::Flying));
                 assert!(game.object_has_static_ability_id(*id, ironsmith::static_abilities::StaticAbilityId::Vigilance));
             }
@@ -234,7 +234,7 @@ fn missing_recovered_foretell_evidence_is_unknown_and_new_incarnations_lose_the_
         assert_eq!(serde_json::from_value::<ironsmith::cost::OptionalCostsPaid>(wire.clone()).unwrap(), paid);
         wire.as_object_mut().unwrap().remove("cast_was_foretold");
         let recovered = serde_json::from_value::<ironsmith::cost::OptionalCostsPaid>(wire).unwrap();
-        let ctx = ironsmith::effects::ExecutionContext::new_default(spell, ALICE).with_optional_costs_paid(recovered);
+        let ctx = ironsmith::effects::EffectContext::new_default(spell, ALICE).with_optional_costs_paid(recovered);
         for condition in [ironsmith::ConditionExpr::ThisSpellWasForetold,
             ironsmith::ConditionExpr::Not(Box::new(ironsmith::ConditionExpr::ThisSpellWasForetold))] {
             assert!(matches!(ironsmith::condition_eval::evaluate_condition_resolution(&game, &condition, &ctx),
@@ -246,7 +246,7 @@ fn missing_recovered_foretell_evidence_is_unknown_and_new_incarnations_lose_the_
 }
 #[test]
 fn an_actual_copied_foretold_starnheim_uses_its_ordinary_body_while_the_original_uses_x() {
-    use ironsmith::effects::{EffectExecutor, ExecutionContext, ResolvedTarget};
+    use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext, ResolvedTarget};
     for definition in definitions("Starnheim Unleashed") {
         let mut game = setup();
         let card = game.create_object_from_definition(&definition, ALICE, Zone::Hand);

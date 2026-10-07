@@ -153,6 +153,12 @@ fn current(game: &GameState, stable: ironsmith::ids::StableId) -> ObjectId { gam
 fn tokens(game: &GameState) -> Vec<ObjectId> {
     game.battlefield.iter().copied().filter(|id| game.object(*id).unwrap().kind == ObjectKind::Token).collect()
 }
+/// Match through the public target validator: a non-target object spec is
+/// exactly the filter evaluated in the context's filter view.
+fn filter_matches(game: &GameState, ctx: &EffectContext, filter: &ironsmith::target::ObjectFilter, object: ironsmith::ObjectId) -> bool {
+    ironsmith::effects::validate_target(game, &ironsmith::effects::ResolvedTarget::Object(object),
+        &ChooseSpec::Object(filter.clone()), ctx)
+}
 #[test]
 fn every_frozen_body_retains_name_relations_and_its_secondary_rules() {
     for (name, markers) in [
@@ -470,39 +476,39 @@ fn yenna_rechecks_unique_name_and_copies_aura_with_untap_and_scry_only_for_that_
 }
 #[test]
 fn live_name_sets_and_frozen_tags_distinguish_split_nameless_copy_and_departure_names() {
-    use ironsmith::filter::ObjectFilterExt as _;
-    use ironsmith::target::{ObjectCharacteristic, ObjectCharacteristicRelation, ObjectFilter, TaggedOpbjectRelation};
+    use ironsmith::target::{ObjectFilter, TaggedOpbjectRelation};
+    use ironsmith_core::{ObjectCharacteristic, ObjectCharacteristicRelation};
     let mut game = game();
     let source = object(&mut game, A, Zone::Battlefield, "Original name", CardType::Creature);
     let candidate = object(&mut game, B, Zone::Battlefield, "Copied name", CardType::Creature);
     let snapshot = ironsmith::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
-    let mut ctx = game.filter_context_for(A, Some(source));
+    let mut ctx = EffectContext::new_default(source, A);
     ctx.tagged_objects.insert("captured".into(), vec![snapshot]);
     let live = ObjectFilter::creature().match_tagged(ironsmith_core::SOURCE_OBJECT_TAG, TaggedOpbjectRelation::SameNameAsTagged);
     let captured = ObjectFilter::creature().match_tagged("captured", TaggedOpbjectRelation::SameNameAsTagged);
-    assert!(!live.matches(game.object(candidate).unwrap(), &ctx, &game));
+    assert!(!filter_matches(&game, &ctx, &live, candidate));
     let model = object(&mut game, C, Zone::Battlefield, "Copied name", CardType::Creature);
     let copiable = ironsmith::snapshot::CopiableValues::from_object(game.object(model).unwrap());
     ApplyContinuousEffect::with_spec(ChooseSpec::SpecificObject(source), Modification::CopyOf {
         target_id: model, copiable_values: Box::new(copiable), preserve_source_abilities: false,
         name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
     }, Until::EndOfTurn).execute(&mut game, &mut EffectContext::new_default(source, A)).unwrap();
-    assert!(live.matches(game.object(candidate).unwrap(), &ctx, &game));
-    assert!(!captured.matches(game.object(candidate).unwrap(), &ctx, &game));
+    assert!(filter_matches(&game, &ctx, &live, candidate));
+    assert!(!filter_matches(&game, &ctx, &captured, candidate));
     game.move_object_by_effect(source, Zone::Graveyard).unwrap();
-    assert!(live.matches(game.object(candidate).unwrap(), &ctx, &game), "exact source LKI retains the copied name");
+    assert!(filter_matches(&game, &ctx, &live, candidate), "exact source LKI retains the copied name");
     let split = object(&mut game, A, Zone::Graveyard, "First half // Second half", CardType::Instant);
     let half = object(&mut game, B, Zone::Hand, "Second half", CardType::Instant);
     let mut relation = ObjectCharacteristicRelation::shares(vec![ObjectCharacteristic::Name], ObjectFilter::default().in_zone(Zone::Graveyard));
     relation.exclude_candidate = true;
     let mut filter = ObjectFilter::default();
     filter.characteristic_relations.push(relation);
-    assert!(filter.matches(game.object(half).unwrap(), &ctx, &game));
+    assert!(filter_matches(&game, &ctx, &filter, half));
     game.move_object_by_effect(split, Zone::Exile).unwrap();
-    assert!(!filter.matches(game.object(half).unwrap(), &ctx, &game));
+    assert!(!filter_matches(&game, &ctx, &filter, half));
     let nameless = object(&mut game, A, Zone::Graveyard, "", CardType::Instant);
     let no_name = object(&mut game, B, Zone::Hand, "", CardType::Instant);
-    assert!(!filter.matches(game.object(no_name).unwrap(), &ctx, &game));
+    assert!(!filter_matches(&game, &ctx, &filter, no_name));
     assert!(game.object(nameless).is_some());
 }
 #[test]
@@ -631,8 +637,8 @@ fn grim_failed_find_is_a_known_empty_name_set_and_still_shuffles() {
 }
 #[test]
 fn renamed_or_copied_split_reference_cannot_keep_its_printed_alternate_name() {
-    use ironsmith::filter::ObjectFilterExt as _;
-    use ironsmith::target::{ObjectCharacteristic, ObjectCharacteristicRelation, ObjectFilter, TaggedOpbjectRelation};
+    use ironsmith::target::{ObjectFilter, TaggedOpbjectRelation};
+    use ironsmith_core::{ObjectCharacteristic, ObjectCharacteristicRelation};
     for copy in [false, true] {
         let mut game = game();
         let source = object(&mut game, A, Zone::Battlefield, "Source", CardType::Artifact);
@@ -641,12 +647,12 @@ fn renamed_or_copied_split_reference_cannot_keep_its_printed_alternate_name() {
         game.object_mut(split).unwrap().other_face_name = Some("Old second half".into());
         game.add_exiled_with_source_link(source, split);
         let candidate = object(&mut game, A, Zone::Hand, "Old second half", CardType::Instant);
-        let ctx = game.filter_context_for(A, Some(source));
+        let ctx = EffectContext::new_default(source, A);
         let linked = ObjectFilter::default().match_tagged(ironsmith_core::SOURCE_EXILED_TAG, TaggedOpbjectRelation::SameNameAsTagged);
         let mut live = ObjectFilter::default();
         live.characteristic_relations.push(ObjectCharacteristicRelation::shares(vec![ObjectCharacteristic::Name], ObjectFilter::default().in_zone(Zone::Exile)));
-        assert!(linked.matches(game.object(candidate).unwrap(), &ctx, &game));
-        assert!(live.matches(game.object(candidate).unwrap(), &ctx, &game));
+        assert!(filter_matches(&game, &ctx, &linked, candidate));
+        assert!(filter_matches(&game, &ctx, &live, candidate));
         if copy {
             // The primary name is deliberately unchanged: name equality is
             // insufficient evidence that printed alternate names survived.
@@ -657,13 +663,13 @@ fn renamed_or_copied_split_reference_cannot_keep_its_printed_alternate_name() {
                 name_override: None, name_override_surface: None, add_supertypes: Vec::new(),
             }, Until::EndOfTurn).execute(&mut game, &mut EffectContext::new_default(source, A)).unwrap();
         } else { set_name(&mut game, split, "Changed name"); }
-        assert!(!linked.matches(game.object(candidate).unwrap(), &ctx, &game));
-        assert!(!live.matches(game.object(candidate).unwrap(), &ctx, &game));
+        assert!(!filter_matches(&game, &ctx, &linked, candidate));
+        assert!(!filter_matches(&game, &ctx, &live, candidate));
         let retained = ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(game.object(split).unwrap(), &game);
         assert_eq!(retained.split_other_half_name(), None);
         game.effect_store.continuous_effects.cleanup_end_of_turn();
         game.refresh_continuous_state().unwrap();
-        assert!(linked.matches(game.object(candidate).unwrap(), &ctx, &game));
+        assert!(filter_matches(&game, &ctx, &linked, candidate));
     }
 }
 #[test]

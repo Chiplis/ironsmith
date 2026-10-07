@@ -1,6 +1,7 @@
 //! Authored, unrun. Gameplay recovery uses native branches or genesis replay.
+use ironsmith::AbilityKind;
 use super::*;
-use ironsmith::effects::ExecutionContext;
+use ironsmith::effects::EffectContext as ExecutionContext;
 fn definition(name: &str) -> ironsmith::cards::CardDefinition {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../../fixtures/activation_threshold_bodies.json.fixture")).unwrap();
     let row = rows.iter().find(|r| r["name"] == name).unwrap();

@@ -332,7 +332,7 @@ impl ironsmith::effects::EffectExecutor for UnencodedProgram {
     fn execute(
         &self,
         _game: &mut ironsmith::GameState,
-        _ctx: &mut ironsmith::effects::ExecutionContext,
+        _ctx: &mut ironsmith::effects::EffectContext,
     ) -> Result<ironsmith::effect::EffectOutcome, ironsmith::effects::ExecutionError> {
         panic!("audit encoding must never execute an opaque payload");
     }

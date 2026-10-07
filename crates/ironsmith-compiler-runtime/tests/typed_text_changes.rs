@@ -15,7 +15,7 @@ const A: PlayerId = PlayerId::from_index(0);
 #[derive(Debug, Clone)]
 struct UnmodeledWords;
 impl ironsmith::effects::EffectExecutor for UnmodeledWords {
-    fn execute(&self, _: &mut GameState, _: &mut ironsmith::effects::ExecutionContext)
+    fn execute(&self, _: &mut GameState, _: &mut ironsmith::effects::EffectContext)
         -> Result<ironsmith::effect::EffectOutcome, ExecutionError>
     { Ok(ironsmith::effect::EffectOutcome::resolved()) }
 }
@@ -127,7 +127,6 @@ fn unsupported_program_rolls_back_registered_text_effects_and_context_receipts()
             ironsmith::static_ability_processor::StaticEffectDiscoveryError::TextChangeDomain(_)))));
         assert_eq!(game.effect_store.continuous_effects.effects().len(), count);
         assert_eq!(game.effect_store.continuous_effects.current_timestamp(), timestamp);
-        assert!(ctx.created_continuous_effects.is_empty());
         let chars = game.calculated_characteristics(id).unwrap();
         assert!(chars.subtypes.contains(&Subtype::Human));
         assert!(chars.abilities.iter().any(|ability| matches!(ability.kind, AbilityKind::Activated(_))));

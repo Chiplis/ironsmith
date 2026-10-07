@@ -1,7 +1,7 @@
 // Authored / UNRUN. The full body uses real counter producers; checkpoints
 // and copied stack entries must retain the native wide event projection.
 fn counter_recipient_native_fixture(wide: bool) -> (WasmGame, ObjectId, i64) {
-    use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, ExecutionContext, ProliferateEffect};
+    use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, EffectContext as ExecutionContext, ProliferateEffect};
     let mut wasm = WasmGame::new();
     wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
     wasm.game.turn.active_player = PlayerId(0);
@@ -31,7 +31,7 @@ fn counter_recipient_native_fixture(wide: bool) -> (WasmGame, ObjectId, i64) {
 
 fn counter_recipient_native_stack_amount(wasm: &WasmGame) -> i64 {
     let entry = wasm.game.stack.last().unwrap();
-    let mut context = ironsmith::effects::ExecutionContext::new_default(entry.object_id, entry.controller)
+    let mut context = ironsmith::effects::EffectContext::new_default(entry.object_id, entry.controller)
         .with_triggering_event(entry.triggering_event.clone().unwrap());
     context.event_value_amount = entry.event_value_amount;
     ironsmith::effects::helpers::resolve_value_wide(&wasm.game,
@@ -40,7 +40,7 @@ fn counter_recipient_native_stack_amount(wasm: &WasmGame) -> i64 {
 
 #[test]
 fn counter_recipient_queue_stack_and_copied_stack_survive_native_savepoints() {
-    use ironsmith::effects::{EffectExecutor, ExecutionContext};
+    use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};
     let _guard = crate::test_id_counter_guard();
     for wide in [false, true] {
         let (mut wasm, source, expected) = counter_recipient_native_fixture(wide);

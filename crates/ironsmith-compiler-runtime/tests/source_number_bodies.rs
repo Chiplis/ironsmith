@@ -609,7 +609,7 @@ fn omitted_program_numeric_pair_in_a_full_body_codec_cannot_produce_a_complete_p
         row["mana_cost"].as_str().unwrap(),row["type_line"].as_str().unwrap(),
         row["power"].as_str().unwrap(),row["toughness"].as_str().unwrap(),row["oracle_text"].as_str().unwrap());
     let (artifact,_)=compile_to_artifact("Shapeshifter",text,false).unwrap();
-    let mut wire:serde_json::Value=serde_json::from_str(&artifact.to_json().unwrap()).unwrap();
+    let mut wire:serde_json::Value=serde_json::from_slice(&artifact.to_json().unwrap()).unwrap();
     fn omit(value:&mut serde_json::Value)->usize {
         match value {
             serde_json::Value::Object(fields)=>{
@@ -621,7 +621,7 @@ fn omitted_program_numeric_pair_in_a_full_body_codec_cannot_produce_a_complete_p
         }
     }
     assert!(omit(&mut wire)>=2,"entry and upkeep program ownership was present before omission");
-    let legacy=ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&wire.to_string()).unwrap();
+    let legacy=ironsmith_compiled_artifact::CompiledCardArtifact::from_json(wire.to_string().as_bytes()).unwrap();
     let definition=ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&legacy).unwrap();
     let mut g=game();let source=g.create_object_from_definition(&definition,A,Zone::Battlefield);
     assert!(matches!(ironsmith::source_numbers::public_proof(&g,source,true),Err(ironsmith::effects::ExecutionError::IncompleteEvidence(_))));

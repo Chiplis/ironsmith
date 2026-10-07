@@ -80,7 +80,7 @@ fn five_first_draw_definition_pairs_and_trigger_occurrences_survive_unrelated_ca
 }
 
 use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
-use ironsmith::effects::{EffectExecutor, ExecutionContext};
+use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};
 use ironsmith::game_loop::{put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::triggers::{check_triggers, TriggerEvent, TriggerQueue};
 use ironsmith::{GameState, ObjectId, PlayerId, Target, Zone};

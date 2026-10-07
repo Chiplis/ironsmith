@@ -73,7 +73,7 @@ fn defender_native_missing_evidence_restores_the_stack_and_retries_the_same_fail
 }
 #[test]
 fn defender_native_copied_cane_trigger_revalidates_its_attacker_after_reselection_and_removal(){
-    use ironsmith::effects::{EffectExecutor,ExecutionContext};use ironsmith::target::ChooseSpec;
+    use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext};use ironsmith::target::ChooseSpec;
     let _guard=crate::test_id_counter_guard();for remove in [false,true]{
         let mut wasm=defender_native_fixture();let equipment=wasm.game.create_object_from_definition(&defender_native_definition("Blue Mage's Cane"),PlayerId(0),Zone::Battlefield);
         let host_def=ironsmith_registry_test::compile_to_runtime_definition("Copied trigger attacker","Type: Creature — Human\nPower/Toughness: 2/4",false).unwrap();let host=wasm.game.create_object_from_definition(&host_def,PlayerId(0),Zone::Battlefield);wasm.game.attach_object_to_target(equipment,ironsmith::object::AttachmentTarget::Object(host));
