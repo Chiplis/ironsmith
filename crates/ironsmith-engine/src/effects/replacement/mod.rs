@@ -32,7 +32,7 @@ mod register_enter_with_counters;
 pub use register_enter_with_counters::RegisterEnterWithCountersReplacementEffect;
 
 mod execute_payload;
-pub(crate) use execute_payload::{execute_replacement_payload, execute_replacement_payload_with_object_tags, execute_event_expansion, execute_event_expansion_with_targets, execute_deferred_replacement_programs};
+pub(crate) use execute_payload::{execute_replacement_payload, execute_replacement_payload_with_object_tags, execute_replacement_payload_with_snapshot, execute_event_expansion, execute_event_expansion_with_targets, execute_deferred_replacement_programs};
 
 pub(crate) use execute_payload::{
     CompletedReplacementPrograms, ReplacementProgramBindings,

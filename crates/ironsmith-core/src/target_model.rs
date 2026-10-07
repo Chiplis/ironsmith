@@ -200,7 +200,7 @@ impl ChooseSpec {
         let count = self.count();
         if !self.is_target() || count.min != 1 || count.max != Some(1) || count.dynamic_x || count.up_to_x || self.count_value().is_some() { return false; }
         let Self::Object(filter) = self.base() else { return false; };
-        let Some(crate::Comparison::LessThanOrEqualExpr(value)) = &filter.power else { return false; };
+        let Some(crate::FilterComparison::LessThanOrEqualExpr(value)) = &filter.power else { return false; };
         let quantity = match value.unhinted() {
             crate::Value::EffectValue(id) => *id == crate::EffectId::ACTIVATION_COUNTER_COST,
             crate::Value::PriorEffectMetric { effect_id, query } => *effect_id == crate::EffectId::ACTIVATION_COUNTER_COST

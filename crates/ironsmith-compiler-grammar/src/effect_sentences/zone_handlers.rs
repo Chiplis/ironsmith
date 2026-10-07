@@ -52,7 +52,7 @@ mod exile_actions;
 #[path = "mana_actions.rs"]
 mod mana_actions;
 #[path = "misc_actions.rs"]
-mod misc_actions;
+pub(super) mod misc_actions;
 #[path = "remove_destroy.rs"]
 mod remove_destroy;
 #[path = "return_exchange.rs"]

@@ -21,7 +21,7 @@ fn words(family: Family) -> Vec<TextWord> {
 }
 
 fn word_label(word: TextWord) -> String {
-    match word { TextWord::Color(color) => color.to_string(),
+    match word { TextWord::Color(color) => color.name().to_string(),
         TextWord::BasicLandType(subtype) | TextWord::CreatureType(subtype) => subtype.to_string() }
 }
 

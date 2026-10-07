@@ -57,7 +57,7 @@ impl SimultaneousEffectCompletion for ZoneTail {
         crate::effects::composition::inherit_original_observations(&mut self.before.outcome, &prefix.events);
         crate::effects::composition::inherit_original_observations(&mut self.first.outcome.outcome, &prefix.events);
         let parent = ExecutionContextCheckpoint::capture(ctx);
-        self.scope.restore(ctx);
+        self.scope.restore_ref(ctx);
         let result = (|| {
             let first = crate::effects::composition::complete_committed_original_with_outputs(game, ctx, self.first)?;
             let mut outputs = append(self.before, first);

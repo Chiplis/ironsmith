@@ -93,6 +93,21 @@ pub(crate) fn rewrite_landwalk_words(kind: LandwalkKind, change: TextChange) -> 
     }
 }
 
+pub(crate) fn rewrite_core_landwalk_words(
+    kind: ironsmith_core::LandwalkKind,
+    change: TextChange,
+) -> ironsmith_core::LandwalkKind {
+    match kind {
+        ironsmith_core::LandwalkKind::Subtype { mut subtype, snow } => {
+            change.replace_subtype_word(&mut subtype);
+            ironsmith_core::LandwalkKind::Subtype { subtype, snow }
+        }
+        ironsmith_core::LandwalkKind::AnyLand
+        | ironsmith_core::LandwalkKind::NonbasicLand
+        | ironsmith_core::LandwalkKind::ArtifactLand => kind,
+    }
+}
+
 pub(crate) fn rewrite_attachment_words(filter: &ironsmith_core::AuraAttachmentFilter, change: TextChange)
     -> Result<ironsmith_core::AuraAttachmentFilter, TextChangeDomainError>
 {

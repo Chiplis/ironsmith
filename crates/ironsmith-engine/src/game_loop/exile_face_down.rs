@@ -34,7 +34,8 @@ pub(super) fn resume(game: &GameState, state: &PriorityLoopState) -> Result<Game
     blind_play::resolve(game, pending.card_id, pending.player, &pending.permission)?;
     let mut options = pending.kinds.iter().enumerate().map(|(index, kind)|
         crate::decisions::context::SelectableOption::new(index, match kind {
-            crate::game_state::FaceDownCastKind::Permission { source } => format!("Declare effect permission from {source}"),
+            crate::game_state::FaceDownCastKind::Permission { source } => format!("Declare effect permission from {}",
+                game.object(*source).map_or_else(|| "another source".to_string(), |object| object.name.to_string())),
             _ => format!("Declare {}", kind.as_str()),
         })).collect::<Vec<_>>();
     options.push(crate::decisions::context::SelectableOption::new(options.len(), "Cancel face-down cast"));

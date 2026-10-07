@@ -2,7 +2,7 @@
 // spell/land proposal. This requirement is derived without reading its face.
 impl WasmGame {
     fn blind_exile_opening_requirements(
-        &self, command: &UiCommand,
+        &mut self, command: &UiCommand,
     ) -> Result<Option<Vec<CryptoRequirementView>>, JsValue> {
         if let Some(DecisionContext::SelectOptions(options)) = self.pending_decision.as_ref()
             && options.exile_face_down_choice {

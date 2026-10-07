@@ -7235,6 +7235,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
                 ..
             })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy {
                 ..
             })

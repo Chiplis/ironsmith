@@ -57,7 +57,7 @@ pub fn try_parse_optional_waterbend_additional_cost(
         kind: crate::cost::OptionalCostKind::Waterbend,
         reference: crate::cost::OptionalCostRef::new(crate::cost::OptionalCostKind::Waterbend),
         source_label: line.info.raw_line.trim().to_string(), cost: total_cost,
-        repeatable: false, returns_to_hand: false,
+        repeatable: false, returns_to_hand: false, provenance: None,
     })))
 }
 

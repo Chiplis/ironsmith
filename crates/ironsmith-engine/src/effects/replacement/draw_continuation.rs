@@ -1121,10 +1121,11 @@ impl SimultaneousEffectCompletion for DrawContinuation {
         self.resume.observe_prefix(&original_prefix.events);
         let mut child =
             ExecutionContext::new(self.source, self.controller, &mut *parent.decision_maker);
+        let resume = self.resume;
         let outputs =
             crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
                 let mut outputs =
-                    resume_replacement_child_with_outputs(game, &mut child, self.resume)?;
+                    resume_replacement_child_with_outputs(game, &mut child, resume)?;
                 crate::effects::runtime::capture_triggers_before_added_program(
                     game,
                     &child,

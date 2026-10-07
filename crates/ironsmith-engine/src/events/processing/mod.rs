@@ -2725,7 +2725,7 @@ pub struct PreparedEventOutcome<T> {
 }
 
 impl<T> PreparedEventOutcome<T> {
-    fn pure(original: EventOutcome<T>) -> Self {
+    pub(crate) fn pure(original: EventOutcome<T>) -> Self {
         Self {
             original,
             programs: Vec::new(),
@@ -4648,7 +4648,7 @@ impl crate::effects::SimultaneousEffectCompletion for TypedMoveDrawCompletion {
     fn complete_with_outputs(self: Box<Self>, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
         _prefix: crate::effect::EffectOutcome) -> Result<crate::effects::CompletedEffectOutputs, crate::effects::ExecutionError> {
         let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        self.scope.restore(ctx);
+        self.scope.restore_ref(ctx);
         let result = (|| {
             let mut outcomes = Vec::new();
             for draw in self.nested.0 {

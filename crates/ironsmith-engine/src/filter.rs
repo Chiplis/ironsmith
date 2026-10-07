@@ -1780,7 +1780,7 @@ impl ComparisonRuntimeExt for Comparison {
     }
 }
 
-trait ParityRequirementRuntimeExt {
+pub(crate) trait ParityRequirementRuntimeExt {
     fn resolve(self, game: &crate::game_state::GameState, source: Option<ObjectId>) -> Option<Self>
     where
         Self: Sized;

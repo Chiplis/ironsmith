@@ -1091,7 +1091,7 @@ fn parse_terminal_same_name_filter(
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some((start, (), reference)) = crate::grammar::primitives::find_prefix(trimmed, || {
+    let Some((start, _, reference)) = crate::grammar::primitives::find_prefix(trimmed, || {
         crate::grammar::primitives::any_phrase(&[
             &["with", "the", "same", "name", "as"],
             &["with", "same", "name", "as"],

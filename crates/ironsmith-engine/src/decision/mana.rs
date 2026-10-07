@@ -949,7 +949,7 @@ fn maximum_x_for_activation_cost_in_query(
         let mut context = ExecutionContext::new_default(source, activator).with_x(middle);
         let fixed = if let Some(dynamic) = price.dynamic_mana_cost() {
             Some(crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut context).map_err(|error| match error {
-                crate::costs::CostPaymentError::ExecutionFailed(error) => error,
+                crate::cost::CostPaymentError::ExecutionFailed(error) => error,
                 error => crate::effects::ExecutionError::UnresolvableValue(format!("activation X price: {error:?}")),
             })?)
         } else { price.mana_cost().cloned() };

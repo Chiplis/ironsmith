@@ -4647,10 +4647,11 @@ impl GameState {
             turn: TurnState::new(active_player),
             turn_store: TurnStore {
                 turn_order,
-                turn_history: TurnHistory {
-                    ability_activation_counts: Some(HashMap::new()),
-                    draw_occurrences: Some(Default::default()),
-                    ..TurnHistory::default()
+                turn_history: {
+                    let mut history = TurnHistory::default();
+                    history.ability_activation_counts = Some(HashMap::new());
+                    history.draw_occurrences = Some(Default::default());
+                    history
                 },
                 ..TurnStore::default()
             },

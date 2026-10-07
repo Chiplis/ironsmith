@@ -155,7 +155,7 @@ fn retain_source_number_choices(
 fn own_upkeep(trigger:&TriggerSpec)->bool{
     match trigger {
         TriggerSpec::WithIntro{trigger,..}|TriggerSpec::ConditionQualified{trigger,..}=>own_upkeep(trigger),
-        TriggerSpec::BeginningOfUpkeep(PlayerFilter::You)=>true,
+        TriggerSpec::BeginningOfUpkeep(ironsmith_core::PlayerFilter::You)=>true,
         _=>false,
     }
 }

@@ -209,7 +209,7 @@ impl TriggerMatcher for SpellCastTrigger {
             // Do not narrow a wide mana value to i32 or inspect a later stack
             // incarnation; source counters only gate admission at this moment.
             if let Some(counter_type) = object_filter.mana_value_eq_counters_on_source.take() {
-                let counters = ctx.game.object(ctx.source_id).map(|source| &source.counters)
+                let counters = ctx.game.object(ctx.source_id).map(|source| source.counters.counts())
                     .or_else(|| ctx.filter_ctx.source_snapshot.as_ref()
                         .filter(|source| source.object_id == ctx.source_id).map(|source| &source.counters));
                 let Some(counters) = counters else {

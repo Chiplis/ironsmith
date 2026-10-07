@@ -2187,7 +2187,7 @@ impl Effect {
     pub(crate) fn select_prepared_action_program(
         &self, game: &mut GameState, ctx: &mut crate::effects::ExecutionContext,
     ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, crate::effects::ExecutionError> {
-        crate::effects::runtime::select_reached_action_program(game, self, ctx)
+        crate::effects::select_reached_action_program(game, self, ctx)
     }
 
     /// Prepare a simultaneous instruction with the same immutable result

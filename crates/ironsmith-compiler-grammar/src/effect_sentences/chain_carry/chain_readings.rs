@@ -1328,5 +1328,5 @@ fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>
         || !tail.get(1).is_some_and(|token| token.is_any_word(&["add", "subtract"]))
         || tail.get(2).is_some_and(|token| token.kind == crate::lexer::TokenKind::ManaGroup)
     { return Ok(None); }
-    super::super::misc_actions::parse_roll(body, None).map(|effect| Some(vec![effect]))
+    super::super::zone_handlers::misc_actions::parse_roll(body, None).map(|effect| Some(vec![effect]))
 }

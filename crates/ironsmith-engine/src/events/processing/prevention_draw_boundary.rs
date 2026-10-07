@@ -122,7 +122,7 @@ fn prepare(
             crate::effects::capture_triggers_before_added_program(game, &ctx, Some(effect),
                 before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))
                 .map_err(|error| DamageProcessingError { source, error })?;
-            let first = crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
+            let first = crate::effects::with_per_event_trigger_matching(game, true, |game| {
                 crate::effects::replacement::prepare_replacement_child(game, &mut ctx, effect)
             }).map_err(|error| DamageProcessingError { source, error })?;
             if ctx.decision_maker.awaiting_choice() {
@@ -236,8 +236,9 @@ impl SimultaneousEffectCompletion for PreventionDrawCompletion {
                 crate::effects::capture_triggers_before_added_program(game, ctx,
                     self.remaining.first().and_then(|pending| pending.follow_up.effects.first()),
                     self.before.iter_mut().flat_map(|(_, output)| output.outcome.events.iter_mut()))?;
-                let suffix = crate::effects::runtime::with_per_event_trigger_matching(game, true, |game| {
-                    execute_prevention_follow_ups_with_owned_outputs(game, &mut *ctx.decision_maker, self.remaining)
+                let remaining = self.remaining;
+                let suffix = crate::effects::with_per_event_trigger_matching(game, true, |game| {
+                    execute_prevention_follow_ups_with_owned_outputs(game, &mut *ctx.decision_maker, remaining)
                 }).map_err(|error| error.error)?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));

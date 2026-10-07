@@ -15,7 +15,7 @@ use super::text_change_programs::{
     rewrite_total_cost_words, rewrite_triggered_ability_words,
 };
 use super::text_changes::{
-    TextChangeDomainError as Error, rewrite_attachment_words, rewrite_landwalk_words,
+    TextChangeDomainError as Error, rewrite_attachment_words, rewrite_core_landwalk_words,
     rewrite_protection_words,
 };
 use crate::costs::Cost;
@@ -121,7 +121,7 @@ pub(crate) fn rewrite_static_model_words(
         P::SourceLineKeywordGroup { .. } | P::SourceLineStaticGroup { .. } => {}
         P::LookAtSourceExiledCards { pair: _, source: _ } => {},
         P::Protection(from) => *from = rewrite_protection_words(from, change)?,
-        P::Landwalk(kind) => *kind = rewrite_landwalk_words(*kind, change),
+        P::Landwalk(kind) => *kind = rewrite_core_landwalk_words(*kind, change),
         P::Enchant(filter) => *filter = rewrite_attachment_words(filter, change)?,
         P::HexproofFrom(filter) | P::BandsWithOther(filter)
         | P::PreventAllCombatDamageToPermanentsMatching(filter)
@@ -260,7 +260,7 @@ pub(crate) fn rewrite_static_model_words(
         }
         P::BlockingAsThoughNoLandwalk(spec) => {
             spec.objects = rewrite_filter_words(&spec.objects, change)?;
-            if let Some(kind) = &mut spec.landwalk { *kind = rewrite_landwalk_words(*kind, change); }
+            if let Some(kind) = &mut spec.landwalk { *kind = rewrite_core_landwalk_words(*kind, change); }
         }
         P::CantAttackUnlessCondition { condition, .. } => attack_condition_words(condition, change)?,
         P::AttackCost { attackers, cost, .. } => {

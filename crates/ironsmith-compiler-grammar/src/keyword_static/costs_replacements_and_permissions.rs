@@ -1510,7 +1510,7 @@ pub fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    let Some(costs_index) = tokens.iter().position(|token| token_word_is(token, "costs")) else {
+    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
         return Ok(None);
     };
     let Some((Value::Fixed(amount), consumed)) = parse_cost_modifier_amount(&tokens[costs_index + 1..]) else {

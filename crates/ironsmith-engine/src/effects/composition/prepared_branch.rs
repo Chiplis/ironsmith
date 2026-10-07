@@ -170,7 +170,7 @@ struct BranchScope {
 
 impl BranchScope {
     fn run<T>(
-        self,
+        &self,
         ctx: &mut ExecutionContext,
         body: impl FnOnce(&mut ExecutionContext) -> Result<T, ExecutionError>,
     ) -> Result<T, ExecutionError> {
@@ -185,7 +185,7 @@ impl BranchScope {
         result
     }
 
-    fn project(self, outcome: EffectOutcome, ctx: &ExecutionContext) -> EffectOutcome {
+    fn project(&self, outcome: EffectOutcome, ctx: &ExecutionContext) -> EffectOutcome {
         if ctx.decision_maker.awaiting_choice() {
             return EffectOutcome::count(0);
         }

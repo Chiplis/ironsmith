@@ -110,8 +110,8 @@ pub fn parse_carried_conditional_anthem_grant_line(
 pub fn parse_anthem_and_keyword_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if super::combat_requirements::owns_combat_requirement_line(tokens) {
-        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    if self::combat_requirements::owns_combat_requirement_line(tokens) {
+        return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
 
     // Comma-separated omitted-subject predicates are separate clauses, each
@@ -2423,8 +2423,8 @@ fn lower_atomic_anthem_predicate(
 pub fn parse_anthem_with_trailing_segments_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if super::combat_requirements::owns_combat_requirement_line(tokens) {
-        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    if self::combat_requirements::owns_combat_requirement_line(tokens) {
+        return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
 
     // Only a successful complete production can own a competing line;
@@ -3098,8 +3098,8 @@ pub fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
 pub fn parse_gets_and_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if super::combat_requirements::owns_combat_requirement_line(tokens) {
-        return super::combat_requirements::parse_combat_requirement_static_line(tokens);
+    if self::combat_requirements::owns_combat_requirement_line(tokens) {
+        return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
@@ -3217,7 +3217,7 @@ fn has_omitted_subject_anthem_predicates(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_anthem_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, CardTextError> {
-    if super::combat_requirements::owns_combat_requirement_line(tokens) {
+    if self::combat_requirements::owns_combat_requirement_line(tokens) {
         return Ok(None);
     }
 

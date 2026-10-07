@@ -125,6 +125,9 @@ impl IterationContinuation {
                         let receipt = super::adapt_original_outcome_with_outputs(receipt?, Box::new(IterationDamageBinding(proposal)), game, ctx)?;
                         crate::effects::replacement::prepare_committed_draw_boundary(game, ctx, receipt)
                     }
+                    Some(super::action_program::NativeProgramAction::TotalCost { cost, payer, reason }) =>
+                        crate::costs::execute_total_cost_program_action(&cost, game, ctx, payer, reason)
+                            .map(|prefix| crate::effects::replacement::PreparedReplacementChild { prefix, resume: None }),
                     None if defer_draws && matches!(purpose, crate::effects::EffectExecutionPurpose::Action) =>
                         crate::effects::replacement::prepare_replacement_child(game, ctx, &action.effect),
                     None => purpose.execute(game, &action.effect, ctx)

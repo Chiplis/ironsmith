@@ -26,7 +26,7 @@ pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;
 pub use move_one_counter::MoveOneCounterEffect;
-pub(crate) use object_counter_placement::execute_object_counter_placement;
+pub(crate) use object_counter_placement::{execute_object_counter_placement, execute_object_counter_placement_with_outputs};
 pub(crate) use player_counter_placement::execute_player_counter_placement;
 pub(crate) use player_counter_placement::execute_player_counter_placement_with_outputs;
 pub use proliferate::ProliferateEffect;

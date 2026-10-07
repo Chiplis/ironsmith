@@ -3481,7 +3481,7 @@ pub(super) fn finalize_pending_spell_cast(
         let cost = mana_cost_with_announced_hybrid_choices(&cost, &pending.hybrid_choices)
             .reduce_generic(unspent_alternative_base_reduction(&pending));
         if let Some(spell) = game.object_mut(pending.spell_id) {
-            spell.cast_alternative_method = Some(Box::new(AlternativeCastingMethod::Miracle { cost }));
+            spell.cast_alternative_method = Some(Box::new(crate::alternative_cast::AlternativeCastingMethod::Miracle { cost }));
         }
     }
     let effect_driven = pending.effect_driven;

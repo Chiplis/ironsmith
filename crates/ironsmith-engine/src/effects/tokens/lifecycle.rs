@@ -889,7 +889,7 @@ impl crate::effects::SimultaneousEffectCompletion for TokenInstructionCompletion
             {
                 let child = crate::effects::ApplyContinuousEffect::new(
                     crate::continuous::EffectTarget::Specific(id),
-                    crate::continuous::Modification::AddAbility(Ability::static_ability(StaticAbility::haste())),
+                    crate::continuous::Modification::AddAbility(StaticAbility::haste()),
                     crate::effect::Until::Forever,
                 ).execute_child_with_outputs(game, ctx)?;
                 if ctx.decision_maker.awaiting_choice() {

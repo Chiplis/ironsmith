@@ -845,7 +845,7 @@ impl CostPayer for CostEffect {
         }
 
         ctx.completed_sacrifice = retain_original_sacrifice_bindings(
-            &self.effect, game, &outcome, &mut exec_ctx,
+            &self.effect, game, &outputs.outcome, &mut exec_ctx,
         )?;
         ctx.execution_inputs = Some(Box::new(crate::effects::PaymentExecutionInputs::capture(
             &exec_ctx,

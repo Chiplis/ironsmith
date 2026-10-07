@@ -310,7 +310,7 @@ impl CostExecutableEffect for PayManaEffect {
     fn can_execute_as_cost(
         &self, game: &GameState, source: ObjectId, controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        self.can_execute_as_cost_with_reason(game, source, controller, crate::costs::PaymentReason::Effect)
+        CostExecutableEffect::can_execute_as_cost_with_reason(self, game, source, controller, crate::costs::PaymentReason::Effect)
     }
 
     fn can_execute_as_cost_with_reason(

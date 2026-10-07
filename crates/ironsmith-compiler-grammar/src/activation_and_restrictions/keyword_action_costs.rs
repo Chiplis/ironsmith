@@ -432,13 +432,6 @@ fn parse_payment_clause_as_effects(
         return Ok(None);
     }
 
-    if trimmed.first().is_some_and(|token| token.is_word("waterbend")) {
-        let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(&trimmed)?;
-        let cost = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)?;
-        let [branch] = cost.branches.as_slice() else { return Ok(None); };
-        return Ok(Some(ironsmith_core::TotalCost::from_costs(branch.clone())));
-    }
-
     if let Some(or_idx) = find_payment_alternative_or(&trimmed) {
         let left = parse_payment_clause_as_effects(&trimmed[..or_idx])?.ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -571,6 +564,13 @@ pub fn parse_payment_clause_as_total_cost(
     let trimmed = trim_edge_punctuation(&trim_commas(tokens));
     if trimmed.is_empty() {
         return Ok(None);
+    }
+
+    if trimmed.first().is_some_and(|token| token.is_word("waterbend")) {
+        let cst = crate::grammar::activation_costs::parse_activation_cost_tokens(&trimmed)?;
+        let cost = crate::semantic_assembly::activation_costs::assemble_activation_cost(&cst)?;
+        let [branch] = cost.branches.as_slice() else { return Ok(None); };
+        return Ok(Some(ironsmith_core::TotalCost::from_costs(branch.clone())));
     }
 
     if let Some(or_idx) = find_payment_alternative_or(&trimmed) {

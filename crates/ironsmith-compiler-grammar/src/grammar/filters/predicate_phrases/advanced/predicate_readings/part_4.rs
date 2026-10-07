@@ -679,7 +679,7 @@ fn read_another_same_name_object_exists(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     use winnow::prelude::*;
     let tokens = crate::util::trim_edge_punctuation_tokens(input.predicate_tokens);
-    let Some(((), body)) = crate::grammar::primitives::parse_prefix(
+    let Some((_, body)) = crate::grammar::primitives::parse_prefix(
         tokens, crate::grammar::primitives::kw("another"),
     ) else { return Ok(None); };
     let Some((end, (), rest)) = crate::grammar::primitives::find_prefix(body, || {

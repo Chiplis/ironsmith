@@ -4197,7 +4197,8 @@ fn pay_component_in_context_with_outputs(
         let execution = crate::effects::ExecutionContextCheckpoint::capture(execution_ctx);
         if adjusted_cost.has_waterbend_obligation() {
             return crate::mana_payment::pay_mana_interactively_in_context(game, payer, source, adjusted_cost,
-                reason, Vec::new(), reserved_tap_sources, execution_ctx.decision_maker, Some(&execution));
+                reason, Vec::new(), reserved_tap_sources, execution_ctx.decision_maker, Some(&execution))
+                .map(|()| Vec::new());
         }
         return crate::costs::pay_mana_cost_with_choices_in_context(
             game,

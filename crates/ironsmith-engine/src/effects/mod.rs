@@ -107,7 +107,7 @@ pub(crate) use context::{ExecutionContext, ExecutionContextCheckpoint, PaymentEx
 pub(crate) use runtime::{EffectExecutionPurpose, execute_effect_payment_with_outputs};
 pub(crate) use runtime::{
     capture_triggers_before_added_program, match_triggers_at_instruction_boundary,
-    retain_unmatched_outcome_events, with_per_event_trigger_matching,
+    retain_unmatched_outcome_events, with_per_event_trigger_matching, select_reached_action_program,
 };
 pub use runtime::{execute_effect, execute_effect_with_outputs, resolve_value, validate_target};
 

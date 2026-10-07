@@ -660,7 +660,7 @@ pub(super) fn open_flashback_price_replacement(
         ));
     }
     let target = crate::effect_sentences::parse_target_phrase(shape.target_tokens)?;
-    let predicate = crate::grammar::filters::predicate_phrases::parse_predicate(&tokens[split + 2..])?;
+    let predicate = crate::grammar::filters::parse_condition_predicate_lexed(&tokens[split + 2..])?;
     let tag = helper_tag_for_tokens(first.lowered(), "flashback_target");
     let grant = |grantable| EffectAst::subject_verb_grant_to_target(
         TargetAst::Tagged(tag.clone(), None), grantable, crate::grant::GrantDuration::UntilEndOfTurn,

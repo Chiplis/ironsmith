@@ -3795,7 +3795,7 @@ pub fn recognize_document_with_context(
                     // after the reminder. Keep the original line in the CST and
                     // Oracle text, but never turn rule reminder text into an
                     // authored activation or copied text-box ability.
-                    if !preprocessed.card.card_types_ref().contains(&CardType::Land)
+                    if !preprocessed.card.card_types_ref().contains(&crate::types::CardType::Land)
                         || types.iter().any(|subtype| !preprocessed.card.subtypes_ref().contains(subtype))
                     {
                         return Err(CardTextError::ParseError(
@@ -4213,7 +4213,7 @@ fn try_push_reveal_first_draw_line(
         } else if let Some(mut static_line) = recognize_static_line(&chunk_line)? {
             let mut abilities = parse_static_ability_ast_line_lexed(&chunk_line.tokens)?
                 .ok_or_else(|| CardTextError::InvariantViolation("first-draw static lost its typed reading".into()))?;
-            let [crate::model::StaticAbilityAst::Static(ability)] = abilities.as_mut_slice() else {
+            let [crate::cards::builders::StaticAbilityAst::Static(ability)] = abilities.as_mut_slice() else {
                 return Err(CardTextError::InvariantViolation("first-draw static must be one ability".into()));
             };
             let ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn { linked_reveal_pair, .. } = &mut ability.payload else {
@@ -4244,7 +4244,7 @@ fn try_push_reveal_first_draw_line(
         let Some(ability) = triggered.info.semantic_facts.triggered_ability.compiler_ability.as_mut() else {
             return Err(CardTextError::InvariantViolation("first-draw trigger has no compiler facts".into()));
         };
-        let crate::model::TriggerSpec::PlayerRevealsCard { from_source: true, first_draw_pair, .. } = &mut ability.event.semantics else {
+        let crate::model::ast::TriggerSpec::PlayerRevealsCard { from_source: true, first_draw_pair, .. } = &mut ability.event.semantics else {
             return Err(CardTextError::ParseError("first-draw family contains an unrelated trigger".into()));
         };
         *first_draw_pair = Some(pair);

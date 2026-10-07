@@ -1827,6 +1827,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
             ..
         })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { .. })
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeCopy { .. })
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { .. })

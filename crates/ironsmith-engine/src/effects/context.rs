@@ -1350,6 +1350,11 @@ impl<'a> ExecutionContext<'a> {
     /// This is used to pass tags between cost effects, where the first effect
     /// may tag an object (e.g., "choose a creature") and a subsequent effect
     /// needs to reference it (e.g., "sacrifice the chosen creature").
+    pub fn with_effect_outcomes(mut self, outcomes: HashMap<EffectId, EffectOutcome>) -> Self {
+        self.effect_outcomes = outcomes;
+        self
+    }
+
     pub fn with_tagged_objects(mut self, tags: HashMap<TagKey, Vec<ObjectSnapshot>>) -> Self {
         self.tagged_objects = tags;
         if !self.tagged_objects.contains_key(&TagKey::from("__it__"))
