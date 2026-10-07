@@ -1064,6 +1064,16 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
         }
         surviving_declarations.push(prepared_decl);
     }
+    // Publish step-local evidence only with a completed declaration, after all
+    // costs and choices. Keep earlier successfully declared teammates' targets
+    // if a shared step commits in more than one transaction. Existing attackers
+    // and creatures put onto the battlefield attacking add no declaration facts.
+    next_combat.last_attack_declaration_step_players.get_or_insert_with(Default::default).extend(
+        surviving_declarations.iter().filter_map(|declaration| match declaration.declaration.target {
+            AttackTarget::Player(player) => Some(player),
+            _ => None,
+        }),
+    );
     // CR 506.4e: remember what each attacked permanent was attacked as.
     next_combat.record_attacked_permanent_types(game);
 
@@ -3421,6 +3431,8 @@ mod declaration_batch_tests {
         assert!(!game.is_tapped(first_attacker));
         assert!(!game.is_tapped(second_attacker));
         assert!(combat.attackers.is_empty());
+        assert!(combat.last_attack_declaration_step_players.is_none(),
+            "partially paid then failed costs must not publish a completed step record");
         assert!(game.combat.is_none());
         assert!(!game.creature_attacked_this_turn(first_attacker));
         assert!(!game.creature_attacked_this_turn(second_attacker));

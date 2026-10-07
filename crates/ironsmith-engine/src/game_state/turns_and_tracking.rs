@@ -1809,6 +1809,9 @@ impl GameState {
     }
 
     pub fn mark_combat_phase_started(&mut self) {
+        if let Some(combat) = self.combat.as_mut() {
+            combat.last_attack_declaration_step_players = None;
+        }
         self.turn_store.combat_phases_started_this_turn = self
             .turn_store
             .combat_phases_started_this_turn

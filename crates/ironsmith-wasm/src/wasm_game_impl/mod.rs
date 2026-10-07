@@ -85,3 +85,6 @@ mod combat_participant_savepoint_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod next_step_duration_savepoint_tests;
+
+#[cfg(test)]
+mod prevention_step_savepoint_tests;

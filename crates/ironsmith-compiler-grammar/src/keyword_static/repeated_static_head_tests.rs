@@ -167,6 +167,7 @@ fn repeated_static_heads_preserve_land_animation_filters_and_pt() {
         "All lands are 1/1 creatures that are still lands.",
         "All lands are 2/2 creatures that are still lands.",
         "All Forests are 1/1 creatures that are still lands.",
+        "All Swamps are 1/1 black creatures that are still lands.",
         "Forests you control are 3/4 creatures that are still lands.",
         "Nonbasic lands are 2/3 creatures that are still lands.",
     ] {
@@ -221,7 +222,7 @@ fn repeated_static_heads_do_not_widen_specialist_semantic_guards() {
         ),
         (
             "parse_lands_are_pt_creatures_still_lands_line",
-            "All Swamps are 1/1 black creatures that are still lands.",
+            "All Swamps are 1/1 black creatures that are still lands and have flying.",
         ),
         (
             "parse_lands_are_pt_creatures_still_lands_line",

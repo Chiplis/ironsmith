@@ -1842,28 +1842,17 @@ pub(crate) fn spell_has_active_flash_with_view(
 }
 
 pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) -> bool {
-    use crate::combat_state::AttackTarget;
     use crate::game_state::{Phase, Step};
 
     if !matches!(game.turn.phase, Phase::Combat) || game.turn.step != Some(Step::DeclareAttackers) {
         return false;
     }
 
-    let Some(combat) = game.combat.as_ref() else {
-        return false;
-    };
-
-    combat
-        .attackers
-        .iter()
-        .any(|attacker| match attacker.target {
-            AttackTarget::Player(defender) => defender == player,
-            AttackTarget::Planeswalker(planeswalker_id) => game
-                .object(planeswalker_id)
-                .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
-            AttackTarget::Battle(battle_id) => game.battle_protector(battle_id) == Some(player),
-            AttackTarget::Nothing { .. } => false,
-        })
+    // Past declaration evidence survives attacker removal but is cleared at
+    // the next declaration-step entry, even inside this same combat phase.
+    game.combat.as_ref()
+        .and_then(|combat| combat.last_attack_declaration_step_players.as_ref())
+        .is_some_and(|defenders| defenders.contains(&player))
 }
 
 pub(crate) fn this_spell_cast_restriction_allows(
@@ -2028,20 +2017,20 @@ pub(crate) fn this_spell_cast_condition_allows(
             .sum::<u32>()
             >= *count,
         crate::static_abilities::ThisSpellCastCondition::CreatureIsAttackingYou => {
-            player_was_attacked_this_step(game, player)
-                || game.combat.as_ref().is_some_and(|combat| {
-                    combat.attackers.iter().any(|attacker| match attacker.target {
-                        crate::combat_state::AttackTarget::Player(defender) => defender == player,
-                        crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
-                            .object(planeswalker_id)
-                            .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
-                        crate::combat_state::AttackTarget::Battle(battle_id) => {
-                            game.battle_protector(battle_id) == Some(player)
-                        }
-                        // CR 506.4c: it isn't attacking anything.
-                        crate::combat_state::AttackTarget::Nothing { .. } => false,
-                    })
+            // Present-tense permission must not inherit retained attack history.
+            game.combat.as_ref().is_some_and(|combat| {
+                combat.attackers.iter().any(|attacker| match attacker.target {
+                    crate::combat_state::AttackTarget::Player(defender) => defender == player,
+                    crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
+                        .object(planeswalker_id)
+                        .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
+                    crate::combat_state::AttackTarget::Battle(battle_id) => {
+                        game.battle_protector(battle_id) == Some(player)
+                    }
+                    // CR 506.4c: it isn't attacking anything.
+                    crate::combat_state::AttackTarget::Nothing { .. } => false,
                 })
+            })
         }
         crate::static_abilities::ThisSpellCastCondition::NoPermanentsNamedOnBattlefield(name) => {
             !game.battlefield.iter().any(|&id| {
@@ -8594,5 +8583,49 @@ mod typed_cast_timing_tests {
             b,
             Timing::DuringCombatOnYourTurn
         ));
+    }
+}
+
+#[cfg(test)]
+mod retained_player_attack_window_tests {
+    use super::*;
+    use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+    use crate::game_state::{Phase, Step};
+    use crate::static_abilities::ThisSpellCastCondition;
+
+    #[test]
+    fn past_declaration_and_present_attacking_conditions_have_distinct_owners() {
+        let a = PlayerId::from_index(0);
+        let b = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        game.mark_combat_phase_started();
+        let phase = game.turn_store.combat_phases_started_this_turn;
+        game.turn_store.turn_history.players_attacked_in_combat.entry((phase, b))
+            .or_default().insert(a);
+        // No current combat frame: retain the previous fail-closed behavior.
+        assert!(!player_was_attacked_this_step(&game, a));
+        game.combat = Some(CombatState::default());
+        assert!(!player_was_attacked_this_step(&game, a), "missing step evidence is not inferred from phase history");
+        game.combat.as_mut().unwrap().last_attack_declaration_step_players = Some([a].into_iter().collect());
+        assert!(player_was_attacked_this_step(&game, a));
+        assert!(!this_spell_cast_condition_allows(&game, a,
+            &ThisSpellCastCondition::CreatureIsAttackingYou));
+        let attacker = game.create_object_from_card(&crate::card::CardBuilder::new(
+            crate::CardId::new(), "Live attacker witness")
+            .card_types(vec![crate::CardType::Creature]).build(), b, Zone::Battlefield);
+        game.combat.as_mut().unwrap().attackers.push(AttackerInfo {
+            creature: attacker, target: AttackTarget::Player(a),
+        });
+        assert!(this_spell_cast_condition_allows(&game, a,
+            &ThisSpellCastCondition::CreatureIsAttackingYou));
+        game.mark_combat_phase_started();
+        assert!(!player_was_attacked_this_step(&game, a));
+        assert!(this_spell_cast_condition_allows(&game, a,
+            &ThisSpellCastCondition::CreatureIsAttackingYou));
+        game.combat.as_mut().unwrap().attackers.clear();
+        assert!(!this_spell_cast_condition_allows(&game, a,
+            &ThisSpellCastCondition::CreatureIsAttackingYou));
     }
 }

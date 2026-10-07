@@ -13,7 +13,7 @@
     "cache_preserved": true,
     "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
   },
-  "measurement_and_threshold_scope": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
+  "measurement_and_threshold_scope": "Source-reviewed NEXT06 accounting: 1,291 original eligible IDs / 1,296 entries, shortfall 306 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Twelve cumulative already-measured-supported evidence-only bodies remain separate from eleven semantic corrections: 169 touched IDs / 171 entries. No new measured recovery; all new-source execution remains closed.",
   "one_time_current_main_refresh": {
     "authorized_at": "2026-10-07T12:11Z",
     "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
@@ -32,8 +32,8 @@
     "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "threshold_denominator_unique_remaining": 3193,
     "majority_minimum_unique_remaining": 1597,
-    "reconciled_source_eligible_unique": 1286,
-    "source_eligible_shortfall_to_threshold": 311,
+    "reconciled_source_eligible_unique": 1291,
+    "source_eligible_shortfall_to_threshold": 306,
     "semantic_holds_count_as_coverage": false,
     "reheld_inherited_unique_excluded": 30,
     "reheld_inherited_entries_excluded": 30,
@@ -43,7 +43,7 @@
     "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
     "next_series_02_held_candidates_excluded_unique": 12,
     "next_series_03_held_candidates_excluded_unique": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "current_residual_prioritization": {
     "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
@@ -60,7 +60,7 @@
     "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
     "new_fixture_partials_excluded_from_residual_coverage": 13,
     "changes_original_execution_stopping_condition": false,
-    "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT05 adds five supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
+    "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT06 adds three supported semantic and two supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
     "reviewed_new_source_proposed_residual_entries": 148,
     "full_body_source_proposed_residual_unique": 90,
     "shared_blocker_repair_proposed_residual_unique": 56,
@@ -68,19 +68,19 @@
     "formerly_supported_regression_unaddressed_unique": 72,
     "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
     "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "current_recovery_architecture": {
-    "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
-    "note": "architecture/card-failure-next-series-05-compatibility.md",
+    "source_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+    "note": "architecture/card-failure-next-series-06-compatibility.md",
     "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
-    "public_audit_checkpoint_version": 9,
+    "public_audit_checkpoint_version": 10,
     "public_audit_is_gameplay_restore": false,
     "compiled_artifact_version": 14,
-    "signed_audit_protocol_version": 27,
+    "signed_audit_protocol_version": 28,
     "manabrew_protocol_version": 3,
     "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
-    "validation": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
-    "semantic_migration_note": "architecture/card-failure-next-series-05-compatibility.md"
+    "validation": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "semantic_migration_note": "architecture/card-failure-next-series-06-compatibility.md"
   }
 }

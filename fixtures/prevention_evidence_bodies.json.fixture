@@ -1,0 +1,68 @@
+[
+  {
+    "name": "Deep Wood",
+    "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+    "scryfall_uri": "https://scryfall.com/card/plst/POR-162/deep-wood?utm_source=api",
+    "source_candidate": true,
+    "validation_status": "UNRUN: source-only campaign"
+  },
+  {
+    "name": "Heavy Fog",
+    "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+    "mana_cost": "{1}{G}",
+    "type_line": "Instant",
+    "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+    "scryfall_uri": "https://scryfall.com/card/ptk/136/heavy-fog?utm_source=api",
+    "source_candidate": true,
+    "validation_status": "UNRUN: source-only campaign"
+  },
+  {
+    "name": "Oketra's Avenger",
+    "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+    "mana_cost": "{1}{W}",
+    "type_line": "Creature — Human Warrior",
+    "oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn. (An exerted creature won't untap during your next untap step.)",
+    "power": "3",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/hou/17/oketras-avenger?utm_source=api",
+    "source_candidate": false,
+    "validation_status": "UNRUN: source-only campaign"
+  },
+  {
+    "name": "Glittering Lion",
+    "oracle_id": "549e6de7-56e9-4f5c-8c88-30e446bc53bb",
+    "mana_cost": "{2}{W}",
+    "type_line": "Creature — Cat",
+    "oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+    "power": "2",
+    "toughness": "2",
+    "scryfall_uri": "https://scryfall.com/card/pcy/10/glittering-lion?utm_source=api",
+    "source_candidate": false,
+    "validation_status": "UNRUN: source-only campaign"
+  },
+  {
+    "name": "Glittering Lynx",
+    "oracle_id": "890ffe31-642f-46e3-9f09-c744351653b5",
+    "mana_cost": "{W}",
+    "type_line": "Creature — Cat",
+    "oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+    "power": "1",
+    "toughness": "1",
+    "scryfall_uri": "https://scryfall.com/card/pcy/11/glittering-lynx?utm_source=api",
+    "source_candidate": false,
+    "validation_status": "UNRUN: source-only campaign"
+  },
+  {
+    "name": "Thunderstaff",
+    "oracle_id": "1a88a378-051c-42b4-bd0e-9c40ae8efea6",
+    "mana_cost": "{3}",
+    "type_line": "Artifact",
+    "oracle_text": "As long as this artifact is untapped, if a creature would deal combat damage to you, prevent 1 of that damage.\n{2}, {T}: Attacking creatures get +1/+0 until end of turn.",
+    "scryfall_uri": "https://scryfall.com/card/cma/237/thunderstaff?utm_source=api",
+    "source_candidate": false,
+    "validation_status": "UNRUN: source-only campaign"
+  }
+]

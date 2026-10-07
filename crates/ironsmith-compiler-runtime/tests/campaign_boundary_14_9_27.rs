@@ -34,7 +34,16 @@ fn compile_source(name: &str, text: &str) -> CompiledCardArtifact {
     // This model is freshly and independently compiled above. It is never
     // extracted from a failed envelope to bypass the release admission gate.
     let wire = encode_runtime_definition(direct).unwrap();
-    materialize_definition(serde_json::from_slice(&serde_json::to_vec(&wire).unwrap()).unwrap()).unwrap();
+    let direct_bytes = serde_json::to_vec(&wire).unwrap();
+    let direct_roundtrip: ironsmith_compiled_artifact::WireCardDefinition =
+        serde_json::from_slice(&direct_bytes).unwrap();
+    assert_eq!(direct_roundtrip, wire);
+    assert_eq!(serde_json::to_vec(&direct_roundtrip).unwrap(), direct_bytes);
+    // Each public compile call allocates a fresh CardId, which is retained in
+    // the complete definition. These are within-route roundtrip assertions,
+    // not direct/artifact identity equality or an ad hoc ID-normalizing codec.
+    // Independent full-body semantic suites exercise both runtime definitions.
+    materialize_definition(direct_roundtrip).unwrap();
     artifact
 }
 
@@ -158,4 +167,19 @@ fn a_structurally_decodable_v13_payload_never_bypasses_envelope_refusal() {
     assert!(registry.get("Synthetic cache boundary").is_none());
     // Do not recover with materialize_definition(stale.payload.definition).
     // It has no envelope provenance and cannot distinguish these release owners.
+}
+
+// NEXT06 runtime-only successor: this reuses the deliberately unchanged v14
+// definition/cache contract. It does not claim an old engine is compatible.
+#[test]
+fn step_local_native_history_keeps_the_existing_compiled_definition_boundary() {
+    assert_eq!(ENGINE_SCHEMA_HASH,
+        "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f");
+    let rows: Vec<serde_json::Value> = serde_json::from_str(
+        include_str!("../../../fixtures/combat_blocked_status.json.fixture")).unwrap();
+    for name in ["Deep Wood", "Heavy Fog"] {
+        let row = rows.iter().find(|row| row["name"].as_str() == Some(name)).unwrap();
+        let artifact = compile_source(name, &source(row));
+        assert_old_envelopes_refused(&artifact);
+    }
 }

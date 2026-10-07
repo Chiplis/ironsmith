@@ -276,6 +276,11 @@ fn legacy_enter_step(game: &mut GameState, step: Step) -> Result<(), TurnError> 
             legacy_finish_step(game, step, TurnScheduleDestination::Step(next))
         }
     } else {
+        if step == Step::DeclareAttackers {
+            if let Some(combat) = game.combat.as_mut() {
+                combat.last_attack_declaration_step_players = None;
+            }
+        }
         game.reset_priority_for_new_window();
         Ok(())
     }

@@ -15,7 +15,7 @@ function productionCallback(file, name, endMarker, context) {
 }
 
 const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
-const invalidVersions = [25, 26, undefined, null, "26", String(PROTOCOL_VERSION), PROTOCOL_VERSION + 1];
+const invalidVersions = [25, 26, 27, undefined, null, "26", String(PROTOCOL_VERSION), PROTOCOL_VERSION + 1];
 const modes = ["trusted", "verified"];
 
 function harness(kind) {
@@ -43,20 +43,20 @@ function harness(kind) {
 }
 
 test("direct match starts reject historical, missing, and nonnumeric versions before runtime or engine access", async () => {
-  assert.equal(PROTOCOL_VERSION, 27);
+  assert.equal(PROTOCOL_VERSION, 28);
   for (const securityMode of modes) {
     for (const options of [{}, { skipGenesisVerification: true }, { verifiedResyncReplay: true },
       { skipGenesisVerification: true, verifiedResyncReplay: true }]) {
       for (const protocolVersion of invalidVersions) {
         const h = harness("start");
-        await assert.rejects(h.invoke({ protocolVersion, securityMode }, options), /Match start requires audit protocol 27/);
+        await assert.rejects(h.invoke({ protocolVersion, securityMode }, options), /Match start requires audit protocol 28/);
         assert.deepEqual(h.calls, []);
       }
     }
   }
   for (const payload of [undefined, null, {}]) {
     const h = harness("start");
-    await assert.rejects(h.invoke(payload), /Match start requires audit protocol 27/);
+    await assert.rejects(h.invoke(payload), /Match start requires audit protocol 28/);
     assert.deepEqual(h.calls, []);
   }
 });
@@ -69,7 +69,7 @@ test("direct match start rechecks a mutated accepted payload even when genesis c
   for (const version of invalidVersions) {
     h.calls.length = 0;
     payload.protocolVersion = version;
-    await assert.rejects(h.invoke(payload, { skipGenesisVerification: true }), /Match start requires audit protocol 27/);
+    await assert.rejects(h.invoke(payload, { skipGenesisVerification: true }), /Match start requires audit protocol 28/);
     assert.deepEqual(h.calls, []);
   }
 });
@@ -85,7 +85,7 @@ test("Trusted and Verified nested resync carriers fail before flags, resets, or 
     }
     for (const message of invalid) {
       const h = harness("resync");
-      await assert.rejects(h.invoke(message), /State resync requires audit protocol 27 on both message and match/);
+      await assert.rejects(h.invoke(message), /State resync requires audit protocol 28 on both message and match/);
       assert.deepEqual(h.calls, []);
       assert.equal(h.awaiting.current, false);
       assert.equal(h.resync.current, false);
@@ -108,7 +108,7 @@ test("resync rechecks both protocol owners after a carrier is mutated between ca
     const message = { protocolVersion: PROTOCOL_VERSION, match: { protocolVersion: PROTOCOL_VERSION, securityMode: "trusted" } };
     for (const version of invalidVersions) {
       (owner === "outer" ? message : message.match).protocolVersion = version;
-      await assert.rejects(h.invoke(message), /State resync requires audit protocol 27/);
+      await assert.rejects(h.invoke(message), /State resync requires audit protocol 28/);
       assert.deepEqual(h.calls, []);
       assert.equal(h.awaiting.current, false);
       assert.equal(h.resync.current, false);

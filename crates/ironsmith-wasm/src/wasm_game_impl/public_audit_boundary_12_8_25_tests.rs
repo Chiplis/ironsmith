@@ -29,7 +29,7 @@ fn project(effects: Vec<Effect>) -> (Vec<WireEffect>, Value) {
             }],
         }],
     };
-    assert_eq!(PUBLIC_AUDIT_VERSION, 9);
+    assert_eq!(PUBLIC_AUDIT_VERSION, 10);
     let projected = sync_restricted_mana(&[unit.clone()]).unwrap();
     let bytes = serde_json::to_vec(&projected).unwrap();
     assert_eq!(bytes, serde_json::to_vec(&sync_restricted_mana(&[unit]).unwrap()).unwrap());

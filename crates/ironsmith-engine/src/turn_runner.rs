@@ -1361,6 +1361,12 @@ impl TurnRunner {
             }
 
             TurnState::DeclareAttackersDecision => {
+                // An added declaration step can share the same combat phase.
+                // Synchronize live combat, then invalidate only step evidence;
+                // phase-wide melee history and existing attackers remain intact.
+                self.sync_combat_from_game(game);
+                self.combat.last_attack_declaration_step_players = None;
+                game.combat = Some(self.combat.clone());
                 game.turn.step = Some(Step::DeclareAttackers);
                 game.reset_priority_for_new_window();
                 self.pending_attacker_optional_costs = None;

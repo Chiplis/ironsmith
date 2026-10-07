@@ -38,7 +38,12 @@ impl EffectExecutor for ExertCostEffect {
             }
             let restriction = crate::effects::CantEffect::new(
                 Restriction::untap(crate::target::ObjectFilter::specific(ctx.source)),
-                Until::ControllersNextUntapStep,
+                // Exert is owned by the player paying the cost, even after
+                // the permanent changes controller (CR 701.43a). Reuse the
+                // fixed-player occurrence/cutoff owner, not controller tenure.
+                Until::PlayersNextUntapStep {
+                    player: crate::target::PlayerFilter::Specific(ctx.controller),
+                },
             )
             .execute_child(game, ctx)?;
             if ctx.decision_maker.awaiting_choice() {

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "source_accounting_reconciled_execution_closed_until_original_source_majority",
   "source_ledger_base_commit": "b39a94f1799ace53f0a4562acfaeb1f5577145ac",
-  "source_implementation_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+  "source_implementation_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
   "source_validation": "UNRUN; independent source review plus inventory/JSON/hash/Git reconciliation only. No new-source build, test, probe, formatter, code generation or replay.",
   "current_measurement": {
     "source": {
@@ -121,12 +121,12 @@
       "parse_failed": 29,
       "compiled_with_allow_unsupported": 1
     },
-    "new_source_proposed_unique": 164,
+    "new_source_proposed_unique": 169,
     "new_source_proposed_current_residual_unique": 146,
-    "new_source_proposed_already_supported_semantic_change_unique": 8,
-    "original_baseline_source_eligible_union_unique": 1286,
-    "original_baseline_source_eligible_union_entries": 1291,
-    "original_baseline_source_eligible_ids_sha256": "754bff66053a91d382012dc8888a941934ce81902a999514838a3d3d39dd322f",
+    "new_source_proposed_already_supported_semantic_change_unique": 11,
+    "original_baseline_source_eligible_union_unique": 1291,
+    "original_baseline_source_eligible_union_entries": 1296,
+    "original_baseline_source_eligible_ids_sha256": "a99f17baeb99345b7e085549d335fb15c9b3be13609262d1eded8e11589bb413",
     "current_residual_source_eligible_unique": 146,
     "new_fixture_partials_excluded_unique": 13,
     "new_source_measured_recoveries": 0,
@@ -147,9 +147,9 @@
     "restored_inherited_source_proposals_unique": 25,
     "restored_inherited_source_proposals_entries": 26,
     "restored_inherited_oracle_ids_sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a",
-    "new_source_proposed_entries": 166,
-    "new_source_proposed_scope": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
-    "new_full_body_source_proposed_unique": 108,
+    "new_source_proposed_entries": 171,
+    "new_source_proposed_scope": "Source-reviewed NEXT06 accounting: 1,291 original eligible IDs / 1,296 entries, shortfall 306 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Twelve cumulative already-measured-supported evidence-only bodies remain separate from eleven semantic corrections: 169 touched IDs / 171 entries. No new measured recovery; all new-source execution remains closed.",
+    "new_full_body_source_proposed_unique": 113,
     "new_shared_blocker_repair_proposed_unique": 56,
     "new_source_proposed_current_residual_entries": 148,
     "current_residual_source_eligible_entries": 148,
@@ -161,8 +161,8 @@
     "current_regression_source_proposed_entries": 80,
     "current_regression_unaddressed_unique": 72,
     "current_regression_original_baseline_credit": 0,
-    "current_packet_total_touched_unique": 164,
-    "current_packet_total_touched_entries": 166,
+    "current_packet_total_touched_unique": 169,
+    "current_packet_total_touched_entries": 171,
     "prior_next01_source_admission": {
       "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
       "source_accounting": {
@@ -356,9 +356,9 @@
     "next_series_03_restored_original_entries": 16,
     "next_series_03_regression_unique": 2,
     "next_series_03_held_candidates_excluded_unique": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
-    "new_source_proposed_already_supported_evidence_only_unique": 10,
-    "new_source_proposed_already_supported_evidence_only_entries": 10,
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "new_source_proposed_already_supported_evidence_only_unique": 12,
+    "new_source_proposed_already_supported_evidence_only_entries": 12,
     "next_series_04_proposed_unique": 5,
     "next_series_04_proposed_entries": 5,
     "next_series_04_original_baseline_credit": 5,
@@ -368,7 +368,13 @@
     "next_series_05_proposed_entries": 5,
     "next_series_05_original_baseline_credit": 5,
     "next_series_05_current_residual_credit": 0,
-    "next_series_05_measured_recoveries": 0
+    "next_series_05_measured_recoveries": 0,
+    "new_source_proposed_already_supported_semantic_change_entries": 11,
+    "next_series_06_proposed_unique": 5,
+    "next_series_06_proposed_entries": 5,
+    "next_series_06_original_baseline_credit": 5,
+    "next_series_06_current_residual_credit": 0,
+    "next_series_06_measured_recoveries": 0
   },
   "current_reholds": [
     {
@@ -5347,6 +5353,354 @@
       "measurement": "compile_gate_supported_on_measured_main",
       "source_credit": "semantic_correction_only_no_current_residual_credit",
       "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+      "names": [
+        "Deep Wood"
+      ],
+      "family_id": "attacked-step-prevention-bodies",
+      "measurement": "already_recovered_on_retained_clean_main",
+      "source_tier": "already-supported semantic correction full-body source proposal",
+      "source_credit": "semantic_correction_only_no_current_residual_credit",
+      "original_baseline_source_credit": 1,
+      "current_residual_source_credit": 0,
+      "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+      "series": "next06",
+      "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "evidence": "reports/card-failure-campaign/prevention-evidence-bodies-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "new_measured_recoveries": 0,
+      "prior_source_record": {
+        "card_name": "Deep Wood",
+        "oracle_ids": [
+          "3f01f627-9fbd-470b-8001-974784ccf421"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "combat-blocked-status"
+        ]
+      },
+      "retained_baseline_record": {
+        "card_name": "Deep Wood",
+        "category": "parser_failure",
+        "compiled_coverage": 0.0,
+        "compiled_definition_sha256": null,
+        "compiled_text": null,
+        "content_hash": "295ce8d771ac47a1d343b18dfdc6c77e6caa2313b65fe7ad1f50b59fbf4c5d25",
+        "has_unimplemented": 0,
+        "line_delta": 0,
+        "normalized_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "oracle_coverage": 0.0,
+        "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+        "parse_loss_count": 1,
+        "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+        "parse_lossy": 1,
+        "parse_status": "parse_failed",
+        "raw_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "route_diagnostics": [
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ],
+        "semantic_mismatch": 0,
+        "similarity_score": 0.0,
+        "supported": false
+      },
+      "retained_measured_recovery_record": {
+        "current_failing_entries": [],
+        "current_names": [
+          "Deep Wood"
+        ],
+        "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+        "oracle_text_changed": false,
+        "original_names": [
+          "Deep Wood"
+        ]
+      },
+      "retained_inventory_record": {
+        "card_name": "Deep Wood",
+        "oracle_ids": [
+          "3f01f627-9fbd-470b-8001-974784ccf421"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "combat-blocked-status"
+        ]
+      },
+      "source_record_provenance": {
+        "source": {
+          "sha256": "a5f415c2274dd9e8e9285f6a5c60d4d3fae58ccab809f3ec88a18c6e0094b5c3",
+          "canonical_sha256": "d61c212a3764326409f6b39899dbf61149a80324fa278e6967efb92f906172cc"
+        },
+        "baseline": {
+          "sha256": "1993fec2d44d239a4e42541285cf21762d034bbfe5276937fdc171e2dcbf81c9",
+          "canonical_sha256": "24cc7d4340c16e5ab42c4b73bf37f8c58d29299c28ab3752a6a761534736984c"
+        },
+        "inventory": {
+          "sha256": "a5f415c2274dd9e8e9285f6a5c60d4d3fae58ccab809f3ec88a18c6e0094b5c3",
+          "canonical_sha256": "d61c212a3764326409f6b39899dbf61149a80324fa278e6967efb92f906172cc"
+        },
+        "comparison": {
+          "sha256": "3c210df3234985d2260b27c3472ab98b8f9b643bbc436ae69e8d0d7a0898389e",
+          "canonical_sha256": "3c210df3234985d2260b27c3472ab98b8f9b643bbc436ae69e8d0d7a0898389e"
+        },
+        "source_json_pointer": "/cards/615",
+        "baseline_index_zero_based": 6443,
+        "retained_recovery_index_zero_based": 353,
+        "inventory_index_zero_based": 28
+      }
+    },
+    {
+      "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+      "names": [
+        "Heavy Fog"
+      ],
+      "family_id": "attacked-step-prevention-bodies",
+      "measurement": "already_recovered_on_retained_clean_main",
+      "source_tier": "already-supported semantic correction full-body source proposal",
+      "source_credit": "semantic_correction_only_no_current_residual_credit",
+      "original_baseline_source_credit": 1,
+      "current_residual_source_credit": 0,
+      "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+      "series": "next06",
+      "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "evidence": "reports/card-failure-campaign/prevention-evidence-bodies-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "new_measured_recoveries": 0,
+      "prior_source_record": {
+        "card_name": "Heavy Fog",
+        "oracle_ids": [
+          "a2006755-8812-4aad-8567-e8df6e8923da"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "combat-blocked-status"
+        ]
+      },
+      "retained_baseline_record": {
+        "card_name": "Heavy Fog",
+        "category": "parser_failure",
+        "compiled_coverage": 0.0,
+        "compiled_definition_sha256": null,
+        "compiled_text": null,
+        "content_hash": "46af664e1f98e565bb9cfba54a198085fa504730997b07ee89e9b36d54241ed0",
+        "has_unimplemented": 0,
+        "line_delta": 0,
+        "normalized_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "oracle_coverage": 0.0,
+        "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+        "parse_loss_count": 1,
+        "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+        "parse_lossy": 1,
+        "parse_status": "parse_failed",
+        "raw_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+        "route_diagnostics": [
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ],
+        "semantic_mismatch": 0,
+        "similarity_score": 0.0,
+        "supported": false
+      },
+      "retained_measured_recovery_record": {
+        "current_failing_entries": [],
+        "current_names": [
+          "Heavy Fog"
+        ],
+        "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+        "oracle_text_changed": false,
+        "original_names": [
+          "Heavy Fog"
+        ]
+      },
+      "retained_inventory_record": {
+        "card_name": "Heavy Fog",
+        "oracle_ids": [
+          "a2006755-8812-4aad-8567-e8df6e8923da"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "combat-blocked-status"
+        ]
+      },
+      "source_record_provenance": {
+        "source": {
+          "sha256": "cc0790dbfdc969739023c27f215c8522c86f0dd43f902cee6bbba5305ac72b69",
+          "canonical_sha256": "5c6df3ae51457f186017a2ac964c8078193c21ee2dd14f7dfaf1ae783728a9f7"
+        },
+        "baseline": {
+          "sha256": "cff6134c43679eef8eb9fd1f3ae56b2fefd752e98583ad3fbc0c8babb474e47a",
+          "canonical_sha256": "308b63fd22dccd79b1354d428d79df421888ca88d748b1e6f1f9af0e0c2d8f1d"
+        },
+        "inventory": {
+          "sha256": "cc0790dbfdc969739023c27f215c8522c86f0dd43f902cee6bbba5305ac72b69",
+          "canonical_sha256": "5c6df3ae51457f186017a2ac964c8078193c21ee2dd14f7dfaf1ae783728a9f7"
+        },
+        "comparison": {
+          "sha256": "c68633d7d16b29b73961dfa7d716bd1610fb79d537735db273b29275a1c9eb48",
+          "canonical_sha256": "c68633d7d16b29b73961dfa7d716bd1610fb79d537735db273b29275a1c9eb48"
+        },
+        "source_json_pointer": "/cards/1199",
+        "baseline_index_zero_based": 12460,
+        "retained_recovery_index_zero_based": 879,
+        "inventory_index_zero_based": 51
+      }
+    },
+    {
+      "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+      "names": [
+        "Oketra's Avenger"
+      ],
+      "family_id": "exert-player-tenure",
+      "measurement": "already_recovered_on_retained_clean_main",
+      "source_tier": "already-supported semantic correction full-body source proposal",
+      "source_credit": "semantic_correction_only_no_current_residual_credit",
+      "original_baseline_source_credit": 1,
+      "current_residual_source_credit": 0,
+      "source_review_commit": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+      "series": "next06",
+      "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "evidence": "reports/card-failure-campaign/exert-player-tenure-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "new_measured_recoveries": 0,
+      "prior_source_record": {
+        "card_name": "Oketra's Avenger",
+        "oracle_ids": [
+          "8f064160-3afe-408a-85b4-b335eae8571c"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "temporary-prevention-bindings"
+        ]
+      },
+      "retained_baseline_record": {
+        "card_name": "Oketra's Avenger",
+        "category": "parser_failure",
+        "compiled_coverage": 0.0,
+        "compiled_definition_sha256": null,
+        "compiled_text": null,
+        "content_hash": "0ae5f7ffc0abecf4fccab1f57fa296cd684ee1c80ab03c3a12612a7e904dc933",
+        "has_unimplemented": 0,
+        "line_delta": 0,
+        "normalized_oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn.",
+        "oracle_coverage": 0.0,
+        "oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn.",
+        "parse_error": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+        "parse_loss_count": 1,
+        "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+        "parse_lossy": 1,
+        "parse_status": "parse_failed",
+        "raw_oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn. (An exerted creature won't untap during your next untap step.)",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ],
+        "semantic_mismatch": 0,
+        "similarity_score": 0.0,
+        "supported": false
+      },
+      "retained_measured_recovery_record": {
+        "current_failing_entries": [],
+        "current_names": [
+          "Oketra's Avenger"
+        ],
+        "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+        "oracle_text_changed": false,
+        "original_names": [
+          "Oketra's Avenger"
+        ]
+      },
+      "retained_inventory_record": {
+        "card_name": "Oketra's Avenger",
+        "oracle_ids": [
+          "8f064160-3afe-408a-85b4-b335eae8571c"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "partial_not_counted",
+        "source_families": [],
+        "partial_source_families": [
+          "temporary-prevention-bindings"
+        ]
+      },
+      "source_record_provenance": {
+        "source": {
+          "sha256": "9ed196c877584536bbf3e6a701d908e9887bb166835a8f44ac9e0221a915c73b",
+          "canonical_sha256": "4d5d4d92d6136a5f8f017d7a8a063f5d6aea4f01e552b1322501615f858059bc"
+        },
+        "baseline": {
+          "sha256": "5446e8b70a295441c9bd55f174a5b8f4b57171d5e827c3cbb0ccf4741e7c222f",
+          "canonical_sha256": "8201018e830df2fe1928ad5c5982ac90d0b3b2ee7a8fb1a60bae5160d220010b"
+        },
+        "inventory": {
+          "sha256": "9ed196c877584536bbf3e6a701d908e9887bb166835a8f44ac9e0221a915c73b",
+          "canonical_sha256": "4d5d4d92d6136a5f8f017d7a8a063f5d6aea4f01e552b1322501615f858059bc"
+        },
+        "comparison": {
+          "sha256": "28d3eeaa559f1f74df79470c913f0be10ad302998d7e7ad6e052538437729ad9",
+          "canonical_sha256": "28d3eeaa559f1f74df79470c913f0be10ad302998d7e7ad6e052538437729ad9"
+        },
+        "source_json_pointer": "/cards/1903",
+        "baseline_index_zero_based": 19066,
+        "retained_recovery_index_zero_based": 783,
+        "inventory_index_zero_based": 85
+      }
     }
   ],
   "new_fixture_partials_excluded": [
@@ -7462,8 +7816,8 @@
     "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "threshold_denominator_unique_remaining": 3193,
     "majority_minimum_unique_remaining": 1597,
-    "reconciled_source_eligible_unique": 1286,
-    "source_eligible_shortfall_to_threshold": 311,
+    "reconciled_source_eligible_unique": 1291,
+    "source_eligible_shortfall_to_threshold": 306,
     "semantic_holds_count_as_coverage": false,
     "reheld_inherited_unique_excluded": 30,
     "reheld_inherited_entries_excluded": 30,
@@ -7473,7 +7827,7 @@
     "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
     "next_series_02_held_candidates_excluded_unique": 12,
     "next_series_03_held_candidates_excluded_unique": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "current_residual_prioritization": {
     "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
@@ -7490,7 +7844,7 @@
     "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
     "new_fixture_partials_excluded_from_residual_coverage": 13,
     "changes_original_execution_stopping_condition": false,
-    "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT05 adds five supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
+    "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT06 adds three supported semantic and two supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
     "reviewed_new_source_proposed_residual_entries": 148,
     "full_body_source_proposed_residual_unique": 90,
     "shared_blocker_repair_proposed_residual_unique": 56,
@@ -7498,7 +7852,7 @@
     "formerly_supported_regression_unaddressed_unique": 72,
     "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
     "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "restored_previous_source_holds": [
     {
@@ -8482,46 +8836,68 @@
   ],
   "combined_source_review": {
     "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
-    "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
-    "source_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
-    "compatibility_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+    "source_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+    "source_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+    "compatibility_source_review_commit": "ed5de2351ec58e8e92c5d1158831c0596a44d3d1",
     "family_source_review_commits": {
-      "bioshift-full-body": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
-      "conditional-life-loss-bodies": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
-      "draw-discard-bodies": "ba62f8286ddf471329985829f949fc1899aaca61"
+      "attacked-step-prevention-bodies": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+      "exert-player-tenure": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+      "glittering-prevention-bodies": "8909757e430bdc80b744565d2b359eaaf558734e"
     },
     "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
     "compiled_artifact_version": 14,
     "public_digest_version": 9,
     "signed_audit_protocol_version": 27,
     "manabrew_protocol_version": 3,
     "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
     "published_parent_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
-    "published_parent_pr": 870,
-    "evidence": "architecture/card-failure-next-series-05-compatibility.md",
-    "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+    "published_parent_pr": 871,
+    "evidence": "architecture/card-failure-next-series-06-compatibility.md",
+    "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
     "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
-    "review_scope": "Five evidence-only complete bodies; no production model or behavior change. Artifact 14 / public digest 9 / signed audit 27 / Manabrew 3 remain unchanged.",
+    "review_scope": "Three supported semantic corrections and two evidence-only complete bodies. Native step-local public projection requires public digest 10 / signed audit 28. Compiled artifact 14 / Manabrew 3 unchanged. Kormus Bell stale test reconciliation is zero-credit; Thunderstaff held.",
     "independent_final_review_evidence": [
       {
-        "path": "reports/card-failure-campaign/bioshift-independent-review.md",
-        "sha256": "a7c71d2bbcccd89269d79485d1e88965896b3b33724a8cb12d27d75d300add33",
+        "path": "reports/card-failure-campaign/attacked-step-prevention-independent-review.md",
+        "sha256": "1193cb31da8e9723dff141cd9a284777047ed6ee1b48fc31d007e9bdc3b578fb",
+        "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+        "role": "fog",
         "status": "source_review_clear_UNVALIDATED_UNRUN"
       },
       {
-        "path": "reports/card-failure-campaign/conditional-life-independent-review.md",
-        "sha256": "b34d6eb77ee9a414cd1dff51658f0da91bf95872754459a1ed10f8f55ead261a",
+        "path": "reports/card-failure-campaign/exert-player-tenure-independent-review.md",
+        "sha256": "57f4f55938a24e2998df196f8748789636fc2bebbabd179cc24c5244e38ff346",
+        "source_review_commit": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+        "role": "exert",
         "status": "source_review_clear_UNVALIDATED_UNRUN"
       },
       {
-        "path": "reports/card-failure-campaign/draw-discard-independent-review.md",
-        "sha256": "cd2cccb7128f256178eae1103178a33c7bf9c722c7cf77ed5adfd1e074d19b54",
+        "path": "reports/card-failure-campaign/glittering-prevention-independent-review.md",
+        "sha256": "47af5908573188b16759e63a30dd69c10af04862c107c2c9562c17591019e28e",
+        "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+        "role": "glittering",
         "status": "source_review_clear_UNVALIDATED_UNRUN"
       },
       {
-        "path": "reports/card-failure-campaign/next05-combined-source-review.md",
-        "sha256": "921c36508c6d90d6496e06c7d61cb7c413fc9aaae42f1760013d6536bacd269b",
+        "path": "reports/card-failure-campaign/next06-compatibility-independent-review.md",
+        "sha256": "3f4eea2794393335de974acb6073fd79f31ec02f370d3e8d934c79292877e29b",
+        "source_review_commit": "ed5de2351ec58e8e92c5d1158831c0596a44d3d1",
+        "role": "compatibility",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next06-combined-source-review.md",
+        "sha256": "026834abe9a825077c4acd034e36f7f1931e16b35ba26e5ebd0bc844c2265608",
+        "source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "role": "combined",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/static-head-reconciliation-independent-review.md",
+        "sha256": "94eb859b1b2044f6fd4e00fb6dec32442bc6a8a57c024bb07d25875a9f00153b",
+        "source_review_commit": "6c6dc496423c0a3be41ff848d0bb61017ce30a86",
+        "role": "static",
         "status": "source_review_clear_UNVALIDATED_UNRUN"
       }
     ]
@@ -8805,6 +9181,52 @@
         {
           "path": "reports/card-failure-campaign/next04-combined-source-review.md",
           "sha256": "4ba5a9b8d7535df5329a93f2b3ab2697dc52027d2510762a4944f917c0838fba",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "source_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+      "compatibility_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "family_source_review_commits": {
+        "bioshift-full-body": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
+        "conditional-life-loss-bodies": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+        "draw-discard-bodies": "ba62f8286ddf471329985829f949fc1899aaca61"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_pr": 870,
+      "evidence": "architecture/card-failure-next-series-05-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Five evidence-only complete bodies; no production model or behavior change. Artifact 14 / public digest 9 / signed audit 27 / Manabrew 3 remain unchanged.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/bioshift-independent-review.md",
+          "sha256": "a7c71d2bbcccd89269d79485d1e88965896b3b33724a8cb12d27d75d300add33",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/conditional-life-independent-review.md",
+          "sha256": "b34d6eb77ee9a414cd1dff51658f0da91bf95872754459a1ed10f8f55ead261a",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/draw-discard-independent-review.md",
+          "sha256": "cd2cccb7128f256178eae1103178a33c7bf9c722c7cf77ed5adfd1e074d19b54",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next05-combined-source-review.md",
+          "sha256": "921c36508c6d90d6496e06c7d61cb7c413fc9aaae42f1760013d6536bacd269b",
           "status": "source_review_clear_UNVALIDATED_UNRUN"
         }
       ]
@@ -10796,6 +11218,226 @@
         "retained_recovery_index_zero_based": 180,
         "inventory_index_zero_based": 100
       }
+    },
+    {
+      "oracle_id": "549e6de7-56e9-4f5c-8c88-30e446bc53bb",
+      "names": [
+        "Glittering Lion"
+      ],
+      "family_id": "glittering-prevention-bodies",
+      "measurement": "already_recovered_on_retained_clean_main",
+      "source_tier": "already-supported evidence-only full-body source proposal",
+      "source_credit": "evidence_only_no_current_residual_credit",
+      "original_baseline_source_credit": 1,
+      "current_residual_source_credit": 0,
+      "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+      "series": "next06",
+      "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "evidence": "reports/card-failure-campaign/glittering-prevention-bodies-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "new_measured_recoveries": 0,
+      "prior_source_record": {
+        "card_name": "Glittering Lion",
+        "oracle_ids": [
+          "549e6de7-56e9-4f5c-8c88-30e446bc53bb"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "retained_baseline_record": {
+        "card_name": "Glittering Lion",
+        "category": "parser_failure",
+        "compiled_coverage": 0.0,
+        "compiled_definition_sha256": null,
+        "compiled_text": null,
+        "content_hash": "4e9faeb51ddf5c0e25e38b1cc2652780972dae45fa8a6dbbf384dd5ab93f44d7",
+        "has_unimplemented": 0,
+        "line_delta": 0,
+        "normalized_oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "oracle_coverage": 0.0,
+        "oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+        "parse_loss_count": 1,
+        "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+        "parse_lossy": 1,
+        "parse_status": "parse_failed",
+        "raw_oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "route_diagnostics": [
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ],
+        "semantic_mismatch": 0,
+        "similarity_score": 0.0,
+        "supported": false
+      },
+      "retained_measured_recovery_record": {
+        "current_failing_entries": [],
+        "current_names": [
+          "Glittering Lion"
+        ],
+        "oracle_id": "549e6de7-56e9-4f5c-8c88-30e446bc53bb",
+        "oracle_text_changed": false,
+        "original_names": [
+          "Glittering Lion"
+        ]
+      },
+      "retained_inventory_record": {
+        "card_name": "Glittering Lion",
+        "oracle_ids": [
+          "549e6de7-56e9-4f5c-8c88-30e446bc53bb"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_record_provenance": {
+        "source": {
+          "sha256": "b81c633766531f9d1143405295ff55090c6b225a2537ffc161da5596e881975a",
+          "canonical_sha256": "4f9ca4d69cb8f460c5b6153442243f557e27564d38fb47f549b1df60326edcf8"
+        },
+        "baseline": {
+          "sha256": "9eeba1aeaacc8b822b5d763a25f3fd341f633807a8ae85ee75c10b3ca463256d",
+          "canonical_sha256": "d05c6d1665b0992eadef0ce2734fb63ed76901e6f79e5a40fad5ef1ce1da496a"
+        },
+        "inventory": {
+          "sha256": "b81c633766531f9d1143405295ff55090c6b225a2537ffc161da5596e881975a",
+          "canonical_sha256": "4f9ca4d69cb8f460c5b6153442243f557e27564d38fb47f549b1df60326edcf8"
+        },
+        "comparison": {
+          "sha256": "26c655ec73c31fac7afad4b2370942cef4a1d12bac744b56082014abc03047d1",
+          "canonical_sha256": "26c655ec73c31fac7afad4b2370942cef4a1d12bac744b56082014abc03047d1"
+        },
+        "source_json_pointer": "/cards/1079",
+        "baseline_index_zero_based": 11083,
+        "retained_recovery_index_zero_based": 455,
+        "inventory_index_zero_based": 47
+      }
+    },
+    {
+      "oracle_id": "890ffe31-642f-46e3-9f09-c744351653b5",
+      "names": [
+        "Glittering Lynx"
+      ],
+      "family_id": "glittering-prevention-bodies",
+      "measurement": "already_recovered_on_retained_clean_main",
+      "source_tier": "already-supported evidence-only full-body source proposal",
+      "source_credit": "evidence_only_no_current_residual_credit",
+      "original_baseline_source_credit": 1,
+      "current_residual_source_credit": 0,
+      "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+      "series": "next06",
+      "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "evidence": "reports/card-failure-campaign/glittering-prevention-bodies-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "new_measured_recoveries": 0,
+      "prior_source_record": {
+        "card_name": "Glittering Lynx",
+        "oracle_ids": [
+          "890ffe31-642f-46e3-9f09-c744351653b5"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "retained_baseline_record": {
+        "card_name": "Glittering Lynx",
+        "category": "parser_failure",
+        "compiled_coverage": 0.0,
+        "compiled_definition_sha256": null,
+        "compiled_text": null,
+        "content_hash": "5bd3f34c24b790767cb837b0421eb39eca02701a995ac26d8d342fa23065908e",
+        "has_unimplemented": 0,
+        "line_delta": 0,
+        "normalized_oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "oracle_coverage": 0.0,
+        "oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+        "parse_loss_count": 1,
+        "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+        "parse_lossy": 1,
+        "parse_status": "parse_failed",
+        "raw_oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+        "route_diagnostics": [
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ],
+        "semantic_mismatch": 0,
+        "similarity_score": 0.0,
+        "supported": false
+      },
+      "retained_measured_recovery_record": {
+        "current_failing_entries": [],
+        "current_names": [
+          "Glittering Lynx"
+        ],
+        "oracle_id": "890ffe31-642f-46e3-9f09-c744351653b5",
+        "oracle_text_changed": false,
+        "original_names": [
+          "Glittering Lynx"
+        ]
+      },
+      "retained_inventory_record": {
+        "card_name": "Glittering Lynx",
+        "oracle_ids": [
+          "890ffe31-642f-46e3-9f09-c744351653b5"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_record_provenance": {
+        "source": {
+          "sha256": "3815b6e83361697f9dd8593dff62984b140b67d1cadb20aa14eec933fbb61363",
+          "canonical_sha256": "2d8f294ca07512549feb53a299d2846c63cc8f87779072cd622e461fb3f16034"
+        },
+        "baseline": {
+          "sha256": "d3da6ef2f471bd893e5d3373c35da5b489d2c5d03b926607f1df265c2b5b9463",
+          "canonical_sha256": "8fb5dc312154f985c8efcf0ea35f774b7df5f643dfb392ac5449e488fc95dc42"
+        },
+        "inventory": {
+          "sha256": "3815b6e83361697f9dd8593dff62984b140b67d1cadb20aa14eec933fbb61363",
+          "canonical_sha256": "2d8f294ca07512549feb53a299d2846c63cc8f87779072cd622e461fb3f16034"
+        },
+        "comparison": {
+          "sha256": "f566005e7cf9591ee7039513e26314ca83f9083273f2565a94b46ce9f004ed30",
+          "canonical_sha256": "f566005e7cf9591ee7039513e26314ca83f9083273f2565a94b46ce9f004ed30"
+        },
+        "source_json_pointer": "/cards/1080",
+        "baseline_index_zero_based": 11084,
+        "retained_recovery_index_zero_based": 752,
+        "inventory_index_zero_based": 48
+      }
     }
   ],
   "next_series_04_reconciliation": {
@@ -12274,5 +12916,872 @@
       "uncompressed_json_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
       "uncompressed_hash_source": "Inherited frozen dataset metadata; independently reverified by coordinating reviewer. No corpus execution."
     }
+  },
+  "next_series_06_reconciliation": {
+    "series": "next06",
+    "stage": 105,
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+    "source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+    "evidence": "architecture/card-failure-next-series-06-source-admission.md",
+    "prior_admission": "next_series_05_reconciliation",
+    "fresh_full_body_unique": 5,
+    "fresh_full_body_entries": 5,
+    "fresh_original_baseline_credit": 5,
+    "fresh_current_residual_credit": 0,
+    "fresh_restored_original_unique": 0,
+    "fresh_regression_proposals_unique": 0,
+    "fresh_measured_recoveries": 0,
+    "current_base_proposed_unique": 1291,
+    "current_base_proposed_entries": 1296,
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_packet_total_touched_unique": 169,
+    "current_packet_total_touched_entries": 171,
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1291,
+      "source_eligible_shortfall_to_threshold": 306,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 146,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 857,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT06 adds three supported semantic and two supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "source_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+      "compatibility_source_review_commit": "ed5de2351ec58e8e92c5d1158831c0596a44d3d1",
+      "family_source_review_commits": {
+        "attacked-step-prevention-bodies": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+        "exert-player-tenure": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+        "glittering-prevention-bodies": "8909757e430bdc80b744565d2b359eaaf558734e"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_pr": 871,
+      "evidence": "architecture/card-failure-next-series-06-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Three supported semantic corrections and two evidence-only complete bodies. Native step-local public projection requires public digest 10 / signed audit 28. Compiled artifact 14 / Manabrew 3 unchanged. Kormus Bell stale test reconciliation is zero-credit; Thunderstaff held.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/attacked-step-prevention-independent-review.md",
+          "sha256": "1193cb31da8e9723dff141cd9a284777047ed6ee1b48fc31d007e9bdc3b578fb",
+          "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+          "role": "fog",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/exert-player-tenure-independent-review.md",
+          "sha256": "57f4f55938a24e2998df196f8748789636fc2bebbabd179cc24c5244e38ff346",
+          "source_review_commit": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+          "role": "exert",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/glittering-prevention-independent-review.md",
+          "sha256": "47af5908573188b16759e63a30dd69c10af04862c107c2c9562c17591019e28e",
+          "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+          "role": "glittering",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next06-compatibility-independent-review.md",
+          "sha256": "3f4eea2794393335de974acb6073fd79f31ec02f370d3e8d934c79292877e29b",
+          "source_review_commit": "ed5de2351ec58e8e92c5d1158831c0596a44d3d1",
+          "role": "compatibility",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next06-combined-source-review.md",
+          "sha256": "026834abe9a825077c4acd034e36f7f1931e16b35ba26e5ebd0bc844c2265608",
+          "source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+          "role": "combined",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/static-head-reconciliation-independent-review.md",
+          "sha256": "94eb859b1b2044f6fd4e00fb6dec32442bc6a8a57c024bb07d25875a9f00153b",
+          "source_review_commit": "6c6dc496423c0a3be41ff848d0bb61017ce30a86",
+          "role": "static",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    "current_recovery_architecture": {
+      "source_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+      "note": "architecture/card-failure-next-series-06-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 10,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 28,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-06-compatibility.md"
+    },
+    "identity_sets": {
+      "candidate_five": {
+        "unique": 5,
+        "sha256": "718c9e21789039b311f9ae157067829af1e74e297bbda028497009e70a87cb28"
+      },
+      "tentative_semantic_three": {
+        "unique": 3,
+        "sha256": "29c85665cef21ea83fbc712ffb0e53c86eab19c087552c089c4a89214db48d25"
+      },
+      "tentative_evidence_only_two": {
+        "unique": 2,
+        "sha256": "0b94bd9e64763ef2af1f1639ba5f5c421bc05967c7d1702d9bab7b7dd07a660c"
+      },
+      "eligible_before": {
+        "unique": 1286,
+        "sha256": "754bff66053a91d382012dc8888a941934ce81902a999514838a3d3d39dd322f"
+      },
+      "eligible_after_conditional": {
+        "unique": 1291,
+        "sha256": "a99f17baeb99345b7e085549d335fb15c9b3be13609262d1eded8e11589bb413"
+      },
+      "historical_inventory130": {
+        "unique": 130,
+        "sha256": "0e76d7d3971093099408d02c375301687b82ab1161b1a29cb319f212b296bd9d"
+      },
+      "previously_admitted_next04_next05": {
+        "unique": 10,
+        "sha256": "5d41c9404b548f82751ccf0e9d0ab3905ad0bb4ed34f608b5a83136a35ca061c"
+      },
+      "unadmitted_before": {
+        "unique": 120,
+        "sha256": "974fa6e2814459bc5bb6f43e2f61ca1da69c4b10ff70ce52b3dac0ac403c8236"
+      },
+      "unadmitted_after_conditional": {
+        "unique": 115,
+        "sha256": "a1d9b3ce74d1eca61f6ff281505b1303c3f6f18582e5920133d9f9dfdded2bb7"
+      },
+      "historical40": {
+        "unique": 40,
+        "sha256": "ce0f33459ff09de235622c1dce7480e3b0fc6fe24781c4e4a2688a88b9e1891f"
+      },
+      "current_residual": {
+        "unique": 146,
+        "sha256": "42a54ba1c2232f64a93eb74de6e88bf2fde88195e4d9179f84d97bb731d463e7"
+      }
+    },
+    "family_ids": [
+      "attacked-step-prevention-bodies",
+      "exert-player-tenure",
+      "glittering-prevention-bodies"
+    ],
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/attacked-step-prevention-independent-review.md",
+        "sha256": "1193cb31da8e9723dff141cd9a284777047ed6ee1b48fc31d007e9bdc3b578fb",
+        "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+        "role": "fog",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/exert-player-tenure-independent-review.md",
+        "sha256": "57f4f55938a24e2998df196f8748789636fc2bebbabd179cc24c5244e38ff346",
+        "source_review_commit": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+        "role": "exert",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/glittering-prevention-independent-review.md",
+        "sha256": "47af5908573188b16759e63a30dd69c10af04862c107c2c9562c17591019e28e",
+        "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+        "role": "glittering",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next06-compatibility-independent-review.md",
+        "sha256": "3f4eea2794393335de974acb6073fd79f31ec02f370d3e8d934c79292877e29b",
+        "source_review_commit": "ed5de2351ec58e8e92c5d1158831c0596a44d3d1",
+        "role": "compatibility",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next06-combined-source-review.md",
+        "sha256": "026834abe9a825077c4acd034e36f7f1931e16b35ba26e5ebd0bc844c2265608",
+        "source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "role": "combined",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/static-head-reconciliation-independent-review.md",
+        "sha256": "94eb859b1b2044f6fd4e00fb6dec32442bc6a8a57c024bb07d25875a9f00153b",
+        "source_review_commit": "6c6dc496423c0a3be41ff848d0bb61017ce30a86",
+        "role": "static",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ],
+    "pre_admission_input_sha256": {
+      "source": "5a47c09c65d16954b3d2a02766085cd6e30696222c915105a90fd359e1ccfe3e",
+      "residual": "bc2b43c04bf11cc932d88b7734aa8352838ce60263e29221c84b9bbfbbd84f89",
+      "baseline": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "comparison": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75",
+      "failures": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31",
+      "manifest": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+      "inventory": "823ecd1bb63e187d21bd5a7341e0150e76ce517dbebb719dcf1c59371cc2fd40",
+      "workflow": "d9b4eed351e1b79be8d91a7787685992aa71e90c8e5d4201a05d4cff44c34b5c",
+      "published_stack": "85b44bf493af1f372a14ccb986a5103367b580982083f54fa0664d9fedffce27",
+      "parent_publication": "47ad7a364148d7705382f8f000b59cc17202f7e9cdd27fe39aabff7e5a63b616",
+      "parent_tree_receipt": "bbccd922615c24a86c97c5ed418da49f17a790bd1806f15aaa238e353730276e",
+      "prior_preparation": "8ed47bd15e84cbe7765b37d49c9d0ce91c0bdadd2a46225e418363f64b924bc0",
+      "frozen_dataset": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+      "schema": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f"
+    },
+    "accounting": "Source-reviewed NEXT06 accounting: 1,291 original eligible IDs / 1,296 entries, shortfall 306 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Twelve cumulative already-measured-supported evidence-only bodies remain separate from eleven semantic corrections: 169 touched IDs / 171 entries. No new measured recovery; all new-source execution remains closed.",
+    "already_supported_evidence_only": [
+      {
+        "oracle_id": "549e6de7-56e9-4f5c-8c88-30e446bc53bb",
+        "names": [
+          "Glittering Lion"
+        ],
+        "family_id": "glittering-prevention-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "source_credit": "evidence_only_no_current_residual_credit",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+        "series": "next06",
+        "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+        "evidence": "reports/card-failure-campaign/glittering-prevention-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+        "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Glittering Lion",
+          "oracle_ids": [
+            "549e6de7-56e9-4f5c-8c88-30e446bc53bb"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Glittering Lion",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "4e9faeb51ddf5c0e25e38b1cc2652780972dae45fa8a6dbbf384dd5ab93f44d7",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Prevent all damage that would be dealt to this creature.\n{3}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Glittering Lion"
+          ],
+          "oracle_id": "549e6de7-56e9-4f5c-8c88-30e446bc53bb",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Glittering Lion"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Glittering Lion",
+          "oracle_ids": [
+            "549e6de7-56e9-4f5c-8c88-30e446bc53bb"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "b81c633766531f9d1143405295ff55090c6b225a2537ffc161da5596e881975a",
+            "canonical_sha256": "4f9ca4d69cb8f460c5b6153442243f557e27564d38fb47f549b1df60326edcf8"
+          },
+          "baseline": {
+            "sha256": "9eeba1aeaacc8b822b5d763a25f3fd341f633807a8ae85ee75c10b3ca463256d",
+            "canonical_sha256": "d05c6d1665b0992eadef0ce2734fb63ed76901e6f79e5a40fad5ef1ce1da496a"
+          },
+          "inventory": {
+            "sha256": "b81c633766531f9d1143405295ff55090c6b225a2537ffc161da5596e881975a",
+            "canonical_sha256": "4f9ca4d69cb8f460c5b6153442243f557e27564d38fb47f549b1df60326edcf8"
+          },
+          "comparison": {
+            "sha256": "26c655ec73c31fac7afad4b2370942cef4a1d12bac744b56082014abc03047d1",
+            "canonical_sha256": "26c655ec73c31fac7afad4b2370942cef4a1d12bac744b56082014abc03047d1"
+          },
+          "source_json_pointer": "/cards/1079",
+          "baseline_index_zero_based": 11083,
+          "retained_recovery_index_zero_based": 455,
+          "inventory_index_zero_based": 47
+        }
+      },
+      {
+        "oracle_id": "890ffe31-642f-46e3-9f09-c744351653b5",
+        "names": [
+          "Glittering Lynx"
+        ],
+        "family_id": "glittering-prevention-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "source_credit": "evidence_only_no_current_residual_credit",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "8909757e430bdc80b744565d2b359eaaf558734e",
+        "series": "next06",
+        "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+        "evidence": "reports/card-failure-campaign/glittering-prevention-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+        "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Glittering Lynx",
+          "oracle_ids": [
+            "890ffe31-642f-46e3-9f09-c744351653b5"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Glittering Lynx",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "5bd3f34c24b790767cb837b0421eb39eca02701a995ac26d8d342fa23065908e",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Prevent all damage that would be dealt to this creature.\n{2}: Until end of turn, this creature loses \"Prevent all damage that would be dealt to this creature.\" Any player may activate this ability.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to this creature.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Glittering Lynx"
+          ],
+          "oracle_id": "890ffe31-642f-46e3-9f09-c744351653b5",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Glittering Lynx"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Glittering Lynx",
+          "oracle_ids": [
+            "890ffe31-642f-46e3-9f09-c744351653b5"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "3815b6e83361697f9dd8593dff62984b140b67d1cadb20aa14eec933fbb61363",
+            "canonical_sha256": "2d8f294ca07512549feb53a299d2846c63cc8f87779072cd622e461fb3f16034"
+          },
+          "baseline": {
+            "sha256": "d3da6ef2f471bd893e5d3373c35da5b489d2c5d03b926607f1df265c2b5b9463",
+            "canonical_sha256": "8fb5dc312154f985c8efcf0ea35f774b7df5f643dfb392ac5449e488fc95dc42"
+          },
+          "inventory": {
+            "sha256": "3815b6e83361697f9dd8593dff62984b140b67d1cadb20aa14eec933fbb61363",
+            "canonical_sha256": "2d8f294ca07512549feb53a299d2846c63cc8f87779072cd622e461fb3f16034"
+          },
+          "comparison": {
+            "sha256": "f566005e7cf9591ee7039513e26314ca83f9083273f2565a94b46ce9f004ed30",
+            "canonical_sha256": "f566005e7cf9591ee7039513e26314ca83f9083273f2565a94b46ce9f004ed30"
+          },
+          "source_json_pointer": "/cards/1080",
+          "baseline_index_zero_based": 11084,
+          "retained_recovery_index_zero_based": 752,
+          "inventory_index_zero_based": 48
+        }
+      }
+    ],
+    "already_supported_semantic_corrections": [
+      {
+        "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+        "names": [
+          "Deep Wood"
+        ],
+        "family_id": "attacked-step-prevention-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported semantic correction full-body source proposal",
+        "source_credit": "semantic_correction_only_no_current_residual_credit",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+        "series": "next06",
+        "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+        "evidence": "reports/card-failure-campaign/prevention-evidence-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+        "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Deep Wood",
+          "oracle_ids": [
+            "3f01f627-9fbd-470b-8001-974784ccf421"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "combat-blocked-status"
+          ]
+        },
+        "retained_baseline_record": {
+          "card_name": "Deep Wood",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "295ce8d771ac47a1d343b18dfdc6c77e6caa2313b65fe7ad1f50b59fbf4c5d25",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Deep Wood"
+          ],
+          "oracle_id": "3f01f627-9fbd-470b-8001-974784ccf421",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Deep Wood"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Deep Wood",
+          "oracle_ids": [
+            "3f01f627-9fbd-470b-8001-974784ccf421"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "combat-blocked-status"
+          ]
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "a5f415c2274dd9e8e9285f6a5c60d4d3fae58ccab809f3ec88a18c6e0094b5c3",
+            "canonical_sha256": "d61c212a3764326409f6b39899dbf61149a80324fa278e6967efb92f906172cc"
+          },
+          "baseline": {
+            "sha256": "1993fec2d44d239a4e42541285cf21762d034bbfe5276937fdc171e2dcbf81c9",
+            "canonical_sha256": "24cc7d4340c16e5ab42c4b73bf37f8c58d29299c28ab3752a6a761534736984c"
+          },
+          "inventory": {
+            "sha256": "a5f415c2274dd9e8e9285f6a5c60d4d3fae58ccab809f3ec88a18c6e0094b5c3",
+            "canonical_sha256": "d61c212a3764326409f6b39899dbf61149a80324fa278e6967efb92f906172cc"
+          },
+          "comparison": {
+            "sha256": "3c210df3234985d2260b27c3472ab98b8f9b643bbc436ae69e8d0d7a0898389e",
+            "canonical_sha256": "3c210df3234985d2260b27c3472ab98b8f9b643bbc436ae69e8d0d7a0898389e"
+          },
+          "source_json_pointer": "/cards/615",
+          "baseline_index_zero_based": 6443,
+          "retained_recovery_index_zero_based": 353,
+          "inventory_index_zero_based": 28
+        }
+      },
+      {
+        "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+        "names": [
+          "Heavy Fog"
+        ],
+        "family_id": "attacked-step-prevention-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported semantic correction full-body source proposal",
+        "source_credit": "semantic_correction_only_no_current_residual_credit",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "e86b5870f73147a3c4af7934453b3041ad2c9ae2",
+        "series": "next06",
+        "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+        "evidence": "reports/card-failure-campaign/prevention-evidence-bodies-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+        "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Heavy Fog",
+          "oracle_ids": [
+            "a2006755-8812-4aad-8567-e8df6e8923da"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "combat-blocked-status"
+          ]
+        },
+        "retained_baseline_record": {
+          "card_name": "Heavy Fog",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "46af664e1f98e565bb9cfba54a198085fa504730997b07ee89e9b36d54241ed0",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "parse_error": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Cast this spell only during the declare attackers step and only if you've been attacked this step.\nPrevent all damage that would be dealt to you this turn by attacking creatures.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Prevent all damage that would be dealt to you this turn by attacking creatures.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Heavy Fog"
+          ],
+          "oracle_id": "a2006755-8812-4aad-8567-e8df6e8923da",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Heavy Fog"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Heavy Fog",
+          "oracle_ids": [
+            "a2006755-8812-4aad-8567-e8df6e8923da"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "combat-blocked-status"
+          ]
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "cc0790dbfdc969739023c27f215c8522c86f0dd43f902cee6bbba5305ac72b69",
+            "canonical_sha256": "5c6df3ae51457f186017a2ac964c8078193c21ee2dd14f7dfaf1ae783728a9f7"
+          },
+          "baseline": {
+            "sha256": "cff6134c43679eef8eb9fd1f3ae56b2fefd752e98583ad3fbc0c8babb474e47a",
+            "canonical_sha256": "308b63fd22dccd79b1354d428d79df421888ca88d748b1e6f1f9af0e0c2d8f1d"
+          },
+          "inventory": {
+            "sha256": "cc0790dbfdc969739023c27f215c8522c86f0dd43f902cee6bbba5305ac72b69",
+            "canonical_sha256": "5c6df3ae51457f186017a2ac964c8078193c21ee2dd14f7dfaf1ae783728a9f7"
+          },
+          "comparison": {
+            "sha256": "c68633d7d16b29b73961dfa7d716bd1610fb79d537735db273b29275a1c9eb48",
+            "canonical_sha256": "c68633d7d16b29b73961dfa7d716bd1610fb79d537735db273b29275a1c9eb48"
+          },
+          "source_json_pointer": "/cards/1199",
+          "baseline_index_zero_based": 12460,
+          "retained_recovery_index_zero_based": 879,
+          "inventory_index_zero_based": 51
+        }
+      },
+      {
+        "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+        "names": [
+          "Oketra's Avenger"
+        ],
+        "family_id": "exert-player-tenure",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported semantic correction full-body source proposal",
+        "source_credit": "semantic_correction_only_no_current_residual_credit",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "fa189ce7e82df26ea30f1ff8af01b1f3aeeac1f8",
+        "series": "next06",
+        "combined_source_review_commit": "225d50dd01434a5f2fc4cc64ec36861907894d22",
+        "combined_source_review_tree": "84c56c7d9d16a7984a2adee66c28e8f6c1df50d2",
+        "evidence": "reports/card-failure-campaign/exert-player-tenure-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-06-source-admission.md",
+        "admission_condition": "Independent bounded cohort, compatibility and combined integration source reviews cleared 225d50dd01434a5f2fc4cc64ec36861907894d22. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Oketra's Avenger",
+          "oracle_ids": [
+            "8f064160-3afe-408a-85b4-b335eae8571c"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "temporary-prevention-bindings"
+          ]
+        },
+        "retained_baseline_record": {
+          "card_name": "Oketra's Avenger",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "0ae5f7ffc0abecf4fccab1f57fa296cd684ee1c80ab03c3a12612a7e904dc933",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn.",
+          "parse_error": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]; oracle-only fallback also failed: unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "You may exert this creature as it attacks. When you do, prevent all combat damage that would be dealt to it this turn. (An exerted creature won't untap during your next untap step.)",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "unsupported prevent-all target scope 'it' [rule-path=parse_exert_attack > registry::parse_exert_attack] [rule-path=statement-line > keyword-line]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Oketra's Avenger"
+          ],
+          "oracle_id": "8f064160-3afe-408a-85b4-b335eae8571c",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Oketra's Avenger"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Oketra's Avenger",
+          "oracle_ids": [
+            "8f064160-3afe-408a-85b4-b335eae8571c"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "partial_not_counted",
+          "source_families": [],
+          "partial_source_families": [
+            "temporary-prevention-bindings"
+          ]
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "9ed196c877584536bbf3e6a701d908e9887bb166835a8f44ac9e0221a915c73b",
+            "canonical_sha256": "4d5d4d92d6136a5f8f017d7a8a063f5d6aea4f01e552b1322501615f858059bc"
+          },
+          "baseline": {
+            "sha256": "5446e8b70a295441c9bd55f174a5b8f4b57171d5e827c3cbb0ccf4741e7c222f",
+            "canonical_sha256": "8201018e830df2fe1928ad5c5982ac90d0b3b2ee7a8fb1a60bae5160d220010b"
+          },
+          "inventory": {
+            "sha256": "9ed196c877584536bbf3e6a701d908e9887bb166835a8f44ac9e0221a915c73b",
+            "canonical_sha256": "4d5d4d92d6136a5f8f017d7a8a063f5d6aea4f01e552b1322501615f858059bc"
+          },
+          "comparison": {
+            "sha256": "28d3eeaa559f1f74df79470c913f0be10ad302998d7e7ad6e052538437729ad9",
+            "canonical_sha256": "28d3eeaa559f1f74df79470c913f0be10ad302998d7e7ad6e052538437729ad9"
+          },
+          "source_json_pointer": "/cards/1903",
+          "baseline_index_zero_based": 19066,
+          "retained_recovery_index_zero_based": 783,
+          "inventory_index_zero_based": 85
+        }
+      }
+    ],
+    "zero_credit_reconciliations_or_holds": [
+      {
+        "source_card_index_zero_based": 1500,
+        "source_row": {
+          "card_name": "Kormus Bell",
+          "oracle_ids": [
+            "d2d477a5-f055-4d47-a852-26e8239f2a01"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "implemented_pending_full_corpus_validation",
+          "source_families": [
+            "copular-characteristic-statics"
+          ],
+          "source_review_commit": "2f00b78b082d02179a3730b97143904712223e1b"
+        },
+        "conditional_credit": 0
+      },
+      {
+        "source_card_index_zero_based": 2828,
+        "source_row": {
+          "card_name": "Thunderstaff",
+          "oracle_ids": [
+            "1a88a378-051c-42b4-bd0e-9c40ae8efea6"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "conditional_credit": 0
+      }
+    ],
+    "execution": "UNRUN. Metadata, source, JSON, hash and Git inspection only. No build, test, probe, formatter, corpus execution, codegen or remote write."
   }
 }

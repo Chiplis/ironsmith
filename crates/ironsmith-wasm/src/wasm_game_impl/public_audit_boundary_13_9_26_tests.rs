@@ -25,7 +25,7 @@ fn carrier(effects: Vec<Effect>) -> RestrictedManaUnit {
 }
 
 fn project(effects: Vec<Effect>) -> Vec<WireEffect> {
-    assert_eq!(PUBLIC_AUDIT_VERSION, 9);
+    assert_eq!(PUBLIC_AUDIT_VERSION, 10);
     let unit = carrier(effects);
     let bytes = serde_json::to_vec(&sync_restricted_mana(&[unit.clone()]).unwrap()).unwrap();
     assert_eq!(bytes, serde_json::to_vec(&sync_restricted_mana(&[unit]).unwrap()).unwrap());
