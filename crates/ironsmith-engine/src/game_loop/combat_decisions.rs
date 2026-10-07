@@ -1178,7 +1178,15 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
             provenance,
         ));
     }
-    queue_triggers_for_simultaneous_events(game, trigger_queue, attack_events);
+    // Record the complete action and queue ordinary abilities before matching
+    // delayed registrations, as the reported-event adapter does. Declaration
+    // events are emitted directly and never drained from the pending queue.
+    queue_triggers_for_simultaneous_events(game, trigger_queue, attack_events.clone());
+    for trigger in
+        crate::triggers::check_delayed_triggers_for_simultaneous_events(game, &attack_events)
+    {
+        trigger_queue.add(trigger);
+    }
 
     Ok(())
 }

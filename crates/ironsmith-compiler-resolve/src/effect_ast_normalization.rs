@@ -2720,7 +2720,71 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
     }
 }
 
+/// Remove only a terminal marker, retaining every executable preceding member.
+fn pop_required_repeat_marker(effects: &mut Vec<EffectAst>) -> bool {
+    let Some(last) = effects.last_mut() else { return false; };
+    if matches!(last, EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)) {
+        effects.pop();
+        return true;
+    }
+    let removed = match last {
+        EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::Coordinated { effects, .. } => pop_required_repeat_marker(effects),
+        EffectAst::Coordination(coordination) => {
+            let Some(member) = coordination.members.last_mut() else { return false; };
+            if !pop_required_repeat_marker(&mut member.effects) { return false; }
+            if member.effects.is_empty() {
+                coordination.members.pop();
+                coordination.boundaries.pop();
+            }
+            true
+        }
+        _ => false,
+    };
+    if removed {
+        let empty = match effects.last() {
+            Some(EffectAst::Sequence { effects } | EffectAst::SourceSentence { effects, .. }
+                | EffectAst::CommaThen { effects } | EffectAst::Coordinated { effects, .. }) => effects.is_empty(),
+            Some(EffectAst::Coordination(coordination)) => coordination.members.is_empty(),
+            _ => false,
+        };
+        if empty { effects.pop(); }
+    }
+    removed
+}
+
 fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
+    for end in 2..=effects.len() {
+        if let Some(mut rewritten) = rewrite_repeat_process_result(&effects[..end]) {
+            rewritten.extend_from_slice(&effects[end..]);
+            return Some(rewritten);
+        }
+        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate, if_true, if_false,
+        }) = &effects[end - 1]
+            && if_false.is_empty()
+        {
+            let mut branch = if_true.clone();
+            if !pop_required_repeat_marker(&mut branch) { continue; }
+            let mut body = effects[..end - 1].to_vec();
+            body.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: predicate.clone(), if_true: branch, if_false: Vec::new(),
+            }));
+            let mut rewritten = vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                effects: body,
+                continue_effect_index: end - 1,
+                continue_predicate: crate::cards::builders::IfResultPredicate::ConditionMatched,
+            })];
+            rewritten.extend_from_slice(&effects[end..]);
+            return Some(rewritten);
+        }
+    }
+    None
+}
+
+fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     if effects.len() < 2 {
         return None;
     }
@@ -2811,38 +2875,65 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
 }
 
 fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    if effects.len() < 2
-        || !matches!(
-            effects.last(),
-            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce))
-        )
-    {
-        return None;
+    for index in 1..effects.len() {
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate, if_true, if_false,
+        }) = &effects[index] else { continue; };
+        if !if_false.is_empty() || !matches!(if_true.as_slice(),
+            [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)]) { continue; }
+        let body = effects[..index].to_vec();
+        let mut process = body.clone();
+        process.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: predicate.clone(), if_true: body, if_false: Vec::new(),
+        }));
+        // The condition is evaluated after the first complete execution. A
+        // suffix such as "If you searched this way, shuffle" observes the
+        // entire process receipt, including a search only in the first pass.
+        // CommaThen lowers to one real SequenceEffect. Plain Sequence is a
+        // flattening AST container and would attach a later result ID only
+        // to the final conditional, dropping an initial-only search receipt.
+        let mut rewritten = vec![EffectAst::CommaThen { effects: process }];
+        rewritten.extend_from_slice(&effects[index + 1..]);
+        return Some(rewritten);
     }
-
-    let body = effects[..effects.len() - 1].to_vec();
-    Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-        count: Value::Fixed(2)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::RepeatThisProcessOnce),
-        effects: body,
-    })])
+    let marker_index = effects.iter().position(|effect| matches!(effect,
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
+            | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. })
+    ))?;
+    if marker_index == 0 { return None; }
+    let count = match &effects[marker_index] {
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => Value::Fixed(2)
+            .with_surface_hint(ValueSurfaceHint::RepeatThisProcessOnce),
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count }) =>
+            Value::Add(Box::new(Value::Fixed(1)), Box::new(count.clone())),
+        _ => return None,
+    };
+    // The initial execution belongs to the same program as all additional
+    // executions. In particular X = 0 still executes the complete body once.
+    // Instructions after the marker are a suffix, never part of the loop.
+    let mut rewritten = vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count,
+        effects: effects[..marker_index].to_vec(),
+    })];
+    rewritten.extend_from_slice(&effects[marker_index + 1..]);
+    Some(rewritten)
 }
 
 fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
-    if effects.len() < 2
-        || !matches!(
-            effects.last(),
-            Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay))
-        )
-    {
-        return None;
-    }
-
-    Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
-        effects: effects.to_vec(),
-        continue_effect_index: effects.len() - 1,
+    let marker_index = effects.iter().position(|effect| match effect {
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => true,
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. }) => matches!(
+            effects.as_slice(), [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)]),
+        _ => false,
+    })?;
+    if marker_index == 0 { return None; }
+    let mut rewritten = vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+        effects: effects[..=marker_index].to_vec(),
+        continue_effect_index: marker_index,
         continue_predicate: crate::cards::builders::IfResultPredicate::Did,
-    })])
+    })];
+    rewritten.extend_from_slice(&effects[marker_index + 1..]);
+    Some(rewritten)
 }
 
 fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
@@ -3675,6 +3766,58 @@ mod tests {
                     && count.has_surface_hint(ValueSurfaceHint::RepeatThisProcessOnce)
                     && effects.len() == 1
         ));
+    }
+
+    #[test]
+    fn finite_additional_repetition_keeps_initial_execution_and_final_suffix() {
+        let body = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
+            crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                LifeResourceActionAst::Draw { count: Value::Fixed(1) }));
+        let suffix = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
+            crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                LifeResourceActionAst::Draw { count: Value::Fixed(2) }));
+        for extra in [Value::Fixed(0), Value::Fixed(6), Value::X] {
+            let normalized = normalize_effects_ast(&[
+                body.clone(),
+                EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { count: extra.clone() }),
+                suffix.clone(),
+            ]);
+            assert_eq!(normalized, vec![
+                EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+                    count: Value::Add(Box::new(Value::Fixed(1)), Box::new(extra)),
+                    effects: vec![body.clone()],
+                }), suffix.clone(),
+            ]);
+            assert_eq!(normalize_effects_ast(&normalized), normalized);
+        }
+    }
+
+    #[test]
+    fn live_condition_repeat_once_observes_initial_body_and_exports_both_search_receipts() {
+        let initial = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
+            crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                LifeResourceActionAst::Draw { count: Value::Fixed(1) }));
+        let gate = PredicateAst::LifeTotalOrLess(20);
+        let suffix = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::SearchedLibrary, effects: vec![initial.clone()],
+        });
+        let normalized = normalize_effects_ast(&[
+            initial.clone(),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: gate.clone(),
+                if_true: vec![EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)],
+                if_false: Vec::new(),
+            }), suffix.clone(),
+        ]);
+        assert_eq!(normalized, vec![EffectAst::CommaThen { effects: vec![
+            initial.clone(), EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: gate, if_true: vec![initial], if_false: Vec::new(),
+            }),
+        ] }, suffix]);
+        assert_eq!(normalize_effects_ast(&normalized), normalized);
     }
 
     #[test]

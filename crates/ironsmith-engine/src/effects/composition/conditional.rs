@@ -169,6 +169,7 @@ struct SelectedConditionalBranch {
     effects: Vec<crate::effect::Effect>,
     identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
     branch: usize,
+    condition_matched: bool,
 }
 
 /// Existing replacement adapters keep the same selected-branch interface.
@@ -194,6 +195,14 @@ fn select_conditional_branch(
 ) -> Result<SelectedConditionalBranch, ExecutionError> {
     let mut result = evaluate_condition(game, &effect.condition, ctx)?;
     let identity_guard = optional_hidden_reveal_guard(effect, game, ctx, result);
+    if effect.capture_condition_result && identity_guard.is_some() {
+        // A concealed positive claim is established by the guarded reveal,
+        // not by this pre-branch Boolean. Capturing it here would turn an
+        // unproven placeholder value into a false continuation receipt.
+        return Err(ExecutionError::IncompleteEvidence(
+            "captured conditional identity requires a completed guarded-claim owner".into(),
+        ));
+    }
 
     // CR 700.2 / 601.2b: "If [condition] as you cast this spell, you may
     // choose both instead" fixes how many modes may be chosen during
@@ -223,6 +232,7 @@ fn select_conditional_branch(
     };
 
     Ok(SelectedConditionalBranch {
+        condition_matched: result,
         effects: effects_to_execute,
         branch: if result || identity_guard.is_some() {
             0
@@ -283,6 +293,26 @@ struct ConditionalProposal {
     identity_guard: Option<crate::effects::context::OptionalIdentityGuard>,
     player: Option<PlayerId>,
     prepared: Option<Box<dyn crate::effects::SimultaneousEffectProposal>>,
+    condition_result: Option<bool>,
+}
+
+/// Decorate the completed packet without moving any child additions into its
+/// original commit. The shared adapter forwards observe/freeze/draw boundaries
+/// and preserves all retained participant/child outputs.
+struct CaptureConditionResult(bool);
+impl super::OriginalOutcomeAdapter for CaptureConditionResult {
+    fn finish(
+        self: Box<Self>,
+        _game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        result: Result<EffectOutcome, ExecutionError>,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let outcome = result?;
+        if ctx.decision_maker.awaiting_choice() { return Ok(outcome); }
+        Ok(EffectOutcome::aggregate_with_primary_result(
+            EffectOutcome::count(i32::from(self.0)), [outcome],
+        ))
+    }
 }
 
 impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
@@ -299,6 +329,7 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
     }
 
     fn damage_action_inputs(&self) -> Option<crate::effects::damage::DamageActionInputs> {
+        if self.condition_result.is_some() { return None; }
         if self.effects.is_empty() {
             Some(crate::effects::damage::DamageActionInputs::default())
         } else {
@@ -312,6 +343,11 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
         ctx: &mut ExecutionContext,
         owner: &crate::effects::CompletedEffectOutputs,
     ) -> Result<crate::effects::DamageActionBinding, ExecutionError> {
+        if self.condition_result.is_some() {
+            return Err(ExecutionError::InternalError(
+                "captured conditional must retain its original completion owner".into(),
+            ));
+        }
         if self.effects.is_empty() {
             return Ok(crate::effects::DamageActionBinding::from_outcome(
                 EffectOutcome::count(0),
@@ -398,15 +434,36 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        if let Some(inner) = self.prepared.take() {
-            return ctx.with_temp_iterated_player(self.player, |ctx| {
-                inner.commit_original_with_outputs(game, ctx)
-            });
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
         }
-        ctx.with_temp_iterated_player(self.player, |ctx| {
-            execute_conditional_program_with_outputs(&self.effects, self.identity_guard, game, ctx)
-                .map(crate::effects::SimultaneousEffectCommit::finished)
-        })
+        let receipt = if let Some(inner) = self.prepared.take() {
+            ctx.with_temp_iterated_player(self.player, |ctx| {
+                inner.commit_original_with_outputs(game, ctx)
+            })?
+        } else {
+            // A captured nonempty branch is rejected during preparation if it
+            // cannot preserve an original/completion split. Empty branches
+            // have no physical actions and can finish immediately.
+            if self.condition_result.is_some() && !self.effects.is_empty() {
+                return Err(ExecutionError::IncompleteEvidence(
+                    "captured conditional lost its prepared branch owner".into(),
+                ));
+            }
+            ctx.with_temp_iterated_player(self.player, |ctx| {
+                execute_conditional_program_with_outputs(&self.effects, self.identity_guard, game, ctx)
+                    .map(crate::effects::SimultaneousEffectCommit::finished)
+            })?
+        };
+        if let Some(matched) = self.condition_result {
+            super::adapt_original_outcome_with_outputs(
+                receipt, Box::new(CaptureConditionResult(matched)), game, ctx,
+            )
+        } else {
+            Ok(receipt)
+        }
     }
 
     fn commit(
@@ -420,7 +477,7 @@ impl crate::effects::SimultaneousEffectProposal for ConditionalProposal {
 
 impl EffectExecutor for ConditionalEffect {
     fn supports_replacement_draw_continuation(&self) -> bool {
-        self.if_true.iter().chain(&self.if_false).all(crate::effects::replacement::replacement_effect_supported)
+        !self.capture_condition_result && self.if_true.iter().chain(&self.if_false).all(crate::effects::replacement::replacement_effect_supported)
     }
     fn prepare_replacement_draw_continuation_with_outputs(
         &self, game: &mut GameState, ctx: &mut ExecutionContext,
@@ -430,7 +487,7 @@ impl EffectExecutor for ConditionalEffect {
     }
 
     fn supports_prepared_action_program(&self) -> bool {
-        self.if_true
+        !self.capture_condition_result && self.if_true
             .iter()
             .chain(&self.if_false)
             .all(super::action_program::action_program_child_is_prepared)
@@ -443,6 +500,11 @@ impl EffectExecutor for ConditionalEffect {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
+        if self.capture_condition_result {
+            return Err(ExecutionError::IncompleteEvidence(
+                "captured conditional requires its prepared receipt owner".into(),
+            ));
+        }
         let selected = select_conditional_branch(self, game, ctx)?;
         Ok(Some(conditional_branch_cursor(
             &selected.effects,
@@ -454,7 +516,7 @@ impl EffectExecutor for ConditionalEffect {
     fn supports_damage_action_cohort(&self) -> bool {
         // One selected instruction may contribute to the shared action.
         // Distinct mutating instructions keep their scheduling boundaries.
-        [&self.if_true, &self.if_false].into_iter().all(|branch| {
+        !self.capture_condition_result && [&self.if_true, &self.if_false].into_iter().all(|branch| {
             branch.is_empty() || (branch.len() == 1 && branch[0].0.supports_damage_action_cohort())
         })
     }
@@ -472,7 +534,16 @@ impl EffectExecutor for ConditionalEffect {
         game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        let (effects, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Box::new(ConditionalProposal {
+                effects: Vec::new(), identity_guard: None,
+                player: ctx.iteration.iterated_player, prepared: None, condition_result: None,
+            }));
+        }
+        let selected = select_conditional_branch(self, game, ctx)?;
+        let condition_result = self.capture_condition_result.then_some(selected.condition_matched);
+        let effects = selected.effects;
+        let identity_guard = selected.identity_guard;
         let player = ctx.iteration.iterated_player;
         // The first optional child owns the positive hidden-identity claim.
         // Construction captures its decision; mutable preparation records the
@@ -490,11 +561,19 @@ impl EffectExecutor for ConditionalEffect {
                 &effects, game, ctx, player, false, false,
             )?
         };
+        if condition_result.is_some() && !effects.is_empty() && prepared.is_none()
+            && !ctx.decision_maker.awaiting_choice()
+        {
+            return Err(ExecutionError::IncompleteEvidence(
+                "captured conditional branch has no prepared original owner".into(),
+            ));
+        }
         Ok(Box::new(ConditionalProposal {
             effects,
             identity_guard,
             player,
             prepared,
+            condition_result,
         }))
     }
 
@@ -525,8 +604,22 @@ impl EffectExecutor for ConditionalEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let (effects, identity_guard) = prepare_conditional_branch(self, game, ctx)?;
-        execute_conditional_program_with_outputs(&effects, identity_guard, game, ctx)
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        }
+        let selected = select_conditional_branch(self, game, ctx)?;
+        let matched = selected.condition_matched;
+        let outputs = execute_conditional_program_with_outputs(
+            &selected.effects, selected.identity_guard, game, ctx,
+        )?;
+        if self.capture_condition_result && !ctx.decision_maker.awaiting_choice() {
+            // Retain real branch events/receipts, while continuation observes
+            // the condition sampled before that branch changed the world.
+            return Ok(crate::effects::CompletedEffectOutputs::with_primary_result(
+                EffectOutcome::count(i32::from(matched)), [outputs],
+            ));
+        }
+        Ok(outputs)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -890,3 +983,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "conditional_capture_tests.rs"]
+mod captured_receipt_tests;

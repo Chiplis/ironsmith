@@ -1010,6 +1010,13 @@ impl EffectExecutor for ApplyContinuousEffect {
         }
 
         let materialized_until = match &self.until {
+            Until::UntilControllersNextUntapStep { object } => {
+                let object = materialize_duration_object(object, &target, &source_type, ctx)
+                    .ok_or_else(|| ExecutionError::UnresolvableValue(
+                        "next-untap beginning duration must identify one object".into(),
+                    ))?;
+                Until::UntilControllersNextUntapStep { object }
+            }
             Until::ObjectIsCast { object, from_zone } => {
                 let object = materialize_duration_object(object, &target, &source_type, ctx)
                     .ok_or_else(|| match object {

@@ -1365,6 +1365,27 @@
       "pr_url": "https://github.com/Chiplis/ironsmith/pull/866",
       "new_source_card_credit": 0,
       "verified_at": "2026-10-07T13:18:24Z"
+    },
+    {
+      "series": "20261007-next",
+      "batch": "next01-counter-prevention-and-bodies",
+      "branch": "fix/card-repair-next-01-counter-prevention-and-bodies",
+      "base": "wip/card-repair-next-main-payment-c5db2279",
+      "working_main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "source_integration_commit": "441771fd5c9562250e503d7e17260ce1b320c298",
+      "remote_commit": "0eb1efc90445cf4f587585d1b85ba73218ce9570",
+      "tree": "7e88f686d23b0503d0d1c755e1801abfdd9c340c",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 867,
+      "draft": true,
+      "validation_status": "UNVALIDATED_source_reviewed_new_scenarios_UNRUN",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/867",
+      "verified_at": "2026-10-07T17:51:22Z",
+      "source_original_eligible_unique": 1238,
+      "source_current_residual_proposed_unique": 96,
+      "new_measured_recoveries": 0,
+      "checks_note": "No status contexts or workflow checks were reported at verification; none is represented as passed."
     }
   ]
 }

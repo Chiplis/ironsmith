@@ -4551,9 +4551,11 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::NextEndStep => "until the next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::YourNextUntapStep => "during your next untap step".to_string(),
+        Until::UntilControllersNextUntapStep { .. } => "until its controller's next untap step".to_string(),
+        Until::PlayersNextUntapStep { .. } => "during that player's next untap step".to_string(),
         Until::EndOfCombat => "until end of combat".to_string(),
         Until::ThisLeavesTheBattlefield => {
-            "for as long as this source remains on the battlefield".to_string()
+            "until this source leaves the battlefield".to_string()
         }
         Until::SourceUntaps => "for as long as this source remains tapped".to_string(),
         Until::YouStopControllingThis => "for as long as you control this source".to_string(),
@@ -4813,6 +4815,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
         Until::Forever
             | Until::ControllersNextUntapStep
             | Until::YourNextUntapStep
+            | Until::PlayersNextUntapStep { .. }
             | Until::ThisLeavesTheBattlefield
             | Until::SourceUntaps
             | Until::YouStopControllingThis
@@ -4841,6 +4844,7 @@ pub(crate) fn describe_untap_restriction_for_subject(
     };
 
     let mut text = match cant.duration {
+        Until::PlayersNextUntapStep { .. } => format!("{} {verb} during that player's next untap step", subject.text),
         Until::YourNextUntapStep => format!("{} {verb} during your next untap step", subject.text),
         Until::ControllersNextUntapStep => {
             format!("{} {verb} during {controller_next_step}", subject.text)
@@ -6139,6 +6143,22 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
             "{} affected an object tied for greatest mana value",
             describe_player_filter(player)
         ),
+        EffectPredicate::AffectedObjectsShare { required_count, characteristic } => {
+            let shared = match characteristic {
+                crate::ObjectCharacteristic::Name => "have the same name".to_string(),
+                crate::ObjectCharacteristic::Color => "share a color".to_string(),
+                crate::ObjectCharacteristic::CardType => "share a card type".to_string(),
+                crate::ObjectCharacteristic::PermanentType => "share a permanent type".to_string(),
+                crate::ObjectCharacteristic::ManaValue => "have the same mana value".to_string(),
+                crate::ObjectCharacteristic::Subtype(family) => format!("share a {} type", match family {
+                    crate::types::SubtypeFamily::Creature => "creature",
+                    crate::types::SubtypeFamily::Land => "land",
+                    _ => "subtype",
+                }),
+            };
+            format!("{} or more of those cards {shared}", small_number_word(*required_count)
+                .unwrap_or_else(|| required_count.to_string()))
+        }
         EffectPredicate::PriorEffectResult(surface) => {
             describe_prior_effect_result_surface(surface)
         }

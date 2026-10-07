@@ -351,3 +351,47 @@ fn absent_activation_keyword_keeps_legacy_none_and_class_keyword_roundtrips() {
     assert_eq!(restored, activated);
     assert_eq!(serde_json::to_vec(&restored).unwrap(), bytes);
 }
+
+#[test]
+fn successor_variants_append_after_original_enum_tails_without_reordering() {
+    use ironsmith_core::{AnthemCountExpression, ContinuousDurationObject, CounterType,
+        EffectPredicate, ObjectCharacteristic, Until};
+    assert_case(EffectPredicate::Succeeded, ("EffectPredicate", 0, "Succeeded"), json!("Succeeded"));
+    assert_case(EffectPredicate::WasDeclined, ("EffectPredicate", 13, "WasDeclined"), json!("WasDeclined"));
+    assert_case(EffectPredicate::AffectedObjectsShare { required_count: 2, characteristic: ObjectCharacteristic::Name },
+        ("EffectPredicate", 14, "AffectedObjectsShare"),
+        json!({"AffectedObjectsShare": {"required_count": 2, "characteristic": "Name"}}));
+    assert_case(AnthemCountExpression::MatchingFilter(ObjectFilter::creature()),
+        ("AnthemCountExpression", 0, "MatchingFilter"), json!({"MatchingFilter": ObjectFilter::creature()}));
+    assert_case(AnthemCountExpression::TotalUnspentMana(PlayerFilter::You),
+        ("AnthemCountExpression", 20, "TotalUnspentMana"), json!({"TotalUnspentMana": "You"}));
+    assert_case(AnthemCountExpression::PlayerCounters(PlayerFilter::Opponent, CounterType::Poison),
+        ("AnthemCountExpression", 21, "PlayerCounters"), json!({"PlayerCounters": ["Opponent", "Poison"]}));
+    for (value, index, name) in [(Until::Forever, 0, "Forever"),
+        (Until::ControllersNextUntapStep, 6, "ControllersNextUntapStep"),
+        (Until::YourNextUntapStep, 15, "YourNextUntapStep")] {
+        assert_case(value, ("Until", index, name), json!(name));
+    }
+    assert_case(Until::UntilControllersNextUntapStep { object: ContinuousDurationObject::AffectedObject },
+        ("Until", 16, "UntilControllersNextUntapStep"),
+        json!({"UntilControllersNextUntapStep": {"object": "AffectedObject"}}));
+    assert_case(Until::PlayersNextUntapStep { player: PlayerFilter::Opponent },
+        ("Until", 17, "PlayersNextUntapStep"), json!({"PlayersNextUntapStep": {"player": "Opponent"}}));
+    assert_case(DelayedTriggerSpec::ConditionQualified {
+        trigger: Box::new(DelayedTriggerSpec::ThisDies), condition: Condition::YourTurn, surface: "your turn".into(),
+    }, ("DelayedTriggerSpec", 0, "ConditionQualified"), json!({"ConditionQualified": {
+        "trigger": "ThisDies", "condition": "YourTurn", "surface": "your turn",
+    }}));
+    assert_case(DelayedTriggerSpec::Attacks(ObjectFilter::creature()),
+        ("DelayedTriggerSpec", 21, "Attacks"), json!({"Attacks": ObjectFilter::creature()}));
+    assert_case(DelayedTriggerSpec::PlayerDiscardsCard {
+        player: PlayerFilter::You, filter: None, cause_controller: None, effect_like_only: false, one_or_more: false,
+    }, ("DelayedTriggerSpec", 47, "PlayerDiscardsCard"), json!({"PlayerDiscardsCard": {
+        "player": "You", "filter": null, "cause_controller": null, "effect_like_only": false, "one_or_more": false,
+    }}));
+    assert_case(DelayedTriggerSpec::PlayerAttackDeclaration {
+        attacker: PlayerFilter::You, defender: PlayerFilter::Opponent, grouping: PlayerAttackGrouping::AttackerAnyTarget,
+    }, ("DelayedTriggerSpec", 48, "PlayerAttackDeclaration"), json!({"PlayerAttackDeclaration": {
+        "attacker": "You", "defender": "Opponent", "grouping": "AttackerAnyTarget",
+    }}));
+}

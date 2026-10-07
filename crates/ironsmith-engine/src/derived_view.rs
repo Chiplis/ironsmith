@@ -1431,7 +1431,7 @@ impl<'a> DerivedGameView<'a> {
             return cached.clone();
         }
 
-        let sources: Vec<_> = if self.can_scan_non_layered_spell_cost_modifiers() {
+        let mut sources: Vec<_> = if self.can_scan_non_layered_spell_cost_modifiers() {
             self.game
                 .battlefield
                 .iter()
@@ -1447,6 +1447,10 @@ impl<'a> DerivedGameView<'a> {
                 .filter(|&perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
                 .collect()
         };
+        sources.extend(self.game.command_zone.iter().copied().filter(|id| {
+            self.spell_cost_modifier_static_abilities_rc(*id).is_some_and(|abilities|
+                abilities.iter().any(static_ability_has_spell_cost_modifier))
+        }));
         *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(!sources.is_empty());
         *self.battlefield_spell_cost_modifier_sources.borrow_mut() = Some(sources.clone());
         sources
@@ -1458,22 +1462,25 @@ impl<'a> DerivedGameView<'a> {
             return cached;
         }
 
-        let has_modifiers = if self.can_scan_non_layered_spell_cost_modifiers() {
-            self.game
-                .battlefield
-                .iter()
-                .copied()
-                .any(|perm_id| self.permanent_non_layered_has_spell_cost_modifiers(perm_id))
-        } else {
-            self.prewarm_characteristics(&self.game.battlefield);
-            self.game
-                .battlefield
-                .iter()
-                .copied()
-                .any(|perm_id| self.permanent_has_spell_cost_modifiers(perm_id))
-        };
-        *self.has_battlefield_spell_cost_modifiers.borrow_mut() = Some(has_modifiers);
-        has_modifiers
+        !self.battlefield_spell_cost_modifier_sources().is_empty()
+    }
+
+    /// Command sources use current abilities with each ability's explicit
+    /// functional zones, never the flattened list of inactive printed siblings.
+    pub(crate) fn spell_cost_modifier_static_abilities_rc(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<Arc<Vec<crate::static_abilities::StaticAbility>>> {
+        let object = self.game.object(object_id)?;
+        if object.zone != Zone::Command { return self.static_abilities_rc(object_id); }
+        let current = self.current_characteristics_arc(object_id)?;
+        Some(Arc::new(current.abilities.iter().filter_map(|ability| {
+            if !ability.functions_in(&Zone::Command) { return None; }
+            match &ability.kind {
+                AbilityKind::Static(ability) => Some(ability.clone()),
+                _ => None,
+            }
+        }).collect()))
     }
 
     pub(crate) fn activated_ability_cost_modifier_sources(&self) -> Vec<ObjectId> {

@@ -9,6 +9,7 @@ use crate::game_state::GameState;
 pub struct RepeatProcessPromptEffect {
     pub kind: ironsmith_core::RepeatProcessPromptKind,
     pub fallback: FallbackStrategy,
+    pub decider: Option<crate::filter::PlayerFilter>,
 }
 
 impl RepeatProcessPromptEffect {
@@ -16,7 +17,13 @@ impl RepeatProcessPromptEffect {
         Self {
             kind,
             fallback: FallbackStrategy::Decline,
+            decider: None,
         }
+    }
+
+    pub fn with_decider(mut self, decider: Option<crate::filter::PlayerFilter>) -> Self {
+        self.decider = decider;
+        self
     }
 
     pub fn description(&self) -> &'static str {
@@ -34,10 +41,15 @@ impl EffectExecutor for RepeatProcessPromptEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let decider = if let Some(player) = &self.decider {
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, player, ctx)?
+        } else {
+            ctx.iteration.iterated_player.unwrap_or(ctx.controller)
+        };
         let should_continue = ask_may_choice(
             game,
             &mut ctx.decision_maker,
-            ctx.iteration.iterated_player.unwrap_or(ctx.controller),
+            decider,
             ctx.source,
             self.description().to_string(),
             self.fallback,

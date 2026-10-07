@@ -1248,7 +1248,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             // This predicate requires both the resolving player's identity
             // and the producer's per-player partitions. The context-aware
             // `IfEffect` evaluator handles it.
-            Self::PlayerAffectedObjectHasGreatestManaValue { .. } => false,
+            Self::PlayerAffectedObjectHasGreatestManaValue { .. }
+            | Self::AffectedObjectsShare { .. } => false,
             Self::PriorEffectResult(surface) => {
                 if surface.negated {
                     let mut positive = surface.clone();

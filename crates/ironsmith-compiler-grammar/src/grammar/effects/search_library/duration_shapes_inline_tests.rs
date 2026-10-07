@@ -48,3 +48,17 @@ fn distinguishes_leading_and_trailing_animation_durations() {
         SearchRestrictionDurationPlacement::Suffix
     );
 }
+
+
+#[test]
+fn named_player_step_is_not_a_search_or_permission_duration() {
+    for text in [
+        "during that player's next untap step, you may play that card",
+        "you may play that card during that player's next untap step",
+        "until its controller's next untap step, you may play that card",
+        "you may play that card until its controller's next untap step",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_search_restriction_duration_shape_lexed(&tokens).unwrap().is_none());
+    }
+}

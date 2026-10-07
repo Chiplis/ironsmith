@@ -5765,6 +5765,7 @@ impl GameState {
                 || (matches!(
                     effect.duration,
                     crate::effect::Until::ControllersNextUntapStep | crate::effect::Until::YourNextUntapStep
+                        | crate::effect::Until::PlayersNextUntapStep { .. }
                 ) && !effect.is_expired(current_turn)
                     && effect.untap_step_player(self).is_some())
             {

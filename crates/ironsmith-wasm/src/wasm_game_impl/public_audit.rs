@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact12 and signed audit25. Typed restricted-mana programs
-// expose prevention filters/color choices and constructed functional zones.
+// Coordinated with artifact13 and signed audit26. The real typed restricted-mana
+// carrier exposes repeat fields, delayed/anthem/duration vocabulary and semantics.
 // Historical digests retain their bytes; this is never a gameplay importer.
-const PUBLIC_AUDIT_VERSION: u32 = 8;
+const PUBLIC_AUDIT_VERSION: u32 = 9;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -74,6 +74,11 @@ mod public_audit_boundary_11_7_24_tests {
 #[cfg(test)]
 mod public_audit_boundary_12_8_25_tests {
     include!("public_audit_boundary_12_8_25_tests.rs");
+}
+
+#[cfg(test)]
+mod public_audit_boundary_13_9_26_tests {
+    include!("public_audit_boundary_13_9_26_tests.rs");
 }
 
 #[derive(Debug, Clone, Serialize)]

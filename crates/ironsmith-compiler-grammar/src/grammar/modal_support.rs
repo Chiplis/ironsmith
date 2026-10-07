@@ -1152,6 +1152,12 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::PriorEffectResult(surface) => {
                     EffectPredicate::PriorEffectResult(surface)
                 }
+                IfResultPredicate::AffectedObjectsShare { required_count, characteristic } => {
+                    EffectPredicate::AffectedObjectsShare { required_count, characteristic }
+                }
+                IfResultPredicate::ConditionMatched => {
+                    EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+                }
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
                 IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
             };

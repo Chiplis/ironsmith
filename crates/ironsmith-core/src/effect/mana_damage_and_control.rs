@@ -4944,11 +4944,19 @@ impl RepeatProcessPromptKind {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RepeatProcessPromptEffect {
     pub kind: RepeatProcessPromptKind,
+    /// None retains the original iterated-player/controller choice owner.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub decider: Option<PlayerFilter>,
 }
 
 impl RepeatProcessPromptEffect {
     pub fn new(kind: RepeatProcessPromptKind) -> Self {
-        Self { kind }
+        Self { kind, decider: None }
+    }
+
+    pub fn with_decider(mut self, decider: Option<PlayerFilter>) -> Self {
+        self.decider = decider;
+        self
     }
 }
 

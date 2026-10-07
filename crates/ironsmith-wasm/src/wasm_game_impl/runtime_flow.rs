@@ -1,3 +1,12 @@
+// Keep the runner error path available to the native host as well as WASM;
+// native callers inspect Result while JS callers receive the original message.
+fn runner_execution_error(error: ironsmith::game_loop::GameLoopError) -> JsValue {
+    #[cfg(target_arch = "wasm32")]
+    { JsValue::from_str(&error.to_string()) }
+    #[cfg(not(target_arch = "wasm32"))]
+    { let _ = error; JsValue::NULL }
+}
+
 // Counter quantities are sparse: aggregate limits do not depend on pointer
 // width, and the selected kind order reaches the owning executor unchanged.
 fn validate_counter_allocations(
@@ -308,7 +317,7 @@ impl WasmGame {
                     let runner = self.runner.as_mut().unwrap();
                     runner
                         .advance(&mut self.game, &mut self.trigger_queue)
-                        .map_err(|e| JsValue::from_str(&format!("{e}")))?
+                        .map_err(runner_execution_error)?
                 };
                 perf.runner_advance_ms += runner_advance_started_at.elapsed_ms();
 
@@ -546,6 +555,28 @@ impl WasmGame {
 
     /// Apply the same validated runner command without constructing a JS snapshot.
     pub(super) fn apply_runner_decision(
+        &mut self,
+        pending_ctx: DecisionContext,
+        command: UiCommand,
+    ) -> Result<(), JsValue> {
+        let untap_checkpoint = self.runner.as_ref()
+            .is_some_and(|runner| runner.has_pending_untap_continuation())
+            .then(|| RuntimeSavepoint::capture(self));
+        let result = self.apply_runner_decision_inner(pending_ctx.clone(), command);
+        if result.is_err()
+            && let Some(checkpoint) = untap_checkpoint
+        {
+            checkpoint.restore(self);
+            // Dispatch has already taken this prompt before entering here.
+            // Restore it with the collected prefix so the same response can
+            // be retried, or corrected, without re-answering earlier prompts.
+            self.pending_decision = Some(pending_ctx);
+            self.runner_pending_decision = true;
+        }
+        result
+    }
+
+    fn apply_runner_decision_inner(
         &mut self,
         pending_ctx: DecisionContext,
         command: UiCommand,

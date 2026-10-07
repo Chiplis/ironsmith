@@ -319,6 +319,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce) => {}
+        EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::May { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }) => {}

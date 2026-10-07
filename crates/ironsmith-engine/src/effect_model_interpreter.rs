@@ -313,7 +313,8 @@ where
                 convert_effects(payload.if_true.iter().cloned(), hooks)?,
                 convert_effects(payload.if_false.iter().cloned(), hooks)?,
             )
-            .with_surface(payload.surface),
+            .with_surface(payload.surface)
+            .with_condition_result(payload.capture_condition_result),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::IfEffect<M::Effect>>(&effect) {
@@ -1281,7 +1282,7 @@ where
     if let Some(payload) = M::downcast_ref::<ironsmith_core::RepeatProcessPromptEffect>(&effect) {
         return Ok(Effect::new(crate::effects::RepeatProcessPromptEffect::new(
             payload.kind,
-        )));
+        ).with_decider(payload.decider.clone())));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RearrangeLookedCardsInLibraryEffect>(&effect)

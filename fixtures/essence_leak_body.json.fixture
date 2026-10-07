@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Essence Leak",
+    "oracle_id": "cb02daf6-9013-4ccc-bf1f-773b757ac468",
+    "mana_cost": "{U}",
+    "type_line": "Enchantment — Aura",
+    "oracle_text": "Enchant permanent\nAs long as enchanted permanent is red or green, it has \"At the beginning of your upkeep, sacrifice this permanent unless you pay its mana cost.\"",
+    "colors": [
+      "U"
+    ],
+    "color_identity": [
+      "U"
+    ],
+    "layout": "normal",
+    "historical_baseline": {
+      "category": "parser_failure",
+      "parse_status": "parse_failed",
+      "parse_error": "unsupported static condition clause (clause: 'enchanted permanent is red or green'); oracle-only fallback also failed: unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported static condition clause (clause: 'enchanted permanent is red or green')",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "content_hash": "89c832a08ad8f7c8295b77722db7fcf57f91cc573f534eadbc1dae692acb6634"
+    },
+    "proposed_complete": true,
+    "status": "UNVALIDATED source restoration; fresh review pending",
+    "remaining": null
+  }
+]

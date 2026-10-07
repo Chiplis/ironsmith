@@ -206,7 +206,8 @@ pub use trigger_programs::parse_trigger_functional_zone_facts_tokens;
 use trigger_programs::parse_trigger_zone_hint_tokens;
 #[path = "functional_zones/object_action.rs"]
 mod object_action_programs;
-pub use object_action_programs::parse_static_functional_zones_tokens;
+pub use object_action_programs::{parse_static_functional_zones_tokens,
+    parse_source_command_or_battlefield_condition_tokens};
 #[path = "functional_zones/core.rs"]
 mod core_programs;
 use core_programs::{has_any_phrase, has_phrase};

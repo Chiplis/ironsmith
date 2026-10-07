@@ -6244,6 +6244,26 @@
                 capitalize_first(repeated.trim_end_matches('.'))
             );
         }
+        if let Value::Add(initial, additional) = repeat.count.unhinted()
+            && matches!(initial.as_ref(), Value::Fixed(1))
+            && matches!(additional.as_ref(), Value::Fixed(0..) | Value::X)
+        {
+            // The compiler's finite process owner includes the initial pass.
+            // Appending "1 plus X times" to the last rendered instruction
+            // would attach repetition to that tail rather than the complete
+            // multi-instruction process. Retain its explicit body boundary.
+            let count = match additional.as_ref() {
+                Value::Fixed(count) => small_number_word(*count as u32)
+                    .unwrap_or_else(|| count.to_string()),
+                Value::X => "X".to_string(),
+                _ => unreachable!(),
+            };
+            let repeated = repeated.strip_prefix("you ")
+                .map(normalize_you_verb_phrase)
+                .unwrap_or_else(|| repeated.to_string());
+            return format!("{}. Repeat this process {count} more times",
+                capitalize_first(repeated.trim_end_matches('.')));
+        }
         return match repeat.count.unhinted() {
             Value::Fixed(1) => repeated,
             Value::Fixed(2) => format!("{repeated} twice"),

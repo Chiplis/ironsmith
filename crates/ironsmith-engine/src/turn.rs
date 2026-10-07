@@ -585,15 +585,59 @@ pub fn execute_untap_step(game: &mut GameState) {
     execute_untap_step_with(game, &mut dm).expect("untap step execution failed");
 }
 
-/// Executes the untap step for the active player with an explicit decision maker.
-///
-/// This variant prompts for optional "you may choose not to untap ..." abilities.
+/// Exact facts at an untap occurrence's beginning. A suspended lane retains
+/// these even if other lanes create effects or change a land's controller.
+#[derive(Debug, Clone)]
+pub(crate) struct UntapStepBoundary {
+    started_at: (u32, u64),
+    beginning_expirations: Vec<crate::continuous::ContinuousEffectId>,
+}
+
+pub(crate) fn capture_untap_step_boundary(
+    game: &mut GameState,
+) -> Result<UntapStepBoundary, crate::effects::ExecutionError> {
+    use crate::effect::Until;
+    let started_at = (game.turn.turn_number, game.effect_store.continuous_effects.current_timestamp());
+    game.refresh_continuous_state()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let active_players = game.turn_players();
+    let beginning_expirations = game.effect_store.continuous_effects.effects().iter()
+        .filter_map(|effect| {
+            let Until::UntilControllersNextUntapStep {
+                object: ironsmith_core::ContinuousDurationObject::Specific(object),
+            } = &effect.duration else { return None; };
+            let controller = game.object(*object)
+                .filter(|object| object.zone == crate::zone::Zone::Battlefield)
+                .map(|object| game.controller_of(object));
+            controller.is_some_and(|player| active_players.contains(&player)).then_some(effect.id)
+        })
+        .collect();
+    Ok(UntapStepBoundary { started_at, beginning_expirations })
+}
+
+/// Executes one actual untap occurrence with transactional optional choices.
 pub fn execute_untap_step_with(
     game: &mut GameState,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
     let checkpoint = game.clone();
-    let result = execute_untap_step_inner(game, decision_maker);
+    let result = capture_untap_step_boundary(game)
+        .and_then(|boundary| execute_untap_step_inner(game, decision_maker, &boundary));
+    if result.is_err() || decision_maker.awaiting_choice() {
+        *game = checkpoint;
+    }
+    result
+}
+
+/// Resume the same occurrence, retaining its original registration cutoff and
+/// beginning-expiry decisions while fresh game facts remain available to actions.
+pub(crate) fn execute_untap_step_with_boundary(
+    game: &mut GameState,
+    decision_maker: &mut impl DecisionMaker,
+    boundary: &UntapStepBoundary,
+) -> Result<(), crate::effects::ExecutionError> {
+    let checkpoint = game.clone();
+    let result = execute_untap_step_inner(game, decision_maker, boundary);
     if result.is_err() || decision_maker.awaiting_choice() {
         *game = checkpoint;
     }
@@ -603,6 +647,7 @@ pub fn execute_untap_step_with(
 fn execute_untap_step_inner(
     game: &mut GameState,
     decision_maker: &mut impl DecisionMaker,
+    boundary: &UntapStepBoundary,
 ) -> Result<(), crate::effects::ExecutionError> {
     use crate::decisions::context::BooleanContext;
     use crate::effect::Until;
@@ -617,6 +662,16 @@ fn execute_untap_step_inner(
     // characteristics check entirely.
     game.refresh_continuous_state()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    game.turn_store.untap_step_started_at = Some(boundary.started_at);
+    // CR 500.4 expires `until this step` before phasing. Membership was
+    // frozen at the original beginning, not recomputed after a suspended choice.
+    if !boundary.beginning_expirations.is_empty() {
+        for &id in &boundary.beginning_expirations {
+            game.effect_store.continuous_effects.remove_effect(id);
+        }
+        game.refresh_continuous_state()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    }
     game.update_cant_effects();
     game.establish_turn_start_continuous_control();
 
@@ -660,7 +715,10 @@ fn execute_untap_step_inner(
     // Replacement additions during untapping cannot create or retarget one of
     // these next-step occurrences retroactively.
     let consumed_untap_restrictions = game.effect_store.restriction_effects.iter()
-        .filter(|effect| matches!(effect.duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep)
+        .filter(|effect| matches!(effect.duration, Until::ControllersNextUntapStep | Until::YourNextUntapStep
+            | Until::PlayersNextUntapStep { .. })
+            && (!matches!(effect.duration, Until::PlayersNextUntapStep { .. })
+                || effect.is_active(game, game.turn.turn_number))
             && effect.untap_step_player(game).is_some_and(|player| active_players.contains(&player)))
         .map(|effect| effect.timestamp)
         .collect::<std::collections::HashSet<_>>();

@@ -1346,7 +1346,7 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
         let filter_ctx = game
             .filter_context_for(controller, Some(perm_id))
             .with_caster(Some(caster));
-        let Some(abilities) = view.static_abilities_rc(perm_id) else {
+        let Some(abilities) = view.spell_cost_modifier_static_abilities_rc(perm_id) else {
             continue;
         };
         for static_ability in abilities.iter() {
@@ -6182,7 +6182,7 @@ pub(crate) fn battlefield_life_cost_increase_for_spell(
                 .with_opponents(opponents),
             perm_id,
         );
-        let Some(static_abilities) = view.static_abilities_rc(perm_id) else {
+        let Some(static_abilities) = view.spell_cost_modifier_static_abilities_rc(perm_id) else {
             continue;
         };
         for static_ability in static_abilities.iter() {
@@ -6344,7 +6344,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
             perm_id,
         );
 
-        if let Some(static_abilities) = view.static_abilities_rc(perm_id) {
+        if let Some(static_abilities) = view.spell_cost_modifier_static_abilities_rc(perm_id) {
             for static_ability in static_abilities.iter() {
                 if !static_ability.is_active(game, perm_id) {
                     continue;

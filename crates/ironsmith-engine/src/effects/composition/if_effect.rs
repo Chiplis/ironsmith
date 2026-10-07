@@ -196,6 +196,13 @@ pub(super) fn predicate_matches_with_context(
     game: &GameState,
     ctx: &ExecutionContext,
 ) -> bool {
+    if let EffectPredicate::AffectedObjectsShare { required_count, characteristic } = predicate {
+        let Some(memory) = outcome.affected_object_memory() else { return false; };
+        let mut seen = std::collections::HashSet::new();
+        let objects = memory.iter().filter(|object| seen.insert(object.stable_id)).collect::<Vec<_>>();
+        return *required_count >= 2 && objects.len() >= *required_count as usize
+            && result_memories_share_characteristic(&objects, *required_count as usize, *characteristic);
+    }
     if let EffectPredicate::PlayerAffectedObjectHasGreatestManaValue { player } = predicate {
         let Some(all_memory) = outcome.affected_object_memory() else {
             return false;
@@ -1330,4 +1337,32 @@ mod replacement_original_if_adapter_contract_tests {
             ObjectCharacteristic::Name
         ));
     }
+    #[test]
+    fn affected_name_subset_uses_distinct_latest_objects_and_rejects_short_or_empty_sets() {
+        let game = setup_game();
+        let ctx = ExecutionContext::new_default(crate::ids::ObjectId::from_raw(500), PlayerId(0));
+        let memory = |id: u64, name: &str| {
+            let object = crate::ids::ObjectId::from_raw(id);
+            let mut snapshot = crate::snapshot::ObjectSnapshot::public_placeholder(
+                object, object.into(), PlayerId(0), PlayerId(0), crate::zone::Zone::Library,
+            );
+            snapshot.name = name.into();
+            snapshot
+        };
+        let pair = vec![memory(1, "Same"), memory(2, "Same"), memory(3, "Other"), memory(4, "Different")];
+        let predicate = EffectPredicate::AffectedObjectsShare {
+            required_count: 2, characteristic: crate::ObjectCharacteristic::Name,
+        };
+        for (objects, expected) in [
+            (pair.clone(), true), (pair[..2].to_vec(), true),
+            (vec![pair[0].clone()], false), (Vec::new(), false),
+            (vec![pair[0].clone(), pair[0].clone()], false),
+            (vec![pair[1].clone(), pair[2].clone()], false),
+            (vec![memory(5, ""), memory(6, "")], false),
+        ] {
+            let result = EffectOutcome::count(objects.len() as i32).with_affected_object_memory(objects);
+            assert_eq!(predicate_matches_with_context(&predicate, &result, &game, &ctx), expected);
+        }
+    }
+
 }

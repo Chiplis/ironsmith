@@ -40,8 +40,8 @@ const action = { command: { type: "priority_action", action_ref: { kind: "pass_p
 test("all engine replay entry points reject old, absent and mismatched protocol before reading engine state", async () => {
   const entries = [replayAuditTranscriptWithGame, startAuditTranscriptReplayWithGame,
     verifyEndOfMatchDisclosuresWithGame];
-  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
-  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 21), transcript(21, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 22), transcript(22, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 23), transcript(23, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 24), transcript(24, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
+  const invalid = [14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, CURRENT_AUDIT_PROTOCOL_VERSION + 1, null, String(CURRENT_AUDIT_PROTOCOL_VERSION)].map(version => transcript(version));
+  invalid.push({}, { match: {} }, transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 20), transcript(20, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 21), transcript(21, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 22), transcript(22, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 23), transcript(23, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 24), transcript(24, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, 25), transcript(25, CURRENT_AUDIT_PROTOCOL_VERSION), transcript(CURRENT_AUDIT_PROTOCOL_VERSION, null));
   for (const candidate of invalid) {
     for (const entry of entries) {
       const h = replayGame();
@@ -63,7 +63,7 @@ test("actions require successful initialization and recheck the session protocol
   const candidate = transcript();
   await startAuditTranscriptReplayWithGame({ game: h.game, transcript: candidate, cryptoImpl: webcrypto });
   h.calls.length = 0;
-  candidate.match.protocolVersion = 24;
+  candidate.match.protocolVersion = 25;
   await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), new RegExp(`requires audit protocol ${CURRENT_AUDIT_PROTOCOL_VERSION}`));
   assert.deepEqual(h.calls, []);
 });
@@ -77,31 +77,33 @@ test("a failed initial checkpoint comparison cannot authorize a later action", a
   assert.deepEqual(h.calls, []);
 });
 
-test("current replay requires v8 checkpoint exports before start and per-action mutation", async () => {
-  for (const version of [undefined, null, 2, 3, 4, 5, 6, 7, "8"]) {
+test("current replay requires v9 checkpoint exports before start and per-action mutation", async () => {
+  for (const version of [undefined, null, 2, 3, 4, 5, 6, 7, 8, "9"]) {
     for (const entry of [startAuditTranscriptReplayWithGame, replayAuditTranscriptWithGame,
       verifyEndOfMatchDisclosuresWithGame]) {
       const h = replayGame();
       h.setCheckpoint({ version });
-      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 8/);
+      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 9/);
       assert.deepEqual(h.calls, ["export"]);
     }
   }
-  for (const version of [undefined, null, 7, "8"]) {
+  for (const version of [undefined, null, 7, 8, "9"]) {
     const h = replayGame();
     await startAuditTranscriptReplayWithGame({ game: h.game, transcript: transcript(), cryptoImpl: webcrypto });
     h.calls.length = 0;
     h.setCheckpoint({ version });
-    await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 8/);
+    await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 9/);
     assert.deepEqual(h.calls, ["export"]);
   }
 });
 
 test("current signed replay refuses a historical final digest before invoking its replay callback", async () => {
   let callbacks = 0;
-  await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version: 7 } }, webcrypto, {
-    requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-  }), /checkpoint version 8/);
+  for (const version of [undefined, null, 7, 8, "9"]) {
+    await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version } }, webcrypto, {
+      requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
+    }), /checkpoint version 9/);
+  }
   assert.equal(callbacks, 0);
 });
 

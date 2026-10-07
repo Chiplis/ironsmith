@@ -5024,6 +5024,20 @@ pub(super) fn typed_repeat_once_hint_preserves_the_process_surface() {
 }
 
 #[test]
+pub(super) fn initial_plus_additional_count_renders_the_complete_process_boundary() {
+    // Independent source expectations, UNRUN. Two separate instructions ensure
+    // that the count cannot silently qualify only the last instruction.
+    for (additional, word) in [(Value::Fixed(0), "zero"), (Value::Fixed(6), "six"), (Value::X, "X")] {
+        let repeated = Effect::new(crate::effects::RepeatEffectsEffect::new(
+            Value::Add(Box::new(Value::Fixed(1)), Box::new(additional)),
+            vec![Effect::draw(1), Effect::gain_life(2)],
+        ));
+        assert_eq!(describe_effect(&repeated),
+            format!("Draw a card and gain 2 life. Repeat this process {word} more times"));
+    }
+}
+
+#[test]
 pub(super) fn battlefield_choice_zone_is_implicit_when_stored_on_the_choice_effect() {
     let choose = Effect::new(
         crate::effects::ChooseObjectsEffect::new(

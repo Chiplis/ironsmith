@@ -1098,6 +1098,26 @@ pub(super) fn compile_cant_action(
     };
 
     let restriction = resolve_restriction_it_tag(restriction, &current_reference_env(ctx))?;
+    if matches!(duration, crate::effect::Until::UntilControllersNextUntapStep { .. }) {
+        return Err(CardTextError::ParseError(
+            "next-untap beginning duration has no restriction lifetime owner".into(),
+        ));
+    }
+    // Bind the named step to the same explicit player as the live controlled
+    // set. An orphan "that player" must not invent a fresh or ambient target.
+    let named_step_duration = if matches!(duration, crate::effect::Until::PlayersNextUntapStep { .. }) {
+        let crate::effect::Restriction::Untap(filter) = &restriction else {
+            return Err(CardTextError::ParseError("a named next untap step requires an untap rule".into()));
+        };
+        let Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) = &filter.controller else {
+            return Err(CardTextError::ParseError("named next untap step has no explicit player antecedent".into()));
+        };
+        if condition.is_some() {
+            return Err(CardTextError::ParseError("conditional named next untap rule is not represented".into()));
+        }
+        Some(crate::effect::Until::PlayersNextUntapStep { player: player.clone() })
+    } else { None };
+    let duration = named_step_duration.as_ref().unwrap_or(duration);
     if let Some(condition) = condition {
         match &restriction {
             crate::effect::Restriction::Untap(filter) => {

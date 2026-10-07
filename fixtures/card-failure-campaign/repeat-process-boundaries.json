@@ -1,0 +1,245 @@
+{
+  "status": "UNVALIDATED reconstructed source-only candidate scope; no ledger credit",
+  "base_commit": "2f00b78b082d02179a3730b97143904712223e1b",
+  "original_source_base": "85fb650cd24bb97fcd6bff941125c96bb95c82fa",
+  "retained_checkpoint_reference": "547ee2977e8ad355832d5f1a3d91aedce83e7b54 (old object unavailable; no byte identity claim)",
+  "frozen_baseline": "e8740178a7f7367ffa3147e7642607042079237c",
+  "cards": [
+    {
+      "source": {
+        "name": "Another Round",
+        "oracle_id": "8095ca78-db19-4724-a6ff-eacc85fa2274",
+        "type_line": "Sorcery",
+        "mana_cost": "{X}{X}{2}{W}",
+        "oracle_text": "Exile any number of creatures you control, then return them to the battlefield under their owner's control. Then repeat this process X more times."
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "could not find verb in effect clause (clause: 'repeat this process x more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'repeat this process x more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
+        "route_diagnostics": [
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process x more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process x more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=statement-line > statement-probe]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Claim Jumper",
+        "oracle_id": "18f0cd0b-3e4f-4637-a62e-75dd1b2f3fce",
+        "type_line": "Creature — Rabbit Mercenary",
+        "mana_cost": "{2}{W}",
+        "oracle_text": "Vigilance\nWhen this creature enters, if an opponent controls more lands than you, you may search your library for a Plains card and put it onto the battlefield tapped. Then if an opponent controls more lands than you, repeat this process once. If you search your library this way, shuffle.",
+        "power": "3",
+        "toughness": "3"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "missing prior effect for if clause; oracle-only fallback also failed: missing prior effect for if clause",
+        "route_diagnostics": [
+          {
+            "diagnostic": "missing prior effect for if clause",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "missing prior effect for if clause",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Countryside Crusher",
+        "oracle_id": "1636c4d2-f699-4af7-8508-dbce2f0b7b52",
+        "type_line": "Creature — Giant Warrior",
+        "mana_cost": "{1}{R}{R}",
+        "oracle_text": "At the beginning of your upkeep, reveal the top card of your library. If it's a land card, put it into your graveyard and repeat this process.\nWhenever a land card is put into your graveyard from anywhere, put a +1/+1 counter on this creature.",
+        "power": "3",
+        "toughness": "3"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "unsupported repeat this process effect tail; oracle-only fallback also failed: unsupported repeat this process effect tail",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Grindstone",
+        "oracle_id": "97560adc-814e-450c-9ca7-f9364e910a0b",
+        "type_line": "Artifact",
+        "mana_cost": "{1}",
+        "oracle_text": "{3}, {T}: Target player mills two cards. If two cards that share a color were milled this way, repeat this process."
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "unsupported predicate (predicate: 'two cards that share color were milled this way') [rule-path=conditional-sentence-family > legacy-document-registry-reading]; oracle-only fallback also failed: unsupported predicate (predicate: 'two cards that share color were milled this way') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported predicate (predicate: 'two cards that share color were milled this way') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported predicate (predicate: 'two cards that share color were milled this way') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Professor Onyx",
+        "oracle_id": "9df2e909-ed13-456a-9636-7398732009a9",
+        "type_line": "Legendary Planeswalker — Liliana",
+        "mana_cost": "{4}{B}{B}",
+        "oracle_text": "Magecraft — Whenever you cast or copy an instant or sorcery spell, each opponent loses 2 life and you gain 2 life.\n+1: You lose 1 life. Look at the top three cards of your library. Put one of them into your hand and the rest into your graveyard.\n−3: Each opponent sacrifices a creature with the greatest power among creatures that player controls.\n−8: Each opponent may discard a card. If they don't, they lose 3 life. Repeat this process six more times.",
+        "loyalty": "5"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "could not find verb in effect clause (clause: 'repeat this process six more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end); oracle-only fallback also failed: could not find verb in effect clause (clause: 'repeat this process six more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end)",
+        "route_diagnostics": [
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process six more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end)",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process six more times'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end)",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Scalpelexis",
+        "oracle_id": "99eb50ef-352f-47c4-91e3-32813cbe0649",
+        "type_line": "Creature — Beast",
+        "mana_cost": "{4}{U}",
+        "oracle_text": "Flying (This creature can't be blocked except by creatures with flying or reach.)\nWhenever this creature deals combat damage to a player, that player exiles the top four cards of their library. If two or more of those cards have the same name, repeat this process.",
+        "power": "1",
+        "toughness": "5"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "unsupported repeat this process effect tail; oracle-only fallback also failed: unsupported repeat this process effect tail",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Sin, Spira's Punishment",
+        "oracle_id": "3bcc378c-4470-4757-a0d5-025a32c918ea",
+        "type_line": "Legendary Creature — Leviathan Avatar",
+        "mana_cost": "{4}{B}{G}{U}",
+        "oracle_text": "Flying\nWhenever Sin enters or attacks, exile a permanent card from your graveyard at random, then create a tapped token that's a copy of that card. If the exiled card is a land card, repeat this process.",
+        "power": "7",
+        "toughness": "7"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "unsupported predicate (predicate: 'exiled card is land card') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported predicate (predicate: 'exiled card is land card') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported predicate (predicate: 'exiled card is land card') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported predicate (predicate: 'exiled card is land card') [rule-path=leading-if-conditional > sentence-reading] [rule-path=statement-line > triggered-line]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Trade Secrets",
+        "oracle_id": "50885640-cdf1-4c62-b3bc-f37db6ab38b5",
+        "type_line": "Sorcery",
+        "mana_cost": "{1}{U}{U}",
+        "oracle_text": "Target opponent draws two cards, then you draw up to four cards. That opponent may repeat this process as many times as they choose."
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "could not find verb in effect clause (clause: 'repeat this process as many times as they choose'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: could not find verb in effect clause (clause: 'repeat this process as many times as they choose'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+        "route_diagnostics": [
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process as many times as they choose'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "could not find verb in effect clause (clause: 'repeat this process as many times as they choose'; known verbs: add, move, deal, draw, counter, destroy, exile, untap, scry, discard, transform, convert, regenerate, mill, get, reveal, look, lose, gain, put, sacrifice, create, investigate, attach, unattach, remove, return, exchange, become, switch, skip, surveil, shuffle, reorder, pay, detain, goad, suspect, end) [rule-path=player-may > chain-reading] [rule-path=leading-player-may > sentence-reading] [rule-path=statement-line > statement-probe]",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    },
+    {
+      "source": {
+        "name": "Zimone and Dina",
+        "oracle_id": "5bc66b18-22ac-4138-b527-fa711116e298",
+        "type_line": "Legendary Creature — Human Dryad",
+        "mana_cost": "{B}{G}{U}",
+        "oracle_text": "Whenever you draw your second card each turn, target opponent loses 2 life and you gain 2 life.\n{T}, Sacrifice another creature: Draw a card. You may put a land card from your hand onto the battlefield tapped. If you control eight or more lands, repeat this process once.",
+        "power": "3",
+        "toughness": "4"
+      },
+      "baseline": {
+        "category": "parser_failure",
+        "parse_error": "unsupported repeat this process effect tail; oracle-only fallback also failed: unsupported repeat this process effect tail",
+        "route_diagnostics": [
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "parse_input"
+          },
+          {
+            "diagnostic": "unsupported repeat this process effect tail",
+            "outcome": "failed",
+            "route": "oracle_only"
+          }
+        ]
+      }
+    }
+  ]
+}

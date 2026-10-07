@@ -3887,6 +3887,11 @@ fn parse_complete_simple_draw_sentence(
     }) else {
         return Ok(None);
     };
+    // Here `draw` names a step rather than the action. The complete skip
+    // reader must retain the subject, occurrence count and future boundary.
+    if tokens.get(draw_idx + 1).is_some_and(|token| token.is_any_word(&["step", "steps"])) {
+        return Ok(None);
+    }
     if tokens[..draw_idx].iter().any(|token| {
         token.kind == TokenKind::Comma
             || token.is_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"])

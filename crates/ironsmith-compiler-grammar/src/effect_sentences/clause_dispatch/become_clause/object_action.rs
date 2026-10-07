@@ -15,6 +15,32 @@ pub fn parse_become_clause(
     let subject_tokens = LexedClause::new(subject_tokens).trim();
     let rest_clause = LexedClause::new(rest_tokens).trimmed();
     let rest_words = rest_clause.word_refs();
+    // This packet admits the beginning-of-step lifetime only through the
+    // typed basic-land conversion owner. Generic durations must not carry it into
+    // prevention shields, permissions, grants, or other unrepresented owners.
+    if let Some(parsed) = crate::grammar::leaf::parse_leaf_restriction_duration_suffix_tokens(rest_tokens)
+        && parsed.duration == crate::grammar::leaf::LeafDurationPhrase::UntilControllersNextUntapStep
+        && !trailing_duration_belongs_to_quoted_ability(rest_tokens, parsed.rest)
+    {
+        let mut effect = parse_become_clause(&subject_tokens, parsed.rest)?;
+        let EffectAst::SubjectVerb(subject) = &mut effect else {
+            return Err(CardTextError::ParseError("next-untap beginning requires one basic-land conversion".into()));
+        };
+        let duration = match &mut subject.action {
+            crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                crate::cards::builders::CharacteristicActionAst::BecomeBasicLandType { duration, .. }
+                | crate::cards::builders::CharacteristicActionAst::BecomeBasicLandTypeChoice { duration, .. }
+            ) => duration,
+            _ => return Err(CardTextError::ParseError("next-untap beginning is unsupported for this become owner".into())),
+        };
+        if !matches!(duration, Until::Forever) {
+            return Err(CardTextError::ParseError("conflicting basic-land conversion durations".into()));
+        }
+        *duration = Until::UntilControllersNextUntapStep {
+            object: ironsmith_core::ContinuousDurationObject::AffectedObject,
+        };
+        return Ok(effect);
+    }
     if rest_words == ["blocked"] {
         let subject = parse_target_phrase(&subject_tokens).or_else(|_| {
             parse_object_filter_lexed(&subject_tokens, false)

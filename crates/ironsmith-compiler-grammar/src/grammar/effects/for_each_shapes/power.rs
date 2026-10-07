@@ -29,8 +29,8 @@ fn has_or_have<'a>(input: &mut crate::lexer::LexStream<'a>) -> winnow::error::Mo
         .parse_next(input)
 }
 
-fn duration_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
-    match duration {
+fn duration_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
+    Some(match duration {
         leaf::LeafDurationPhrase::ThisTurn | leaf::LeafDurationPhrase::UntilEndOfTurn => {
             Until::EndOfTurn
         }
@@ -40,15 +40,17 @@ fn duration_from_leaf(duration: leaf::LeafDurationPhrase) -> Until {
         leaf::LeafDurationPhrase::UntilYourNextUpkeep => Until::YourNextUpkeep,
         leaf::LeafDurationPhrase::ControllersNextUntapStep => Until::ControllersNextUntapStep,
         leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
+        leaf::LeafDurationPhrase::UntilControllersNextUntapStep => return None,
+        leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
         leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
-    }
+    })
 }
 
 fn duration_prefix(tokens: &[OwnedLexToken]) -> Option<(Until, &[OwnedLexToken])> {
     let parsed = leaf::parse_leaf_restriction_duration_prefix_tokens(tokens)?;
     Some((
-        duration_from_leaf(parsed.duration),
+        duration_from_leaf(parsed.duration)?,
         trim_edge_punctuation_tokens(parsed.rest),
     ))
 }

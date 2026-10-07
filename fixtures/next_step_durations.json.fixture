@@ -1,0 +1,172 @@
+[
+  {
+    "name": "Fatigue",
+    "oracle_id": "0a88dcb6-a391-408f-8bfc-7b5b2cc34267",
+    "mana_cost": "{1}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Target player skips their next draw step.",
+    "scryfall_uri": "https://scryfall.com/card/uds/32/fatigue?utm_source=api",
+    "baseline": {
+      "card_name": "Fatigue",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "9b614f4fdb168a623fc63fc89f1d145f309ccb753b55042083725e50528abf09",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Target player skips their next draw step.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Target player skips their next draw step.",
+      "parse_error": "missing draw count (clause: 'step') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: missing draw count (clause: 'step') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > statement-probe]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: missing draw count (clause: 'step') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > statement-probe]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Target player skips their next draw step.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "missing draw count (clause: 'step') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "missing draw count (clause: 'step') [rule-path=complete-simple-subject-verb > document-reading] [rule-path=statement-line > statement-probe]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Savor the Moment",
+    "oracle_id": "d5b9b75d-4bf0-4328-9bb3-7b260a0c46af",
+    "mana_cost": "{1}{U}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Take an extra turn after this one. Skip the untap step of that turn.",
+    "scryfall_uri": "https://scryfall.com/card/sld/1006/savor-the-moment?utm_source=api",
+    "baseline": {
+      "card_name": "Savor the Moment",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "c4d23747e9e471f33286e1c55ff9bbf6ec42ff62a384ec722f8e80f70b1fcb41",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Take an extra turn after this one. Skip the untap step of that turn.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Take an extra turn after this one. Skip the untap step of that turn.",
+      "parse_error": "parser does not yet support line family: 'Take an extra turn after this one. Skip the untap step of that turn.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Take an extra turn after this one. Skip the untap step of that turn.' [rule-path=unsupported-line-family]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Take an extra turn after this one. Skip the untap step of that turn.' [rule-path=unsupported-line-family]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Take an extra turn after this one. Skip the untap step of that turn.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "parser does not yet support line family: 'Take an extra turn after this one. Skip the untap step of that turn.' [rule-path=unsupported-line-family]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "parser does not yet support line family: 'Take an extra turn after this one. Skip the untap step of that turn.' [rule-path=unsupported-line-family]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Misstep",
+    "oracle_id": "4ee994a1-fd3b-43cf-be3c-9c705e60754a",
+    "mana_cost": "{1}{U}",
+    "type_line": "Sorcery",
+    "oracle_text": "Creatures target player controls don't untap during that player's next untap step.",
+    "scryfall_uri": "https://scryfall.com/card/mmq/88/misstep?utm_source=api",
+    "baseline": {
+      "card_name": "Misstep",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "f37705796048eb0a5b42498faac2d337fc9af46f81fa7b5fe29516db038fb05c",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "Creatures target player controls don't untap during that player's next untap step.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "Creatures target player controls don't untap during that player's next untap step.",
+      "parse_error": "unsupported negated restriction tail (clause: 'creatures target player controls don't untap during that player's next untap step') [rule-path=parse_cant_clauses] [rule-path=static-line]; oracle-only fallback also failed: unsupported negated restriction tail (clause: 'creatures target player controls don't untap during that player's next untap step') [rule-path=parse_cant_clauses] [rule-path=static-line]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported negated restriction tail (clause: 'creatures target player controls don't untap during that player's next untap step') [rule-path=parse_cant_clauses] [rule-path=static-line]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "Creatures target player controls don't untap during that player's next untap step.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported negated restriction tail (clause: 'creatures target player controls don't untap during that player's next untap step') [rule-path=parse_cant_clauses] [rule-path=static-line]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported negated restriction tail (clause: 'creatures target player controls don't untap during that player's next untap step') [rule-path=parse_cant_clauses] [rule-path=static-line]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  },
+  {
+    "name": "Orcish Farmer",
+    "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+    "mana_cost": "{1}{R}{R}",
+    "type_line": "Creature \u2014 Orc",
+    "power": "2",
+    "toughness": "2",
+    "oracle_text": "{T}: Target land becomes a Swamp until its controller's next untap step.",
+    "scryfall_uri": "https://scryfall.com/card/5ed/256/orcish-farmer?utm_source=api",
+    "baseline": {
+      "card_name": "Orcish Farmer",
+      "category": "parser_failure",
+      "compiled_coverage": 0.0,
+      "compiled_definition_sha256": null,
+      "compiled_text": null,
+      "content_hash": "3da5c68bf1ec952fc2899156c7643980fdbbca08120ca021bf59d18121876827",
+      "has_unimplemented": 0,
+      "line_delta": 0,
+      "normalized_oracle_text": "{T}: Target land becomes a Swamp until its controller's next untap step.",
+      "oracle_coverage": 0.0,
+      "oracle_text": "{T}: Target land becomes a Swamp until its controller's next untap step.",
+      "parse_error": "unsupported become clause (clause: 'a swamp until its controllers next untap step') [rule-path=complete-become > document-reading]; oracle-only fallback also failed: unsupported become clause (clause: 'a swamp until its controllers next untap step') [rule-path=complete-become > document-reading]",
+      "parse_loss_count": 1,
+      "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported become clause (clause: 'a swamp until its controllers next untap step') [rule-path=complete-become > document-reading]",
+      "parse_lossy": 1,
+      "parse_status": "parse_failed",
+      "raw_oracle_text": "{T}: Target land becomes a Swamp until its controller's next untap step.",
+      "route_diagnostics": [
+        {
+          "diagnostic": "unsupported become clause (clause: 'a swamp until its controllers next untap step') [rule-path=complete-become > document-reading]",
+          "outcome": "failed",
+          "route": "parse_input"
+        },
+        {
+          "diagnostic": "unsupported become clause (clause: 'a swamp until its controllers next untap step') [rule-path=complete-become > document-reading]",
+          "outcome": "failed",
+          "route": "oracle_only"
+        }
+      ],
+      "semantic_mismatch": 0,
+      "similarity_score": 0.0,
+      "supported": false
+    }
+  }
+]

@@ -272,7 +272,12 @@ pub fn parse_cost_modifier_prefix_condition(
                         crate::lexer::token_word_refs(tokens).join(" ")
                     )));
                 }
-                let condition = match parse_static_condition_clause(condition_tokens) {
+                let condition = if crate::grammar::functional_zones::parse_source_command_or_battlefield_condition_tokens(condition_tokens) {
+                    PredicateAst::Or(
+                        Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Command))),
+                        Box::new(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield))),
+                    )
+                } else { match parse_static_condition_clause(condition_tokens) {
                     Ok(condition) => condition,
                     // Both branches are recognized predicates now.
                     Err(_) => parse_source_tap_status_condition_lexed(condition_tokens)
@@ -282,7 +287,7 @@ pub fn parse_cost_modifier_prefix_condition(
                                 crate::lexer::token_word_refs(condition_tokens).join(" ")
                             ))
                         })?,
-                };
+                } };
                 return Ok((Some(condition), subject_start));
             }
         }

@@ -316,6 +316,18 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
                 counter_idx + 3,
             ));
         }
+        if let Some(counter_type) = parsed_counter_type
+            && permission_shapes::starts_at_words(
+                words,
+                counter_idx + 1,
+                &["your", "opponents", "have"],
+            )
+        {
+            return Some((
+                Value::PlayerCounters(PlayerFilter::Opponent, counter_type),
+                counter_idx + 4,
+            ));
+        }
         if permission_shapes::starts_at_words(words, counter_idx + 1, &["on"]) {
             let reference_start = counter_idx + 2;
             let reference_end = value_boundary(&words[reference_start..]) + reference_start;

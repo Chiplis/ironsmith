@@ -977,6 +977,9 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::ThisBecomesBlockedByObject(filter) => {
                 Self::this_becomes_blocked_by_object(filter)
             }
+            ironsmith_core::DelayedTriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => {
+                Self::new(crate::triggers::PlayerAttackDeclarationTrigger { attacker, defender, grouping })
+            }
             ironsmith_core::DelayedTriggerSpec::Attacks(filter) => Self::attacks(filter),
             ironsmith_core::DelayedTriggerSpec::AttacksYou(filter) => Self::attacks_you(filter),
             ironsmith_core::DelayedTriggerSpec::PlayerTapsForMana { player, filter } => {

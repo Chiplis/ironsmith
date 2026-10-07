@@ -6629,6 +6629,23 @@
         return describe_effect(&with_id.effect);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+        let mut gate = repeat.effects.last();
+        while let Some(inner) = gate.and_then(|effect| effect.transparent_child_effect()) {
+            gate = Some(inner);
+        }
+        if let Some(gate) = gate.and_then(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+            && gate.capture_condition_result
+        {
+            let body = describe_effect_list(&repeat.effects[..repeat.effects.len() - 1]);
+            let branch = describe_effect_list(&gate.if_true);
+            let continuation = if branch.trim().is_empty() {
+                "repeat this process".to_string()
+            } else {
+                format!("{} and repeat this process", branch.trim().trim_end_matches('.'))
+            };
+            return format!("{}. If {}, {}", body.trim().trim_end_matches('.'),
+                describe_condition(&gate.condition), continuation);
+        }
         if let Some(rendered) = describe_prior_result_action_and_repeat_process(repeat) {
             return rendered;
         }
@@ -6651,7 +6668,8 @@
         if body.is_empty() {
             return "Repeat this process".to_string();
         }
-        if body.ends_with("You may repeat this process any number of times")
+        if body.ends_with("may repeat this process any number of times")
+            || body.ends_with("You may repeat this process any number of times")
             || body.ends_with("you may repeat this process any number of times")
             || body.ends_with("You may repeat this process")
             || body.ends_with("you may repeat this process")
@@ -6674,7 +6692,7 @@
         }
         if matches!(
             repeat.predicate,
-            EffectPredicate::PriorEffectResult(_)
+            EffectPredicate::PriorEffectResult(_) | EffectPredicate::AffectedObjectsShare { .. }
         ) {
             return format!(
                 "{body}. If {}, repeat this process",
@@ -6687,7 +6705,11 @@
         return format!("{body}. Repeat this process");
     }
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
-        return prompt.description().to_string();
+        return if let Some(player) = &prompt.decider {
+            format!("{} may repeat this process any number of times", describe_player_filter(player))
+        } else {
+            prompt.description().to_string()
+        };
     }
     if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
         return format!("Turn {} face down", describe_choose_spec(&turn_face_down.target));

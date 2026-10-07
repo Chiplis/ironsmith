@@ -140,6 +140,13 @@ pub fn compile_delayed_trigger_spec(
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisBecomesBlockedByObject(filter.clone()))
         }
+        TriggerSpec::PlayerAttackDeclaration { attacker, defender, grouping } => Ok(
+            ironsmith_core::DelayedTriggerSpec::PlayerAttackDeclaration {
+                attacker: attacker.clone(),
+                defender: defender.clone(),
+                grouping: *grouping,
+            },
+        ),
         TriggerSpec::Attacks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Attacks(filter.clone()))
         }
@@ -415,6 +422,7 @@ fn delayed_trigger_event_object_is_source(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDiesOrIsExiledWithSurface(_)
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::PlayerAttacksOneOrMore { .. }
+            | TriggerSpec::PlayerAttackDeclaration { .. }
     )
 }
 

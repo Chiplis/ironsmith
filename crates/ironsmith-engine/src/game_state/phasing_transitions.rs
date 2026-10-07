@@ -125,11 +125,9 @@ impl GameState {
         self.mark_continuous_state_dirty();
         for (&id, &(controller, indirect)) in &outgoing {
             if let Some(snapshot) = before.get(&id) {
-                for entry in &mut self.stack {
-                    if entry.is_ability && entry.object_id == id {
-                        entry.source_snapshot = Some(snapshot.clone());
-                    }
-                }
+                // Copied abilities have distinct stack identities but retain
+                // this source incarnation. Share the zone-change LKI owner.
+                self.refresh_pending_ability_source_lki(snapshot);
             }
             let flags = self.battlefield_flags_mut();
             flags.phased_out.insert(id);

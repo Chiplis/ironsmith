@@ -274,6 +274,9 @@ fn normalize_restriction_for_resolution(
         Restriction::Block(filter) => Restriction::block(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::Untap(filter) => Restriction::untap(
+            bind_restriction_target_players(filter, ctx, game),
+        ),
         Restriction::AttackOrBlock(filter) => {
             Restriction::attack_or_block(lock_filter_to_current_matching_objects(filter, ctx, game))
         }
@@ -471,6 +474,12 @@ impl EffectExecutor for CantEffect {
                 return Ok(EffectOutcome::count(0));
             }
             Until::ForAsLongAs(predicate)
+        } else if let Until::PlayersNextUntapStep { player } = &self.duration {
+            Until::PlayersNextUntapStep {
+                player: crate::target::PlayerFilter::Specific(
+                    crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
+                ),
+            }
         } else {
             self.duration.clone()
         };

@@ -64,6 +64,10 @@ pub enum AnthemCountExpression {
         symbol: ManaSymbol,
     },
     TotalUnspentMana(PlayerFilter),
+    /// Live sum of counters held by matching players, relative to the ability
+    /// controller. Shared Two-Headed Giant poison totals count once per team.
+    /// Appended to preserve existing serialized enum ordinals.
+    PlayerCounters(PlayerFilter, CounterType),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

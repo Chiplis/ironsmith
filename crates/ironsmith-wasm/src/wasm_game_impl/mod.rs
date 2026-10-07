@@ -82,3 +82,6 @@ mod activation_kind_cost_savepoints;
 
 #[cfg(test)]
 mod combat_participant_savepoint_tests;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod next_step_duration_savepoint_tests;

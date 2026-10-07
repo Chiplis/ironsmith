@@ -202,7 +202,10 @@ mod resource_programs;
 use resource_programs::lifecycle_head;
 #[path = "followup_shapes/combat.rs"]
 mod combat_programs;
-pub use combat_programs::is_anaphoric_damage_self_replacement;
+pub use combat_programs::{
+    DamageAmountReplacementShape, is_anaphoric_damage_self_replacement,
+    parse_damage_amount_replacement,
+};
 #[path = "followup_shapes/condition.rs"]
 mod condition_programs;
 pub use condition_programs::parse_conditional_followup;

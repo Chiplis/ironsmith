@@ -2643,42 +2643,30 @@ fn source_sentence_boundary_continues_repeat_process(
     effects: &[EffectAst],
     boundary: usize,
 ) -> bool {
-    if boundary + 1 != effects.len() {
-        return false;
-    }
-    if matches!(
-        effects.get(boundary),
-        Some(
-            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
-                | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
-                | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
-        )
-    ) {
-        return true;
-    }
-    let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })) =
-        effects.get(boundary)
-    else {
-        return false;
-    };
-    match effects.last() {
-        Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)) => true,
-        Some(EffectAst::Coordinated { effects, .. }) => {
-            matches!(
-                effects.last(),
-                Some(EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess))
-            )
+    fn contains_marker(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess
+                | ForEachEffectAst::RepeatThisProcessOnce
+                | ForEachEffectAst::RepeatThisProcessAdditional { .. }
+                | ForEachEffectAst::RepeatThisProcessMay) => true,
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) =>
+                if_true.iter().chain(if_false).any(contains_marker),
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })
+            | EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+            | EffectAst::SourceSentence { effects, .. }
+            | EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
+            | EffectAst::Coordinated { effects, .. } => effects.iter().any(contains_marker),
+            EffectAst::Coordination(coordination) => coordination.members.iter()
+                .flat_map(|member| &member.effects).any(contains_marker),
+            _ => false,
         }
-        Some(EffectAst::Coordination(coordination)) => {
-            coordination.members.last().is_some_and(|member| {
-                matches!(
-                    member.effects.as_slice(),
-                    [EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)]
-                )
-            })
-        }
-        _ => false,
     }
+    // Preserve all sentences preceding the marker as one complete process,
+    // including intervening result branches. A suffix remains outside the
+    // normalized loop and must share its aggregate receipt.
+    effects[boundary..].iter().any(contains_marker)
 }
 
 fn push_unique_source_sentence_hand_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {

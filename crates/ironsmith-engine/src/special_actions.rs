@@ -4332,19 +4332,24 @@ pub(crate) fn resolve_dynamic_mana_cost(
     let base = if let Some((cost, _)) = &referenced_mana {
         cost.clone()
     } else if dynamic_mana.source_mana_cost {
-        game.object(execution_ctx.source)
-            .and_then(|object| object.mana_cost_owned())
-            .or_else(|| {
-                execution_ctx
-                    .source_snapshot
-                    .as_ref()
-                    .and_then(|snapshot| snapshot.mana_cost.clone())
-            })
-            .ok_or_else(|| {
-                CostPaymentError::Other(
-                    "ability source has no mana cost to use as a dynamic cost".to_string(),
-                )
-            })?
+        // A current missing mana cost is not an older printed cost. Only
+        // an unavailable (departed/phased) source uses exact retained LKI.
+        let current = game.try_current_characteristics(execution_ctx.source)
+            .map_err(|error| CostPaymentError::ExecutionFailed(
+                crate::effects::ExecutionError::ContinuousDiscovery(error)))?;
+        let cost = if let Some(characteristics) = current {
+            characteristics.mana_cost
+        } else {
+            let snapshot = execution_ctx.source_snapshot.as_ref()
+                .filter(|snapshot| snapshot.object_id == execution_ctx.source)
+                .ok_or_else(|| CostPaymentError::ExecutionFailed(
+                    crate::effects::ExecutionError::IncompleteEvidence(
+                        "source mana-cost payment requires exact retained source identity".into())))?;
+            snapshot.mana_cost.clone()
+        };
+        cost.ok_or_else(|| CostPaymentError::Other(
+            "ability source has no mana cost to use as a dynamic cost".to_string(),
+        ))?
     } else {
         dynamic_mana.base.clone()
     };
@@ -4353,6 +4358,13 @@ pub(crate) fn resolve_dynamic_mana_cost(
         x
     } else if let Some(value) = dynamic_mana.x_value.as_ref() {
         resolve_dynamic_u32(game, value, execution_ctx)?
+    } else if dynamic_mana.source_mana_cost
+        && game.object(execution_ctx.source).map(|object| object.zone)
+            .or_else(|| execution_ctx.source_snapshot.as_ref().map(|snapshot| snapshot.zone))
+            != Some(Zone::Stack)
+    {
+        // X in a permanent's mana cost is zero, not a new trigger choice.
+        0
     } else if base.has_x() {
         execution_ctx.x_value.ok_or_else(|| {
             CostPaymentError::Other("dynamic X mana cost has no X value".to_string())

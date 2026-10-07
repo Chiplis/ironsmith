@@ -8,6 +8,8 @@ pub enum ForEachEffectAst {
     RepeatThisProcess,
     RepeatThisProcessMay,
     RepeatThisProcessOnce,
+    /// A finite number of additional executions of the preceding program.
+    RepeatThisProcessAdditional { count: Value },
     RepeatEffects {
         count: Value,
         effects: Vec<EffectAst>,

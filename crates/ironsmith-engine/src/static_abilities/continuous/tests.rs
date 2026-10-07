@@ -3672,3 +3672,101 @@ fn scoped_dynamic_layer_conversion_keeps_source_and_recipient_anchors_distinct()
         .is_none()
     );
 }
+
+// Player-counter anthem family: source-authored, all tests UNRUN.
+#[test]
+fn player_counter_anthem_renders_player_scope_signs_and_where_x() {
+    let experience = AnthemCountExpression::PlayerCounters(PlayerFilter::You, CounterType::Experience);
+    let poison = AnthemCountExpression::PlayerCounters(PlayerFilter::Opponent, CounterType::Poison);
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(1, experience.clone()), AnthemValue::scaled(1, experience.clone()),
+    );
+    assert_eq!(anthem.display(), "this creature gets +1/+1 for each experience counter you have");
+    assert_eq!(anthem.with_count_uses_where_x(true).display(),
+        "this creature gets +X/+X, where X is the number of experience counters you have");
+    assert_eq!(Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(2, poison.clone()), AnthemValue::scaled(-1, poison),
+    ).display(), "this creature gets +2/-1 for each poison counter your opponents have");
+    assert_eq!(Anthem::creatures_you_control(0, 0).with_values(
+        AnthemValue::scaled(1, experience), AnthemValue::Fixed(0),
+    ).display(), "creatures you control get +1/+0 for each experience counter you have");
+}
+
+#[test]
+fn player_counter_anthem_native_scalar_admission_never_wraps() {
+    let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+    let a = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Counter host")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1)).build();
+    let source = game.create_object_from_card(&card, a, Zone::Battlefield);
+    let count = AnthemCountExpression::PlayerCounters(PlayerFilter::You, CounterType::Experience);
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(2, count.clone()), AnthemValue::Fixed(0),
+    );
+    // Deliberately seed an out-of-domain state; do not exercise an unchecked cast.
+    game.player_mut(a).unwrap().experience_counters = u32::MAX;
+    assert!(resolve_anthem_count_expression_checked(&count, &game, source, a).is_err());
+    assert!(matches!(anthem.validate_mana_scalar_ranges(&game, source, a),
+        Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
+            resource: "player-counter anthem count", ..
+        })));
+    game.player_mut(a).unwrap().experience_counters = i32::MAX as u32;
+    assert_eq!(resolve_anthem_count_expression_checked(&count, &game, source, a).unwrap(), i32::MAX);
+    assert!(matches!(anthem.validate_mana_scalar_ranges(&game, source, a),
+        Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
+            resource: "player-counter anthem modifier", ..
+        })));
+    let capped = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled_capped(2, count.clone(), 9), AnthemValue::Fixed(0),
+    );
+    assert_eq!(capped.validate_mana_scalar_ranges(&game, source, a).unwrap(), true);
+    assert_eq!(capped.power.evaluate(&game, source, a), 9);
+    game.player_mut(a).unwrap().experience_counters = 4;
+    assert_eq!(AnthemValue::scaled(-2, count).evaluate(&game, source, a), -8);
+}
+
+#[test]
+fn player_counter_anthem_sums_only_live_matching_players_and_counter_kind() {
+    let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+    let a = PlayerId::from_index(0);
+    let b = PlayerId::from_index(1);
+    let c = PlayerId::from_index(2);
+    let source = game.new_object_id();
+    game.player_mut(a).unwrap().experience_counters = 3;
+    game.player_mut(a).unwrap().poison_counters = 7;
+    game.player_mut(b).unwrap().experience_counters = 11;
+    game.player_mut(b).unwrap().poison_counters = 2;
+    game.player_mut(c).unwrap().poison_counters = 4;
+    let experience = AnthemCountExpression::PlayerCounters(PlayerFilter::You, CounterType::Experience);
+    let poison = AnthemCountExpression::PlayerCounters(PlayerFilter::Opponent, CounterType::Poison);
+    assert_eq!(resolve_anthem_count_expression(&experience, &game, source, a), 3);
+    assert_eq!(resolve_anthem_count_expression(&experience, &game, source, b), 11);
+    assert_eq!(resolve_anthem_count_expression(&poison, &game, source, a), 6);
+    assert_eq!(resolve_anthem_count_expression(&poison, &game, source, b), 11);
+    game.player_mut(c).unwrap().has_left_game = true;
+    assert_eq!(resolve_anthem_count_expression(&poison, &game, source, a), 2);
+    game.player_mut(b).unwrap().poison_counters = 0;
+    assert_eq!(resolve_anthem_count_expression(&poison, &game, source, a), 0);
+}
+
+#[test]
+fn player_counter_anthem_counts_shared_poison_once_but_experience_per_player() {
+    let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into(), "D".into()], 20);
+    let seats = [0, 1, 2, 3].map(PlayerId::from_index);
+    game.set_random_seed(810);
+    game.enable_two_headed_giant(vec![seats[..2].to_vec(), seats[2..].to_vec()]).unwrap();
+    game.add_player_counters_with_source(seats[2], CounterType::Poison, 4, None, None).unwrap();
+    game.add_player_counters_with_source(seats[0], CounterType::Poison, 3, None, None).unwrap();
+    game.player_mut(seats[2]).unwrap().experience_counters = 2;
+    game.player_mut(seats[3]).unwrap().experience_counters = 5;
+    let source = game.new_object_id();
+    for (player, counter_type, expected) in [
+        (PlayerFilter::Opponent, CounterType::Poison, 4),
+        (PlayerFilter::Any, CounterType::Poison, 7),
+        (PlayerFilter::Opponent, CounterType::Experience, 7),
+    ] {
+        let count = AnthemCountExpression::PlayerCounters(player, counter_type);
+        assert_eq!(resolve_anthem_count_expression_checked(&count, &game, source, seats[0]).unwrap(), expected);
+    }
+}

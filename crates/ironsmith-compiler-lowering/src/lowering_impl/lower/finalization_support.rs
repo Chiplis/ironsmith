@@ -2172,6 +2172,7 @@ fn correlate_additional_cost_damage_replacement(
         if_true: vec![crate::effect::Effect::new(replacement_damage)],
         if_false: vec![crate::effect::Effect::new(base_damage.clone())],
         surface: conditional.surface,
+        capture_condition_result: conditional.capture_condition_result,
     });
     *program = crate::resolution::ResolutionProgram::from_effects(vec![replacement]);
 }

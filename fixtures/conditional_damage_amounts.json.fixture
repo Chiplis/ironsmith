@@ -1,0 +1,83 @@
+[
+  {
+    "name": "Akoum Hellkite",
+    "oracle_id": "05b6f9e3-9acd-43a6-acff-caa811aaf0a1",
+    "mana_cost": "{4}{R}{R}",
+    "type_line": "Creature — Dragon",
+    "oracle_text": "Flying\nLandfall — Whenever a land you control enters, this creature deals 1 damage to any target. If that land is a Mountain, this creature deals 2 damage instead.",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "name": "Burning Hands",
+    "oracle_id": "51a0d1c2-ff29-4ac9-84a2-ad4f566fee8d",
+    "mana_cost": "{1}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Burning Hands deals 2 damage to target creature or planeswalker. If that permanent is green, Burning Hands deals 6 damage instead."
+  },
+  {
+    "name": "Burst Lightning",
+    "oracle_id": "ac2086fe-98ee-4280-9c7c-c5c2d6548a8b",
+    "mana_cost": "{R}",
+    "type_line": "Instant",
+    "oracle_text": "Kicker {4} (You may pay an additional {4} as you cast this spell.)\nBurst Lightning deals 2 damage to any target. If this spell was kicked, it deals 4 damage instead."
+  },
+  {
+    "name": "Flame Discharge",
+    "oracle_id": "fa4755c2-e573-45c3-bd6a-61b2b35fbd24",
+    "mana_cost": "{X}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Flame Discharge deals X damage to target creature or planeswalker. If you controlled a modified creature as you cast this spell, it deals X plus 2 damage instead. (Equipment, Auras you control, and counters are modifications.)"
+  },
+  {
+    "name": "Frost Bite",
+    "oracle_id": "128170ed-c86a-4f02-9244-28197be90c10",
+    "mana_cost": "{R}",
+    "type_line": "Snow Instant",
+    "oracle_text": "Frost Bite deals 2 damage to target creature or planeswalker. If you control three or more snow permanents, it deals 3 damage instead."
+  },
+  {
+    "name": "Roil Eruption",
+    "oracle_id": "6798163a-864f-4844-96b1-77585a7e7ab4",
+    "mana_cost": "{1}{R}",
+    "type_line": "Sorcery",
+    "oracle_text": "Kicker {5} (You may pay an additional {5} as you cast this spell.)\nRoil Eruption deals 3 damage to any target. If this spell was kicked, it deals 5 damage instead."
+  },
+  {
+    "name": "Shivan Fire",
+    "oracle_id": "854fd120-9a51-4d37-9922-7e4b0464e0f5",
+    "mana_cost": "{R}",
+    "type_line": "Instant",
+    "oracle_text": "Kicker {4} (You may pay an additional {4} as you cast this spell.)\nShivan Fire deals 2 damage to target creature. If this spell was kicked, it deals 4 damage instead."
+  },
+  {
+    "name": "Slaying Fire",
+    "oracle_id": "1e94e647-9150-4b22-aa9f-d195f64fb20a",
+    "mana_cost": "{2}{R}",
+    "type_line": "Instant",
+    "oracle_text": "Slaying Fire deals 3 damage to any target.\nAdamant — If at least three red mana was spent to cast this spell, it deals 4 damage instead."
+  },
+  {
+    "name": "Summary Judgment",
+    "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
+    "mana_cost": "{1}{W}",
+    "type_line": "Instant",
+    "oracle_text": "Summary Judgment deals 3 damage to target tapped creature.\nAddendum — If you cast this spell during your main phase, it deals 5 damage instead."
+  },
+  {
+    "name": "Surtland Flinger",
+    "oracle_id": "f701ada1-e9e1-42ce-9a62-c11bcec03da7",
+    "mana_cost": "{3}{R}{R}",
+    "type_line": "Creature — Giant Berserker",
+    "oracle_text": "Whenever this creature attacks, you may sacrifice another creature. When you do, this creature deals damage equal to the sacrificed creature's power to any target. If the sacrificed creature was a Giant, this creature deals twice that much damage instead.",
+    "power": "4",
+    "toughness": "6"
+  },
+  {
+    "name": "Voltage Surge",
+    "oracle_id": "1779af8e-38fc-4043-b5fa-ee16a7ea840c",
+    "mana_cost": "{R}",
+    "type_line": "Instant",
+    "oracle_text": "As an additional cost to cast this spell, you may sacrifice an artifact.\nVoltage Surge deals 2 damage to target creature or planeswalker. If this spell's additional cost was paid, Voltage Surge deals 4 damage instead."
+  }
+]

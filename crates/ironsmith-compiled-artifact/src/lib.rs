@@ -9,17 +9,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-// Version 12 retains filtered prevention, source-only subtype CDA construction
-// and explicit creature-choice families on the current-main payment/replay owners.
-// The same unpublished boundary includes canonical source-counter transport,
-// requesting-cause/nominal-versus-physical receipts and Aura-owned static prevention.
-// Earlier definitions require recompilation from original source; relabeling
-// an envelope cannot migrate its model or execution semantics.
-// The exact compatibility descriptor is documented in
-// architecture/card-failure-next-series-01-compatibility.md.
-pub const FORMAT_VERSION: u32 = 12;
+// Version 13 adds explicit repeat receipts/actors, delayed player declarations,
+// player-counter anthems and owner-limited next-step duration vocabulary.
+// Compilation/runtime semantics also change; prior artifacts require source
+// regeneration. Defaults or relabeling are not a migration or signed-byte repair.
+// architecture/card-failure-next-series-02-compatibility.md records the contract.
+pub const FORMAT_VERSION: u32 = 13;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d";
+    "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -448,14 +445,14 @@ mod tests {
     #[test]
     fn current_golden_requires_regeneration_from_the_integrated_source() {
         // Source-authored, UNRUN. This is an explicit provisioning gate, not a
-        // fabricated v12 fixture or permission to overwrite historical bytes.
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v12.json");
+        // fabricated v13 fixture or permission to overwrite historical bytes.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v13.json");
         let expected = std::fs::read_to_string(path).expect(
-            "deferred prerequisite: regenerate the real current v12 golden after execution is authorized",
+            "deferred prerequisite: regenerate the real current v13 golden after execution is authorized",
         );
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
         let decoded = CompiledCardArtifact::from_json(expected.as_bytes()).unwrap();
-        assert_eq!(decoded.format_version, 12);
+        assert_eq!(decoded.format_version, 13);
         assert_eq!(decoded.engine_schema_hash, ENGINE_SCHEMA_HASH);
         assert_eq!(actual.trim(), expected.trim());
     }
@@ -476,9 +473,27 @@ mod tests {
 
     #[test]
     fn current_descriptor_matches_the_declared_schema_fingerprint() {
-        let descriptor = include_bytes!("../../../architecture/next-series-01-schema.descriptor");
+        let descriptor = include_bytes!("../../../architecture/next-series-02-schema.descriptor");
         assert!(!descriptor.ends_with(b"\n"));
         assert_eq!(sha256_hex(descriptor), ENGINE_SCHEMA_HASH);
+    }
+
+    #[test]
+    fn published_first_series_descriptor_keeps_its_exact_original_bytes() {
+        let descriptor = include_bytes!("../../../architecture/next-series-01-schema.descriptor");
+        assert!(!descriptor.ends_with(b"\n"));
+        assert_eq!(sha256_hex(descriptor),
+            "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d");
+    }
+
+    #[test]
+    fn published_v12_envelopes_require_regeneration_even_with_a_current_payload() {
+        let mut old = fixture();
+        old.format_version = 12;
+        old.refresh_checksum();
+        assert!(matches!(old.validate(),
+            Err(ArtifactValidationError::UnsupportedFormat { found: 12, expected: 13 })));
+        assert!(CompiledCardArtifact::from_json(&old.to_json().unwrap()).is_err());
     }
 
     #[test]
@@ -487,10 +502,11 @@ mod tests {
         previous.format_version = 11;
         previous.refresh_checksum();
         assert!(matches!(previous.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 11, expected: 12 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 11, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&previous.to_json().unwrap()).is_err());
 
         for schema in [
+            "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
             "cf9f06e2cea9c4facdfe9b4aad19eaa4bca1062e4e9c9f28d22de18920cbd401",
             // Earlier unpublished source proposal, never historical authority.
             "9d0e162e131ecfbaf850e2331cd33a54ea932fb48eecd55978e271a26bc3938c",
@@ -510,21 +526,21 @@ mod tests {
     fn previous_artifact_versions_are_rejected_instead_of_inventing_definition_metadata() {
         let mut previous = fixture();
         previous.format_version = 4;
-        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 12 })));
+        assert!(matches!(previous.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 4, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v3.json")).is_err());
         let mut missing_keyword_identity = fixture();
         missing_keyword_identity.format_version = 5;
         missing_keyword_identity.refresh_checksum();
-        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 12 })));
+        assert!(matches!(missing_keyword_identity.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 5, expected: 13 })));
         let mut ambiguous_mana_origin = fixture();
         ambiguous_mana_origin.format_version = 6;
         ambiguous_mana_origin.refresh_checksum();
-        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: 12 })));
+        assert!(matches!(ambiguous_mana_origin.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 6, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&ambiguous_mana_origin.to_json().unwrap()).is_err());
         let mut missing_numeric_counter_owners = fixture();
         missing_numeric_counter_owners.format_version = 7;
         missing_numeric_counter_owners.refresh_checksum();
-        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: 12 })));
+        assert!(matches!(missing_numeric_counter_owners.validate(), Err(ArtifactValidationError::UnsupportedFormat { found: 7, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&missing_numeric_counter_owners.to_json().unwrap()).is_err());
     }
 
@@ -534,7 +550,7 @@ mod tests {
         old_format.format_version = 8;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 8, expected: 12 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 8, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
 
         let mut old_schema = fixture();
@@ -552,7 +568,7 @@ mod tests {
         old_format.format_version = 9;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 9, expected: 12 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 9, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
 
         let mut old_schema = fixture();
@@ -570,7 +586,7 @@ mod tests {
         old_format.format_version = 10;
         old_format.refresh_checksum();
         assert!(matches!(old_format.validate(),
-            Err(ArtifactValidationError::UnsupportedFormat { found: 10, expected: 12 })));
+            Err(ArtifactValidationError::UnsupportedFormat { found: 10, expected: 13 })));
         assert!(CompiledCardArtifact::from_json(&old_format.to_json().unwrap()).is_err());
         let mut relabeled = fixture();
         relabeled.engine_schema_hash = "e27b521de2a44a2c1c3349a8b8cbf5392da6882c14270112de24faecced0adc9".into();
@@ -595,7 +611,7 @@ mod tests {
         artifact.engine_schema_hash =
             "3f9f096868c6ec7f6437ea2d249befbab23ffefe8604470d4ea4b0018f6c2b08".to_string();
         artifact.refresh_checksum();
-        assert_eq!(artifact.format_version, 12);
+        assert_eq!(artifact.format_version, 13);
         assert!(matches!(artifact.validate(), Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
         assert!(CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).is_err());
     }

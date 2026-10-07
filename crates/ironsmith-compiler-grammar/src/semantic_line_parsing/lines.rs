@@ -2096,6 +2096,8 @@ fn sentences_form_anaphoric_damage_self_replacement(sentences: &[Vec<OwnedLexTok
         return false;
     };
     if !effect_grammar::followup_shapes::is_anaphoric_damage_self_replacement(replacement.as_ref())
+        && effect_grammar::followup_shapes::parse_damage_amount_replacement(replacement.as_ref())
+            .is_none()
     {
         return false;
     }

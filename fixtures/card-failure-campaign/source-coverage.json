@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
+  "source_implementation_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
-    "additional_proposed_unique_cards": 1238,
-    "additional_proposed_compile_entries": 1242,
+    "additional_proposed_unique_cards": 1256,
+    "additional_proposed_compile_entries": 1260,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1238,
+    "source_proposals_excluding_identified_runtime_gaps": 1256,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 359,
+    "source_identities_until_majority_gate": 341,
     "current_base_owner_admission_blocked": true,
     "measurement_scope": "Current measurements are clean main5cc46c1. Source-card inventory remains the original frozen e8740178 failure scope; current-residual accounting, regressions and exclusions are explicit in current-residual-source-coverage.json.",
     "current_main_refresh_status": "completed_override_consumed",
@@ -29,23 +29,24 @@
     "current_main_original_baseline_recovered_unique": 1379,
     "current_main_original_baseline_still_unresolved_unique": 1854,
     "current_main_regressed_unique": 151,
-    "current_residual_source_proposed_unique": 96,
-    "current_residual_source_proposed_entries": 97,
+    "current_residual_source_proposed_unique": 124,
+    "current_residual_source_proposed_entries": 125,
     "current_reheld_previously_proposed_unique": 45,
     "current_reheld_previously_proposed_entries": 46,
-    "original_baseline_source_proposed_scope": "1238 unique / 1242 entries is the original-failure source-eligible inventory: 1201 inherited identities supported on measured main, 10 restored inherited source proposals, and 27 new full-body source proposals including 8 already-supported semantic corrections. Its current-residual intersection is 29 IDs; the separate 67 regression proposals add no original-majority credit.",
+    "original_baseline_source_proposed_scope": "1256 unique / 1260 entries: 1201 inherited identities supported on measured main, 10 restored inherited source proposals, 27 next01 original-body proposals (including 8 supported semantic corrections), and 18 new next02 original proposals. The residual intersection is 47 IDs. The separate 77 regression proposals add zero original-majority credit.",
     "historical_stack07_measurement": {
       "verified_unique_compile_recoveries": 40,
       "verified_unique_remaining": 3193
     },
     "current_residual_source_coverage_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
     "broad_execution_gate": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
-    "current_base_owner_admission_blocked_scope": "The remaining 45 re-held inherited identities require substantive source corrections and readmission. The 1238 original-baseline source-eligible identities retain their source review, with all execution deferred.",
-    "execution_gate_scope": "Original frozen-scope majority 1597/3193; 1238 eligible after excluding semantic holds and partials, leaving 359. Current residual 96/2005 is prioritization only, including 56 shared blocker repair proposed identities.",
-    "current_regression_source_proposed_unique": 67,
-    "current_regression_unaddressed_unique": 84,
-    "current_packet_total_touched_unique": 104,
-    "current_packet_scope_note": "96 current residual source proposals (40 full-body, 56 shared blocker repairs) plus 8 already-supported semantic corrections; no new measured or verified runtime recoveries."
+    "current_base_owner_admission_blocked_scope": "The remaining 45 re-held inherited identities require substantive source corrections and readmission. The 1256 source-eligible original identities retain source review with all execution deferred.",
+    "execution_gate_scope": "Current clean-main measurement remains 2005 unresolved identities. The 124 residual source proposals (68 full-body, 56 shared blocker repairs) are prioritization only. The active execution criterion remains the original source-majority 1597/3193: 1256 eligible leaves 341. The 77 regression proposals receive no original-majority credit. All new-source execution remains closed.",
+    "current_regression_source_proposed_unique": 77,
+    "current_regression_unaddressed_unique": 74,
+    "current_packet_total_touched_unique": 132,
+    "current_packet_scope_note": "Cumulative 124 current residual source proposals (68 full-body, 56 shared blocker repairs) plus 8 already-supported semantic corrections; no new measured or verified runtime recoveries.",
+    "next_series_02_held_candidates_excluded_unique": 12
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -63,19 +64,19 @@
       "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
     },
     "current_recovery_architecture": {
-      "source_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
-      "note": "architecture/card-failure-next-series-01-compatibility.md",
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "note": "architecture/card-failure-next-series-02-compatibility.md",
       "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
-      "public_audit_checkpoint_version": 8,
+      "public_audit_checkpoint_version": 9,
       "public_audit_is_gameplay_restore": false,
-      "compiled_artifact_version": 12,
-      "signed_audit_protocol_version": 25,
+      "compiled_artifact_version": 13,
+      "signed_audit_protocol_version": 26,
       "manabrew_protocol_version": 3,
-      "engine_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
-      "validation": "Independent combined source review cleared the exact integrated tree after the canonical effect-registry.tsv row correction; all executable scenarios and generation/recovery/replay gates remain UNRUN.",
-      "semantic_migration_note": "architecture/card-failure-next-series-01-compatibility.md"
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "validation": "Independent family and coordinated compatibility source clearance recorded at the final integrated source anchor. All authored executable scenarios, generation, recovery and replay gates remain UNRUN.",
+      "semantic_migration_note": "architecture/card-failure-next-series-02-compatibility.md"
     },
-    "measurement_and_threshold_scope": "Current clean-main measurement remains 2005 unique residual identities, with 96 source proposals (40 full-body and 56 shared blocker repairs) tracked for prioritization. The active execution criterion remains the original frozen-scope source majority: 1597 of 3193, excluding semantic holds and partial bodies. Current original source eligibility is 1238, leaving 359; 67 regression proposals receive no original-majority credit.",
+    "measurement_and_threshold_scope": "Current clean-main measurement remains 2005 unresolved identities. The 124 residual source proposals (68 full-body, 56 shared blocker repairs) are prioritization only. The active execution criterion remains the original source-majority 1597/3193: 1256 eligible leaves 341. The 77 regression proposals receive no original-majority credit. All new-source execution remains closed.",
     "one_time_current_main_refresh": {
       "authorized_at": "2026-10-07T12:11Z",
       "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
@@ -87,31 +88,32 @@
       "completed_at": "2026-10-07T13:34:12.785232+00:00",
       "measurement_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
       "measurement_packet": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json",
-      "measurement_packet_manifest_sha256": "bc2c4a1a13e5e453ac5a297204cb0c4f8f12cda73e9a3650a8c4cae5ed6dff4b"
+      "measurement_packet_manifest_sha256": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f"
     },
     "original_frozen_source_gate": {
       "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
       "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
       "threshold_denominator_unique_remaining": 3193,
       "majority_minimum_unique_remaining": 1597,
-      "reconciled_source_eligible_unique": 1238,
-      "source_eligible_shortfall_to_threshold": 359,
+      "reconciled_source_eligible_unique": 1256,
+      "source_eligible_shortfall_to_threshold": 341,
       "semantic_holds_count_as_coverage": false,
       "reheld_inherited_unique_excluded": 45,
       "reheld_inherited_entries_excluded": 46,
       "partial_bodies_count_as_coverage": false,
       "new_fixture_partials_excluded_unique": 13,
       "execution_authorized": false,
-      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met."
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12
     },
     "current_residual_prioritization": {
       "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
       "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
       "current_residual_unique": 2005,
-      "reviewed_new_source_proposed_residual_unique": 96,
+      "reviewed_new_source_proposed_residual_unique": 124,
       "mathematical_comparison_only": {
         "majority_unique": 1003,
-        "shortfall_unique": 907,
+        "shortfall_unique": 879,
         "execution_gating_role": "none"
       },
       "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
@@ -119,12 +121,13 @@
       "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
       "new_fixture_partials_excluded_from_residual_coverage": 13,
       "changes_original_execution_stopping_condition": false,
-      "note": "Use 96/2005 to prioritize repairs: 40 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/907 comparison has no execution authority or gating role; the active source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
-      "reviewed_new_source_proposed_residual_entries": 97,
-      "full_body_source_proposed_residual_unique": 40,
+      "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
+      "reviewed_new_source_proposed_residual_entries": 125,
+      "full_body_source_proposed_residual_unique": 68,
       "shared_blocker_repair_proposed_residual_unique": 56,
-      "formerly_supported_regression_proposed_unique": 67,
-      "formerly_supported_regression_unaddressed_unique": 84
+      "formerly_supported_regression_proposed_unique": 77,
+      "formerly_supported_regression_unaddressed_unique": 74,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12
     }
   },
   "families": [
@@ -6321,6 +6324,458 @@
           "sha256": "b0fa38345f7f9195013d3c74360742381c89c994d3866f71137c76c36ca9fcc1"
         }
       ]
+    },
+    {
+      "id": "conditional-damage-amounts",
+      "fixture": "fixtures/conditional_damage_amounts.json.fixture",
+      "fixture_sha256": "b63f836204f835fcb544a6b6ffda66658e2ff50249c64dbf58b0bd198b3690d8",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "review_scope": "Complete seven-card bodies; one preceding damage instruction retains the original source, recipient and target assignment while replacing only its amount. Unsupported cast-time facts, reflexive-event quantities and cross-line binding remain held.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [],
+      "current_residual_oracle_ids": [
+        "05b6f9e3-9acd-43a6-acff-caa811aaf0a1",
+        "128170ed-c86a-4f02-9244-28197be90c10",
+        "1779af8e-38fc-4043-b5fa-ee16a7ea840c",
+        "51a0d1c2-ff29-4ac9-84a2-ad4f566fee8d",
+        "6798163a-864f-4844-96b1-77585a7e7ab4",
+        "854fd120-9a51-4d37-9922-7e4b0464e0f5",
+        "ac2086fe-98ee-4280-9c7c-c5c2d6548a8b"
+      ],
+      "current_residual_unique": 7,
+      "current_residual_entries": 7,
+      "original_baseline_new_oracle_ids": [],
+      "original_baseline_new_unique": 0,
+      "formerly_supported_regression_oracle_ids": [
+        "05b6f9e3-9acd-43a6-acff-caa811aaf0a1",
+        "128170ed-c86a-4f02-9244-28197be90c10",
+        "1779af8e-38fc-4043-b5fa-ee16a7ea840c",
+        "51a0d1c2-ff29-4ac9-84a2-ad4f566fee8d",
+        "6798163a-864f-4844-96b1-77585a7e7ab4",
+        "854fd120-9a51-4d37-9922-7e4b0464e0f5",
+        "ac2086fe-98ee-4280-9c7c-c5c2d6548a8b"
+      ],
+      "formerly_supported_regression_unique": 7,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "9810ed7a3f1535aac837b42af45559465f82b3a7",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [
+        {
+          "card_name": "Flame Discharge",
+          "oracle_id": "fa4755c2-e573-45c3-bd6a-61b2b35fbd24",
+          "remaining_blocker": "Requires authoritative cast-time modified-creature evidence."
+        },
+        {
+          "card_name": "Slaying Fire",
+          "oracle_id": "1e94e647-9150-4b22-aa9f-d195f64fb20a",
+          "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner."
+        },
+        {
+          "card_name": "Summary Judgment",
+          "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
+          "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner."
+        },
+        {
+          "card_name": "Surtland Flinger",
+          "oracle_id": "f701ada1-e9e1-42ce-9a62-c11bcec03da7",
+          "remaining_blocker": "Requires reflexive sacrifice-result and exact last-known power/subtype amount ownership."
+        }
+      ],
+      "proposed_complete_entries": [
+        "Akoum Hellkite",
+        "Burning Hands",
+        "Burst Lightning",
+        "Frost Bite",
+        "Roil Eruption",
+        "Shivan Fire",
+        "Voltage Surge"
+      ]
+    },
+    {
+      "id": "player-counter-anthems",
+      "fixture": "fixtures/player_counter_anthems.json.fixture",
+      "fixture_sha256": "7bd3f8b25ec7c74cbaf6f94446a89698ea63b0fc228cd14c4f8465f34748c59e",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "review_scope": "Complete five-card source scope and independent direct/artifact expectations; live ability-controller-relative counters, opponent domains, shared poison pools, recipients, signs, caps and checked arithmetic. All authored scenarios remain UNRUN.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [
+        "Kalemne, Disciple of Iroas",
+        "Kelsien, the Plague",
+        "Minthara, Merciless Soul",
+        "Mycosynth Fiend",
+        "Vishgraz, the Doomhive"
+      ],
+      "current_residual_oracle_ids": [
+        "5b3326a5-18c5-4d45-90e1-f6d00ca2bced",
+        "7b1599c0-bb4f-48f8-a358-dc60166b13e7",
+        "e100f9fc-b6fb-42ab-b9b3-796bede6804d",
+        "e7c4bc25-806c-4a75-85bf-a0e66308d5d8",
+        "fad0c174-4c4a-4662-bd1f-224886e826e1"
+      ],
+      "current_residual_unique": 5,
+      "current_residual_entries": 5,
+      "original_baseline_new_oracle_ids": [
+        "5b3326a5-18c5-4d45-90e1-f6d00ca2bced",
+        "7b1599c0-bb4f-48f8-a358-dc60166b13e7",
+        "e100f9fc-b6fb-42ab-b9b3-796bede6804d",
+        "e7c4bc25-806c-4a75-85bf-a0e66308d5d8",
+        "fad0c174-4c4a-4662-bd1f-224886e826e1"
+      ],
+      "original_baseline_new_unique": 5,
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "60802994fb7735f1004558d7393fe5f24c2512a0",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [],
+      "proposed_complete_entries": [
+        "Kalemne, Disciple of Iroas",
+        "Kelsien, the Plague",
+        "Minthara, Merciless Soul",
+        "Mycosynth Fiend",
+        "Vishgraz, the Doomhive"
+      ]
+    },
+    {
+      "id": "delayed-player-attack-declarations",
+      "fixture": "fixtures/delayed_player_attack_declarations.json.fixture",
+      "fixture_sha256": "30407da4a24afba605258d5fdb4b9b0fd2d1292c8f923c803454c534d3932828",
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "integrated_correction_commits": [
+        "f1b06452e6bae80ef73e14a139b0ead75451287f"
+      ],
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "review_scope": "Complete three-card source bodies; declaration grouping and queue order, exact chosen-reference capture, nested delayed owners, and appended ordinal 48 preserving published variants. Direct/artifact and behavior scenarios are authored, UNRUN.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [],
+      "current_residual_oracle_ids": [
+        "2458aa66-5b20-4811-a4a4-8375ad0a6498",
+        "33a90122-7280-4481-9b97-5879194cae40",
+        "3cd3cdc9-2ed2-4cdf-b58a-12c3a2ef218b"
+      ],
+      "current_residual_unique": 3,
+      "current_residual_entries": 3,
+      "original_baseline_new_oracle_ids": [],
+      "original_baseline_new_unique": 0,
+      "formerly_supported_regression_oracle_ids": [
+        "2458aa66-5b20-4811-a4a4-8375ad0a6498",
+        "33a90122-7280-4481-9b97-5879194cae40",
+        "3cd3cdc9-2ed2-4cdf-b58a-12c3a2ef218b"
+      ],
+      "formerly_supported_regression_unique": 3,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "1fb2c55f3c10fbcbb5cde1e95ed5c3dd6fce87fc",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [],
+      "proposed_complete_entries": [
+        "Dalkovan Encampment",
+        "Jaya, Fiery Negotiator",
+        "Roads Go Ever, Ever On"
+      ]
+    },
+    {
+      "id": "repeat-process-boundaries",
+      "fixture": "fixtures/card-failure-campaign/repeat-process-boundaries.json",
+      "fixture_sha256": "ea4ef86e40244d8ac2b8c6a4f339719d810debbe3d3673e1482670627a41691e",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "integrated_correction_commits": [
+        "e3270fe05843e0e2f2d9962258e14c45193f12f0"
+      ],
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "review_scope": "Eight complete bodies after final source corrections; exact producer collections, complete repeated program receipts, participant choices, captured-condition prepared completion, and current rendering owners. Sin stays held. All executable scenarios remain UNRUN.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [
+        "Another Round",
+        "Claim Jumper",
+        "Countryside Crusher",
+        "Grindstone",
+        "Professor Onyx",
+        "Scalpelexis",
+        "Trade Secrets",
+        "Zimone and Dina"
+      ],
+      "current_residual_oracle_ids": [
+        "1636c4d2-f699-4af7-8508-dbce2f0b7b52",
+        "18f0cd0b-3e4f-4637-a62e-75dd1b2f3fce",
+        "50885640-cdf1-4c62-b3bc-f37db6ab38b5",
+        "5bc66b18-22ac-4138-b527-fa711116e298",
+        "8095ca78-db19-4724-a6ff-eacc85fa2274",
+        "97560adc-814e-450c-9ca7-f9364e910a0b",
+        "99eb50ef-352f-47c4-91e3-32813cbe0649",
+        "9df2e909-ed13-456a-9636-7398732009a9"
+      ],
+      "current_residual_unique": 8,
+      "current_residual_entries": 8,
+      "original_baseline_new_oracle_ids": [
+        "1636c4d2-f699-4af7-8508-dbce2f0b7b52",
+        "18f0cd0b-3e4f-4637-a62e-75dd1b2f3fce",
+        "50885640-cdf1-4c62-b3bc-f37db6ab38b5",
+        "5bc66b18-22ac-4138-b527-fa711116e298",
+        "8095ca78-db19-4724-a6ff-eacc85fa2274",
+        "97560adc-814e-450c-9ca7-f9364e910a0b",
+        "99eb50ef-352f-47c4-91e3-32813cbe0649",
+        "9df2e909-ed13-456a-9636-7398732009a9"
+      ],
+      "original_baseline_new_unique": 8,
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "d2457ed8a4e1a38d3e3316919b34ce53229166c3",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [
+        {
+          "card_name": "Sin, Spira's Punishment",
+          "oracle_id": "3bcc378c-4470-4757-a0d5-025a32c918ea",
+          "remaining_blocker": "Complete-body source closure remains outside the eight admitted repeat-process bodies."
+        }
+      ],
+      "proposed_complete_entries": [
+        "Another Round",
+        "Claim Jumper",
+        "Countryside Crusher",
+        "Grindstone",
+        "Professor Onyx",
+        "Scalpelexis",
+        "Trade Secrets",
+        "Zimone and Dina"
+      ]
+    },
+    {
+      "id": "residual-static-condition-cohort",
+      "fixture": "fixtures/residual_static_condition_cohort.json.fixture",
+      "fixture_sha256": "b4f39d26294147a0a6537294725e31005f8db6523bb6bfe604724e8f92c627a5",
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "integrated_correction_commits": [
+        "a8405f00ca48a747637b428dcc0afdb0555c7a69"
+      ],
+      "evidence": "architecture/card-failure-residual-static-cohort.md",
+      "review_scope": "Three complete bodies; attack-time ObjectId incarnation history, exact source-mana-cost current/departed evidence and rollback, per-ability command/battlefield functioning, and corrected source-API scenario setup. Five neighboring bodies stay held.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [
+        "Deepway Navigator",
+        "Essence Leak",
+        "The Ur-Dragon"
+      ],
+      "current_residual_oracle_ids": [
+        "812df594-75af-494f-be09-5f9633aca46a",
+        "87b22b09-4f6d-4bc5-9cfc-663e4c7c6981",
+        "cb02daf6-9013-4ccc-bf1f-773b757ac468"
+      ],
+      "current_residual_unique": 3,
+      "current_residual_entries": 3,
+      "original_baseline_new_oracle_ids": [
+        "812df594-75af-494f-be09-5f9633aca46a",
+        "87b22b09-4f6d-4bc5-9cfc-663e4c7c6981",
+        "cb02daf6-9013-4ccc-bf1f-773b757ac468"
+      ],
+      "original_baseline_new_unique": 3,
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "0abad236db20e7d6df0bae8396c84651ddeb41aa",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [
+        {
+          "card_name": "Crown of Convergence",
+          "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+          "remaining_blocker": "Exact current top-card shared-color recipient reference remains unsupported."
+        },
+        {
+          "card_name": "Mul Daya Channelers",
+          "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+          "remaining_blocker": "Authoritative opaque top-card opening/bootstrap before continuous derivation remains held."
+        },
+        {
+          "card_name": "The Ur-Sphinx",
+          "oracle_id": "4a3fdb8e-4699-4bd9-84e6-3cc7fea0e1ef",
+          "remaining_blocker": "Owner-separated mill results and per-player optional free casts remain held."
+        },
+        {
+          "card_name": "Torrent of Lava",
+          "oracle_id": "f467ec85-ffe2-4963-82e0-509a7873fd63",
+          "remaining_blocker": "Source-on-stack grants and exact granting-spell finite-source prevention remain held."
+        },
+        {
+          "card_name": "Volrath's Shapeshifter",
+          "oracle_id": "16e9a4ee-0398-4e76-bc7e-dd2d52056aaf",
+          "remaining_blocker": "Ordered top-graveyard full-text replacement remains held."
+        }
+      ],
+      "proposed_complete_entries": [
+        "Deepway Navigator",
+        "Essence Leak",
+        "The Ur-Dragon"
+      ]
+    },
+    {
+      "id": "next-step-durations",
+      "fixture": "fixtures/next_step_durations.json.fixture",
+      "fixture_sha256": "eec6dd81b73e6706438f2343610cd32ec0fe3808bedaf24840ed83236422d564",
+      "source_review_commit": "d7f8065731fd4989db8ef2e8073854b36b47ec13",
+      "integrated_correction_commits": [
+        "dec7ff86735971d517414cd7c3a8285cdf687f8b"
+      ],
+      "evidence": "architecture/card-failure-next-step-durations.md",
+      "review_scope": "Fatigue and Misstep complete source scope; structural effect-owner admission, frozen named player with live creature population, actual occurrence/beginning expiry, optional untap answer and prompt retry retention, prevention carry and native savepoint owners. Farmer and Savor remain held.",
+      "stage": 101,
+      "series": "next02",
+      "status": "source_reviewed_proposals_all_validation_deferred",
+      "baseline_entries": [
+        "Fatigue",
+        "Misstep"
+      ],
+      "current_residual_oracle_ids": [
+        "0a88dcb6-a391-408f-8bfc-7b5b2cc34267",
+        "4ee994a1-fd3b-43cf-be3c-9c705e60754a"
+      ],
+      "current_residual_unique": 2,
+      "current_residual_entries": 2,
+      "original_baseline_new_oracle_ids": [
+        "0a88dcb6-a391-408f-8bfc-7b5b2cc34267",
+        "4ee994a1-fd3b-43cf-be3c-9c705e60754a"
+      ],
+      "original_baseline_new_unique": 2,
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "source_review_tree": "207ad00bad261582bcc6d57f3aefe4e7c38fc35c",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "measurement_evidence": [
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz",
+          "bytes": 195494,
+          "sha256": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75"
+        },
+        {
+          "path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+          "bytes": 468167,
+          "sha256": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31"
+        }
+      ],
+      "held_entries": [
+        {
+          "card_name": "Savor the Moment",
+          "oracle_id": "d5b9b75d-4bf0-4328-9bb3-7b260a0c46af",
+          "remaining_blocker": "Exact extra-turn owner and step association remain held."
+        },
+        {
+          "card_name": "Orcish Farmer",
+          "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+          "remaining_blocker": "Disputed controller-binding rule remains explicitly held; shipped Until variants grant no card credit."
+        }
+      ],
+      "proposed_complete_entries": [
+        "Fatigue",
+        "Misstep"
+      ]
     }
   ],
   "cards": [
@@ -7337,8 +7792,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Anowon, the Ruin Thief",
@@ -11568,8 +12036,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Clandestine Chameleon",
@@ -12475,8 +12956,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Courageous Resolve",
@@ -13637,8 +14131,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "residual-static-condition-cohort"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/card-failure-residual-static-cohort.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Defang",
@@ -16197,10 +16704,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "live-static-condition-scopes"
-      ]
+        "live-static-condition-scopes",
+        "residual-static-condition-cohort"
+      ],
+      "previous_source_coverage_status_before_next02": "partial_not_counted",
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/card-failure-residual-static-cohort.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Essence Symbiote",
@@ -17086,8 +17605,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "next-step-durations"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "d7f8065731fd4989db8ef2e8073854b36b47ec13",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/card-failure-next-step-durations.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Fblthp, Impossibly Lost",
@@ -19754,8 +20286,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Grinning Totem",
@@ -23059,8 +23604,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-counter-anthems"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "reports/player-counter-anthems-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Kami of Jealous Thirst",
@@ -23415,8 +23973,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-counter-anthems"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "reports/player-counter-anthems-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Kemba's Legion",
@@ -26451,8 +27022,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-counter-anthems"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "reports/player-counter-anthems-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Mirelurk Queen",
@@ -26659,8 +27243,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "next-step-durations"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "d7f8065731fd4989db8ef2e8073854b36b47ec13",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/card-failure-next-step-durations.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Missy",
@@ -27257,8 +27854,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-counter-anthems"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "reports/player-counter-anthems-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Myr Superion",
@@ -30457,8 +31067,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Proft, Consulting Detective",
@@ -33399,8 +34022,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Scarlet Spider, Ben Reilly",
@@ -38925,8 +39561,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "residual-static-condition-cohort"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/card-failure-residual-static-cohort.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "The Ur-Sphinx",
@@ -39888,8 +40537,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Trait Doctoring",
@@ -41543,8 +42205,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "player-counter-anthems"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "reports/player-counter-anthems-source-review.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Vision, Spectral Synthezoid",
@@ -44030,8 +44705,21 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "repeat-process-boundaries"
+      ],
+      "previous_source_coverage_status_before_next02": "unaddressed",
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "current_source_admission": {
+        "series": "next02",
+        "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+        "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+        "evidence": "architecture/repeat-process-boundaries.md",
+        "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Zimone, Mystery Unraveler",
@@ -44854,7 +45542,7 @@
       "completed_at": "2026-10-07T13:34:12.785232+00:00",
       "measurement_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
       "measurement_packet": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json",
-      "measurement_packet_manifest_sha256": "bc2c4a1a13e5e453ac5a297204cb0c4f8f12cda73e9a3650a8c4cae5ed6dff4b"
+      "measurement_packet_manifest_sha256": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f"
     },
     "required_execution_gates": [
       "Genuine v12 golden fixture generation and current artifact/catalog/text/checksum regeneration.",
@@ -44952,6 +45640,274 @@
       "repeat-process eight-card cohort",
       "additional static three-card cohort",
       "duration two-card cohort"
-    ]
-  }
+    ],
+    "historical_record": true,
+    "current_base_successor": "next_series_02_reconciliation"
+  },
+  "next_series_02_reconciliation": {
+    "series": "next02",
+    "stage": 101,
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+    "source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+    "status": "current_main_integrated_owner_source_reviewed_validation_deferred",
+    "evidence": "architecture/card-failure-next-series-02-source-admission.md",
+    "fresh_full_body_unique": 28,
+    "fresh_full_body_entries": 28,
+    "fresh_original_baseline_credit": 18,
+    "fresh_regression_proposals_unique": 10,
+    "fresh_held_unique_not_counted": 12,
+    "current_base_proposed_unique": 1256,
+    "current_base_proposed_entries": 1260,
+    "current_residual_source_proposed_unique": 124,
+    "current_residual_source_proposed_entries": 125,
+    "current_packet_total_touched_unique": 132,
+    "current_packet_total_touched_entries": 133,
+    "current_reheld_inherited_unique": 45,
+    "current_reheld_inherited_entries": 46,
+    "prior_admission": "next_series_reconciliation",
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1256,
+      "source_eligible_shortfall_to_threshold": 341,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 45,
+      "reheld_inherited_entries_excluded": 46,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 124,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 879,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 45,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
+      "reviewed_new_source_proposed_residual_entries": 125,
+      "full_body_source_proposed_residual_unique": 68,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 77,
+      "formerly_supported_regression_unaddressed_unique": 74,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_execution_unrun",
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "source_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "compatibility_source_review_commit": "903fcf8db0b35428aa7955815e68b281380dade8",
+      "family_source_review_commits": {
+        "conditional-damage-amounts": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+        "player-counter-anthems": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+        "delayed-player-attack-declarations": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+        "repeat-process-boundaries": "7e437f182cab438b4eef34aa890ae2518c64722d",
+        "residual-static-condition-cohort": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+        "next-step-durations": "d7f8065731fd4989db8ef2e8073854b36b47ec13"
+      },
+      "compiled_artifact_version": 13,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 26,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "published_parent_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
+      "published_parent_pr": 867,
+      "evidence": "architecture/card-failure-next-series-02-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "execution": "All authored scenarios UNRUN; genuine v13 artifacts/catalogs, original v5 fixture, custom WASM/glue/layout, native recovery and authenticated replay remain deferred execution gates.",
+      "review_scope": "Six source-cleared bounded cohorts and coordinated successor compatibility; exact integrated final source anchor supplied by the coordinator. No executable or measured recovery claim."
+    },
+    "current_recovery_architecture": {
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "note": "architecture/card-failure-next-series-02-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 13,
+      "signed_audit_protocol_version": 26,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "validation": "Independent family and coordinated compatibility source clearance recorded at the final integrated source anchor. All authored executable scenarios, generation, recovery and replay gates remain UNRUN.",
+      "semantic_migration_note": "architecture/card-failure-next-series-02-compatibility.md"
+    },
+    "fixture_records_inspected": 40,
+    "source_identity_matches": true,
+    "cohort_overlap_with_existing_proposals": 0,
+    "cohort_overlap_with_inherited_reholds": 0,
+    "new_candidate_ids_sha256": "78eb6891c1f32b9e8521a9c39479e3f45640039073d85251d5e3e2497ef30a74",
+    "new_original_ids_sha256": "55886cabdf6ab5fe68c8e424086099ae6764faa17bd23107092cc852fbd266a5",
+    "new_regression_ids_sha256": "4bec2bf071aec2afb92da694e845462cf140a299dab670ae691fd2f33017678c",
+    "original_eligible_ids_sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826",
+    "current_residual_proposal_ids_sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1",
+    "held_candidates": [
+      {
+        "oracle_id": "fa4755c2-e573-45c3-bd6a-61b2b35fbd24",
+        "names": [
+          "Flame Discharge"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Requires authoritative cast-time modified-creature evidence.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "1e94e647-9150-4b22-aa9f-d195f64fb20a",
+        "names": [
+          "Slaying Fire"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
+        "names": [
+          "Summary Judgment"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "f701ada1-e9e1-42ce-9a62-c11bcec03da7",
+        "names": [
+          "Surtland Flinger"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Requires reflexive sacrifice-result and exact last-known power/subtype amount ownership.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "3bcc378c-4470-4757-a0d5-025a32c918ea",
+        "names": [
+          "Sin, Spira's Punishment"
+        ],
+        "family_id": "repeat-process-boundaries",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete-body source closure remains outside the eight admitted repeat-process bodies.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+        "names": [
+          "Crown of Convergence"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Exact current top-card shared-color recipient reference remains unsupported.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+        "names": [
+          "Mul Daya Channelers"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Authoritative opaque top-card opening/bootstrap before continuous derivation remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "4a3fdb8e-4699-4bd9-84e6-3cc7fea0e1ef",
+        "names": [
+          "The Ur-Sphinx"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Owner-separated mill results and per-player optional free casts remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "f467ec85-ffe2-4963-82e0-509a7873fd63",
+        "names": [
+          "Torrent of Lava"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Source-on-stack grants and exact granting-spell finite-source prevention remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "16e9a4ee-0398-4e76-bc7e-dd2d52056aaf",
+        "names": [
+          "Volrath's Shapeshifter"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Ordered top-graveyard full-text replacement remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "d5b9b75d-4bf0-4328-9bb3-7b260a0c46af",
+        "names": [
+          "Savor the Moment"
+        ],
+        "family_id": "next-step-durations",
+        "status": "held_not_counted",
+        "remaining_blocker": "Exact extra-turn owner and step association remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+        "names": [
+          "Orcish Farmer"
+        ],
+        "family_id": "next-step-durations",
+        "status": "held_not_counted",
+        "remaining_blocker": "Disputed controller-binding rule remains explicitly held; shipped Until variants grant no card credit.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      }
+    ],
+    "family_ids": [
+      "conditional-damage-amounts",
+      "player-counter-anthems",
+      "delayed-player-attack-declarations",
+      "repeat-process-boundaries",
+      "residual-static-condition-cohort",
+      "next-step-durations"
+    ],
+    "execution": "UNRUN. Only offline retained JSON/file/hash/Git inspection and source-accounting document edits. No build, compiler, test, corpus/analysis rerun, formatter, generation, probe or replay.",
+    "accounting": "1238 + 18 = 1256 original source-eligible IDs / 1260 entries; 96 + 28 = 124 current residual source proposals / 125 entries. 68 residual full-body + 56 shared-blocker = 124. 47 original-residual + 77 regression = 124. Eight supported semantic corrections yield 132 touched identities / 133 entries. All measured outcomes remain unchanged."
+  },
+  "current_source_admission": "next_series_02_reconciliation"
 }

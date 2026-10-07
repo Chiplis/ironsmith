@@ -23,6 +23,8 @@ pub enum LeafDurationPhrase {
     UntilNextEndStep,
     Forever,
     YourNextUntapStep,
+    UntilControllersNextUntapStep,
+    PlayersNextUntapStep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +63,10 @@ pub enum LeafConditionalDurationKind {
 }
 
 const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
+    (&["until", "its", "controllers", "next", "untap", "step"], LeafDurationPhrase::UntilControllersNextUntapStep),
+    (&["until", "its", "controller's", "next", "untap", "step"], LeafDurationPhrase::UntilControllersNextUntapStep),
+    (&["during", "that", "players", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
+    (&["during", "that", "player's", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
     (
         &["until", "the", "end", "of", "your", "next", "turn"],
         LeafDurationPhrase::UntilYourNextTurnEnd,
@@ -359,6 +365,8 @@ fn leaf_turn_duration_from_duration(
         | LeafDurationPhrase::UntilYourNextUpkeep
         | LeafDurationPhrase::ControllersNextUntapStep
         | LeafDurationPhrase::YourNextUntapStep
+        | LeafDurationPhrase::UntilControllersNextUntapStep
+        | LeafDurationPhrase::PlayersNextUntapStep
         | LeafDurationPhrase::UntilNextEndStep
         | LeafDurationPhrase::Forever => None,
     }
@@ -499,4 +507,23 @@ mod tests {
 
     }
 
+}
+
+#[cfg(test)]
+mod exact_next_step_duration_tests {
+    use super::*;
+    #[test]
+    fn until_beginning_and_during_step_keep_distinct_complete_owners() {
+        for (text, expected) in [
+            ("until its controller's next untap step", LeafDurationPhrase::UntilControllersNextUntapStep),
+            ("during that player's next untap step", LeafDurationPhrase::PlayersNextUntapStep),
+            ("during its controller's next untap step", LeafDurationPhrase::ControllersNextUntapStep),
+            ("during your next untap step", LeafDurationPhrase::YourNextUntapStep),
+        ] {
+            assert_eq!(parse_duration_phrase_complete(text).unwrap(), expected);
+        }
+        for text in ["until its controller's next untap", "during that player's next upkeep step", "during that player's next untap step forever", "until its controller's next untap step or turn"] {
+            assert!(parse_duration_phrase_complete(text).is_err(), "{text}");
+        }
+    }
 }

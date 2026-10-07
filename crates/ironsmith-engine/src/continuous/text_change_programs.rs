@@ -208,7 +208,10 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
         | EffectPredicate::DidNotHappen | EffectPredicate::SearchedLibrary | EffectPredicate::HappenedNotReplaced
         | EffectPredicate::ExcessDamageDealt | EffectPredicate::DealtDamageToPlayer
         | EffectPredicate::AffectedObjectMatchesCardType { .. } | EffectPredicate::Value(_)
-        | EffectPredicate::Chosen | EffectPredicate::WasDeclined => {}
+        | EffectPredicate::Chosen | EffectPredicate::WasDeclined
+        // Characteristic families and the minimum cohort size contain no
+        // authored color, creature-type or land-type word to substitute.
+        | EffectPredicate::AffectedObjectsShare { .. } => {}
     }
     Ok(rewritten)
 }
@@ -552,6 +555,14 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.count = rewrite_value_words(&model.count, change)?;
         model.effects = rewrite_effects(&model.effects, change)?;
     });
+    visit!(RepeatProcessEffect, model, {
+        model.predicate = rewrite_result_predicate(&model.predicate, change)?;
+        model.effects = rewrite_effects(&model.effects, change)?;
+    });
+    visit!(RepeatProcessPromptEffect, model, {
+        model.decider = model.decider.as_ref()
+            .map(|player| rewrite_player_filter_words(player, change)).transpose()?;
+    });
     visit!(ManaRestrictedEffect, model, {
         model.effects = rewrite_effects(&model.effects, change)?;
         model.restrictions = model.restrictions.iter().map(|restriction| rewrite_mana_restriction(restriction, change))
@@ -768,4 +779,32 @@ mod tests {
         let chosen_mana = Effect::new(AddManaOfAnyColorEffect::you_restricted(1, vec![Color::Black, Color::Blue]));
         assert!(matches!(chosen_mana.with_text_change(change()), Err(Error::Effect)));
     }
+    #[test]
+    fn repeat_program_words_keep_receipt_identity_condition_capture_and_explicit_chooser() {
+        let shared = EffectPredicate::AffectedObjectsShare {
+            required_count: 2, characteristic: ironsmith_core::ObjectCharacteristic::Name,
+        };
+        let gate = Effect::new(ConditionalEffect::if_only(Condition::YouControl(black()),
+            vec![word_effect()]).with_condition_result(true));
+        let prompt = Effect::new(RepeatProcessPromptEffect::new(
+            ironsmith_core::RepeatProcessPromptKind::MayRepeatAnyNumberOfTimes,
+        ).with_decider(Some(PlayerFilter::ControlsMost { filter: Box::new(black()) })));
+        let original = Effect::new(RepeatProcessEffect::new(
+            vec![gate, prompt], EffectId(73), shared.clone(),
+        ));
+        let rewritten = original.with_text_change(change()).unwrap();
+        let repeat = rewritten.downcast_ref::<RepeatProcessEffect>().unwrap();
+        assert_eq!(repeat.condition, EffectId(73));
+        assert_eq!(repeat.predicate, shared);
+        let gate = repeat.effects[0].downcast_ref::<ConditionalEffect>().unwrap();
+        assert!(gate.capture_condition_result);
+        assert_eq!(gate.condition, Condition::YouControl(blue()));
+        assert_eq!(gate.if_true[0].downcast_ref::<DrawCardsEffect>().unwrap().count, Value::Count(blue()));
+        let prompt = repeat.effects[1].downcast_ref::<RepeatProcessPromptEffect>().unwrap();
+        assert_eq!(prompt.decider, Some(PlayerFilter::ControlsMost { filter: Box::new(blue()) }));
+        let unchanged = original.downcast_ref::<RepeatProcessEffect>().unwrap();
+        assert_eq!(unchanged.effects[0].downcast_ref::<ConditionalEffect>().unwrap().condition,
+            Condition::YouControl(black()));
+    }
+
 }

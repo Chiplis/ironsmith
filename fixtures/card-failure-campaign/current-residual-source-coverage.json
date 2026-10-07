@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "source_accounting_reconciled_execution_closed_until_original_source_majority",
   "source_ledger_base_commit": "b39a94f1799ace53f0a4562acfaeb1f5577145ac",
-  "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
+  "source_implementation_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
   "source_validation": "UNRUN; independent source review plus inventory/JSON/hash/Git reconciliation only. No new-source build, test, probe, formatter, code generation or replay.",
   "current_measurement": {
     "source": {
@@ -15,7 +15,9 @@
     "snapshot_sha256": "46124348e86cfd4a0c80f3a502dd78ad5ac1c911f96d06425ae1cef24c3cb183",
     "binary_sha256": "1805d50224a25e4251c85049fb3e438edfceba4f5860e34d8a77fe6f8a1a00c3",
     "packet_path": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/",
-    "packet_manifest_sha256": "bc2c4a1a13e5e453ac5a297204cb0c4f8f12cda73e9a3650a8c4cae5ed6dff4b",
+    "packet_manifest_sha256": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+    "historical_original_packet_manifest_sha256": "bc2c4a1a13e5e453ac5a297204cb0c4f8f12cda73e9a3650a8c4cae5ed6dff4b",
+    "packet_manifest_note": "The active packet hash includes the report-only labeling correction committed at 441771fd5c9562250e503d7e17260ce1b320c298. The historical hash identifies the original retained packet before that correction; measured JSON, archived evidence, scripts, source identity, and outcomes are unchanged. This metadata update performs no execution and does not validate later source proposals.",
     "evidence_files": {
       "provenance.json": {
         "bytes": 16800,
@@ -93,7 +95,7 @@
     "current_residual_unique": 2005,
     "current_residual_ids_sha256": "0b47c4cfdc670426f507308dd4431c8717e841f535c882f83bc7f26e1dd742ae",
     "new_current_scope_regressed_unique": 151,
-    "new_current_scope_note": "These 151 identities were supported at original e874 baseline and therefore remain outside source-coverage.json original-failure card rows and its majority credit. Of them, 56 have shared blocker repair proposals and 11 have full-body source proposals; 84 remain unaddressed. All 151 remain unresolved in the measured-main snapshot, with no new measured recovery.",
+    "new_current_scope_note": "These 151 identities were supported at original e874 baseline and remain outside original-failure card rows and original-majority credit. Of them, 56 have shared blocker repair proposals and 21 have full-body source proposals; 74 remain unaddressed. All 151 remain unresolved on the measured main snapshot, with no new measured recovery.",
     "compiler_facing_source_changes": {
       "oracle_text_changed_entries": 0,
       "semantic_metadata_changed_entries": 0,
@@ -119,13 +121,13 @@
       "parse_failed": 44,
       "compiled_with_allow_unsupported": 1
     },
-    "new_source_proposed_unique": 104,
-    "new_source_proposed_current_residual_unique": 96,
+    "new_source_proposed_unique": 132,
+    "new_source_proposed_current_residual_unique": 124,
     "new_source_proposed_already_supported_semantic_change_unique": 8,
-    "original_baseline_source_eligible_union_unique": 1238,
-    "original_baseline_source_eligible_union_entries": 1242,
-    "original_baseline_source_eligible_ids_sha256": "fdf5158c5df7684c79710402e291775ebc98074b9682eefe7675edbf7951ffe7",
-    "current_residual_source_eligible_unique": 96,
+    "original_baseline_source_eligible_union_unique": 1256,
+    "original_baseline_source_eligible_union_entries": 1260,
+    "original_baseline_source_eligible_ids_sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826",
+    "current_residual_source_eligible_unique": 124,
     "new_fixture_partials_excluded_unique": 13,
     "new_source_measured_recoveries": 0,
     "historical_source_evidence_preserved": true,
@@ -145,22 +147,85 @@
     "restored_inherited_source_proposals_unique": 10,
     "restored_inherited_source_proposals_entries": 10,
     "restored_inherited_oracle_ids_sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c",
-    "new_source_proposed_entries": 105,
-    "new_source_proposed_scope": "Union of 48 full-body source proposals and 56 shared blocker repair proposed identities, including 8 already-supported semantic corrections. This is source scope, not 104 verified whole-card or runtime recoveries.",
-    "new_full_body_source_proposed_unique": 48,
+    "new_source_proposed_entries": 133,
+    "new_source_proposed_scope": "Cumulative next01/next02 union of 76 full-body source proposals and 56 shared blocker repair proposals, including 8 already-supported semantic corrections. 132 identities / 133 entries describe source scope, not verified whole-card or runtime recoveries.",
+    "new_full_body_source_proposed_unique": 76,
     "new_shared_blocker_repair_proposed_unique": 56,
-    "new_source_proposed_current_residual_entries": 97,
-    "current_residual_source_eligible_entries": 97,
-    "current_residual_source_eligible_ids_sha256": "b1b93b0ecba60c51b2f103ab1bee5402f62fc467f866ad8ce371d48f42f971f4",
-    "current_residual_full_body_source_proposed_unique": 40,
+    "new_source_proposed_current_residual_entries": 125,
+    "current_residual_source_eligible_entries": 125,
+    "current_residual_source_eligible_ids_sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1",
+    "current_residual_full_body_source_proposed_unique": 68,
     "current_residual_shared_blocker_repair_proposed_unique": 56,
-    "current_residual_original_baseline_source_proposed_unique": 29,
-    "current_regression_source_proposed_unique": 67,
-    "current_regression_source_proposed_entries": 68,
-    "current_regression_unaddressed_unique": 84,
+    "current_residual_original_baseline_source_proposed_unique": 47,
+    "current_regression_source_proposed_unique": 77,
+    "current_regression_source_proposed_entries": 78,
+    "current_regression_unaddressed_unique": 74,
     "current_regression_original_baseline_credit": 0,
-    "current_packet_total_touched_unique": 104,
-    "current_packet_total_touched_entries": 105
+    "current_packet_total_touched_unique": 132,
+    "current_packet_total_touched_entries": 133,
+    "prior_next01_source_admission": {
+      "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
+      "source_accounting": {
+        "pre_refresh_proposed_unique": 1283,
+        "pre_refresh_proposed_entries": 1288,
+        "inherited_pre_refresh_unique": 1256,
+        "inherited_pre_refresh_entries": 1261,
+        "inherited_supported_on_current_main_unique": 1201,
+        "inherited_supported_on_current_main_entries": 1205,
+        "reheld_inherited_unique": 45,
+        "reheld_inherited_entries": 46,
+        "rehold_unique_parse_status_counts": {
+          "parse_failed": 44,
+          "compiled_with_allow_unsupported": 1
+        },
+        "new_source_proposed_unique": 104,
+        "new_source_proposed_current_residual_unique": 96,
+        "new_source_proposed_already_supported_semantic_change_unique": 8,
+        "original_baseline_source_eligible_union_unique": 1238,
+        "original_baseline_source_eligible_union_entries": 1242,
+        "original_baseline_source_eligible_ids_sha256": "fdf5158c5df7684c79710402e291775ebc98074b9682eefe7675edbf7951ffe7",
+        "current_residual_source_eligible_unique": 96,
+        "new_fixture_partials_excluded_unique": 13,
+        "new_source_measured_recoveries": 0,
+        "historical_source_evidence_preserved": true,
+        "readmission_requirement": "Re-held identities require subsequent substantive source corrections plus full-body source review; historical source evidence alone cannot restore credit.",
+        "attribution": "Measured clean-main recoveries belong to the pinned main snapshot. No recovery is attributed to this unrun new source.",
+        "prior_source_admission": {
+          "source_implementation_commit": "2f00b78b082d02179a3730b97143904712223e1b",
+          "original_baseline_source_eligible_unique": 1228,
+          "original_baseline_source_eligible_entries": 1232,
+          "original_baseline_source_eligible_ids_sha256": "e8090de3469a3c988dc547bdfe4f82f646e073af7e10f2e3d03935621839f8da",
+          "current_residual_source_proposed_unique": 19,
+          "new_full_body_source_proposed_unique": 27,
+          "new_supported_semantic_corrections_unique": 8,
+          "reheld_inherited_unique": 55,
+          "reheld_inherited_entries": 56
+        },
+        "restored_inherited_source_proposals_unique": 10,
+        "restored_inherited_source_proposals_entries": 10,
+        "restored_inherited_oracle_ids_sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c",
+        "new_source_proposed_entries": 105,
+        "new_source_proposed_scope": "Union of 48 full-body source proposals and 56 shared blocker repair proposed identities, including 8 already-supported semantic corrections. This is source scope, not 104 verified whole-card or runtime recoveries.",
+        "new_full_body_source_proposed_unique": 48,
+        "new_shared_blocker_repair_proposed_unique": 56,
+        "new_source_proposed_current_residual_entries": 97,
+        "current_residual_source_eligible_entries": 97,
+        "current_residual_source_eligible_ids_sha256": "b1b93b0ecba60c51b2f103ab1bee5402f62fc467f866ad8ce371d48f42f971f4",
+        "current_residual_full_body_source_proposed_unique": 40,
+        "current_residual_shared_blocker_repair_proposed_unique": 56,
+        "current_residual_original_baseline_source_proposed_unique": 29,
+        "current_regression_source_proposed_unique": 67,
+        "current_regression_source_proposed_entries": 68,
+        "current_regression_unaddressed_unique": 84,
+        "current_regression_original_baseline_credit": 0,
+        "current_packet_total_touched_unique": 104,
+        "current_packet_total_touched_entries": 105
+      }
+    },
+    "next_series_02_proposed_unique": 28,
+    "next_series_02_original_baseline_credit": 18,
+    "next_series_02_regression_unique": 10,
+    "next_series_02_held_candidates_excluded_unique": 12
   },
   "current_reholds": [
     {
@@ -3813,6 +3878,902 @@
           "diagnostic_signature_sha256": "2f79127092eb48ee3fd4eef8b7407d79c3710e8c55b7fd653e32e5887573d13a"
         }
       ]
+    },
+    {
+      "oracle_id": "05b6f9e3-9acd-43a6-acff-caa811aaf0a1",
+      "names": [
+        "Akoum Hellkite"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        20
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Akoum Hellkite",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "bf5a2895c1e7deb9057c7d693bac3cfe41561cfdb61442d8517ecf45b1003b2f",
+          "parse_loss_reasons_sha256": "2e9819e2bc444d31cf74526d15206cf1bdefc57cba75c3edfd6682ebc807f265",
+          "diagnostic_signature_sha256": "cd95f9e67ca4ab556bbed92efcf2ed332694c99a157b9d5933270f73d1e07aac"
+        }
+      ]
+    },
+    {
+      "oracle_id": "51a0d1c2-ff29-4ac9-84a2-ad4f566fee8d",
+      "names": [
+        "Burning Hands"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        205
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Burning Hands",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "ee2f8352ad865d5de937661181a77e58f7cf5f9ecfad3c2503611512bc15a744",
+          "parse_loss_reasons_sha256": "c2878ad4477964db745981708256b47b623080fdf754908e7e8f1d82dffd4161",
+          "diagnostic_signature_sha256": "142a2b23858fea8787e5fed3d36ab828a7094d90bd78221f8450d2fb9bf61512"
+        }
+      ]
+    },
+    {
+      "oracle_id": "ac2086fe-98ee-4280-9c7c-c5c2d6548a8b",
+      "names": [
+        "Burst Lightning"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        208
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Burst Lightning",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "d7893749140dbcf7e65f4709903be06de145fc43b91fc385ac6601b3e4912ec4",
+          "parse_loss_reasons_sha256": "6913c2315cc10a3b411eda7c60f0b61752a885976ac6596d357baa331e4ae154",
+          "diagnostic_signature_sha256": "910af33404d9e88c54b8955d1e3cde311d39150083cf04ee3e446d55b93bab6f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "128170ed-c86a-4f02-9244-28197be90c10",
+      "names": [
+        "Frost Bite"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        619
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Frost Bite",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "d7893749140dbcf7e65f4709903be06de145fc43b91fc385ac6601b3e4912ec4",
+          "parse_loss_reasons_sha256": "6913c2315cc10a3b411eda7c60f0b61752a885976ac6596d357baa331e4ae154",
+          "diagnostic_signature_sha256": "910af33404d9e88c54b8955d1e3cde311d39150083cf04ee3e446d55b93bab6f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "6798163a-864f-4844-96b1-77585a7e7ab4",
+      "names": [
+        "Roil Eruption"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1393
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Roil Eruption",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "d7893749140dbcf7e65f4709903be06de145fc43b91fc385ac6601b3e4912ec4",
+          "parse_loss_reasons_sha256": "6913c2315cc10a3b411eda7c60f0b61752a885976ac6596d357baa331e4ae154",
+          "diagnostic_signature_sha256": "910af33404d9e88c54b8955d1e3cde311d39150083cf04ee3e446d55b93bab6f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "854fd120-9a51-4d37-9922-7e4b0464e0f5",
+      "names": [
+        "Shivan Fire"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1484
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Shivan Fire",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "d7893749140dbcf7e65f4709903be06de145fc43b91fc385ac6601b3e4912ec4",
+          "parse_loss_reasons_sha256": "6913c2315cc10a3b411eda7c60f0b61752a885976ac6596d357baa331e4ae154",
+          "diagnostic_signature_sha256": "910af33404d9e88c54b8955d1e3cde311d39150083cf04ee3e446d55b93bab6f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "1779af8e-38fc-4043-b5fa-ee16a7ea840c",
+      "names": [
+        "Voltage Surge"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1904
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Voltage Surge",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "ee2f8352ad865d5de937661181a77e58f7cf5f9ecfad3c2503611512bc15a744",
+          "parse_loss_reasons_sha256": "c2878ad4477964db745981708256b47b623080fdf754908e7e8f1d82dffd4161",
+          "diagnostic_signature_sha256": "142a2b23858fea8787e5fed3d36ab828a7094d90bd78221f8450d2fb9bf61512"
+        }
+      ]
+    },
+    {
+      "oracle_id": "e100f9fc-b6fb-42ab-b9b3-796bede6804d",
+      "names": [
+        "Kalemne, Disciple of Iroas"
+      ],
+      "family_id": "player-counter-anthems",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        867
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Kalemne, Disciple of Iroas",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "431f497353e6bf574f0c94e8e0ab328087ee041286e8c4fc6cea4feab7a2ecc6",
+          "parse_loss_reasons_sha256": "cce9ab87caa892966ac6e4b52c813f60b393d1e7919e8ad172965f3cfeb11381",
+          "diagnostic_signature_sha256": "4e79e61d0e81e67f0d5b624b8097151623e58d4ac7b5664e217ed67590442403"
+        }
+      ]
+    },
+    {
+      "oracle_id": "5b3326a5-18c5-4d45-90e1-f6d00ca2bced",
+      "names": [
+        "Kelsien, the Plague"
+      ],
+      "family_id": "player-counter-anthems",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        885
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Kelsien, the Plague",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "431f497353e6bf574f0c94e8e0ab328087ee041286e8c4fc6cea4feab7a2ecc6",
+          "parse_loss_reasons_sha256": "cce9ab87caa892966ac6e4b52c813f60b393d1e7919e8ad172965f3cfeb11381",
+          "diagnostic_signature_sha256": "4e79e61d0e81e67f0d5b624b8097151623e58d4ac7b5664e217ed67590442403"
+        }
+      ]
+    },
+    {
+      "oracle_id": "fad0c174-4c4a-4662-bd1f-224886e826e1",
+      "names": [
+        "Minthara, Merciless Soul"
+      ],
+      "family_id": "player-counter-anthems",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1060
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Minthara, Merciless Soul",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "431f497353e6bf574f0c94e8e0ab328087ee041286e8c4fc6cea4feab7a2ecc6",
+          "parse_loss_reasons_sha256": "cce9ab87caa892966ac6e4b52c813f60b393d1e7919e8ad172965f3cfeb11381",
+          "diagnostic_signature_sha256": "4e79e61d0e81e67f0d5b624b8097151623e58d4ac7b5664e217ed67590442403"
+        }
+      ]
+    },
+    {
+      "oracle_id": "e7c4bc25-806c-4a75-85bf-a0e66308d5d8",
+      "names": [
+        "Mycosynth Fiend"
+      ],
+      "family_id": "player-counter-anthems",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1104
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Mycosynth Fiend",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "fb3b46602ec45c859914803fd516879f42c56ce44455152e33bcff9f25254ada",
+          "parse_loss_reasons_sha256": "fccdc8446d2885da893556d50dfcb4ec33c64f065a0377512d0a525844c424e4",
+          "diagnostic_signature_sha256": "4e79e61d0e81e67f0d5b624b8097151623e58d4ac7b5664e217ed67590442403"
+        }
+      ]
+    },
+    {
+      "oracle_id": "7b1599c0-bb4f-48f8-a358-dc60166b13e7",
+      "names": [
+        "Vishgraz, the Doomhive"
+      ],
+      "family_id": "player-counter-anthems",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/player-counter-anthems-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1885
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Vishgraz, the Doomhive",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "fb3b46602ec45c859914803fd516879f42c56ce44455152e33bcff9f25254ada",
+          "parse_loss_reasons_sha256": "fccdc8446d2885da893556d50dfcb4ec33c64f065a0377512d0a525844c424e4",
+          "diagnostic_signature_sha256": "4e79e61d0e81e67f0d5b624b8097151623e58d4ac7b5664e217ed67590442403"
+        }
+      ]
+    },
+    {
+      "oracle_id": "33a90122-7280-4481-9b97-5879194cae40",
+      "names": [
+        "Dalkovan Encampment"
+      ],
+      "family_id": "delayed-player-attack-declarations",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        367
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Dalkovan Encampment",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "4bfcd0867d6bdff36845cc0249503c21038b6505dfdab971411c155b915aef42",
+          "parse_loss_reasons_sha256": "86dc23b2ff7e8632624d67af5776d98fe6da9580c256dc92c7793f995d25542c",
+          "diagnostic_signature_sha256": "6c0b7f9f30be223123a89812b3eead980a9a8b073975d38949644bbe1aafc04a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "2458aa66-5b20-4811-a4a4-8375ad0a6498",
+      "names": [
+        "Jaya, Fiery Negotiator"
+      ],
+      "family_id": "delayed-player-attack-declarations",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        846
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Jaya, Fiery Negotiator",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "4bfcd0867d6bdff36845cc0249503c21038b6505dfdab971411c155b915aef42",
+          "parse_loss_reasons_sha256": "86dc23b2ff7e8632624d67af5776d98fe6da9580c256dc92c7793f995d25542c",
+          "diagnostic_signature_sha256": "6c0b7f9f30be223123a89812b3eead980a9a8b073975d38949644bbe1aafc04a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "3cd3cdc9-2ed2-4cdf-b58a-12c3a2ef218b",
+      "names": [
+        "Roads Go Ever, Ever On"
+      ],
+      "family_id": "delayed-player-attack-declarations",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1385
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Roads Go Ever, Ever On",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "4bfcd0867d6bdff36845cc0249503c21038b6505dfdab971411c155b915aef42",
+          "parse_loss_reasons_sha256": "86dc23b2ff7e8632624d67af5776d98fe6da9580c256dc92c7793f995d25542c",
+          "diagnostic_signature_sha256": "6c0b7f9f30be223123a89812b3eead980a9a8b073975d38949644bbe1aafc04a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "8095ca78-db19-4724-a6ff-eacc85fa2274",
+      "names": [
+        "Another Round"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        46
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Another Round",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "1956903e01b720009a4b7bed6eef1422f56071e2e8ccf4c1d91ed4983b244ac4",
+          "parse_loss_reasons_sha256": "a1ccf76314397a8d3187ee8acdba48462aa676c1d1d14c5027c2f7062fd9e0d3",
+          "diagnostic_signature_sha256": "55f45f8b97b1af2012b239e86fc6fd168a4ed537c53b4e06d696da24ae4506b8"
+        }
+      ]
+    },
+    {
+      "oracle_id": "18f0cd0b-3e4f-4637-a62e-75dd1b2f3fce",
+      "names": [
+        "Claim Jumper"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        282
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Claim Jumper",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "9f5d7cb6e1980dd6f10870f6bb7d9af7529f821e94e325b3e98befcc4bd858aa",
+          "parse_loss_reasons_sha256": "34aa8d06b140a08c70ce1e34a70003865891767bfebc59f85daceba266d9c7f8",
+          "diagnostic_signature_sha256": "b1bd6d5af4d9cb394ddfbabbee43c3a71b635abf61af40728448642d732fba76"
+        }
+      ]
+    },
+    {
+      "oracle_id": "1636c4d2-f699-4af7-8508-dbce2f0b7b52",
+      "names": [
+        "Countryside Crusher"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        329
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Countryside Crusher",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "07e7d5703d46384bfa0f92676537d5f8b3ab84c82d05fd5afca7c6f869a62b7f",
+          "parse_loss_reasons_sha256": "4e9bdb289d932dce1159630785c134f5b7661be597d6535fd0b48378ae0ea164",
+          "diagnostic_signature_sha256": "f33e5044c2c1107e44514b3d3ce8ae6c500261f8c61dbe5dc9bc2516b4d1259f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "97560adc-814e-450c-9ca7-f9364e910a0b",
+      "names": [
+        "Grindstone"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        706
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Grindstone",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "e285a3c15a4f8bb3d416da8e81b8d95be4e22d7557a2ee6d5df3605e405ff3a8",
+          "parse_loss_reasons_sha256": "0fd7428fde81338ced1f365a6862baf665431c1d29104a283930f8bb5b4bbaa9",
+          "diagnostic_signature_sha256": "2894ef962676cb5af549809f7443779bdf121f99d7f486babe757973dfa6b663"
+        }
+      ]
+    },
+    {
+      "oracle_id": "9df2e909-ed13-456a-9636-7398732009a9",
+      "names": [
+        "Professor Onyx"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1281
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Professor Onyx",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "af17d2f5adeead76b950fdf05b52a80163dc96a664ccaaca4ae73b58f94d42dc",
+          "parse_loss_reasons_sha256": "3446c8b05cb444d2d1f6b035b7fd11d4ad984e65b62b96986ab7dfa079fe80f5",
+          "diagnostic_signature_sha256": "808f634aad3620f9826685b8766f1b1762ec49354ae5377641a9fe8ff294859a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "99eb50ef-352f-47c4-91e3-32813cbe0649",
+      "names": [
+        "Scalpelexis"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1434
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Scalpelexis",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "07e7d5703d46384bfa0f92676537d5f8b3ab84c82d05fd5afca7c6f869a62b7f",
+          "parse_loss_reasons_sha256": "4e9bdb289d932dce1159630785c134f5b7661be597d6535fd0b48378ae0ea164",
+          "diagnostic_signature_sha256": "f33e5044c2c1107e44514b3d3ce8ae6c500261f8c61dbe5dc9bc2516b4d1259f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "50885640-cdf1-4c62-b3bc-f37db6ab38b5",
+      "names": [
+        "Trade Secrets"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1800
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Trade Secrets",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "98f80a420ee3d1d754cee15eabfe33f778ed46e72d62c338f22e46dc00eaf869",
+          "parse_loss_reasons_sha256": "16cd9d82b38a709598306ebac03e5655e47a1957955912da3a95823e594b200e",
+          "diagnostic_signature_sha256": "955bb204825b0708f8a8d81f263f88c36c76546f639df6f29978fb01aad1830f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "5bc66b18-22ac-4138-b527-fa711116e298",
+      "names": [
+        "Zimone and Dina"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/repeat-process-boundaries.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1997
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Zimone and Dina",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "07e7d5703d46384bfa0f92676537d5f8b3ab84c82d05fd5afca7c6f869a62b7f",
+          "parse_loss_reasons_sha256": "4e9bdb289d932dce1159630785c134f5b7661be597d6535fd0b48378ae0ea164",
+          "diagnostic_signature_sha256": "f33e5044c2c1107e44514b3d3ce8ae6c500261f8c61dbe5dc9bc2516b4d1259f"
+        }
+      ]
+    },
+    {
+      "oracle_id": "812df594-75af-494f-be09-5f9633aca46a",
+      "names": [
+        "Deepway Navigator"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/card-failure-residual-static-cohort.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        385
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Deepway Navigator",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "90f8721f0e252825ce695f0153870a5c04ddc6a7db178f6ce75608b6e52996fa",
+          "parse_loss_reasons_sha256": "96b8ca0be5edba9ab89ec765d2db7bccb40060d049d537553a74d2a570b1c20c",
+          "diagnostic_signature_sha256": "8e1ce8f0f178c9e2b2da0ca88d30e7dab136526d41cf9335cd818991a62dbbfb"
+        }
+      ]
+    },
+    {
+      "oracle_id": "cb02daf6-9013-4ccc-bf1f-773b757ac468",
+      "names": [
+        "Essence Leak"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/card-failure-residual-static-cohort.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        512
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Essence Leak",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "0b451aecbcb55de7bad99be10404818188fedada5be4dfa1de293dadba7104c8",
+          "parse_loss_reasons_sha256": "c2f8c3de36b3bde0ca304a54ae76d21903a642dba08b09de28adae890168ca1f",
+          "diagnostic_signature_sha256": "df42f517e461fd7721da369d3042902b4c535568a3e602947a10deb3e6daff56"
+        }
+      ]
+    },
+    {
+      "oracle_id": "87b22b09-4f6d-4bc5-9cfc-663e4c7c6981",
+      "names": [
+        "The Ur-Dragon"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/card-failure-residual-static-cohort.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1757
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "The Ur-Dragon",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "e620195cf853001d627af960b855fb81f10b0a60766b25f32fc6d5e344aed652",
+          "parse_loss_reasons_sha256": "a1f1fbde6f21edceb18e89d227f626b25d112a9c7b604add1b8593b7d20991bf",
+          "diagnostic_signature_sha256": "8e1ce8f0f178c9e2b2da0ca88d30e7dab136526d41cf9335cd818991a62dbbfb"
+        }
+      ]
+    },
+    {
+      "oracle_id": "0a88dcb6-a391-408f-8bfc-7b5b2cc34267",
+      "names": [
+        "Fatigue"
+      ],
+      "family_id": "next-step-durations",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "d7f8065731fd4989db8ef2e8073854b36b47ec13",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/card-failure-next-step-durations.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        558
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Fatigue",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "81fcff5b8ff57b12f83c5ad6974b960ffde65c8dc729ab52fd48e44a86e82c8f",
+          "parse_loss_reasons_sha256": "e5df0f685f0b977be993d2b5b981a37d7e32328ed444f86021b567a2a15a4966",
+          "diagnostic_signature_sha256": "d00cc7fdae4c03e0fdab28762a4c1a5a5983461104dcfcd3b14de297262cbbba"
+        }
+      ]
+    },
+    {
+      "oracle_id": "4ee994a1-fd3b-43cf-be3c-9c705e60754a",
+      "names": [
+        "Misstep"
+      ],
+      "family_id": "next-step-durations",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "d7f8065731fd4989db8ef2e8073854b36b47ec13",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "combined_source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "evidence": "architecture/card-failure-next-step-durations.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1069
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Misstep",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "a93cb0a2139f5396267ac3af729ebdd17fa834eb460118bb3351402b5bc493b6",
+          "parse_loss_reasons_sha256": "b6af564f8a3bfffd5672688ee86fd3d29c174e3a6a716fb87c9714a9ad46b2e0",
+          "diagnostic_signature_sha256": "d3b4545be30596ee34ca7aa81f4c8b75dbd03b99059ceb8e605472b27bcc2406"
+        }
+      ]
     }
   ],
   "new_source_supported_but_semantic_change": [
@@ -4040,8 +5001,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "0799df10-b489-4f79-bf98-7a0c500b46a1",
@@ -4200,8 +5168,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "130a8cf5-1354-4d17-91c8-c073642eb3db",
@@ -4268,8 +5243,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "183891b0-b5ec-47f4-8d09-b9d3cfc4e7f1",
@@ -4396,8 +5378,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "delayed-player-attack-declarations",
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "26f8626a-ce64-450c-bda5-833df2fbb4fb",
@@ -4494,8 +5483,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "delayed-player-attack-declarations",
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "35e4ed0e-8ce2-4729-a009-0d6be8f47663",
@@ -4534,8 +5530,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "delayed-player-attack-declarations",
+      "source_review_commit": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/delayed-player-attack-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "3ec889bc-f4d7-492a-91c3-d3691eb90eac",
@@ -4664,8 +5667,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "528039f3-e8e6-499d-add4-43cf2d731b65",
@@ -4786,8 +5796,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "6835bf6d-7197-481b-ac26-276ce363b4ad",
@@ -4952,8 +5969,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "86da33ac-f8ac-48c8-a50b-22fd761dff8f",
@@ -5242,8 +6266,15 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "conditional-damage-amounts",
+      "source_review_commit": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "combined_source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "evidence": "reports/conditional-damage-source-review.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
@@ -5917,31 +6948,32 @@
     "completed_at": "2026-10-07T13:34:12.785232+00:00",
     "measurement_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
     "measurement_packet": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json",
-    "measurement_packet_manifest_sha256": "bc2c4a1a13e5e453ac5a297204cb0c4f8f12cda73e9a3650a8c4cae5ed6dff4b"
+    "measurement_packet_manifest_sha256": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f"
   },
   "original_frozen_source_gate": {
     "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
     "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "threshold_denominator_unique_remaining": 3193,
     "majority_minimum_unique_remaining": 1597,
-    "reconciled_source_eligible_unique": 1238,
-    "source_eligible_shortfall_to_threshold": 359,
+    "reconciled_source_eligible_unique": 1256,
+    "source_eligible_shortfall_to_threshold": 341,
     "semantic_holds_count_as_coverage": false,
     "reheld_inherited_unique_excluded": 45,
     "reheld_inherited_entries_excluded": 46,
     "partial_bodies_count_as_coverage": false,
     "new_fixture_partials_excluded_unique": 13,
     "execution_authorized": false,
-    "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met."
+    "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+    "next_series_02_held_candidates_excluded_unique": 12
   },
   "current_residual_prioritization": {
     "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
     "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
     "current_residual_unique": 2005,
-    "reviewed_new_source_proposed_residual_unique": 96,
+    "reviewed_new_source_proposed_residual_unique": 124,
     "mathematical_comparison_only": {
       "majority_unique": 1003,
-      "shortfall_unique": 907,
+      "shortfall_unique": 879,
       "execution_gating_role": "none"
     },
     "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
@@ -5949,12 +6981,13 @@
     "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
     "new_fixture_partials_excluded_from_residual_coverage": 13,
     "changes_original_execution_stopping_condition": false,
-    "note": "Use 96/2005 to prioritize repairs: 40 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/907 comparison has no execution authority or gating role; the active source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
-    "reviewed_new_source_proposed_residual_entries": 97,
-    "full_body_source_proposed_residual_unique": 40,
+    "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
+    "reviewed_new_source_proposed_residual_entries": 125,
+    "full_body_source_proposed_residual_unique": 68,
     "shared_blocker_repair_proposed_residual_unique": 56,
-    "formerly_supported_regression_proposed_unique": 67,
-    "formerly_supported_regression_unaddressed_unique": 84
+    "formerly_supported_regression_proposed_unique": 77,
+    "formerly_supported_regression_unaddressed_unique": 74,
+    "next_series_02_held_candidates_excluded_from_residual_coverage": 12
   },
   "restored_previous_source_holds": [
     {
@@ -6340,27 +7373,465 @@
   ],
   "combined_source_review": {
     "status": "independently_source_reviewed_execution_unrun",
-    "source_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
-    "source_tree": "8a92ccdf57fe59f87a43a225305ee75738d29830",
-    "isolated_compatibility_commits": [
-      "e776435553085170828a931e574ea06fd7324743",
-      "b48c47847092989dbb2eee11db7f2a94ac74223b"
-    ],
-    "integrated_compatibility_commits": [
-      "87f06c478e7b60abbd51503135a9c3f23c56ee7f",
-      "a363ea924f6ef98d160060960228688fede0c6a0"
-    ],
-    "isolated_final_tree": "8a92ccdf57fe59f87a43a225305ee75738d29830",
-    "review_scope": "Combined counter/static-prevention compatibility union cleared after the canonical effect-registry.tsv row correction. The same exact tree is integrated. Existing three-family source admission and complete-body boundaries are retained.",
-    "compiled_artifact_version": 12,
-    "public_digest_version": 8,
-    "signed_audit_protocol_version": 25,
+    "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+    "source_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+    "compatibility_source_review_commit": "903fcf8db0b35428aa7955815e68b281380dade8",
+    "family_source_review_commits": {
+      "conditional-damage-amounts": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+      "player-counter-anthems": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+      "delayed-player-attack-declarations": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+      "repeat-process-boundaries": "7e437f182cab438b4eef34aa890ae2518c64722d",
+      "residual-static-condition-cohort": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+      "next-step-durations": "d7f8065731fd4989db8ef2e8073854b36b47ec13"
+    },
+    "compiled_artifact_version": 13,
+    "public_digest_version": 9,
+    "signed_audit_protocol_version": 26,
     "manabrew_protocol_version": 3,
-    "engine_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
-    "superseded_unpublished_schema_hash": "2b6fde5114ec4007309dcdb183ed453ec30033f59d1600319640ba45877a4c9f",
-    "superseded_schema_was_published": false,
-    "evidence": "architecture/card-failure-next-series-01-compatibility.md",
-    "admission_evidence": "architecture/card-failure-next-series-01-source-admission.md",
-    "execution": "All authored scenarios UNRUN; original-v5/current-v12 generation, custom WASM/glue/layout, native recovery and replay gates remain open."
+    "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+    "published_parent_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
+    "published_parent_pr": 867,
+    "evidence": "architecture/card-failure-next-series-02-compatibility.md",
+    "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+    "execution": "All authored scenarios UNRUN; genuine v13 artifacts/catalogs, original v5 fixture, custom WASM/glue/layout, native recovery and authenticated replay remain deferred execution gates.",
+    "review_scope": "Six source-cleared bounded cohorts and coordinated successor compatibility; exact integrated final source anchor supplied by the coordinator. No executable or measured recovery claim."
+  },
+  "next_series_02_holds_excluded": [
+    {
+      "oracle_id": "fa4755c2-e573-45c3-bd6a-61b2b35fbd24",
+      "names": [
+        "Flame Discharge"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "status": "held_not_counted",
+      "remaining_blocker": "Requires authoritative cast-time modified-creature evidence.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "1e94e647-9150-4b22-aa9f-d195f64fb20a",
+      "names": [
+        "Slaying Fire"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "status": "held_not_counted",
+      "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
+      "names": [
+        "Summary Judgment"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "status": "held_not_counted",
+      "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "f701ada1-e9e1-42ce-9a62-c11bcec03da7",
+      "names": [
+        "Surtland Flinger"
+      ],
+      "family_id": "conditional-damage-amounts",
+      "status": "held_not_counted",
+      "remaining_blocker": "Requires reflexive sacrifice-result and exact last-known power/subtype amount ownership.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "3bcc378c-4470-4757-a0d5-025a32c918ea",
+      "names": [
+        "Sin, Spira's Punishment"
+      ],
+      "family_id": "repeat-process-boundaries",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete-body source closure remains outside the eight admitted repeat-process bodies.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+      "names": [
+        "Crown of Convergence"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Exact current top-card shared-color recipient reference remains unsupported.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+      "names": [
+        "Mul Daya Channelers"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Authoritative opaque top-card opening/bootstrap before continuous derivation remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "4a3fdb8e-4699-4bd9-84e6-3cc7fea0e1ef",
+      "names": [
+        "The Ur-Sphinx"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Owner-separated mill results and per-player optional free casts remain held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "f467ec85-ffe2-4963-82e0-509a7873fd63",
+      "names": [
+        "Torrent of Lava"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Source-on-stack grants and exact granting-spell finite-source prevention remain held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "16e9a4ee-0398-4e76-bc7e-dd2d52056aaf",
+      "names": [
+        "Volrath's Shapeshifter"
+      ],
+      "family_id": "residual-static-condition-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Ordered top-graveyard full-text replacement remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "d5b9b75d-4bf0-4328-9bb3-7b260a0c46af",
+      "names": [
+        "Savor the Moment"
+      ],
+      "family_id": "next-step-durations",
+      "status": "held_not_counted",
+      "remaining_blocker": "Exact extra-turn owner and step association remain held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    },
+    {
+      "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+      "names": [
+        "Orcish Farmer"
+      ],
+      "family_id": "next-step-durations",
+      "status": "held_not_counted",
+      "remaining_blocker": "Disputed controller-binding rule remains explicitly held; shipped Until variants grant no card credit.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN"
+    }
+  ],
+  "historical_combined_source_reviews": [
+    {
+      "status": "independently_source_reviewed_execution_unrun",
+      "source_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
+      "source_tree": "8a92ccdf57fe59f87a43a225305ee75738d29830",
+      "isolated_compatibility_commits": [
+        "e776435553085170828a931e574ea06fd7324743",
+        "b48c47847092989dbb2eee11db7f2a94ac74223b"
+      ],
+      "integrated_compatibility_commits": [
+        "87f06c478e7b60abbd51503135a9c3f23c56ee7f",
+        "a363ea924f6ef98d160060960228688fede0c6a0"
+      ],
+      "isolated_final_tree": "8a92ccdf57fe59f87a43a225305ee75738d29830",
+      "review_scope": "Combined counter/static-prevention compatibility union cleared after the canonical effect-registry.tsv row correction. The same exact tree is integrated. Existing three-family source admission and complete-body boundaries are retained.",
+      "compiled_artifact_version": 12,
+      "public_digest_version": 8,
+      "signed_audit_protocol_version": 25,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
+      "superseded_unpublished_schema_hash": "2b6fde5114ec4007309dcdb183ed453ec30033f59d1600319640ba45877a4c9f",
+      "superseded_schema_was_published": false,
+      "evidence": "architecture/card-failure-next-series-01-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-01-source-admission.md",
+      "execution": "All authored scenarios UNRUN; original-v5/current-v12 generation, custom WASM/glue/layout, native recovery and replay gates remain open."
+    }
+  ],
+  "next_series_02_reconciliation": {
+    "series": "next02",
+    "stage": 101,
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+    "source_review_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+    "status": "current_main_integrated_owner_source_reviewed_validation_deferred",
+    "evidence": "architecture/card-failure-next-series-02-source-admission.md",
+    "fresh_full_body_unique": 28,
+    "fresh_full_body_entries": 28,
+    "fresh_original_baseline_credit": 18,
+    "fresh_regression_proposals_unique": 10,
+    "fresh_held_unique_not_counted": 12,
+    "current_base_proposed_unique": 1256,
+    "current_base_proposed_entries": 1260,
+    "current_residual_source_proposed_unique": 124,
+    "current_residual_source_proposed_entries": 125,
+    "current_packet_total_touched_unique": 132,
+    "current_packet_total_touched_entries": 133,
+    "current_reheld_inherited_unique": 45,
+    "current_reheld_inherited_entries": 46,
+    "prior_admission": "next_series_reconciliation",
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1256,
+      "source_eligible_shortfall_to_threshold": 341,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 45,
+      "reheld_inherited_entries_excluded": 46,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 124,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 879,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 45,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
+      "reviewed_new_source_proposed_residual_entries": 125,
+      "full_body_source_proposed_residual_unique": 68,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 77,
+      "formerly_supported_regression_unaddressed_unique": 74,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_execution_unrun",
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "source_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "compatibility_source_review_commit": "903fcf8db0b35428aa7955815e68b281380dade8",
+      "family_source_review_commits": {
+        "conditional-damage-amounts": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+        "player-counter-anthems": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+        "delayed-player-attack-declarations": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+        "repeat-process-boundaries": "7e437f182cab438b4eef34aa890ae2518c64722d",
+        "residual-static-condition-cohort": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+        "next-step-durations": "d7f8065731fd4989db8ef2e8073854b36b47ec13"
+      },
+      "compiled_artifact_version": 13,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 26,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "published_parent_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
+      "published_parent_pr": 867,
+      "evidence": "architecture/card-failure-next-series-02-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "execution": "All authored scenarios UNRUN; genuine v13 artifacts/catalogs, original v5 fixture, custom WASM/glue/layout, native recovery and authenticated replay remain deferred execution gates.",
+      "review_scope": "Six source-cleared bounded cohorts and coordinated successor compatibility; exact integrated final source anchor supplied by the coordinator. No executable or measured recovery claim."
+    },
+    "current_recovery_architecture": {
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "note": "architecture/card-failure-next-series-02-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 13,
+      "signed_audit_protocol_version": 26,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "validation": "Independent family and coordinated compatibility source clearance recorded at the final integrated source anchor. All authored executable scenarios, generation, recovery and replay gates remain UNRUN.",
+      "semantic_migration_note": "architecture/card-failure-next-series-02-compatibility.md"
+    },
+    "fixture_records_inspected": 40,
+    "source_identity_matches": true,
+    "cohort_overlap_with_existing_proposals": 0,
+    "cohort_overlap_with_inherited_reholds": 0,
+    "new_candidate_ids_sha256": "78eb6891c1f32b9e8521a9c39479e3f45640039073d85251d5e3e2497ef30a74",
+    "new_original_ids_sha256": "55886cabdf6ab5fe68c8e424086099ae6764faa17bd23107092cc852fbd266a5",
+    "new_regression_ids_sha256": "4bec2bf071aec2afb92da694e845462cf140a299dab670ae691fd2f33017678c",
+    "original_eligible_ids_sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826",
+    "current_residual_proposal_ids_sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1",
+    "held_candidates": [
+      {
+        "oracle_id": "fa4755c2-e573-45c3-bd6a-61b2b35fbd24",
+        "names": [
+          "Flame Discharge"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Requires authoritative cast-time modified-creature evidence.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "1e94e647-9150-4b22-aa9f-d195f64fb20a",
+        "names": [
+          "Slaying Fire"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "ae198ce9-097b-4204-b599-12bdb36f5195",
+        "names": [
+          "Summary Judgment"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Separate Oracle lines require a document-level prior damage-instruction owner.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "f701ada1-e9e1-42ce-9a62-c11bcec03da7",
+        "names": [
+          "Surtland Flinger"
+        ],
+        "family_id": "conditional-damage-amounts",
+        "status": "held_not_counted",
+        "remaining_blocker": "Requires reflexive sacrifice-result and exact last-known power/subtype amount ownership.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "3bcc378c-4470-4757-a0d5-025a32c918ea",
+        "names": [
+          "Sin, Spira's Punishment"
+        ],
+        "family_id": "repeat-process-boundaries",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete-body source closure remains outside the eight admitted repeat-process bodies.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "316c265b-67e2-48b3-aac8-07a898dbb20f",
+        "names": [
+          "Crown of Convergence"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Exact current top-card shared-color recipient reference remains unsupported.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "d3daca53-d40e-4537-a16a-f1e97333bc87",
+        "names": [
+          "Mul Daya Channelers"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Authoritative opaque top-card opening/bootstrap before continuous derivation remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "4a3fdb8e-4699-4bd9-84e6-3cc7fea0e1ef",
+        "names": [
+          "The Ur-Sphinx"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Owner-separated mill results and per-player optional free casts remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "f467ec85-ffe2-4963-82e0-509a7873fd63",
+        "names": [
+          "Torrent of Lava"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Source-on-stack grants and exact granting-spell finite-source prevention remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "16e9a4ee-0398-4e76-bc7e-dd2d52056aaf",
+        "names": [
+          "Volrath's Shapeshifter"
+        ],
+        "family_id": "residual-static-condition-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Ordered top-graveyard full-text replacement remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "d5b9b75d-4bf0-4328-9bb3-7b260a0c46af",
+        "names": [
+          "Savor the Moment"
+        ],
+        "family_id": "next-step-durations",
+        "status": "held_not_counted",
+        "remaining_blocker": "Exact extra-turn owner and step association remain held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      },
+      {
+        "oracle_id": "c3039d19-8c98-4953-8943-9922b6ab45ef",
+        "names": [
+          "Orcish Farmer"
+        ],
+        "family_id": "next-step-durations",
+        "status": "held_not_counted",
+        "remaining_blocker": "Disputed controller-binding rule remains explicitly held; shipped Until variants grant no card credit.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN"
+      }
+    ],
+    "family_ids": [
+      "conditional-damage-amounts",
+      "player-counter-anthems",
+      "delayed-player-attack-declarations",
+      "repeat-process-boundaries",
+      "residual-static-condition-cohort",
+      "next-step-durations"
+    ],
+    "execution": "UNRUN. Only offline retained JSON/file/hash/Git inspection and source-accounting document edits. No build, compiler, test, corpus/analysis rerun, formatter, generation, probe or replay.",
+    "accounting": "1238 + 18 = 1256 original source-eligible IDs / 1260 entries; 96 + 28 = 124 current residual source proposals / 125 entries. 68 residual full-body + 56 shared-blocker = 124. 47 original-residual + 77 regression = 124. Eight supported semantic corrections yield 132 touched identities / 133 entries. All measured outcomes remain unchanged."
   }
 }

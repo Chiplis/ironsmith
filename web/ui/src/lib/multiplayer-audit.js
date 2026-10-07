@@ -19,15 +19,12 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-// Coordinated prevention, functional-zone and current-main behavior boundary.
-// Includes requesting counter causes, nominal/physical payment ownership and
-// Aura-owned prevention with live exact attachments. Genesis has no exact engine
-// build identity: the current protocol/digest gate owns these replay semantics.
-// Historical signed bytes, including protocol24/digest7, stay intact; only the
-// current protocol and digest may enter the current engine or a current peer.
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 25;
-export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 8;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, CURRENT_AUDIT_PROTOCOL_VERSION]);
+// Coordinated repeat, delayed-combat, player-counter and next-step boundary.
+// Genesis has no exact engine build identity. Current numeric protocol/digest
+// gates own replay admission; historical signatures retain their original bytes.
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 26;
+export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 9;
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, CURRENT_AUDIT_PROTOCOL_VERSION]);
 
 // The current rules engine must never reinterpret a historical signed record.
 // Signature-only verification keeps the original version and canonical payload.
