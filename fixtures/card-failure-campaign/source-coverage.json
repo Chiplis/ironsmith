@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
+  "source_implementation_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
-    "additional_proposed_unique_cards": 1281,
-    "additional_proposed_compile_entries": 1286,
+    "additional_proposed_unique_cards": 1286,
+    "additional_proposed_compile_entries": 1291,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1281,
+    "source_proposals_excluding_identified_runtime_gaps": 1286,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 316,
+    "source_identities_until_majority_gate": 311,
     "current_base_owner_admission_blocked": true,
     "measurement_scope": "Current measurements are clean main5cc46c1. Source-card inventory remains the original frozen e8740178 failure scope; current-residual accounting, regressions and exclusions are explicit in current-residual-source-coverage.json.",
     "current_main_refresh_status": "completed_override_consumed",
@@ -33,7 +33,7 @@
     "current_residual_source_proposed_entries": 148,
     "current_reheld_previously_proposed_unique": 30,
     "current_reheld_previously_proposed_entries": 30,
-    "original_baseline_source_proposed_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
+    "original_baseline_source_proposed_scope": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
     "historical_stack07_measurement": {
       "verified_unique_compile_recoveries": 40,
       "verified_unique_remaining": 3193
@@ -41,14 +41,14 @@
     "current_residual_source_coverage_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
     "broad_execution_gate": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "current_base_owner_admission_blocked_scope": "30 inherited re-holds / 30 entries remain; 15 IDs / 16 entries restored by independent NEXT03 source review. No execution admission.",
-    "execution_gate_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
+    "execution_gate_scope": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
     "current_regression_source_proposed_unique": 79,
     "current_regression_unaddressed_unique": 72,
-    "current_packet_total_touched_unique": 159,
-    "current_packet_scope_note": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
+    "current_packet_total_touched_unique": 164,
+    "current_packet_scope_note": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
     "next_series_02_held_candidates_excluded_unique": 12,
     "next_series_03_held_candidates_excluded_unique": 8,
-    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -66,8 +66,8 @@
       "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
     },
     "current_recovery_architecture": {
-      "source_commit": "0bfe423cabf555b0d59ccf8422574b479fa84025",
-      "note": "architecture/card-failure-next-series-04-compatibility.md",
+      "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "note": "architecture/card-failure-next-series-05-compatibility.md",
       "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
       "public_audit_checkpoint_version": 9,
       "public_audit_is_gameplay_restore": false,
@@ -75,10 +75,10 @@
       "signed_audit_protocol_version": 27,
       "manabrew_protocol_version": 3,
       "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
-      "validation": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
-      "semantic_migration_note": "architecture/card-failure-next-series-04-compatibility.md"
+      "validation": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-05-compatibility.md"
     },
-    "measurement_and_threshold_scope": "Source-reviewed NEXT04 accounting: 1281 original eligible / 1286 entries, shortfall 316 to 1597/3193; residual 146/148 unchanged (90 full-body, 56 shared-blocker). Five already-measured-supported evidence-only bodies are separate from eight semantic corrections: 159 touched IDs / 161 entries. No new measured recovery; all new-source execution remains closed.",
+    "measurement_and_threshold_scope": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
     "one_time_current_main_refresh": {
       "authorized_at": "2026-10-07T12:11Z",
       "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
@@ -97,8 +97,8 @@
       "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
       "threshold_denominator_unique_remaining": 3193,
       "majority_minimum_unique_remaining": 1597,
-      "reconciled_source_eligible_unique": 1281,
-      "source_eligible_shortfall_to_threshold": 316,
+      "reconciled_source_eligible_unique": 1286,
+      "source_eligible_shortfall_to_threshold": 311,
       "semantic_holds_count_as_coverage": false,
       "reheld_inherited_unique_excluded": 30,
       "reheld_inherited_entries_excluded": 30,
@@ -108,7 +108,7 @@
       "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
       "next_series_02_held_candidates_excluded_unique": 12,
       "next_series_03_held_candidates_excluded_unique": 8,
-      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     },
     "current_residual_prioritization": {
       "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
@@ -125,7 +125,7 @@
       "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
       "new_fixture_partials_excluded_from_residual_coverage": 13,
       "changes_original_execution_stopping_condition": false,
-      "note": "Unchanged 146/2005 residual source proposals: 90 full-body and 56 shared blocker; comparison-only 1003/857 has no execution authority. NEXT04 adds five supported evidence-only originals, zero residual credit. Original source gate 1597/3193 remains closed.",
+      "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT05 adds five supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
       "reviewed_new_source_proposed_residual_entries": 148,
       "full_body_source_proposed_residual_unique": 90,
       "shared_blocker_repair_proposed_residual_unique": 56,
@@ -133,7 +133,7 @@
       "formerly_supported_regression_unaddressed_unique": 72,
       "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
       "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
-      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared 0bfe423cabf555b0d59ccf8422574b479fa84025. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     }
   },
   "families": [
@@ -7249,6 +7249,137 @@
       "formerly_supported_regression_unique": 0,
       "formerly_supported_regression_original_baseline_credit": 0,
       "held_entries": []
+    },
+    {
+      "id": "bioshift-full-body",
+      "series": "next05",
+      "stage": 104,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/bioshift_source_gate.json.fixture",
+      "fixture_sha256": "a0e5ef3769e6d3ff6086e4cf4ab4fe5bc83109907e1fe225ec916f8e35c05538",
+      "source_review_commit": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
+      "source_review_tree": "9098e8d8ca33c184d666973ef22873f3daa0de24",
+      "evidence": "architecture/bioshift-source-gate.md",
+      "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Bioshift"
+      ],
+      "baseline_entries": [
+        "Bioshift"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+      ],
+      "original_baseline_new_unique": 1,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
+    },
+    {
+      "id": "conditional-life-loss-bodies",
+      "series": "next05",
+      "stage": 104,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/conditional_life_loss_bodies.json.fixture",
+      "fixture_sha256": "ff1a192ad036d54efefc1b7aa4920da9acb59c27753d7da53713ed807828e433",
+      "source_review_commit": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+      "source_review_tree": "4a49d71fbd5150d5947109671746588c632517eb",
+      "evidence": "architecture/card-failure-conditional-life-loss-bodies.md",
+      "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Tezzeret's Simulacrum",
+        "Necra Sanctuary"
+      ],
+      "baseline_entries": [
+        "Tezzeret's Simulacrum",
+        "Necra Sanctuary"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "2586a59d-8501-4c22-9d69-f4bf91de7024",
+        "dd886509-7455-4c8f-976f-0f5fafcb97be"
+      ],
+      "original_baseline_new_unique": 2,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "2586a59d-8501-4c22-9d69-f4bf91de7024",
+        "dd886509-7455-4c8f-976f-0f5fafcb97be"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
+    },
+    {
+      "id": "draw-discard-bodies",
+      "series": "next05",
+      "stage": 104,
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/draw_discard_bodies.json.fixture",
+      "fixture_sha256": "abf4b25314c3534869aebe512dee9f550c72cd8d03ab6f6fdf724398fccb30f2",
+      "source_review_commit": "ba62f8286ddf471329985829f949fc1899aaca61",
+      "source_review_tree": "684465e4e7a616b654d02110df162f30e0a019c2",
+      "evidence": "architecture/draw-discard-bodies.md",
+      "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Casting of Bones",
+        "Soldevi Sage"
+      ],
+      "baseline_entries": [
+        "Casting of Bones",
+        "Soldevi Sage"
+      ],
+      "current_residual_oracle_ids": [],
+      "current_residual_unique": 0,
+      "current_residual_entries": 0,
+      "original_baseline_new_oracle_ids": [
+        "1f612df3-53b6-4317-9d63-1f903ee3f0c4",
+        "5a747256-4215-4334-98ab-0c2e4ed92e47"
+      ],
+      "original_baseline_new_unique": 2,
+      "already_measured_supported_evidence_only_oracle_ids": [
+        "1f612df3-53b6-4317-9d63-1f903ee3f0c4",
+        "5a747256-4215-4334-98ab-0c2e4ed92e47"
+      ],
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
     }
   ],
   "cards": [
@@ -10320,8 +10451,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "bioshift-full-body"
+      ],
+      "previous_source_record_before_next05": {
+        "card_name": "Bioshift",
+        "oracle_ids": [
+          "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
+      "current_source_admission": {
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/bioshift-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Bishop of Binding",
@@ -11848,8 +12004,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-discard-bodies"
+      ],
+      "previous_source_record_before_next05": {
+        "card_name": "Casting of Bones",
+        "oracle_ids": [
+          "5a747256-4215-4334-98ab-0c2e4ed92e47"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "ba62f8286ddf471329985829f949fc1899aaca61",
+      "current_source_admission": {
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/draw-discard-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Catacomb Dragon",
@@ -28894,8 +29075,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-loss-bodies"
+      ],
+      "previous_source_record_before_next05": {
+        "card_name": "Necra Sanctuary",
+        "oracle_ids": [
+          "2586a59d-8501-4c22-9d69-f4bf91de7024"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+      "current_source_admission": {
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/card-failure-conditional-life-loss-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Necravolver",
@@ -36742,8 +36948,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "draw-discard-bodies"
+      ],
+      "previous_source_record_before_next05": {
+        "card_name": "Soldevi Sage",
+        "oracle_ids": [
+          "1f612df3-53b6-4317-9d63-1f903ee3f0c4"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "ba62f8286ddf471329985829f949fc1899aaca61",
+      "current_source_admission": {
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/draw-discard-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Soldevi Sentry",
@@ -39419,8 +39650,33 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "conditional-life-loss-bodies"
+      ],
+      "previous_source_record_before_next05": {
+        "card_name": "Tezzeret's Simulacrum",
+        "oracle_ids": [
+          "dd886509-7455-4c8f-976f-0f5fafcb97be"
+        ],
+        "baseline_category": "parser_failure",
+        "verified_compile_recovery": false,
+        "source_coverage_status": "unaddressed",
+        "source_families": []
+      },
+      "source_review_commit": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+      "current_source_admission": {
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/card-failure-conditional-life-loss-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0
+      }
     },
     {
       "card_name": "Tezzeret, Betrayer of Flesh",
@@ -46778,7 +47034,7 @@
     "historical_record": true,
     "current_base_successor": "next_series_03_reconciliation"
   },
-  "current_source_admission": "next_series_04_reconciliation",
+  "current_source_admission": "next_series_05_reconciliation",
   "next_series_03_reconciliation": {
     "series": "next03",
     "stage": 102,
@@ -47945,5 +48201,769 @@
       }
     ],
     "execution": "UNRUN. Metadata/source/JSON/hash/Git inspection only; no build, test, probe, formatter, corpus execution, codegen or remote write."
+  },
+  "next_series_05_reconciliation": {
+    "series": "next05",
+    "stage": 104,
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+    "source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+    "evidence": "architecture/card-failure-next-series-05-source-admission.md",
+    "prior_admission": "next_series_04_reconciliation",
+    "fresh_full_body_unique": 5,
+    "fresh_full_body_entries": 5,
+    "fresh_original_baseline_credit": 5,
+    "fresh_current_residual_credit": 0,
+    "fresh_restored_original_unique": 0,
+    "fresh_regression_proposals_unique": 0,
+    "fresh_measured_recoveries": 0,
+    "current_base_proposed_unique": 1286,
+    "current_base_proposed_entries": 1291,
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_packet_total_touched_unique": 164,
+    "current_packet_total_touched_entries": 166,
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1286,
+      "source_eligible_shortfall_to_threshold": 311,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 146,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 857,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "Unchanged 146 / 2,005 residual source proposals: 90 full-body and 56 shared-blocker. Comparison-only 1,003 / 857 has no execution authority. NEXT05 adds five supported evidence-only originals, zero residual credit. Original source gate 1,597 / 3,193 remains closed.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "source_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+      "compatibility_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "family_source_review_commits": {
+        "bioshift-full-body": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
+        "conditional-life-loss-bodies": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+        "draw-discard-bodies": "ba62f8286ddf471329985829f949fc1899aaca61"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_pr": 870,
+      "evidence": "architecture/card-failure-next-series-05-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Five evidence-only complete bodies; no production model or behavior change. Artifact 14 / public digest 9 / signed audit 27 / Manabrew 3 remain unchanged.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/bioshift-independent-review.md",
+          "sha256": "a7c71d2bbcccd89269d79485d1e88965896b3b33724a8cb12d27d75d300add33",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/conditional-life-independent-review.md",
+          "sha256": "b34d6eb77ee9a414cd1dff51658f0da91bf95872754459a1ed10f8f55ead261a",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/draw-discard-independent-review.md",
+          "sha256": "cd2cccb7128f256178eae1103178a33c7bf9c722c7cf77ed5adfd1e074d19b54",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next05-combined-source-review.md",
+          "sha256": "921c36508c6d90d6496e06c7d61cb7c413fc9aaae42f1760013d6536bacd269b",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    "current_recovery_architecture": {
+      "source_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+      "note": "architecture/card-failure-next-series-05-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-05-compatibility.md"
+    },
+    "identity_sets": {
+      "candidate_five": {
+        "unique": 5,
+        "sha256": "6952c7ba557e292716cfe616a7b3fca1f5337a97a5872ac5eb0fc26dc5407310"
+      },
+      "eligible_before": {
+        "unique": 1281,
+        "sha256": "2231d55e28730b03cf0be4e83c0fb8d06ec1aee44d21696d476c183aa7d63b72"
+      },
+      "eligible_after_conditional": {
+        "unique": 1286,
+        "sha256": "754bff66053a91d382012dc8888a941934ce81902a999514838a3d3d39dd322f"
+      },
+      "historical_inventory130": {
+        "unique": 130,
+        "sha256": "0e76d7d3971093099408d02c375301687b82ab1161b1a29cb319f212b296bd9d"
+      },
+      "previously_admitted_next04": {
+        "unique": 5,
+        "sha256": "26295bd54a51b8de79d1426204b0fc588a3e93bec1cd472006085367e0cc4e24"
+      },
+      "unadmitted_before": {
+        "unique": 125,
+        "sha256": "ad5dc3db5060e061f50bf4982788e842cf14b5ae2e534b1e0ec7fb554b1e3683"
+      },
+      "unadmitted_after_conditional": {
+        "unique": 120,
+        "sha256": "974fa6e2814459bc5bb6f43e2f61ca1da69c4b10ff70ce52b3dac0ac403c8236"
+      },
+      "historical40": {
+        "unique": 40,
+        "sha256": "ce0f33459ff09de235622c1dce7480e3b0fc6fe24781c4e4a2688a88b9e1891f"
+      },
+      "current_residual": {
+        "unique": 146,
+        "sha256": "42a54ba1c2232f64a93eb74de6e88bf2fde88195e4d9179f84d97bb731d463e7"
+      }
+    },
+    "family_ids": [
+      "bioshift-full-body",
+      "conditional-life-loss-bodies",
+      "draw-discard-bodies"
+    ],
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/bioshift-independent-review.md",
+        "sha256": "a7c71d2bbcccd89269d79485d1e88965896b3b33724a8cb12d27d75d300add33",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/conditional-life-independent-review.md",
+        "sha256": "b34d6eb77ee9a414cd1dff51658f0da91bf95872754459a1ed10f8f55ead261a",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/draw-discard-independent-review.md",
+        "sha256": "cd2cccb7128f256178eae1103178a33c7bf9c722c7cf77ed5adfd1e074d19b54",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next05-combined-source-review.md",
+        "sha256": "921c36508c6d90d6496e06c7d61cb7c413fc9aaae42f1760013d6536bacd269b",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ],
+    "pre_admission_input_sha256": {
+      "source": "5d91861380a81c21e3057f875d7da63aedd2197d2b5372e5502526b0ce9c9012",
+      "residual": "312751bcc652d13974857be966098a545b0805c6d728bb38ef65bdb3a80214b4",
+      "baseline": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "comparison": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75",
+      "failures": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31",
+      "manifest": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+      "inventory": "823ecd1bb63e187d21bd5a7341e0150e76ce517dbebb719dcf1c59371cc2fd40",
+      "workflow": "331c1cc0a1f14f03f58162d8a884febfb5a0e1af2954baf9b2754c3acb81b6e4",
+      "published_stack": "581d4d3cb6fe2af5d2457e7922899226e41fec00e364d107014773a340a8935c",
+      "parent_publication": "bea7005a5b0cbd613e762ff551b96e45ff5d295b127d8f6ad18925f7c5d3cabe",
+      "parent_tree_receipt": "dabf55f3b261b5b62750a86c9daa50a48639c7dc75f91c5edfe8b5a09f1394a6",
+      "prior_preparation": "1203ce8efbaa96de71354f6e7adf0a317ac358be4b360063cffe730ea64fe554",
+      "schema": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "triage": "f16254d9c9368255825f362d961d79683b757393db0801787785a7bdd5b7125b",
+      "frozen_dataset_compressed_xz": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0"
+    },
+    "accounting": "Source-reviewed NEXT05 accounting: 1,286 original eligible IDs / 1,291 entries, shortfall 311 to the 1,597 / 3,193 gate; residual 146 IDs / 148 entries unchanged (90 full-body, 56 shared-blocker). Ten cumulative already-measured-supported evidence-only bodies remain separate from eight semantic corrections: 164 touched IDs / 166 entries. No new measured recovery; all new-source execution remains closed.",
+    "already_supported_evidence_only": [
+      {
+        "oracle_id": "3da604fc-68e9-4749-98f9-6fbcebcab9b6",
+        "names": [
+          "Bioshift"
+        ],
+        "family_id": "bioshift-full-body",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "33f8ba78cd99b466c85806c33cdef4ce88a03636",
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/bioshift-source-gate.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Bioshift",
+          "oracle_ids": [
+            "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Bioshift",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "9e363348f5217b94d613d37f55d9c419a3b1790402afce35b81814d463b28e47",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Move any number of +1/+1 counters from target creature onto another target creature with the same controller.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Move any number of +1/+1 counters from target creature onto another target creature with the same controller.",
+          "parse_error": "parser does not yet support line family: 'Move any number of +1/+1 counters from target creature onto another target creature with the same controller.' [rule-path=unsupported-line-family]; oracle-only fallback also failed: parser does not yet support line family: 'Move any number of +1/+1 counters from target creature onto another target creature with the same controller.' [rule-path=unsupported-line-family]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: parser does not yet support line family: 'Move any number of +1/+1 counters from target creature onto another target creature with the same controller.' [rule-path=unsupported-line-family]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Move any number of +1/+1 counters from target creature onto another target creature with the same controller.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "parser does not yet support line family: 'Move any number of +1/+1 counters from target creature onto another target creature with the same controller.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "parser does not yet support line family: 'Move any number of +1/+1 counters from target creature onto another target creature with the same controller.' [rule-path=unsupported-line-family]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Bioshift"
+          ],
+          "oracle_id": "3da604fc-68e9-4749-98f9-6fbcebcab9b6",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Bioshift"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Bioshift",
+          "oracle_ids": [
+            "3da604fc-68e9-4749-98f9-6fbcebcab9b6"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "49fdb2725795e924a29d770e6d1d2dbc97b2d9a7aa2886ec4bcbf7789ea4e435",
+            "canonical_sha256": "953abe1c9b8256ef569bf89f1d23c36c3d4a8beab0d3717e2faf547dacb960db"
+          },
+          "baseline": {
+            "sha256": "9d1ebda54d52be60f9963c9297ee73f0da71eb9c4302fa4893ace0305c166845",
+            "canonical_sha256": "ac3c71a5f15b44301679469707e954831d5106838ebbfa73ca7e1b3f9b409bf2"
+          },
+          "inventory": {
+            "sha256": "49fdb2725795e924a29d770e6d1d2dbc97b2d9a7aa2886ec4bcbf7789ea4e435",
+            "canonical_sha256": "953abe1c9b8256ef569bf89f1d23c36c3d4a8beab0d3717e2faf547dacb960db"
+          },
+          "comparison": {
+            "sha256": "9676e0493650ccddac41b79c7421ebf753c9544cedf8b702d82543983b8419d5",
+            "canonical_sha256": "9676e0493650ccddac41b79c7421ebf753c9544cedf8b702d82543983b8419d5"
+          },
+          "source_json_pointer": "/cards/250",
+          "baseline_index_zero_based": 2495,
+          "retained_recovery_index_zero_based": 344,
+          "inventory_index_zero_based": 9
+        }
+      },
+      {
+        "oracle_id": "2586a59d-8501-4c22-9d69-f4bf91de7024",
+        "names": [
+          "Necra Sanctuary"
+        ],
+        "family_id": "conditional-life-loss-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/card-failure-conditional-life-loss-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Necra Sanctuary",
+          "oracle_ids": [
+            "2586a59d-8501-4c22-9d69-f4bf91de7024"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Necra Sanctuary",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "bf44eba6d49acfc76a7251a79491d254b3157f617469e9e9b013cb8f7bcf0c5e",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "At the beginning of your upkeep, if you control a green or white permanent, target player loses 1 life. If you control a green permanent and a white permanent, that player loses 3 life instead.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "At the beginning of your upkeep, if you control a green or white permanent, target player loses 1 life. If you control a green permanent and a white permanent, that player loses 3 life instead.",
+          "parse_error": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "At the beginning of your upkeep, if you control a green or white permanent, target player loses 1 life. If you control a green permanent and a white permanent, that player loses 3 life instead.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=leading-if-conditional > sentence-reading] [rule-path=compiler-trigger-facts]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Necra Sanctuary"
+          ],
+          "oracle_id": "2586a59d-8501-4c22-9d69-f4bf91de7024",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Necra Sanctuary"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Necra Sanctuary",
+          "oracle_ids": [
+            "2586a59d-8501-4c22-9d69-f4bf91de7024"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "03813b0e02962252634a1c2cfbcb1a93a28daf2f6414caaaa663e2ccce1ade6a",
+            "canonical_sha256": "ffeabcc98233b5a9d47c4cc99fe8b3d0a28daa9d9ab1051f92e4c2836e43b319"
+          },
+          "baseline": {
+            "sha256": "2f4170178e67ff53f90615df4954bc26ac353905f4a935f8a77d6797ef2ab076",
+            "canonical_sha256": "38b21c7f1df25d4074904837ca51d16eeb38dfa9ce42e02a34d2423edc8c9a0c"
+          },
+          "inventory": {
+            "sha256": "03813b0e02962252634a1c2cfbcb1a93a28daf2f6414caaaa663e2ccce1ade6a",
+            "canonical_sha256": "ffeabcc98233b5a9d47c4cc99fe8b3d0a28daa9d9ab1051f92e4c2836e43b319"
+          },
+          "comparison": {
+            "sha256": "087bd03d5043bd98d7b266e942a8dfd370d2cc150296f4b277b36c7b9b545d79",
+            "canonical_sha256": "087bd03d5043bd98d7b266e942a8dfd370d2cc150296f4b277b36c7b9b545d79"
+          },
+          "source_json_pointer": "/cards/1820",
+          "baseline_index_zero_based": 18318,
+          "retained_recovery_index_zero_based": 214,
+          "inventory_index_zero_based": 82
+        }
+      },
+      {
+        "oracle_id": "dd886509-7455-4c8f-976f-0f5fafcb97be",
+        "names": [
+          "Tezzeret's Simulacrum"
+        ],
+        "family_id": "conditional-life-loss-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "6de7cdbb4f863a67877690b0491a5af92dbe6943",
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/card-failure-conditional-life-loss-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Tezzeret's Simulacrum",
+          "oracle_ids": [
+            "dd886509-7455-4c8f-976f-0f5fafcb97be"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Tezzeret's Simulacrum",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "432b2845c0a8ec1aa49873db6b526d30a34e14f43d879d0e12b53b000a3b5ff1",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "{T}: Target opponent loses 1 life. If you control a Tezzeret planeswalker, that player loses 3 life instead.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "{T}: Target opponent loses 1 life. If you control a Tezzeret planeswalker, that player loses 3 life instead.",
+          "parse_error": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=conditional-sentence-family > legacy-document-registry-reading]; oracle-only fallback also failed: unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "{T}: Target opponent loses 1 life. If you control a Tezzeret planeswalker, that player loses 3 life instead.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "unsupported trailing life-loss clause (clause: '3 life instead') [rule-path=conditional-sentence-family > legacy-document-registry-reading]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Tezzeret's Simulacrum"
+          ],
+          "oracle_id": "dd886509-7455-4c8f-976f-0f5fafcb97be",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Tezzeret's Simulacrum"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Tezzeret's Simulacrum",
+          "oracle_ids": [
+            "dd886509-7455-4c8f-976f-0f5fafcb97be"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "ed61bb922de931cee53532df64af9adb3cff5b47381b2a4460f2b0f50e9c87ff",
+            "canonical_sha256": "72243cdab9dffdabc7bcd96b437fabd14a7beb5820be4f0d8ba08adb426249ed"
+          },
+          "baseline": {
+            "sha256": "07528e55cb2483584bb0027ba95d6abbc2b59f2a06e40381925bf2d3327267ab",
+            "canonical_sha256": "629304713a2f29e6e204ccd6ea47b5d5d967de87f4143d479ffe83aefcf8aea3"
+          },
+          "inventory": {
+            "sha256": "ed61bb922de931cee53532df64af9adb3cff5b47381b2a4460f2b0f50e9c87ff",
+            "canonical_sha256": "72243cdab9dffdabc7bcd96b437fabd14a7beb5820be4f0d8ba08adb426249ed"
+          },
+          "comparison": {
+            "sha256": "e520ada3263ad527fff91b909b68a40bce13e3fe07d0f2670cc2f4ad0b9f4c6d",
+            "canonical_sha256": "e520ada3263ad527fff91b909b68a40bce13e3fe07d0f2670cc2f4ad0b9f4c6d"
+          },
+          "source_json_pointer": "/cards/2710",
+          "baseline_index_zero_based": 27766,
+          "retained_recovery_index_zero_based": 1181,
+          "inventory_index_zero_based": 107
+        }
+      },
+      {
+        "oracle_id": "5a747256-4215-4334-98ab-0c2e4ed92e47",
+        "names": [
+          "Casting of Bones"
+        ],
+        "family_id": "draw-discard-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "ba62f8286ddf471329985829f949fc1899aaca61",
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/draw-discard-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Casting of Bones",
+          "oracle_ids": [
+            "5a747256-4215-4334-98ab-0c2e4ed92e47"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Casting of Bones",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "ec4b5ac772f4e0d0d15be262395a3fc8ab5f9f07ec01452ece97330cb47480eb",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "Enchant creature\nWhen enchanted creature dies, draw three cards, then discard one of them.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "Enchant creature\nWhen enchanted creature dies, draw three cards, then discard one of them.",
+          "parse_error": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=statement-line > triggered-line]; oracle-only fallback also failed: unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=statement-line > triggered-line]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=statement-line > triggered-line]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "Enchant creature\nWhen enchanted creature dies, draw three cards, then discard one of them.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=statement-line > triggered-line]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading] [rule-path=statement-line > triggered-line]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Casting of Bones"
+          ],
+          "oracle_id": "5a747256-4215-4334-98ab-0c2e4ed92e47",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Casting of Bones"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Casting of Bones",
+          "oracle_ids": [
+            "5a747256-4215-4334-98ab-0c2e4ed92e47"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "03e73ad4f1f8006eedb687e05839973ccce21d6321dc2577ed6e7b9ab4f3921e",
+            "canonical_sha256": "5bdefe922b025b8b5c69febc963c7ba6cc03320fca048a814ea64044a7c8c42e"
+          },
+          "baseline": {
+            "sha256": "ea6d4a8af68d002841842bfe8e945092387d0c43e4c018b3c6481759ddd52509",
+            "canonical_sha256": "27d765b2b13f5034a528fa16c62c88bf902155f4d241ec4d709a40f18de4f29b"
+          },
+          "inventory": {
+            "sha256": "03e73ad4f1f8006eedb687e05839973ccce21d6321dc2577ed6e7b9ab4f3921e",
+            "canonical_sha256": "5bdefe922b025b8b5c69febc963c7ba6cc03320fca048a814ea64044a7c8c42e"
+          },
+          "comparison": {
+            "sha256": "4f12d715524dcf7be837a94bbe7df2f3966ea8a59237a8d3426c74ac447872a7",
+            "canonical_sha256": "4f12d715524dcf7be837a94bbe7df2f3966ea8a59237a8d3426c74ac447872a7"
+          },
+          "source_json_pointer": "/cards/379",
+          "baseline_index_zero_based": 4065,
+          "retained_recovery_index_zero_based": 489,
+          "inventory_index_zero_based": 14
+        }
+      },
+      {
+        "oracle_id": "1f612df3-53b6-4317-9d63-1f903ee3f0c4",
+        "names": [
+          "Soldevi Sage"
+        ],
+        "family_id": "draw-discard-bodies",
+        "measurement": "already_recovered_on_retained_clean_main",
+        "source_tier": "already-supported evidence-only full-body source proposal",
+        "original_baseline_source_credit": 1,
+        "current_residual_source_credit": 0,
+        "source_review_commit": "ba62f8286ddf471329985829f949fc1899aaca61",
+        "series": "next05",
+        "combined_source_review_commit": "f5ac76e7bc824d634db7d93361746bbaa3844374",
+        "combined_source_review_tree": "1e3ee462cc5fbca2ec6596e6b96b3f1a47c0e731",
+        "evidence": "architecture/draw-discard-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-05-source-admission.md",
+        "admission_condition": "Independent bounded cohort and combined integration source reviews cleared f5ac76e7bc824d634db7d93361746bbaa3844374. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false,
+        "verified_runtime_recovery": false,
+        "new_measured_recoveries": 0,
+        "prior_source_record": {
+          "card_name": "Soldevi Sage",
+          "oracle_ids": [
+            "1f612df3-53b6-4317-9d63-1f903ee3f0c4"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "retained_baseline_record": {
+          "card_name": "Soldevi Sage",
+          "category": "parser_failure",
+          "compiled_coverage": 0.0,
+          "compiled_definition_sha256": null,
+          "compiled_text": null,
+          "content_hash": "d79122b9787e4cbcdae316cb244ac8ca0b41d2ff6d3e2cf5de9afc03d2401500",
+          "has_unimplemented": 0,
+          "line_delta": 0,
+          "normalized_oracle_text": "{T}, Sacrifice two lands: Draw three cards, then discard one of them.",
+          "oracle_coverage": 0.0,
+          "oracle_text": "{T}, Sacrifice two lands: Draw three cards, then discard one of them.",
+          "parse_error": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+          "parse_loss_count": 1,
+          "parse_loss_reasons": "oracle_only_fallback: parse input failed before oracle text fallback: unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+          "parse_lossy": 1,
+          "parse_status": "parse_failed",
+          "raw_oracle_text": "{T}, Sacrifice two lands: Draw three cards, then discard one of them.",
+          "route_diagnostics": [
+            {
+              "diagnostic": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+              "outcome": "failed",
+              "route": "parse_input"
+            },
+            {
+              "diagnostic": "unsupported trailing draw clause (clause: 'three cards then discard one of them') [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+              "outcome": "failed",
+              "route": "oracle_only"
+            }
+          ],
+          "semantic_mismatch": 0,
+          "similarity_score": 0.0,
+          "supported": false
+        },
+        "retained_measured_recovery_record": {
+          "current_failing_entries": [],
+          "current_names": [
+            "Soldevi Sage"
+          ],
+          "oracle_id": "1f612df3-53b6-4317-9d63-1f903ee3f0c4",
+          "oracle_text_changed": false,
+          "original_names": [
+            "Soldevi Sage"
+          ]
+        },
+        "retained_inventory_record": {
+          "card_name": "Soldevi Sage",
+          "oracle_ids": [
+            "1f612df3-53b6-4317-9d63-1f903ee3f0c4"
+          ],
+          "baseline_category": "parser_failure",
+          "verified_compile_recovery": false,
+          "source_coverage_status": "unaddressed",
+          "source_families": []
+        },
+        "source_record_provenance": {
+          "source": {
+            "sha256": "57fe307f2879b1fa95af60be7691b2fd97c4a279cc490275ee1a754b6bdaca37",
+            "canonical_sha256": "94197d6b3cf2d112f328d230750f1cc343c9274c4c7c2287051b2d0c7b088bb3"
+          },
+          "baseline": {
+            "sha256": "92d5751eb86217b1f88676329e799a07b923d9f3cda966992f825416ed0db193",
+            "canonical_sha256": "9abbb5cd75c19d2f1d5873d9f7ec5154b866dd72e204641f50d504ffe95d21ad"
+          },
+          "inventory": {
+            "sha256": "57fe307f2879b1fa95af60be7691b2fd97c4a279cc490275ee1a754b6bdaca37",
+            "canonical_sha256": "94197d6b3cf2d112f328d230750f1cc343c9274c4c7c2287051b2d0c7b088bb3"
+          },
+          "comparison": {
+            "sha256": "09a79e8ff05e9368fbceb4efd72715896f31a401e541cd4b5f522eb16bc2e385",
+            "canonical_sha256": "09a79e8ff05e9368fbceb4efd72715896f31a401e541cd4b5f522eb16bc2e385"
+          },
+          "source_json_pointer": "/cards/2482",
+          "baseline_index_zero_based": 25287,
+          "retained_recovery_index_zero_based": 180,
+          "inventory_index_zero_based": 100
+        }
+      }
+    ],
+    "execution": "UNRUN. Metadata, source, JSON, hash and Git inspection only. No build, test, probe, formatter, corpus execution, codegen or remote write.",
+    "frozen_dataset_provenance": {
+      "path": "fixtures/card-failure-campaign/cards-20261003.json.xz",
+      "compressed_xz_sha256": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+      "uncompressed_json_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+      "uncompressed_hash_source": "Inherited frozen dataset metadata; independently reverified by coordinating reviewer. No corpus execution."
+    }
   }
 }

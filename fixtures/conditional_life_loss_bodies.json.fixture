@@ -1,0 +1,26 @@
+[
+  {
+    "oracle_id": "2586a59d-8501-4c22-9d69-f4bf91de7024",
+    "name": "Necra Sanctuary",
+    "mana_cost": "{2}{B}",
+    "type_line": "Enchantment",
+    "oracle_text": "At the beginning of your upkeep, if you control a green or white permanent, target player loses 1 life. If you control a green permanent and a white permanent, that player loses 3 life instead.",
+    "colors": [
+      "B"
+    ],
+    "color_identity": [
+      "B"
+    ]
+  },
+  {
+    "oracle_id": "dd886509-7455-4c8f-976f-0f5fafcb97be",
+    "name": "Tezzeret's Simulacrum",
+    "mana_cost": "{3}",
+    "type_line": "Artifact Creature — Golem",
+    "oracle_text": "{T}: Target opponent loses 1 life. If you control a Tezzeret planeswalker, that player loses 3 life instead.",
+    "power": "2",
+    "toughness": "3",
+    "colors": [],
+    "color_identity": []
+  }
+]

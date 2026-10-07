@@ -1,0 +1,18 @@
+[
+  {
+    "name": "Bioshift",
+    "oracle_id": "3da604fc-68e9-4749-98f9-6fbcebcab9b6",
+    "id": "6e18f7a9-2af6-467a-8f62-5f7da83a3c92",
+    "mana_cost": "{G/U}",
+    "type_line": "Instant",
+    "oracle_text": "Move any number of +1/+1 counters from target creature onto another target creature with the same controller.",
+    "colors": [
+      "G",
+      "U"
+    ],
+    "color_identity": [
+      "G",
+      "U"
+    ]
+  }
+]
