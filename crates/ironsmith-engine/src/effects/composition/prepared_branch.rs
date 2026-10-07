@@ -160,8 +160,9 @@ impl ChoiceChanges {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct BranchScope {
+    payment: Option<crate::costs::PaymentScope>,
     player: Option<PlayerId>,
     optional: bool,
     accepted: bool,
@@ -175,7 +176,11 @@ impl BranchScope {
     ) -> Result<T, ExecutionError> {
         let previous_optional = ctx.optional_action;
         ctx.optional_action |= self.optional;
-        let result = ctx.with_temp_iterated_player(self.player, body);
+        let result = if let Some(payment) = &self.payment {
+            payment.run(ctx, |ctx| ctx.with_temp_iterated_player(self.player, body))
+        } else {
+            ctx.with_temp_iterated_player(self.player, body)
+        };
         ctx.optional_action = previous_optional;
         result
     }
@@ -217,7 +222,7 @@ impl SimultaneousEffectCompletion for BranchCompletion {
         original: &mut EffectOutcome,
     ) -> Result<(), crate::effects::ExecutionError> {
         let parent = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-        let result = self.scope.run(ctx, |ctx| {
+        let result = self.scope.clone().run(ctx, |ctx| {
             self.bindings.apply(ctx);
             self.inner.observe_original(game, ctx, original)
         });
@@ -249,7 +254,7 @@ impl SimultaneousEffectCompletion for BranchCompletion {
             bindings,
             inner,
         } = *self;
-        let mut outputs = scope.run(ctx, |ctx| {
+        let mut outputs = scope.clone().run(ctx, |ctx| {
             bindings.apply(ctx);
             inner.complete_with_outputs(game, ctx, original)
         })?;
@@ -258,7 +263,7 @@ impl SimultaneousEffectCompletion for BranchCompletion {
                 EffectOutcome::count(0),
             ));
         }
-        outputs.outcome = scope.project(outputs.outcome, ctx);
+        outputs.outcome = scope.clone().project(outputs.outcome, ctx);
         outputs.synchronize_observations();
         Ok(outputs)
     }
@@ -317,7 +322,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
         let inner = inner.ok_or_else(|| {
             ExecutionError::InternalError("damage branch bound before child preparation".into())
         })?;
-        let mut binding = scope.run(ctx, |ctx| {
+        let mut binding = scope.clone().run(ctx, |ctx| {
             bindings.apply(ctx);
             inner.bind_damage_action(game, ctx, owner)
         })?;
@@ -336,7 +341,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
                     .chain(std::iter::once(binding.outcome)),
             )
         };
-        binding.outcome = scope.project(outcome, ctx);
+        binding.outcome = scope.clone().project(outcome, ctx);
         let mut preludes = selection_receipts;
         preludes.extend(binding.preludes);
         binding.preludes = preludes;
@@ -373,7 +378,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
     ) -> Result<(), ExecutionError> {
         if let Some(inner) = &mut self.inner {
             let before = ChoiceState::capture(ctx);
-            let result = self.scope.run(ctx, |ctx| {
+            let result = self.scope.clone().run(ctx, |ctx| {
                 self.bindings.apply(ctx);
                 inner.prepare_original(game, ctx)
             });
@@ -383,7 +388,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             return result;
         }
         let before = ChoiceState::capture(ctx);
-        let result = self.scope.run(ctx, |ctx| {
+        let result = self.scope.clone().run(ctx, |ctx| {
             for (index, effect) in self.selection.iter().enumerate() {
                 let mut outcome = self.purpose.execute(game, effect, ctx)?;
                 if ctx.decision_maker.awaiting_choice() {
@@ -434,7 +439,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             ExecutionError::InternalError("selected branch sealed before preparation".into())
         })?;
         let before = ChoiceState::capture(ctx);
-        let result = self.scope.run(ctx, |ctx| {
+        let result = self.scope.clone().run(ctx, |ctx| {
             self.bindings.apply(ctx);
             inner.seal_original(game, ctx)
         });
@@ -475,7 +480,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
             ExecutionError::Impossible("selected branch committed before preparation".into())
         })?;
         let before = ChoiceState::capture(ctx);
-        let receipt = scope.run(ctx, |ctx| {
+        let receipt = scope.clone().run(ctx, |ctx| {
             bindings.apply(ctx);
             inner.commit_original_with_outputs(game, ctx)
         })?;
@@ -493,7 +498,7 @@ impl SimultaneousEffectProposal for PreparedBranch {
                 inner,
             }));
         } else {
-            let outcome = scope.project(receipt.outcome.outcome.clone(), ctx);
+            let outcome = scope.clone().project(receipt.outcome.outcome.clone(), ctx);
             receipt.outcome = receipt.outcome.project_aggregate(outcome);
         }
         Ok(receipt)
@@ -600,12 +605,21 @@ pub(super) fn prepare_branch_for_purpose(
         return Ok(None);
     }
     let scope = BranchScope {
+        payment: matches!(purpose, crate::effects::EffectExecutionPurpose::Payment).then(|| {
+            crate::costs::PaymentScope::new(
+                ctx,
+                ctx.controller,
+                ctx.mana
+                    .payment_reason
+                    .unwrap_or(crate::costs::PaymentReason::Other),
+            )
+        }),
         player,
         optional,
         accepted,
     };
     let inner = if selection.is_empty() {
-        scope.run(ctx, |ctx| {
+        scope.clone().run(ctx, |ctx| {
             prepare_action_for_purpose(action, purpose, game, ctx)
         })?
     } else {

@@ -202,3 +202,32 @@ impl ActionProgramCursor for SelectedBranchCursor {
         Ok(ProgramCompletion { outputs, facts })
     }
 }
+
+struct ClauseProjection;
+impl SelectedBranchProjection for ClauseProjection {
+    fn empty_outcome(&self) -> EffectOutcome {
+        EffectOutcome::aggregate(Vec::new())
+    }
+    fn matches_instruction_boundaries(&self) -> bool {
+        false
+    }
+}
+
+pub(super) fn selected_clause_cursor(
+    effects: &[Effect],
+    identity: Vec<usize>,
+    scope: ProgramActionScope,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    selected_branch_cursor_with_projection(
+        vec![SelectedProgramBranch {
+            effects: effects.to_vec(),
+            identity,
+            repetitions: 1,
+            scope,
+            child_scope: None,
+            first_scope: None,
+            match_before_first: false,
+        }],
+        Some(Box::new(ClauseProjection)),
+    )
+}

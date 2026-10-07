@@ -70,3 +70,29 @@ test('payment ranking executes every planner slice on the isolated replica', asy
   assert.equal(slices, 3);
   assert.equal(messages[0].result, command);
 });
+
+test('a cancelled ranking stops at its next slice and the replica serves the next job', async () => {
+  const messages = [];
+  let hydrations = 0, slices = 0;
+  const isolated = {
+    beginPaymentAnalysis: () => true,
+    stepPaymentAnalysis: () => { slices++; return null; },
+  };
+  const code = readFileSync(new URL('../src/workers/paymentOptionsWorker.js', import.meta.url), 'utf8')
+    .replace(/^import[^\n]+\n/gm, '');
+  const self = { postMessage: message => messages.push(message) };
+  vm.runInNewContext(code, { performance, self, setTimeout, WasmGame: class {}, initWasm: async () => {},
+    createLocalAnalysisReplica: () => ({ hydrate: async () => { hydrations++; return isolated; } }) });
+  const ranking = self.onmessage({ data: { token: 1, kind: 'ranking', localReplay: {} } });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  self.onmessage({ data: { type: 'cancel', token: 1 } });
+  isolated.getPaymentActivationOptions = request => ({ request });
+  const options = self.onmessage({ data: { token: 2, localReplay: {}, request: 'r' } });
+  await ranking; await options;
+  assert.ok(slices > 0);
+  assert.equal(messages[0].token, 1);
+  assert.equal(messages[0].cancelled, true);
+  assert.equal(messages[1].token, 2);
+  assert.equal(messages[1].result.request, 'r');
+  assert.equal(hydrations, 2);
+});

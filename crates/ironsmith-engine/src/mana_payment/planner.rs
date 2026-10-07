@@ -24,6 +24,8 @@ const MAX_RANKING_SEARCH_NODES: usize = 4_096;
 const MAX_EXTRA_ACTIVATIONS: usize = 8;
 const MAX_PLANS_PER_SELECTION: usize = 16;
 const MAX_TOTAL_PLANS: usize = 32;
+/// Search units a deferred prompt may spend before opening unfunded.
+const PROMPT_FIRST_PLAN_BUDGET: usize = 64;
 
 /// Diagnostic counters for the most recent `plan_mana_payment` call.
 ///
@@ -144,8 +146,14 @@ pub fn plan_prompt_mana_payment(
     initial: bool,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
     if initial && crate::game_loop::priority_analysis_deferred() {
-        // Open immediately, safely within the 500 ms search allowance. The
-        // disposable background worker can propose a funded plan afterward.
+        // Simple boards finish the ordinary first-plan search in a handful of
+        // nodes. Only a search that exceeds this deterministic budget opens
+        // unfunded and leaves the funded proposal to the background worker.
+        if let Some(Ok(plan)) =
+            ManaPaymentAnalysis::new(game, request.clone()).step(PROMPT_FIRST_PLAN_BUDGET)
+        {
+            return Ok(plan);
+        }
         return Ok(unfunded_mana_payment_plan(game, request));
     }
     let result = plan_first_mana_payment(game, request);
@@ -361,7 +369,7 @@ fn ready_and_manual_inventory_inner<D: crate::decision::DecisionMaker>(
             }
         });
     let manual = if request.allow_mana_abilities {
-        useful_manual_mana_abilities_with_resolved(game, request, true, &resolved)
+        useful_manual_mana_abilities_with_resolved(game, request, true, true, &resolved)
     } else {
         Vec::new()
     };
@@ -489,18 +497,34 @@ pub(super) fn useful_manual_mana_abilities(
     useful_manual_mana_abilities_inner(game, request, true)
 }
 
+/// Foreground source clicks must survive unavailable background analysis.
+/// Only reviewed projections are considered here; unknown effects and costs
+/// keep their authoritative simulation in the deferred inventory.
+pub fn immediate_manual_mana_abilities_checked(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+) -> Result<Vec<(ObjectId, usize)>, crate::effects::ExecutionError> {
+    if !request.allow_mana_abilities {
+        return Ok(Vec::new());
+    }
+    with_inventory_query(game, |query| {
+        useful_manual_mana_abilities_with_resolved(query, request, true, false, &[])
+    })
+}
+
 fn useful_manual_mana_abilities_inner(
     game: &GameState,
     request: &ManaPaymentRequest,
     allow_projection: bool,
 ) -> Vec<(ObjectId, usize)> {
-    useful_manual_mana_abilities_with_resolved(game, request, allow_projection, &[])
+    useful_manual_mana_abilities_with_resolved(game, request, allow_projection, true, &[])
 }
 
 fn useful_manual_mana_abilities_with_resolved(
     game: &GameState,
     request: &ManaPaymentRequest,
     allow_projection: bool,
+    simulate_unknown: bool,
     resolved: &[ResolvedManualActivation],
 ) -> Vec<(ObjectId, usize)> {
     if game
@@ -526,8 +550,12 @@ fn useful_manual_mana_abilities_with_resolved(
         unconstrained.preferences.excluded_sources.clear();
     }
     let analysis = super::sources::ManaSourceAnalysis::new(game);
-    for choice in collect_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
-    {
+    let choices = if simulate_unknown {
+        collect_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
+    } else {
+        collect_raw_activation_choices_with_view(game, &unconstrained, false, &analysis.view)
+    };
+    for choice in choices {
         let key = (choice.source, choice.ability_index);
         if result.contains(&key) {
             continue;
@@ -561,6 +589,9 @@ fn useful_manual_mana_abilities_with_resolved(
                 }
                 continue;
             }
+        }
+        if !simulate_unknown {
+            continue;
         }
         let mut staged = game.clone();
         let mut exclusions = unconstrained.preferences.excluded_sources.clone();
@@ -1933,7 +1964,7 @@ impl CandidateSearch {
                 }
                 let score = search_candidate_score(&game, request, &activations);
                 self.out.push((score, game.clone(), activations));
-                if self.first || score_reaches_search_floor(score) {
+                if self.first || score.reaches_search_floor() {
                     return self.finish();
                 }
                 self.out.sort_by_key(|candidate| candidate.0);
@@ -2438,14 +2469,6 @@ impl ManaPaymentAnalysis {
             Some(result)
         }
     }
-}
-
-fn score_reaches_search_floor(score: ManaPaymentScore) -> bool {
-    score.irreversible_cost == 0
-        && score.life_paid == 0
-        && score.preserved_sources_used == 0
-        && score.excess_mana == 0
-        && score.flexible_sources_used == 0
 }
 
 #[derive(Debug, Clone)]
@@ -6183,6 +6206,53 @@ mod tests {
             assert!(game.battlefield.iter().all(|id| !game.is_tapped(*id)));
             assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
         }
+    }
+
+    #[test]
+    fn deferred_prompt_confirms_floating_mana_without_background_planning() {
+        struct Restore(bool);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                crate::game_loop::set_priority_analysis_deferred(self.0);
+            }
+        }
+        let _restore = Restore(crate::game_loop::priority_analysis_deferred());
+        crate::game_loop::set_priority_analysis_deferred(true);
+        let (mut game, alice) = game();
+        let source = game.new_object_id();
+        let request = request(
+            &game,
+            alice,
+            source,
+            ManaCost::from_symbols(vec![ManaSymbol::Generic(1), ManaSymbol::Red]),
+        );
+        // Total mana alone is insufficient: the colored pip must be payable.
+        game.player_mut(alice).unwrap().mana_pool.blue = 2;
+        assert!(!plan_prompt_mana_payment(&game, &request, true).unwrap().payable);
+        game.player_mut(alice).unwrap().mana_pool.blue = 0;
+        game.player_mut(alice).unwrap().mana_pool.red = 1;
+        assert!(!plan_prompt_mana_payment(&game, &request, true).unwrap().payable);
+        game.player_mut(alice).unwrap().mana_pool.red = 2;
+        // Allocate before planning: a fresh object id changes the planned state.
+        let missing_source = game.new_object_id();
+        let plan = plan_prompt_mana_payment(&game, &request, true).unwrap();
+        assert!(plan.payable);
+        assert!(plan.mana_ability_steps.is_empty());
+        assert_eq!(plan.allocations.len(), 2);
+        assert_eq!(plan.expected_pool_after_payment.total(), 0);
+        assert_eq!(
+            game.player(alice).unwrap().mana_pool.red,
+            2,
+            "preview must not spend mana"
+        );
+        let mut pinned = request.clone();
+        pinned.preferences.required_sources.push(missing_source);
+        assert!(!plan_prompt_mana_payment(&game, &pinned, true).unwrap().payable);
+        assert_eq!(
+            execute_mana_payment_plan(&mut game, &request, &plan, &mut SelectFirstDecisionMaker),
+            Ok(super::super::ManaPaymentExecution::Paid)
+        );
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
     }
 
     #[test]

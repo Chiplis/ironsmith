@@ -1897,7 +1897,7 @@ fn merge_shared_have_subject_bodies(bodies: &[String]) -> Option<String> {
 
 const SOURCE_LINE_KEYWORD_GROUP_SENTINEL: &str = "\0ironsmith:source-line-keyword-group:";
 
-fn source_line_keyword_group_count(ability: &Ability) -> Option<usize> {
+pub(super) fn source_line_keyword_group_count(ability: &Ability) -> Option<usize> {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
     };

@@ -35,6 +35,16 @@ impl PaymentScope {
         ctx: &mut ExecutionContext,
         body: impl FnOnce(&mut ExecutionContext) -> Result<T, ExecutionError>,
     ) -> Result<T, ExecutionError> {
+        self.run_value(ctx, body)
+    }
+
+    /// Queries and actions share one binding lifetime. The fallible adapter
+    /// retains the existing error-inference contract for action callers.
+    pub(crate) fn run_value<T>(
+        &self,
+        ctx: &mut ExecutionContext,
+        body: impl FnOnce(&mut ExecutionContext) -> T,
+    ) -> T {
         let controller = ctx.controller;
         let cause = std::mem::replace(&mut ctx.cause, self.cause.clone());
         let reason = ctx.mana.payment_reason.replace(self.reason);
@@ -66,6 +76,7 @@ fn original_payment_error(error: crate::cost::CostPaymentError) -> ExecutionErro
 
 #[derive(Debug)]
 struct PreparedPayment {
+    acknowledge_program: bool,
     scope: PaymentScope,
     components: Vec<PreparedCostComponent>,
 }
@@ -184,7 +195,11 @@ impl SimultaneousEffectProposal for PreparedPayment {
         ctx: &mut ExecutionContext,
     ) -> Result<SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>, ExecutionError>
     {
-        let Self { scope, components } = *self;
+        let Self {
+            scope,
+            components,
+            acknowledge_program,
+        } = *self;
         let mut receipt = scope.run(ctx, |ctx| {
             let mut receipts = Vec::new();
             for PreparedCostComponent { cost, proposal } in components {
@@ -214,6 +229,19 @@ impl SimultaneousEffectProposal for PreparedPayment {
         receipt.completion = receipt.completion.map(|inner| {
             Box::new(PaymentCompletion { scope, inner }) as Box<dyn SimultaneousEffectCompletion>
         });
+        if acknowledge_program && !ctx.decision_maker.awaiting_choice() {
+            // This is the total-cost owner's acknowledgement, not an inferred
+            // quantity or a physical action. Component receipts retain history.
+            receipt = crate::effects::composition::compose_original_commits_with_projection_outputs(
+                vec![receipt],
+                Box::new(|outcomes| {
+                    EffectOutcome::aggregate_with_primary_result(
+                        EffectOutcome::resolved(),
+                        outcomes,
+                    )
+                }),
+            );
+        }
         Ok(receipt)
     }
     fn commit(
@@ -234,6 +262,29 @@ pub(crate) fn prepare_total_cost(
     ctx: &mut ExecutionContext,
     payer: PlayerId,
     reason: PaymentReason,
+) -> Result<Option<Box<dyn SimultaneousEffectProposal>>, ExecutionError> {
+    prepare_selected_total_cost(cost, game, ctx, payer, reason, false)
+}
+
+/// The program forwards a selected cost to its existing native owner. Its
+/// successful acknowledgement is independent of replaced physical results.
+pub(crate) fn prepare_total_cost_program_action(
+    cost: &crate::cost::TotalCost,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    payer: PlayerId,
+    reason: PaymentReason,
+) -> Result<Option<Box<dyn SimultaneousEffectProposal>>, ExecutionError> {
+    prepare_selected_total_cost(cost, game, ctx, payer, reason, true)
+}
+
+fn prepare_selected_total_cost(
+    cost: &crate::cost::TotalCost,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    payer: PlayerId,
+    reason: PaymentReason,
+    acknowledge_program: bool,
 ) -> Result<Option<Box<dyn SimultaneousEffectProposal>>, ExecutionError> {
     let ironsmith_core::TotalCostKind::All(costs) = cost.kind() else {
         return Ok(None);
@@ -270,6 +321,123 @@ pub(crate) fn prepare_total_cost(
     ctx.x_value = original_x;
     let components = components?;
     Ok(components.map(|components| {
-        Box::new(PreparedPayment { scope, components }) as Box<dyn SimultaneousEffectProposal>
+        Box::new(PreparedPayment {
+            scope,
+            components,
+            acknowledge_program,
+        }) as Box<dyn SimultaneousEffectProposal>
     }))
+}
+
+/// Execution errors cannot establish that a cost was unaffordable. Both offer
+/// queries and actual payment requests retain the cost owner's typed result.
+pub(crate) fn acknowledged_total_cost<T>(
+    result: Result<T, crate::cost::CostPaymentError>,
+) -> Result<Option<T>, ExecutionError> {
+    match result {
+        Ok(receipt) => Ok(Some(receipt)),
+        Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Ordinary requests use the sequential payment owner, rather than preparing
+/// every component early. It retains funding, choices, X, rollback and the
+/// publication boundary of each component before the next one is selected.
+pub(crate) fn execute_total_cost_program_action(
+    cost: &crate::cost::TotalCost,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    payer: PlayerId,
+    reason: PaymentReason,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let paid = acknowledged_total_cost(
+        crate::special_actions::pay_total_cost_with_choice_in_context_with_outputs(
+            game, payer, ctx.source, cost, reason, ctx,
+        ),
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    let Some(children) = paid else {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::declined(),
+        ));
+    };
+    let mut outputs =
+        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
+    // The actual cost gateway already queued these events. This packet keeps
+    // its acknowledgement and child views without publishing them again.
+    outputs.retain_published_children(children);
+    Ok(outputs)
+}
+
+pub(crate) fn total_cost_supports_prepared_program(cost: &crate::cost::TotalCost) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            costs.iter().all(|cost| cost.0.supports_prepared_payment())
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            branches.iter().all(total_cost_supports_prepared_program)
+        }
+    }
+}
+
+/// Select a real payable alternative before native preparation. Selection
+/// performs no payment; acknowledgement remains with original commitment.
+pub(crate) fn select_payable_total_cost(
+    game: &GameState,
+    payer: PlayerId,
+    source: crate::ids::ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: PaymentReason,
+    ctx: &mut ExecutionContext,
+) -> Result<Option<crate::cost::TotalCost>, ExecutionError> {
+    Ok(match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => Some(cost.clone()),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut payable = Vec::new();
+            for branch in branches {
+                if acknowledged_total_cost(
+                    crate::special_actions::can_pay_total_cost_with_reason_in_context(
+                        game, payer, source, branch, reason, ctx,
+                    ),
+                )?
+                .is_some()
+                {
+                    payable.push(branch.clone());
+                }
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+            }
+            let selected = match payable.as_slice() {
+                [] => None,
+                [only] => Some(only.clone()),
+                _ => {
+                    let options = payable
+                        .into_iter()
+                        .map(|branch| (branch.display(), branch))
+                        .collect::<Vec<_>>();
+                    crate::decisions::ask_choose_one(
+                        game,
+                        &mut ctx.decision_maker,
+                        payer,
+                        source,
+                        &options,
+                    )
+                }
+            };
+            // OneOf may contain another OneOf. Resolve only the selected path;
+            // the native total owner receives the actual All component list.
+            match selected {
+                Some(selected) if !ctx.decision_maker.awaiting_choice() => {
+                    select_payable_total_cost(game, payer, source, &selected, reason, ctx)?
+                }
+                _ => None,
+            }
+        }
+    })
 }

@@ -192,6 +192,13 @@ impl ProgramActionScope {
 #[derive(Debug)]
 pub(crate) enum NativeProgramAction {
     SharedDamage(Box<dyn SimultaneousEffectProposal>),
+    /// A domain request, not an already-frozen proposal. Ordinary execution
+    /// retains sequential payment timing; staged execution prepares its owner.
+    TotalCost {
+        cost: crate::cost::TotalCost,
+        payer: crate::ids::PlayerId,
+        reason: crate::costs::PaymentReason,
+    },
 }
 
 #[derive(Debug)]
@@ -204,6 +211,19 @@ pub struct ProgramAction {
 }
 
 impl ProgramAction {
+    /// Domain purpose governs error acknowledgement even inside an enclosing
+    /// action program whose authored children may skip invalid targets.
+    fn execution_purpose(
+        &self,
+        inherited: crate::effects::EffectExecutionPurpose,
+    ) -> crate::effects::EffectExecutionPurpose {
+        if matches!(self.native, Some(NativeProgramAction::TotalCost { .. })) {
+            crate::effects::EffectExecutionPurpose::Payment
+        } else {
+            self.scope.execution_purpose(inherited)
+        }
+    }
+
     pub fn new(effect: Effect) -> Self {
         Self {
             effect,
@@ -627,7 +647,7 @@ impl ActionProgramCursor for NestedProgramCursor {
             if let Some(mut action) = next {
                 let inherited_purpose =
                     scope.execution_purpose(crate::effects::EffectExecutionPurpose::Action);
-                let purpose = action.scope.execution_purpose(inherited_purpose);
+                let purpose = action.execution_purpose(inherited_purpose);
                 // Prepared payment decorators own nominal acknowledgement and
                 // binding exports; retain that owner rather than descending an
                 // ordinary action program and losing its payment lifecycle.
@@ -877,9 +897,8 @@ pub(crate) fn execute_action_programs(
                         ready[index] = true;
                         break;
                     };
-                    let purpose = action
-                        .scope
-                        .execution_purpose(crate::effects::EffectExecutionPurpose::Action);
+                    let purpose =
+                        action.execution_purpose(crate::effects::EffectExecutionPurpose::Action);
                     if action.native.is_none()
                         && action.effect.0.is_read_only_simultaneous_player_action()
                     {
@@ -903,33 +922,45 @@ pub(crate) fn execute_action_programs(
                         }
                         continue;
                     }
-                    let proposal = if let Some(NativeProgramAction::SharedDamage(proposal)) =
-                        action.native.take()
-                    {
-                        proposal
-                    } else {
-                        match action.scope.run(game, &mut local, |game, ctx| {
-                            super::prepared_branch::prepare_action_for_purpose(
-                                &action.effect,
-                                purpose,
-                                game,
-                                ctx,
-                            )
-                        }) {
-                            Ok(Some(proposal)) => proposal,
-                            Ok(None) if local.decision_maker.awaiting_choice() => return Ok(None),
-                            Ok(None) => {
-                                return Err(ExecutionError::InternalError(
-                                    "selected program action has no prepared owner".into(),
-                                ));
+                    let native = action.native.take();
+                    let proposal = match native {
+                        Some(NativeProgramAction::SharedDamage(proposal)) => proposal,
+                        request => {
+                            match action
+                                .scope
+                                .run(game, &mut local, |game, ctx| match request {
+                                    Some(NativeProgramAction::TotalCost {
+                                        cost,
+                                        payer,
+                                        reason,
+                                    }) => crate::costs::prepare_total_cost_program_action(
+                                        &cost, game, ctx, payer, reason,
+                                    ),
+                                    None => super::prepared_branch::prepare_action_for_purpose(
+                                        &action.effect,
+                                        purpose,
+                                        game,
+                                        ctx,
+                                    ),
+                                    Some(NativeProgramAction::SharedDamage(_)) => unreachable!(),
+                                }) {
+                                Ok(Some(proposal)) => proposal,
+                                Ok(None) if local.decision_maker.awaiting_choice() => {
+                                    return Ok(None);
+                                }
+                                Ok(None) => {
+                                    return Err(ExecutionError::InternalError(
+                                        "selected program action has no prepared owner".into(),
+                                    ));
+                                }
+                                Err(error) => Box::new(FinishedProgramAction {
+                                    outputs: map_program_action_result_for_purpose(
+                                        cursor.as_ref(),
+                                        purpose,
+                                        Err(error),
+                                    )?,
+                                }),
                             }
-                            Err(error) => Box::new(FinishedProgramAction {
-                                outputs: map_program_action_result_for_purpose(
-                                    cursor.as_ref(),
-                                    purpose,
-                                    Err(error),
-                                )?,
-                            }),
                         }
                     };
                     actions.push(PreparedProgramAction {
@@ -1278,12 +1309,17 @@ pub(super) fn execute_action_program_with_outputs(
             }
             break;
         };
-        let action_purpose = action.scope.execution_purpose(purpose);
+        let action_purpose = action.execution_purpose(purpose);
         let native = action.native.take();
         let result = action.scope.run(game, ctx, |game, ctx| match native {
             Some(NativeProgramAction::SharedDamage(proposal)) => {
                 crate::effects::damage::complete_prepared_damage_action(game, ctx, proposal)
             }
+            Some(NativeProgramAction::TotalCost {
+                cost,
+                payer,
+                reason,
+            }) => crate::costs::execute_total_cost_program_action(&cost, game, ctx, payer, reason),
             None => action_purpose.execute(game, &action.effect, ctx),
         });
         let outputs =

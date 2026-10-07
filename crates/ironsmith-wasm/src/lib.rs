@@ -7006,6 +7006,16 @@ fn manual_mana_ability_views(
     inventory.map(|inventory| manual_mana_views_from_inventory(game, inventory))
 }
 
+fn immediate_manual_mana_ability_views(
+    game: &GameState,
+    request: &ironsmith::mana_payment::ManaPaymentRequest,
+) -> Result<Vec<ManualManaAbilityView>, ironsmith::effects::ExecutionError> {
+    let counters = snapshot_id_counters();
+    let inventory = ironsmith::mana_payment::immediate_manual_mana_abilities_checked(game, request);
+    restore_id_counters(counters);
+    inventory.map(|inventory| manual_mana_views_from_inventory(game, inventory))
+}
+
 fn manual_mana_views_from_inventory(
     game: &GameState,
     inventory: Vec<(ObjectId, usize)>,

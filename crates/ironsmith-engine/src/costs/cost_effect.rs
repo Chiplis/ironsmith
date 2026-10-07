@@ -702,6 +702,14 @@ impl CostPayer for CostEffect {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError> {
+        CostPayer::pay_with_outputs(self, game, ctx).map(|receipt| receipt.result)
+    }
+
+    fn pay_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut CostContext,
+    ) -> Result<super::CostPaymentReceipt, CostPaymentError> {
         if let Some(result) = life_payment_cost_precheck(&self.effect, game, ctx) {
             result?;
         }
@@ -727,28 +735,28 @@ impl CostPayer for CostEffect {
         let bindings = ctx.execution_bindings();
         let mut exec_ctx = bindings.execution_context(&mut *ctx.decision_maker);
 
-        let outcome = crate::effects::with_per_event_trigger_matching(game, true, |game| {
-            let mut outcome =
-                execute_effect_payment_with_outputs(game, &self.effect, &mut exec_ctx)?
-                    .into_outcome();
+        let mut outputs = crate::effects::with_per_event_trigger_matching(game, true, |game| {
+            let mut outputs =
+                execute_effect_payment_with_outputs(game, &self.effect, &mut exec_ctx)?;
             // Retain payment evidence for later typed amount/counter queries,
             // while freezing triggers before the next payment instruction.
             crate::effects::capture_triggers_before_added_program(
                 game,
                 &exec_ctx,
                 None,
-                outcome.events.iter_mut(),
+                outputs.outcome.events.iter_mut(),
             )?;
-            Ok::<_, crate::effects::ExecutionError>(outcome)
+            Ok::<_, crate::effects::ExecutionError>(outputs)
         })
         .map_err(CostPaymentError::ExecutionFailed)?;
         if exec_ctx.decision_maker.awaiting_choice() {
             // Keep the legacy neutral return while the pending decision is
             // authoritative. No acknowledgement or payment bindings publish.
-            return Ok(CostPaymentResult::Paid);
+            return Ok(super::CostPaymentReceipt::new(CostPaymentResult::Paid));
         }
-        CostPayer::validate_payment_outcome(self, &outcome)?;
-        for event in outcome.events.iter().cloned() {
+        outputs.synchronize_observations();
+        CostPayer::validate_payment_outcome(self, &outputs.outcome)?;
+        for event in outputs.outcome.events.iter().cloned() {
             game.queue_trigger_event(ctx.provenance, event);
         }
 
@@ -766,7 +774,7 @@ impl CostPayer for CostEffect {
         ctx.effect_outcomes = exec_ctx.effect_outcomes;
         ctx.pre_chosen_cards.clear();
 
-        Ok(CostPaymentResult::Paid)
+        Ok(super::CostPaymentReceipt::from_outputs(outputs))
     }
 
     fn display(&self) -> String {

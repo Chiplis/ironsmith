@@ -25,10 +25,12 @@ const scenarioApi = `const e2eApi = {
       if (!action) throw new Error("Cannot advance scenario: " + JSON.stringify(next.decision));
       next = await game.dispatch({ type: "priority_action", action_ref: action.action_ref });
     }
+    game.getPaymentActivationOptions = async () => { throw new Error("Payment options unavailable in regression"); };
+    game.analyzePayment = async () => { throw new Error("Payment ranking unavailable in regression"); };
     await finalizeState(game, next);
   }),`;
 
-test("real payment editor activates clicked lands despite cancelling background planning, and cancel restores them", { timeout: 90000 }, async () => {
+test("real payment editor activates clicked lands when background options and ranking fail, and cancel restores them", { timeout: 90000 }, async () => {
   process.env.VITE_E2E_TEST = "true";
   const server = await createServer({
     root,
@@ -75,7 +77,10 @@ test("real payment editor activates clicked lands despite cancelling background 
       });
     }
     await page.waitForFunction(() => window.__ironsmithE2E.scenarioState()?.decision?.kind === "mana_payment");
-    await page.waitForFunction(() => window.__ironsmithE2E.scenarioState().mana_payment.mana_abilities.length === 3);
+    await page.waitForFunction(() => {
+      const payment = window.__ironsmithE2E.scenarioState().mana_payment;
+      return payment.mana_abilities.length === 3 && payment.activation_options_error === true;
+    });
     for (const [name, color] of [["Island", "blue"], ["Plains", "white"], ["Swamp", "black"]]) {
       const land = before.players[0].battlefield.find(card => card.name === name);
       await page.locator(`.battlefield-row-card[data-object-id="${land.id}"]`).first().click();

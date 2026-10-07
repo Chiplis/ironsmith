@@ -226,9 +226,9 @@ pub fn ability_surface_text(ability: &Ability) -> String {
 /// static and two keyword grants compiled out of "gets +1/+1 and has trample
 /// and haste"), a line owns no ability at all (Class reminder text), or a
 /// marker static prints nothing; the line each ability belongs to is then
-/// recovered by rendering the definition one ability at a time and watching
-/// which line the newcomer changes. Only when that fails does an ability fall
-/// back to its own single-ability rendering.
+/// recovered by rendering the definition one ability (or authored keyword
+/// group) at a time and watching which line the newcomer changes. Only when
+/// that fails does an ability fall back to its own single-ability rendering.
 pub fn ability_surface_texts(def: &CardDefinition) -> Vec<String> {
     let canonical = compiled_text_lines(def);
     if canonical.len() == def.abilities.len() {
@@ -254,9 +254,19 @@ fn printed_line_labels(def: &CardDefinition, canonical: &[String]) -> Option<Vec
     };
     let mut previous = render_prefix(0);
     let mut owners: Vec<Option<usize>> = Vec::with_capacity(def.abilities.len());
-    for count in 1..=def.abilities.len() {
+    let mut count = 0;
+    while count < def.abilities.len() {
+        // A keyword group only has its final line shape once all its keywords
+        // are present. Rendering partial groups produces temporary extra lines
+        // whose indices can otherwise point at an unrelated later ability.
+        let group_size = source_line_keyword_group_count(&def.abilities[count])
+            .map(|keywords| keywords.saturating_add(1))
+            .unwrap_or(1)
+            .min(def.abilities.len() - count);
+        count += group_size;
         let lines = render_prefix(count);
-        owners.push(changed_line_index(&previous, &lines));
+        let owner = changed_line_index(&previous, &lines);
+        owners.extend(std::iter::repeat_n(owner, group_size));
         previous = lines;
     }
     if previous != canonical {
@@ -3344,6 +3354,26 @@ mod tests {
             crate::compiled_text::render_effects::describe_effect_clause_list(&effects).as_deref(),
             Some(expected)
         );
+    }
+
+    #[test]
+    fn ability_labels_keep_keyword_groups_on_their_own_printed_line() {
+        for keywords in ["Reach, trample", "Defender, flying, vigilance"] {
+            let exception = "As long as you've scried or surveilled this turn, this creature can attack as though it didn't have defender.";
+            let text = format!("{keywords}\n{exception}\n{{3}}{{U}}: Surveil 1.");
+            let definition =
+                crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Keyword Label Probe")
+                    .card_types(vec![CardType::Creature])
+                    .parse_text(&text)
+                    .expect("the keyword group and defender exception should compile");
+            let lines = compiled_text_lines(&definition);
+            let labels = ability_surface_texts(&definition);
+            let group_size = keywords.split(',').count() + 1;
+            assert_eq!(labels.len(), definition.abilities.len());
+            assert_eq!(lines.len(), 3);
+            assert_eq!(labels[..group_size], vec![lines[0].clone(); group_size]);
+            assert_eq!(labels[group_size..], lines[1..]);
+        }
     }
 
     #[test]

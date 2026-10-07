@@ -1,3 +1,5 @@
+import { localReplayTransfer } from './local-analysis-replay.js';
+
 /** Speculation owns an isolated worker or an exact, sliced native runtime branch. */
 export function createIsolatedPriorityAnalysis({ capture, identity, pending, createWorker,
   publish, fail, deliver = operation => operation(), eligible = () => true, schedule = (fn, delay = 0) => setTimeout(fn, delay), cancel = clearTimeout }) {
@@ -46,11 +48,15 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
     timer = schedule(async () => {
       timer = null;
       try {
-        const input = await capture();
+        const input = await capture({ replicaMark: worker?.replicaMark ?? null });
         if (token !== generation || identity() !== key) return;
         if (!idle) cancelWork();
         if (worker && Boolean(worker.runtimeFallback) !== Boolean(input.runtimeFallback)) retire();
-        if (!worker) { worker = createWorker(input); worker.runtimeFallback = Boolean(input.runtimeFallback); }
+        if (!worker) {
+          worker = createWorker(input);
+          worker.runtimeFallback = Boolean(input.runtimeFallback);
+          worker.replicaMark = null;
+        }
         idle = false;
         active = { token, key, viewRevision };
         const current = () => token === generation && identity() === key;
@@ -67,6 +73,11 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
           if (worker !== targetWorker) return;
           // Lifecycle acknowledgements do not read the authoritative runtime.
           // Accept an obsolete job's yield so its initialized worker can survive.
+          // Replay progress survives cancellation; later captures skip seeds.
+          if (data.type === 'replica') {
+            targetWorker.replicaMark = data.mark;
+            return;
+          }
           if (data.type === 'available') {
             if (data.cancelSerial === cancellationSerial) clearRecovery();
             return;
@@ -88,7 +99,7 @@ export function createIsolatedPriorityAnalysis({ capture, identity, pending, cre
           });
         };
         workerToken = token;
-        worker.postMessage({ type: 'analyze', token, ...input });
+        worker.postMessage({ type: 'analyze', token, ...input }, localReplayTransfer(input.localReplay));
         for (const entry of inspectors.values()) worker.postMessage({ type: 'inspector', token, id: entry.id, args: entry.args });
       } catch (error) {
         if (token !== generation || identity() !== key) return;

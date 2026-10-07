@@ -2663,7 +2663,7 @@ mod live_action_rollback_tests {
         assert_eq!(immediate.plan_id, eager.plan_id);
         assert!(!immediate.editor.activation_options_complete);
         assert!(immediate.editor.activation_options.is_empty());
-        assert!(immediate.mana_abilities.is_empty());
+        assert!(!immediate.mana_abilities.is_empty(), "simple sources remain clickable before deferred options arrive");
         assert!(wasm.mana_activation_inventory_cache.borrow().is_none());
         let json = wasm.export_mana_payment_options_request(&immediate.request_hash, &immediate.plan_id).unwrap();
         let request: ironsmith::mana_payment::ManaPaymentRequest = serde_json::from_str(&json).unwrap();
@@ -2676,6 +2676,35 @@ mod live_action_rollback_tests {
         assert_eq!(serde_json::to_value(options).unwrap(), serde_json::to_value(eager.editor.activation_options).unwrap());
         original.restore(&mut wasm);
         assert_eq!(wasm.export_mana_payment_options_request("stale", &immediate.plan_id).unwrap(), "null");
+        confirm_pending_mana_payment(&mut wasm);
+        assert!(wasm.priority_state.pending_cast.is_none());
+    }
+
+    #[test]
+    fn deferred_prompt_funds_simple_payment_and_keeps_lands_clickable() {
+        struct Restore(bool);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                ironsmith::game_loop::set_priority_analysis_deferred(self.0);
+            }
+        }
+        let _guard = crate::test_id_counter_guard();
+        let _restore = Restore(ironsmith::game_loop::priority_analysis_deferred());
+        let (mut wasm, _) = manual_payment_fixture();
+        for name in ["Mountain", "Swamp", "Swamp", "Forest", "Saruli Caretaker", "Saruli Caretaker", "Overgrown Battlement"] {
+            wasm.add_card_to_zone(0, name.to_string(), "battlefield".to_string(), true).unwrap();
+        }
+        wasm.set_deferred_priority_analysis(true);
+        wasm.set_deferred_mana_options(true);
+        begin_manual_payment_spell_with_cost(&mut wasm, ManaCost::from_symbols(vec![ManaSymbol::Red]));
+        let view = wasm.current_mana_payment_view().unwrap();
+        assert!(view.can_confirm, "a single red pip with untapped Mountains opens funded");
+        assert!(view.planning_complete, "a floor-scoring first plan needs no background ranking");
+        assert!(
+            view.mana_abilities.len() >= 2,
+            "both Mountains stay clickable before deferred options arrive: {:?}",
+            view.mana_abilities.iter().map(|ability| &ability.source_name).collect::<Vec<_>>()
+        );
         confirm_pending_mana_payment(&mut wasm);
         assert!(wasm.priority_state.pending_cast.is_none());
     }

@@ -1197,7 +1197,11 @@ impl WasmGame {
                 *cache = Some((inventory_key, mana_activation_option_views(&self.game, &inventory_request)?));
             }
         }
-        let manual = if self.defer_mana_options { Vec::new() } else { manual_mana_ability_views(&self.game, &context.request)? };
+        let manual = if self.defer_mana_options {
+            immediate_manual_mana_ability_views(&self.game, &context.request)?
+        } else {
+            manual_mana_ability_views(&self.game, &context.request)?
+        };
         let options = if self.defer_mana_options { &[][..] } else { &cache.as_ref().unwrap().1[..] };
         // A cost/effect decision inside a manual mana activation temporarily owns
         // the payment UI. Only reuse the parent's provisional view when it matches.

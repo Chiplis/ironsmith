@@ -2877,6 +2877,14 @@ pub(crate) fn pay_cost_component_with_choice(
     cost: &crate::costs::Cost,
     ctx: &mut CostContext,
 ) -> Result<(), CostPaymentError> {
+    pay_cost_component_with_choice_with_outputs(game, cost, ctx).map(|_| ())
+}
+
+pub(crate) fn pay_cost_component_with_choice_with_outputs(
+    game: &mut GameState,
+    cost: &crate::costs::Cost,
+    ctx: &mut CostContext,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     if !game
         .player(ctx.payer)
         .is_some_and(|player| player.is_in_game())
@@ -2886,16 +2894,15 @@ pub(crate) fn pay_cost_component_with_choice(
         ));
     }
     game.validate_cost_for_payment_reason(ctx.payer, ctx.source, cost, ctx.reason)?;
-    // One cost component is one simultaneous event, including the objects it
-    // moves once its choice is made (CR 603.2c).
-    let opened_batch = !cost.is_mana_cost() && game.open_simultaneous_action();
-    let result = match cost.pay(game, ctx) {
-        Ok(CostPaymentResult::Paid) => Ok(()),
-        Ok(CostPaymentResult::NeedsChoice(_)) => resolve_cost_choice(game, cost, ctx),
+    cost.with_payment_action_scope(game, |game| match cost.pay_with_outputs(game, ctx) {
+        Ok(receipt) => match receipt.result {
+            CostPaymentResult::Paid => Ok(receipt.outputs.into_iter().collect()),
+            CostPaymentResult::NeedsChoice(_) => {
+                resolve_cost_choice(game, cost, ctx).map(|()| receipt.outputs.into_iter().collect())
+            }
+        },
         Err(error) => Err(error),
-    };
-    game.close_simultaneous_action(opened_batch);
-    result
+    })
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -3369,10 +3376,29 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
     reason: crate::costs::PaymentReason,
     execution_ctx: &mut ExecutionContext<'_>,
 ) -> Result<(), CostPaymentError> {
+    pay_total_cost_with_choice_in_context_with_outputs(
+        game,
+        payer,
+        source,
+        cost,
+        reason,
+        execution_ctx,
+    )
+    .map(|_| ())
+}
+
+pub(crate) fn pay_total_cost_with_choice_in_context_with_outputs(
+    game: &mut GameState,
+    payer: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    reason: crate::costs::PaymentReason,
+    execution_ctx: &mut ExecutionContext<'_>,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     crate::effects::composition::execute_transaction(
         game,
         execution_ctx,
-        || (),
+        Vec::new,
         |game, execution_ctx| {
             can_pay_total_cost_with_reason_in_context(
                 game,
@@ -3382,7 +3408,7 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
                 reason,
                 execution_ctx,
             )?;
-            let result = pay_total_cost_branch_in_context(
+            let result = pay_total_cost_branch_in_context_with_outputs(
                 game,
                 payer,
                 source,
@@ -3395,7 +3421,7 @@ pub(crate) fn pay_total_cost_with_choice_in_context(
             // The transaction owns suspension; retain its decision and return only
             // the neutral pending result while restoring every original binding.
             if execution_ctx.decision_maker.awaiting_choice() {
-                Ok(())
+                Ok(Vec::new())
             } else {
                 result
             }
@@ -3854,7 +3880,7 @@ fn pay_selected_cost_without_execution_context(
     Ok(())
 }
 
-fn pay_total_cost_branch_in_context(
+fn pay_total_cost_branch_in_context_with_outputs(
     game: &mut GameState,
     payer: PlayerId,
     source: ObjectId,
@@ -3862,11 +3888,12 @@ fn pay_total_cost_branch_in_context(
     reason: crate::costs::PaymentReason,
     provenance: crate::provenance::ProvNodeId,
     execution_ctx: &mut ExecutionContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
+            let mut outputs = Vec::new();
             for component in costs {
-                pay_component_in_context(
+                outputs.extend(pay_component_in_context_with_outputs(
                     game,
                     payer,
                     source,
@@ -3874,12 +3901,12 @@ fn pay_total_cost_branch_in_context(
                     reason,
                     provenance,
                     execution_ctx,
-                )?;
+                )?);
                 if execution_ctx.decision_maker.awaiting_choice() {
-                    return Ok(());
+                    return Ok(Vec::new());
                 }
             }
-            Ok(())
+            Ok(outputs)
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => {
             let mut payable = Vec::new();
@@ -3910,7 +3937,7 @@ fn pay_total_cost_branch_in_context(
                     "no payable alternative cost branch".to_string(),
                 ));
             };
-            pay_total_cost_branch_in_context(
+            pay_total_cost_branch_in_context_with_outputs(
                 game,
                 payer,
                 source,
@@ -3968,6 +3995,14 @@ fn pay_component_without_execution_context(
     component: &crate::costs::Cost,
     cost_ctx: &mut CostContext<'_>,
 ) -> Result<(), CostPaymentError> {
+    pay_component_without_execution_context_with_outputs(game, component, cost_ctx).map(|_| ())
+}
+
+fn pay_component_without_execution_context_with_outputs(
+    game: &mut GameState,
+    component: &crate::costs::Cost,
+    cost_ctx: &mut CostContext<'_>,
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     if let Some(mana_cost) = component.mana_cost_ref() {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
             cost_ctx.payer,
@@ -3986,7 +4021,8 @@ fn pay_component_without_execution_context(
                 exclusions,
                 cost_ctx.decision_maker,
                 Some(&execution),
-            );
+            )
+            .map(|()| Vec::new());
         }
         return crate::costs::pay_mana_cost_with_choices_in_context(
             game,
@@ -3997,7 +4033,8 @@ fn pay_component_without_execution_context(
             cost_ctx.reason,
             cost_ctx.decision_maker,
             Some(&execution),
-        );
+        )
+        .map(|()| Vec::new());
     }
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         let mut execution = ExecutionContext::new_default(cost_ctx.source, cost_ctx.payer)
@@ -4006,16 +4043,16 @@ fn pay_component_without_execution_context(
         execution.replacement = cost_ctx.replacement.clone();
         execution.x_value = cost_ctx.x_value;
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, &mut execution)?;
-        return pay_component_without_execution_context(
+        return pay_component_without_execution_context_with_outputs(
             game,
             &crate::costs::Cost::mana(resolved),
             cost_ctx,
         );
     }
-    pay_cost_component_with_choice(game, component, cost_ctx)
+    pay_cost_component_with_choice_with_outputs(game, component, cost_ctx)
 }
 
-fn pay_component_in_context(
+fn pay_component_in_context_with_outputs(
     game: &mut GameState,
     payer: PlayerId,
     source: ObjectId,
@@ -4023,7 +4060,7 @@ fn pay_component_in_context(
     reason: crate::costs::PaymentReason,
     provenance: crate::provenance::ProvNodeId,
     execution_ctx: &mut ExecutionContext<'_>,
-) -> Result<(), CostPaymentError> {
+) -> Result<Vec<crate::effects::CompletedEffectOutputs>, CostPaymentError> {
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
         let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
         let adjusted_cost =
@@ -4038,11 +4075,13 @@ fn pay_component_in_context(
             reason,
             execution_ctx.decision_maker,
             Some(&execution),
-        );
+        )
+        .map(|()| Vec::new());
     }
     let mut cost_ctx = CostContext::from_execution_context(source, payer, reason, execution_ctx)
         .with_provenance(provenance);
-    let result = pay_component_without_execution_context(game, component, &mut cost_ctx);
+    let result =
+        pay_component_without_execution_context_with_outputs(game, component, &mut cost_ctx);
     let tags = std::mem::take(&mut cost_ctx.tagged_objects);
     let outcomes = std::mem::take(&mut cost_ctx.effect_outcomes);
     let x_value = cost_ctx.x_value;

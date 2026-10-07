@@ -168,6 +168,29 @@ impl CostExecutionBindings {
     }
 }
 
+/// Acknowledgement and the actual effect packet produced by a cost owner.
+/// Effect-backed costs publish their observations at the payment boundary;
+/// retaining this packet never requests another physical action/publication.
+/// Owners with no effect packet retain their existing typed acknowledgement.
+pub struct CostPaymentReceipt {
+    pub result: CostPaymentResult,
+    pub outputs: Option<crate::effects::CompletedEffectOutputs>,
+}
+impl CostPaymentReceipt {
+    pub fn new(result: CostPaymentResult) -> Self {
+        Self {
+            result,
+            outputs: None,
+        }
+    }
+    pub(crate) fn from_outputs(outputs: crate::effects::CompletedEffectOutputs) -> Self {
+        Self {
+            result: CostPaymentResult::Paid,
+            outputs: Some(outputs),
+        }
+    }
+}
+
 /// Context for cost payment operations.
 ///
 /// Similar to ExecutionContext for effects, this provides the necessary
@@ -701,6 +724,16 @@ pub trait CostPayer: std::fmt::Debug + Send + Sync + CostPayerClone + Any {
         game: &mut GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, CostPaymentError>;
+
+    /// Retain actual outputs without changing legacy owners' payment contract.
+    /// Absence is explicit; do not reconstruct packets from mutable history.
+    fn pay_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut CostContext,
+    ) -> Result<CostPaymentReceipt, CostPaymentError> {
+        self.pay(game, ctx).map(CostPaymentReceipt::new)
+    }
 
     /// Clone this cost into a boxed trait object.
     fn clone_box(&self) -> Box<dyn CostPayer> {

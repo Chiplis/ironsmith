@@ -41,14 +41,19 @@ mod payer_trait;
 pub(crate) use payer_trait::{check_effect_cost_program, payment_event_cause};
 mod prepared_payment;
 mod processing_mode;
-pub(crate) use prepared_payment::{PaymentScope, prepare_total_cost};
+pub(crate) use prepared_payment::{
+    PaymentScope, acknowledged_total_cost, execute_total_cost_program_action, prepare_total_cost,
+    prepare_total_cost_program_action, select_payable_total_cost,
+    total_cost_supports_prepared_program,
+};
 
 // Re-export the trait and context
 pub use payer_trait::{
     CostCheckContext, can_pay_with_check_context, can_potentially_pay_with_check_context,
 };
 pub use payer_trait::{
-    CostContext, CostPayer, CostPaymentResult, PaymentReason, PotentialManaQuery,
+    CostContext, CostPayer, CostPaymentReceipt, CostPaymentResult, PaymentReason,
+    PotentialManaQuery,
 };
 pub use processing_mode::CostProcessingMode;
 
@@ -548,20 +553,42 @@ impl Cost {
         game: &mut crate::game_state::GameState,
         ctx: &mut CostContext,
     ) -> Result<CostPaymentResult, crate::cost::CostPaymentError> {
-        // CR 603.2c: the objects one cost moves (exile five cards from your
-        // graveyard, sacrifice two creatures) move as one simultaneous event.
-        // Mana abilities activated while paying mana are separate actions.
-        // A sequence contains separate instructions, each of which owns its
-        // simultaneous recipients. An outer cost wrapper must not turn the
-        // whole sequence into a single simultaneous action.
-        let sequential_program = self.effect_ref().is_some_and(|effect| {
-            effect
+        self.pay_with_outputs(game, ctx)
+            .map(|receipt| receipt.result)
+    }
+
+    pub fn pay_with_outputs(
+        &self,
+        game: &mut crate::game_state::GameState,
+        ctx: &mut CostContext,
+    ) -> Result<CostPaymentReceipt, crate::cost::CostPaymentError> {
+        self.with_payment_action_scope(game, |game| self.0.pay_with_outputs(game, ctx))
+    }
+
+    /// One cost action owns its simultaneous recipients and pending choices.
+    /// A sequence's authored children own separate action identities, including
+    /// when a transparent tag/result/source wrapper surrounds that sequence.
+    pub(crate) fn with_payment_action_scope<T>(
+        &self,
+        game: &mut crate::game_state::GameState,
+        body: impl FnOnce(&mut crate::game_state::GameState) -> T,
+    ) -> T {
+        let mut effect = self.effect_ref();
+        let sequential_program = loop {
+            let Some(current) = effect else {
+                break false;
+            };
+            if current
                 .downcast_ref::<crate::effects::SequenceEffect>()
                 .is_some()
-        });
+            {
+                break true;
+            }
+            effect = current.0.transparent_child_effect();
+        };
         let opened_batch =
             !self.is_mana_cost() && !sequential_program && game.open_simultaneous_action();
-        let result = self.0.pay(game, ctx);
+        let result = body(game);
         game.close_simultaneous_action(opened_batch);
         result
     }

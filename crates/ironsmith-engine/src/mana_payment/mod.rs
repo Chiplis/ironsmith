@@ -29,6 +29,7 @@ pub use planner::{
     mana_payment_activation_inventory_checked, mana_payment_ready_activation_inventory_checked,
     mana_payment_ready_and_manual_inventory_checked,
     mana_payment_source_inventory, mana_payment_transaction_id, plan_first_mana_payment,
+    immediate_manual_mana_abilities_checked,
     plan_mana_payment, plan_prompt_mana_payment, unfunded_mana_payment_plan,
 };
 

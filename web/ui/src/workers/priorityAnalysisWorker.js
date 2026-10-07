@@ -1,5 +1,6 @@
 import { createLocalAnalysisReplica } from '../lib/local-analysis-replay.js';
 import initWasm, { WasmGame } from '../../../wasm_demo/pkg/ironsmith.js';
+import { restoreAnalysisSeed } from './analysis-seed.js';
 
 // One pump owns WASM. New snapshots supersede searches at yield boundaries;
 // registry initialization finishes once and survives cancellation.
@@ -7,7 +8,9 @@ let sequence = 0, cancelSerial = 0;
 let game, token, complete = false, initialized = false, running = false;
 let job = null, pendingAnalysis = null;
 const inspectors = [];
-const replica = createLocalAnalysisReplica(() => new WasmGame());
+let initialization = null;
+const replica = createLocalAnalysisReplica(() => new WasmGame(),
+  { restoreSeed: (image, oldGame) => restoreAnalysisSeed(initialization, image, oldGame) });
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
 const reportError = error => self.postMessage({ type: 'error', token, error: error.stack || error.message || String(error) });
 const phase = value => self.postMessage({ type: 'phase', token, phase: value });
@@ -35,8 +38,11 @@ async function analyze(data) {
   initialized = false;
   complete = false;
   phase('initializing');
-  await initWasm({ engine: data.module, compiler: false, verifier: false });
+  initialization ||= initWasm({ engine: data.module, compiler: false, verifier: false });
+  await initialization;
   game = await replica.hydrate(data.localReplay, yieldTask);
+  self.postMessage({ type: 'replica', token, mark: { epoch: data.localReplay.epoch,
+    position: (data.localReplay.base ?? 0) + (data.localReplay.operations?.length ?? 0) } });
   if (job.cancelled) return;
   phase('search');
   initialized = true;

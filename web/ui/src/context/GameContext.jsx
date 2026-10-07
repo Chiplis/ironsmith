@@ -2441,6 +2441,12 @@ export function GameProvider({ children }) {
       }
     } catch (error) {
       console.warn("Background payment analysis failed:", error);
+      if (isCurrent()) {
+        const next = { ...stateRef.current, mana_payment: { ...stateRef.current.mana_payment,
+          planning_complete: true, planning_error: String(error?.message || error) } };
+        stateRef.current = next;
+        setState(next);
+      }
     }
   }, [dispatch, game, setState, stateRef]);
 

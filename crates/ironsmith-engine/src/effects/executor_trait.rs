@@ -246,6 +246,9 @@ pub struct EffectOutcomeContribution {
     pub amount: u32,
 }
 pub enum SharedOutcomeOwnership {
+    /// The child owner already published its chronological observations.
+    /// Retain this packet as an alternative view, never another parent history.
+    Published,
     /// Retained child packet without a declared participant association.
     Batch,
     /// One shared output observed by the named authored participants.
@@ -305,7 +308,7 @@ impl CompletedEffectOutputs {
     ) -> Result<EffectOutcome, ExecutionError> {
         let primary = self.participant_output(scope)?.outcome.clone();
         let related = self.shared.iter().filter(|shared| match &shared.ownership {
-            SharedOutcomeOwnership::Batch => false,
+            SharedOutcomeOwnership::Batch | SharedOutcomeOwnership::Published => false,
             SharedOutcomeOwnership::Participants(scopes) => {
                 scopes.iter().any(|related| related.same_instruction(scope))
             }
@@ -340,6 +343,18 @@ impl CompletedEffectOutputs {
         self.outcome = outcome;
         self.synchronize_observations();
         self
+    }
+
+    /// Retain a cost/root-action packet whose observations are already owned by
+    /// its publisher. Do not concatenate its events into the parent's history.
+    pub(crate) fn retain_published_children(&mut self, children: impl IntoIterator<Item = Self>) {
+        for outputs in children {
+            self.projections_complete &= outputs.projections_complete;
+            self.shared.push(SharedEffectOutcome {
+                ownership: SharedOutcomeOwnership::Published,
+                outputs,
+            });
+        }
     }
 
     /// Retain each additional programme's result exactly once with batch

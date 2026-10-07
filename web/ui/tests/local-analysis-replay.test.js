@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLocalAnalysisJournal, createLocalAnalysisReplica, releaseRestoredRuntimeSavepoints } from '../src/lib/local-analysis-replay.js';
+import { createLocalAnalysisJournal, createLocalAnalysisReplica, releaseRestoredRuntimeSavepoints, seededLocalReplay, localReplayEnd } from '../src/lib/local-analysis-replay.js';
 
 class Game {
   state = { objects: [], choices: {}, history: [], manaProvenance: [], temporaryPermissions: [] };
@@ -172,4 +172,43 @@ test('cold instance cleanup releases only live journaled savepoints and records 
   assert.equal(journal.capture().operations.at(-1).method,'releaseRuntimeSavepoint');
   releaseRestoredRuntimeSavepoints(journal);
   assert.deepEqual(released,[2],'retired handles are not released twice');
+});
+
+test('a seeded replica restores the image and replays only later operations', async () => {
+  const original = new Game(), journal = createLocalAnalysisJournal(original, 9);
+  journal.game.edit('history', ['before seed']);
+  const branch = journal.game.createRuntimeSavepoint();
+  // The image is the exact runtime, including the live native branch.
+  const image = { state: structuredClone(original.state), handles: new Map(original.handles), nextHandle: original.nextHandle };
+  const seeded = seededLocalReplay(journal.capture(), image);
+  assert.equal(seeded.operations.length, 0);
+  assert.equal(localReplayEnd(seeded), journal.capture().operations.length);
+  assert.deepEqual(seeded.seed.handles, [branch]);
+  journal.game.edit('choices', { after: true });
+  journal.game.exchangeRuntimeSavepoint(branch);
+  journal.game.exchangeRuntimeSavepoint(branch);
+  const full = journal.capture();
+  const later = { ...seeded, operations: full.operations.slice(seeded.base) };
+  let restores = 0, replays = 0;
+  const replica = createLocalAnalysisReplica(() => { replays++; return new Game(); }, {
+    restoreSeed: async (seed, old) => {
+      restores++;
+      assert.equal(old, null, 'a fresh replica has no runtime to detach');
+      return Object.assign(new Game(), { state: structuredClone(seed.state), handles: new Map(seed.handles), nextHandle: seed.nextHandle });
+    },
+  });
+  const restored = await replica.hydrate(later);
+  assert.equal(restores, 1);
+  assert.deepEqual(restored.state, original.state);
+  // A caught-up replica ignores a seed it does not need.
+  journal.game.edit('history', ['after']);
+  const next = await replica.hydrate({ ...later, operations: journal.capture().operations.slice(seeded.base) });
+  assert.equal(restores, 1);
+  assert.deepEqual(next.state, original.state);
+  assert.equal(replays, 0, 'no engine is constructed only to be replaced');
+});
+
+test('a replay that starts after an unseeded replica fails closed', async () => {
+  const replica = createLocalAnalysisReplica(() => new Game());
+  await assert.rejects(replica.hydrate({ epoch: 1, identityOrigin: { object: 1 }, base: 3, operations: [] }), /unseeded replica/);
 });

@@ -63,11 +63,14 @@ export async function validateExactSnapshotHeader(snapshot) {
   if (snapshot?.version !== EXACT_SNAPSHOT_VERSION) throw new Error('Exact snapshot schema is incompatible');
   if (await snapshotDigest(snapshotDataBytes(snapshotHeader(snapshot))) !== snapshot.integrity) throw new Error('Exact snapshot integrity mismatch');
 }
-export async function validateExactSnapshot(snapshot, buildId) {
+export function validateExactSnapshotShape(snapshot, buildId) {
   if (snapshot?.version !== EXACT_SNAPSHOT_VERSION || snapshot.buildId !== buildId) throw new Error('Exact snapshot build is incompatible');
   if (!(snapshot.memory instanceof Uint8Array) || !snapshot.memory.byteLength || snapshot.memory.byteLength % PAGE
       || snapshot.memory.byteLength > 2 ** 32 || !Number.isInteger(snapshot.pointer) || snapshot.pointer < 8
       || snapshot.pointer % 4 || snapshot.pointer >= snapshot.memory.byteLength) throw new Error('Invalid exact snapshot memory or root');
+}
+export async function validateExactSnapshot(snapshot, buildId) {
+  validateExactSnapshotShape(snapshot, buildId);
   await validateExactSnapshotHeader(snapshot);
   if (await snapshotDigest(snapshot.memory) !== snapshot.memoryHash) throw new Error('Exact snapshot integrity mismatch');
 }
@@ -83,49 +86,64 @@ export function createExactBuildSnapshotRuntime({ exports: initial, layout, buil
       if (table.length !== entries.length || entries.some((entry, index) => table.get(index) !== entry)) throw new Error('Snapshot function table has changed');
     }
   };
+  // Copy synchronously; the caller's worker queue owns this quiet boundary.
+  const copyInstance = (game, extra = {}) => {
+    checkFunctions();
+    const data = { version: EXACT_SNAPSHOT_VERSION, buildId,
+      pointer: game.__wbg_ptr,
+      globals: layout.globals.map(({ name }) => exports[name].value),
+      references: layout.tables.filter(table => table.kind === 'reference').map(({ name }) => {
+        const table = exports[name]; return Array.from({ length: table.length }, (_, index) => table.get(index));
+      }), ...extra };
+    // structuredClone would silently erase a custom class's prototype.
+    // Refuse such host resources before copying any reference table entries.
+    assertCloneableData(data);
+    return { ...structuredClone(data), memory: new Uint8Array(exports.memory.buffer).slice() };
+  };
+  const apply = (snapshot, oldGame) => {
+    if (snapshot.globals.length !== layout.globals.length
+        || snapshot.references.length !== layout.tables.filter(table => table.kind === 'reference').length) throw new Error('Exact snapshot instance layout mismatch');
+    // Do not let the old wrapper's finalizer free a pointer in the new heap.
+    // A fresh analysis worker has no wrapper to detach.
+    oldGame?.__destroy_into_raw();
+    exports = replace();
+    const difference = snapshot.memory.byteLength - exports.memory.buffer.byteLength;
+    if (difference < 0) throw new Error('Exact snapshot memory is smaller than the initial instance');
+    if (difference) exports.memory.grow(difference / PAGE);
+    new Uint8Array(exports.memory.buffer).set(snapshot.memory);
+    layout.globals.forEach(({ name, mutable }, index) => {
+      if (mutable) exports[name].value = snapshot.globals[index];
+      else if (!Object.is(exports[name].value, snapshot.globals[index])) throw new Error('Exact snapshot immutable global mismatch');
+    });
+    const references = structuredClone(snapshot.references);
+    layout.tables.filter(table => table.kind === 'reference').forEach(({ name }, index) => {
+      const table = exports[name], values = references[index];
+      if (!Array.isArray(values) || values.length < table.length) throw new Error('Exact snapshot reference table mismatch');
+      if (values.length > table.length) table.grow(values.length - table.length);
+      for (let index = 0; index < values.length; index++) table.set(index, values[index]);
+    });
+    // Recreated function references have different JS identities. Rebase the
+    // capture check onto this instance's table, whose element segments match.
+    for (const baseline of initialFunctions) baseline.entries = Array.from({ length: exports[baseline.name].length }, (_, index) => exports[baseline.name].get(index));
+    return attach(snapshot.pointer);
+  };
   return {
     get exports() { return exports; },
     async capture(game, recovery) {
-      checkFunctions();
-      // Copy before the first await; the worker queue owns this quiet boundary.
-      const data = { version: EXACT_SNAPSHOT_VERSION, buildId,
-        pointer: game.__wbg_ptr,
-        globals: layout.globals.map(({ name }) => exports[name].value),
-        references: layout.tables.filter(table => table.kind === 'reference').map(({ name }) => {
-          const table = exports[name]; return Array.from({ length: table.length }, (_, index) => table.get(index));
-        }), recovery };
-      // structuredClone would silently erase a custom class's prototype.
-      // Refuse such host resources before copying any reference table entries.
-      assertCloneableData(data);
-      const snapshot = { ...structuredClone(data), memory: new Uint8Array(exports.memory.buffer).slice() };
-      return sealExactSnapshot(snapshot);
+      return sealExactSnapshot(copyInstance(game, { recovery }));
     },
     async restore(snapshot, oldGame) {
       await validateExactSnapshot(snapshot, buildId);
-      if (snapshot.globals.length !== layout.globals.length
-          || snapshot.references.length !== layout.tables.filter(table => table.kind === 'reference').length) throw new Error('Exact snapshot instance layout mismatch');
-      // Do not let the old wrapper's finalizer free a pointer in the new heap.
-      oldGame.__destroy_into_raw();
-      exports = replace();
-      const difference = snapshot.memory.byteLength - exports.memory.buffer.byteLength;
-      if (difference < 0) throw new Error('Exact snapshot memory is smaller than the initial instance');
-      if (difference) exports.memory.grow(difference / PAGE);
-      new Uint8Array(exports.memory.buffer).set(snapshot.memory);
-      layout.globals.forEach(({ name, mutable }, index) => {
-        if (mutable) exports[name].value = snapshot.globals[index];
-        else if (!Object.is(exports[name].value, snapshot.globals[index])) throw new Error('Exact snapshot immutable global mismatch');
-      });
-      const references = structuredClone(snapshot.references);
-      layout.tables.filter(table => table.kind === 'reference').forEach(({ name }, index) => {
-        const table = exports[name], values = references[index];
-        if (!Array.isArray(values) || values.length < table.length) throw new Error('Exact snapshot reference table mismatch');
-        if (values.length > table.length) table.grow(values.length - table.length);
-        for (let index = 0; index < values.length; index++) table.set(index, values[index]);
-      });
-      // Recreated function references have different JS identities. Rebase the
-      // capture check onto this instance's table, whose element segments match.
-      for (const baseline of initialFunctions) baseline.entries = Array.from({ length: exports[baseline.name].length }, (_, index) => exports[baseline.name].get(index));
-      return attach(snapshot.pointer);
+      return apply(snapshot, oldGame);
+    },
+    // Analysis seeds never leave this browser session, so they skip the
+    // integrity digests (~6x the copy cost) but keep every structural check.
+    captureLocal(game) {
+      return copyInstance(game);
+    },
+    restoreLocal(snapshot, oldGame) {
+      validateExactSnapshotShape(snapshot, buildId);
+      return apply(snapshot, oldGame);
     },
     reset() {
       exports = replace();

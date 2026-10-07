@@ -143,6 +143,10 @@ impl BandsWithOther {
 }
 
 impl StaticAbilityKind for BandsWithOther {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::BandsWithOther
     }
@@ -181,6 +185,10 @@ impl PartnerVariant {
 }
 
 impl StaticAbilityKind for PartnerVariant {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Partner
     }
@@ -215,6 +223,10 @@ impl PartnerWith {
 }
 
 impl StaticAbilityKind for PartnerWith {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::PartnerWith
     }
@@ -247,6 +259,10 @@ impl Toxic {
 }
 
 impl StaticAbilityKind for Toxic {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Toxic
     }
@@ -273,6 +289,10 @@ define_keyword!(ReadAhead, ReadAhead, "Read ahead");
 pub struct Defender;
 
 impl StaticAbilityKind for Defender {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
         static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
             std::sync::LazyLock::new(|| super::CompiledStaticAbility {
@@ -321,6 +341,10 @@ impl StaticAbilityKind for Defender {
 pub struct Indestructible;
 
 impl StaticAbilityKind for Indestructible {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
         static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
             std::sync::LazyLock::new(|| super::CompiledStaticAbility {
@@ -365,6 +389,10 @@ impl StaticAbilityKind for Indestructible {
 pub struct Hexproof;
 
 impl StaticAbilityKind for Hexproof {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn compiled_model(&self) -> Option<&super::CompiledStaticAbility> {
         static MODEL: std::sync::LazyLock<super::CompiledStaticAbility> =
             std::sync::LazyLock::new(|| super::CompiledStaticAbility {
@@ -407,6 +435,10 @@ impl StaticAbilityKind for Hexproof {
 pub struct Shroud;
 
 impl StaticAbilityKind for Shroud {
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::Shroud
     }

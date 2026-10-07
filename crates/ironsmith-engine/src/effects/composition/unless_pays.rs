@@ -12,19 +12,92 @@ use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::special_actions::{
-    can_pay_total_cost_with_reason_in_context, pay_total_cost_with_choice_in_context,
+    can_pay_total_cost_with_reason_in_context, pay_total_cost_with_choice_in_context_with_outputs,
 };
 use crate::target::PlayerFilter;
 
 // Execution failures do not establish that a legal cost cannot be paid.
+fn acknowledged_payment<T>(
+    result: Result<T, crate::cost::CostPaymentError>,
+) -> Result<Option<T>, ExecutionError> {
+    crate::costs::acknowledged_total_cost(result)
+}
 fn payment_succeeded(
     result: Result<(), crate::cost::CostPaymentError>,
 ) -> Result<bool, ExecutionError> {
-    match result {
-        Ok(()) => Ok(true),
-        Err(crate::cost::CostPaymentError::ExecutionFailed(error)) => Err(error),
-        Err(_) => Ok(false),
+    acknowledged_payment(result).map(|receipt| receipt.is_some())
+}
+
+/// Offers select willingness only. Queries and pending decisions establish
+/// no payment acknowledgement and cannot start a consequence branch.
+fn select_payment_offer(
+    game: &GameState,
+    payer: PlayerId,
+    cost: &crate::cost::TotalCost,
+    ctx: &mut ExecutionContext,
+) -> Result<Option<bool>, ExecutionError> {
+    let can_afford = payment_succeeded(can_pay_total_cost_with_reason_in_context(
+        game,
+        payer,
+        ctx.source,
+        cost,
+        crate::costs::PaymentReason::Effect,
+        ctx,
+    ))?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(None);
     }
+    let wants_to_pay = can_afford
+        && make_boolean_decision(
+            game,
+            &mut ctx.decision_maker,
+            payer,
+            ctx.source,
+            format!("{} to prevent effect?", cost.display()),
+            FallbackStrategy::Accept,
+        );
+    Ok((!ctx.decision_maker.awaiting_choice()).then_some(wants_to_pay))
+}
+
+fn execute_consequences(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+    declarations: Vec<crate::effects::CompletedEffectOutputs>,
+    player: Option<PlayerId>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    let cursor = super::branch_program::selected_clause_cursor(
+        effects,
+        vec![0],
+        crate::effects::ProgramActionScope {
+            iterated_player: Some(player),
+            ..Default::default()
+        },
+    );
+    let mut outputs = super::action_program::execute_action_program_with_outputs(
+        cursor,
+        game,
+        ctx,
+        crate::effects::EffectExecutionPurpose::Action,
+    )?;
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            EffectOutcome::count(0),
+        ));
+    }
+    outputs.retain_batch_children(declarations);
+    Ok(outputs)
+}
+
+fn paid_clause_outputs(
+    declarations: Vec<crate::effects::CompletedEffectOutputs>,
+    payments: Vec<crate::effects::CompletedEffectOutputs>,
+) -> crate::effects::CompletedEffectOutputs {
+    let mut outputs =
+        crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::declined());
+    outputs.retain_batch_children(declarations);
+    outputs.retain_published_children(payments);
+    outputs
 }
 
 /// Effect that executes inner effects unless a player pays a mana cost.
@@ -215,41 +288,14 @@ fn choose_payable_cost_for_simultaneous_action(
     cost: &crate::cost::TotalCost,
     ctx: &mut ExecutionContext,
 ) -> Result<Option<crate::cost::TotalCost>, ExecutionError> {
-    Ok(match cost.kind() {
-        ironsmith_core::TotalCostKind::All(_) => Some(cost.clone()),
-        ironsmith_core::TotalCostKind::OneOf(branches) => {
-            let mut payable = Vec::new();
-            for branch in branches {
-                if payment_succeeded(can_pay_total_cost_with_reason_in_context(
-                    game,
-                    payer,
-                    source,
-                    branch,
-                    crate::costs::PaymentReason::Effect,
-                    ctx,
-                ))? {
-                    payable.push(branch.clone());
-                }
-            }
-            match payable.as_slice() {
-                [] => None,
-                [only] => Some(only.clone()),
-                _ => {
-                    let options = payable
-                        .into_iter()
-                        .map(|branch| (branch.display(), branch))
-                        .collect::<Vec<_>>();
-                    crate::decisions::ask_choose_one(
-                        game,
-                        &mut ctx.decision_maker,
-                        payer,
-                        source,
-                        &options,
-                    )
-                }
-            }
-        }
-    })
+    crate::costs::select_payable_total_cost(
+        game,
+        payer,
+        source,
+        cost,
+        crate::costs::PaymentReason::Effect,
+        ctx,
+    )
 }
 
 /// Number of leading instructions that only declare (and tag) a target.
@@ -265,6 +311,238 @@ fn leading_target_declaration_count(effects: &[Effect]) -> usize {
                 .is_some()
         })
         .count()
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PendingUnlessInstruction {
+    Declaration,
+    Payment,
+    Consequence,
+}
+
+struct UnlessPaysProgram {
+    clause: UnlessPaysEffect,
+    prepared: bool,
+    declared: usize,
+    next_declaration: usize,
+    declarations: Vec<crate::effects::CompletedEffectOutputs>,
+    paying_players: Option<Vec<PlayerId>>,
+    next_payer: usize,
+    payment: Option<crate::effects::CompletedEffectOutputs>,
+    consequence: Option<Box<dyn crate::effects::ActionProgramCursor>>,
+    result: Option<crate::effects::CompletedEffectOutputs>,
+    pending: Option<PendingUnlessInstruction>,
+    preparations: Vec<crate::effects::ProgramPreparation>,
+    ends_unit: bool,
+}
+impl std::fmt::Debug for UnlessPaysProgram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnlessPaysProgram")
+            .field("clause", &self.clause)
+            .field("next_declaration", &self.next_declaration)
+            .field("next_payer", &self.next_payer)
+            .field("pending", &self.pending)
+            .finish_non_exhaustive()
+    }
+}
+impl UnlessPaysProgram {
+    fn selected(
+        clause: &UnlessPaysEffect,
+        prepared: bool,
+    ) -> Box<dyn crate::effects::ActionProgramCursor> {
+        Box::new(Self {
+            clause: clause.clone(),
+            prepared,
+            declared: leading_target_declaration_count(&clause.effects),
+            next_declaration: 0,
+            declarations: Vec::new(),
+            paying_players: None,
+            next_payer: 0,
+            payment: None,
+            consequence: None,
+            result: None,
+            pending: None,
+            preparations: Vec::new(),
+            ends_unit: false,
+        })
+    }
+}
+impl crate::effects::ActionProgramCursor for UnlessPaysProgram {
+    fn take_preparations(&mut self) -> Vec<crate::effects::ProgramPreparation> {
+        std::mem::take(&mut self.preparations)
+    }
+    fn next_action(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<crate::effects::ProgramAction>, ExecutionError> {
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if self.pending.is_some() {
+            return Err(ExecutionError::InternalError(
+                "unless-payment selected another instruction before acknowledgement".into(),
+            ));
+        }
+        if self.payment.is_some() || self.result.is_some() {
+            return Ok(None);
+        }
+        // Targets may determine both the payer and the cost. Resolve them at
+        // their authored boundary, before even selecting a payment offer.
+        if self.next_declaration < self.declared {
+            let index = self.next_declaration;
+            self.next_declaration += 1;
+            self.pending = Some(PendingUnlessInstruction::Declaration);
+            self.ends_unit = false;
+            let mut action = crate::effects::ProgramAction::new(self.clause.effects[index].clone());
+            action.identity = vec![2, index];
+            return Ok(Some(action));
+        }
+        if self.paying_players.is_none() {
+            self.paying_players = Some(match self.clause.player {
+                PlayerFilter::Any => players_in_turn_order(game),
+                PlayerFilter::Opponent => {
+                    let filter_ctx = ctx.filter_context(game);
+                    players_in_turn_order(game)
+                        .into_iter()
+                        .filter(|player| self.clause.player.matches_player(*player, &filter_ctx))
+                        .collect()
+                }
+                _ => vec![resolve_player_filter(game, &self.clause.player, ctx)?],
+            });
+        }
+        let paying_players = self
+            .paying_players
+            .as_ref()
+            .expect("selected paying players");
+        while let Some(&payer) = paying_players.get(self.next_payer) {
+            let index = self.next_payer;
+            self.next_payer += 1;
+            let Some(wants_to_pay) = select_payment_offer(game, payer, &self.clause.cost, ctx)?
+            else {
+                return Ok(None);
+            };
+            if !wants_to_pay {
+                continue;
+            }
+            let cost = if self.prepared {
+                let selected = choose_payable_cost_for_simultaneous_action(
+                    game,
+                    payer,
+                    ctx.source,
+                    &self.clause.cost,
+                    ctx,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
+                let Some(cost) = selected else {
+                    continue;
+                };
+                cost
+            } else {
+                // Keep ordinary OneOf selection and sequential component input
+                // selection inside the payment owner at the actual request.
+                self.clause.cost.clone()
+            };
+            self.pending = Some(PendingUnlessInstruction::Payment);
+            self.ends_unit = true;
+            let mut action = crate::effects::ProgramAction::new(Effect::new(self.clause.clone()));
+            action.identity = vec![1, index];
+            action.native = Some(super::action_program::NativeProgramAction::TotalCost {
+                cost,
+                payer,
+                reason: crate::costs::PaymentReason::Effect,
+            });
+            return Ok(Some(action));
+        }
+        if self.consequence.is_none() {
+            let player = match paying_players.as_slice() {
+                [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
+                _ => ctx.iteration.iterated_player,
+            };
+            self.consequence = Some(super::branch_program::selected_clause_cursor(
+                &self.clause.effects[self.declared..],
+                vec![0],
+                crate::effects::ProgramActionScope {
+                    iterated_player: Some(player),
+                    ..Default::default()
+                },
+            ));
+        }
+        let consequence = self.consequence.as_mut().expect("selected consequence");
+        let next = consequence.next_action(game, ctx)?;
+        self.preparations.extend(consequence.take_preparations());
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if next.is_some() {
+            self.pending = Some(PendingUnlessInstruction::Consequence);
+            self.ends_unit = consequence.ends_action_unit();
+            return Ok(next);
+        }
+        if !self.preparations.is_empty() {
+            return Ok(None);
+        }
+        self.result = Some(
+            self.consequence
+                .take()
+                .expect("completed consequence")
+                .finish()?
+                .outputs,
+        );
+        Ok(None)
+    }
+    fn accept_action(
+        &mut self,
+        outputs: crate::effects::CompletedEffectOutputs,
+    ) -> Result<(), ExecutionError> {
+        match self.pending.take().ok_or_else(|| {
+            ExecutionError::InternalError(
+                "unless-payment acknowledged without a selected instruction".into(),
+            )
+        })? {
+            PendingUnlessInstruction::Declaration => self.declarations.push(outputs),
+            PendingUnlessInstruction::Payment => {
+                // This status is the actual total-cost owner's acknowledgement,
+                // independent of the component packets' physical outcomes.
+                if outputs.outcome.status == crate::effect::OutcomeStatus::Succeeded {
+                    self.payment = Some(outputs);
+                }
+            }
+            PendingUnlessInstruction::Consequence => self
+                .consequence
+                .as_mut()
+                .expect("active consequence")
+                .accept_action(outputs)?,
+        }
+        Ok(())
+    }
+    fn ends_action_unit(&self) -> bool {
+        self.ends_unit
+    }
+    fn finish(self: Box<Self>) -> Result<crate::effects::ProgramCompletion, ExecutionError> {
+        if self.pending.is_some() {
+            return Err(ExecutionError::InternalError(
+                "unless-payment finished before instruction acknowledgement".into(),
+            ));
+        }
+        let mut outputs = if let Some(payment) = self.payment {
+            let outcome = EffectOutcome::aggregate_with_primary_result(
+                EffectOutcome::declined(),
+                [payment.outcome.clone()],
+            );
+            payment.project_aggregate(outcome)
+        } else {
+            self.result.ok_or_else(|| {
+                ExecutionError::InternalError(
+                    "unless-payment lost its completed consequence".into(),
+                )
+            })?
+        };
+        outputs.retain_batch_children(self.declarations);
+        Ok(crate::effects::ProgramCompletion::new(outputs))
+    }
 }
 
 #[derive(Debug)]
@@ -381,9 +659,7 @@ impl UnlessPaysProposal {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        let effects = self.effects;
-        let payer = self.payer;
-        let cost = self.cost;
+        let proposal = *self;
         crate::effects::tokens::execute_resource_transaction_with_pending_value(
             game,
             ctx,
@@ -393,44 +669,58 @@ impl UnlessPaysProposal {
                 ))
             },
             |game, ctx| {
-                ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
-                    if let Some(cost) = cost
-                        && payment_succeeded(pay_total_cost_with_choice_in_context(
-                            game,
-                            payer,
-                            ctx.source,
-                            &cost,
-                            crate::costs::PaymentReason::Effect,
-                            ctx,
-                        ))?
-                    {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::declined(),
-                        ));
-                    }
-
-                    let outcomes = super::sequence::execute_ordered_children_with_outputs(
-                        game, ctx, &effects,
-                    )?;
+                if let Some(cost) = &proposal.cost {
+                    let payment =
+                        ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
+                            acknowledged_payment(
+                                pay_total_cost_with_choice_in_context_with_outputs(
+                                    game,
+                                    proposal.payer,
+                                    ctx.source,
+                                    cost,
+                                    crate::costs::PaymentReason::Effect,
+                                    ctx,
+                                ),
+                            )
+                        })?;
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::count(0),
                         ));
                     }
-                    let aggregate = EffectOutcome::aggregate(
-                        outcomes.iter().map(|outputs| outputs.outcome.clone()),
-                    );
-                    let mut outputs =
-                        crate::effects::CompletedEffectOutputs::aggregate_only(aggregate);
-                    outputs.retain_batch_children(outcomes);
-                    Ok(outputs)
-                })
+                    if let Some(outputs) = payment {
+                        return Ok(paid_clause_outputs(Vec::new(), outputs));
+                    }
+                }
+                execute_consequences(
+                    game,
+                    ctx,
+                    &proposal.effects,
+                    Vec::new(),
+                    proposal.iterated_player,
+                )
             },
         )
     }
 }
 
 impl EffectExecutor for UnlessPaysEffect {
+    fn supports_prepared_action_program(&self) -> bool {
+        crate::costs::total_cost_supports_prepared_program(&self.cost)
+            && self
+                .effects
+                .iter()
+                .all(super::action_program::action_program_child_is_prepared)
+    }
+
+    fn select_prepared_action_program(
+        &self,
+        _game: &mut GameState,
+        _ctx: &mut ExecutionContext,
+    ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
+        Ok(Some(UnlessPaysProgram::selected(self, true)))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -457,24 +747,17 @@ impl EffectExecutor for UnlessPaysEffect {
             ));
         }
         let payer = resolve_player_filter(game, &self.player, ctx)?;
-        let can_afford = payment_succeeded(can_pay_total_cost_with_reason_in_context(
-            game,
-            payer,
-            ctx.source,
-            &self.cost,
-            crate::costs::PaymentReason::Effect,
-            ctx,
-        ))?;
-        let payment_prompt = format!("{} to prevent effect?", self.cost.display());
-        let wants_to_pay = can_afford
-            && make_boolean_decision(
-                game,
-                &mut ctx.decision_maker,
+        let Some(wants_to_pay) = select_payment_offer(game, payer, &self.cost, ctx)? else {
+            // This selected parent carries no original while the offer is
+            // pending. The enclosing transaction owns suspension and replay.
+            return Ok(Box::new(UnlessPaysProposal {
+                prepared: None,
+                effects: self.effects.clone(),
                 payer,
-                ctx.source,
-                payment_prompt,
-                FallbackStrategy::Accept,
-            );
+                cost: None,
+                iterated_player: ctx.iteration.iterated_player,
+            }));
+        };
         let cost = if wants_to_pay {
             choose_payable_cost_for_simultaneous_action(game, payer, ctx.source, &self.cost, ctx)?
         } else {
@@ -532,120 +815,12 @@ impl EffectExecutor for UnlessPaysEffect {
                 ))
             },
             |game, ctx| {
-                // "Target enchantment deals damage ... to its controller unless that
-                // player sacrifices it": the payer and the payment may name a target
-                // the wrapped instructions declare. Target declarations perform no
-                // game action, so bind them before the payer and cost are resolved.
-                let declared = leading_target_declaration_count(&self.effects);
-                let declarations = super::sequence::execute_ordered_children_with_outputs(
+                super::action_program::execute_action_program_with_outputs(
+                    UnlessPaysProgram::selected(self, false),
                     game,
                     ctx,
-                    &self.effects[..declared],
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                let consequences = &self.effects[declared..];
-                let paying_players = match self.player {
-                    PlayerFilter::Any => players_in_turn_order(game),
-                    PlayerFilter::Opponent => {
-                        let filter_ctx = ctx.filter_context(game);
-                        players_in_turn_order(game)
-                            .into_iter()
-                            .filter(|player| self.player.matches_player(*player, &filter_ctx))
-                            .collect()
-                    }
-                    _ => vec![resolve_player_filter(game, &self.player, ctx)?],
-                };
-                for &paying_player in &paying_players {
-                    let can_afford = payment_succeeded(can_pay_total_cost_with_reason_in_context(
-                        game,
-                        paying_player,
-                        ctx.source,
-                        &self.cost,
-                        crate::costs::PaymentReason::Effect,
-                        ctx,
-                    ))?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-
-                    let payment_prompt = format!("{} to prevent effect?", self.cost.display());
-
-                    // Ask this player if they want to pay.
-                    let wants_to_pay = if can_afford {
-                        make_boolean_decision(
-                            game,
-                            &mut ctx.decision_maker,
-                            paying_player,
-                            ctx.source,
-                            payment_prompt,
-                            FallbackStrategy::Accept,
-                        )
-                    } else {
-                        false
-                    };
-
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-
-                    if wants_to_pay
-                        && payment_succeeded(pay_total_cost_with_choice_in_context(
-                            game,
-                            paying_player,
-                            ctx.source,
-                            &self.cost,
-                            crate::costs::PaymentReason::Effect,
-                            ctx,
-                        ))?
-                    {
-                        let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::declined(),
-                        );
-                        outputs.retain_batch_children(declarations);
-                        return Ok(outputs);
-                    }
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                }
-                // Player didn't pay (or couldn't), execute the inner effects. Outside
-                // a player loop, "that player"/"they" in the consequence is the single
-                // player who could have paid ("Unless target player pays {3}, that
-                // player loses 5 life").
-                let bound_player = match paying_players.as_slice() {
-                    [player] if ctx.iteration.iterated_player.is_none() => Some(*player),
-                    _ => ctx.iteration.iterated_player,
-                };
-                ctx.with_temp_iterated_player(bound_player, |ctx| {
-                    let outcomes = super::sequence::execute_ordered_children_with_outputs(
-                        game,
-                        ctx,
-                        consequences,
-                    )?;
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                    let aggregate = EffectOutcome::aggregate(
-                        outcomes.iter().map(|outputs| outputs.outcome.clone()),
-                    );
-                    let mut outputs =
-                        crate::effects::CompletedEffectOutputs::aggregate_only(aggregate);
-                    outputs.retain_batch_children(declarations);
-                    outputs.retain_batch_children(outcomes);
-                    Ok(outputs)
-                })
+                    crate::effects::EffectExecutionPurpose::Action,
+                )
             },
         )
     }

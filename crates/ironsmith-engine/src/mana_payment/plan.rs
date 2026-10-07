@@ -262,6 +262,17 @@ pub struct ManaPaymentScore {
     pub source_count: u32,
 }
 
+impl ManaPaymentScore {
+    /// No ranked alternative can beat this score, so ranking may stop here.
+    pub fn reaches_search_floor(self) -> bool {
+        self.irreversible_cost == 0
+            && self.life_paid == 0
+            && self.preserved_sources_used == 0
+            && self.excess_mana == 0
+            && self.flexible_sources_used == 0
+    }
+}
+
 /// An engine-produced proposal for paying a mana cost, or an unfunded payment window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManaPaymentPlan {
@@ -353,11 +364,13 @@ impl PendingManaPayment {
     }
 
     pub fn provisional(request: ManaPaymentRequest, plan: ManaPaymentPlan) -> Self {
+        // A funded first plan at the ranking floor is already the best answer.
+        let planning_complete = plan.payable && plan.score.reaches_search_floor();
         Self {
             request,
             plan,
             next_activation: 0,
-            planning_complete: false,
+            planning_complete,
         }
     }
 }

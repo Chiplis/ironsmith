@@ -46,20 +46,46 @@ export function createLocalAnalysisJournal(runtime, epoch, restored = null) {
   return { game, capture: () => ({ epoch, identityOrigin, operations: operations.slice() }) };
 }
 
-// An instance image retains Rust's branch map, but its old JS owners expired.
-// Release those branches and journal their lifetimes so auxiliary replicas do
-// not retain orphan handles or eventually exhaust the native branch limit.
-export function releaseRestoredRuntimeSavepoints(journal) {
+// Native branch handles still live after these operations.
+function liveRuntimeSavepoints(operations) {
   const handles = new Set();
-  for (const operation of journal.capture().operations) {
+  for (const operation of operations) {
     if (operation.failed) continue;
     if (operation.method === 'createRuntimeSavepoint') handles.add(operation.handle);
     if (/^(restore|release)RuntimeSavepoint$/.test(operation.method)) handles.delete(operation.args[0]);
   }
-  for (const handle of handles) journal.game.releaseRuntimeSavepoint(handle);
+  return handles;
 }
 
-export function createLocalAnalysisReplica(createGame) {
+// An instance image retains Rust's branch map, but its old JS owners expired.
+// Release those branches and journal their lifetimes so auxiliary replicas do
+// not retain orphan handles or eventually exhaust the native branch limit.
+export function releaseRestoredRuntimeSavepoints(journal) {
+  for (const handle of liveRuntimeSavepoints(journal.capture().operations)) journal.game.releaseRuntimeSavepoint(handle);
+}
+
+// A replica this far behind restores an instance image instead of replaying.
+export const ANALYSIS_SEED_MIN_OPERATIONS = 128;
+
+// Seed a replica from an exact image of the runtime taken at this journal
+// position, so its replay cost no longer grows with the session's length.
+// The image already contains every earlier operation, so none are sent.
+export function seededLocalReplay(replay, image) {
+  return { epoch: replay.epoch, identityOrigin: replay.identityOrigin,
+    base: replay.operations.length, operations: [],
+    seed: { image, handles: [...liveRuntimeSavepoints(replay.operations)] } };
+}
+
+export const localReplayEnd = replay => (replay?.base ?? 0) + (replay?.operations?.length ?? 0);
+
+// How far a replica has caught up. Positions from another epoch mean nothing.
+export const localReplayMark = replay => ({ epoch: replay?.epoch, position: localReplayEnd(replay) });
+export const localReplayCaughtUp = (replay, mark) => mark?.epoch === replay.epoch ? mark.position : 0;
+
+// Seed memory moves to the analysis worker instead of being copied again.
+export const localReplayTransfer = replay => replay?.seed ? [replay.seed.image.memory.buffer] : [];
+
+export function createLocalAnalysisReplica(createGame, { restoreSeed = null } = {}) {
   let game, epoch, identityOriginKey, position = 0, canonical = null, rebuild = false, lastJournal;
   const handles = new Map();
   const restore = () => {
@@ -74,7 +100,25 @@ export function createLocalAnalysisReplica(createGame) {
     async hydrate(journal, yieldControl = async () => {}) {
       if (!journal || !Array.isArray(journal.operations)) throw new Error('Missing local analysis journal');
       const incomingOriginKey = JSON.stringify(journal.identityOrigin);
-      if (!game || rebuild || epoch !== journal.epoch || identityOriginKey !== incomingOriginKey || position > journal.operations.length) {
+      const base = journal.base ?? 0, end = base + journal.operations.length;
+      const stale = !game || rebuild || epoch !== journal.epoch || identityOriginKey !== incomingOriginKey || position > end;
+      if (journal.seed && restoreSeed && (stale || position < base)) {
+        rebuild = true;
+        const previous = game;
+        game = null;
+        // The image replaces this runtime, including any canonical branch.
+        // Constructing a placeholder game would cost more than the restore.
+        game = await restoreSeed(journal.seed.image, previous ?? null);
+        epoch = journal.epoch;
+        identityOriginKey = incomingOriginKey;
+        position = base;
+        canonical = null;
+        rebuild = false;
+        handles.clear();
+        // Branches created before the image keep their numbers inside it.
+        for (const handle of journal.seed.handles) handles.set(handle, handle);
+      } else if (stale) {
+        if (base > 0) throw new Error('Local analysis replay starts after an unseeded replica');
         rebuild = true;
         game?.free();
         game = createGame();
@@ -87,8 +131,9 @@ export function createLocalAnalysisReplica(createGame) {
         handles.clear();
       } else restore();
       let sliceStarted = performance.now();
-      while (position < journal.operations.length) {
-        const operation = journal.operations[position];
+      if (position < base) throw new Error('Local analysis replay starts after this replica');
+      while (position < end) {
+        const operation = journal.operations[position - base];
         const args = structuredClone(operation.args);
         if (/^(exchange|copy|restore|release)RuntimeSavepoint$/.test(operation.method)) {
           if (handles.has(args[0])) args[0] = handles.get(args[0]);
@@ -112,7 +157,8 @@ export function createLocalAnalysisReplica(createGame) {
       }
       // Analysis is allowed to mutate this working branch. The next hydrate
       // resumes the exact canonical state, including continuations and RNG.
-      lastJournal = journal;
+      // Do not retain a seed image: it is as large as the whole engine heap.
+      lastJournal = journal.seed ? { ...journal, seed: undefined } : journal;
       try { canonical = game.createRuntimeSavepoint(); }
       catch (error) {
         rebuild = true;

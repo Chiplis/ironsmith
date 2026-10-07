@@ -11,20 +11,6 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
 
-fn execute_effect_sequence_with_outputs(
-    game: &mut GameState,
-    ctx: &mut ExecutionContext,
-    effects: &[Effect],
-    purpose: crate::effects::EffectExecutionPurpose,
-) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    super::action_program::execute_action_program_with_outputs(
-        unless_branch_cursor(effects, vec![0], Default::default()),
-        game,
-        ctx,
-        purpose,
-    )
-}
-
 struct SelectedUnlessBranch {
     effects: Vec<Effect>,
     identity: Vec<usize>,
@@ -34,36 +20,8 @@ struct SelectedUnlessBranch {
 }
 impl SelectedUnlessBranch {
     fn into_cursor(self) -> Box<dyn crate::effects::ActionProgramCursor> {
-        unless_branch_cursor(&self.effects, self.identity, self.scope)
+        super::branch_program::selected_clause_cursor(&self.effects, self.identity, self.scope)
     }
-}
-
-struct UnlessBranchProjection;
-impl super::branch_program::SelectedBranchProjection for UnlessBranchProjection {
-    fn empty_outcome(&self) -> EffectOutcome {
-        EffectOutcome::aggregate(Vec::new())
-    }
-    fn matches_instruction_boundaries(&self) -> bool {
-        false
-    }
-}
-fn unless_branch_cursor(
-    effects: &[Effect],
-    identity: Vec<usize>,
-    scope: crate::effects::ProgramActionScope,
-) -> Box<dyn crate::effects::ActionProgramCursor> {
-    super::branch_program::selected_branch_cursor_with_projection(
-        vec![super::branch_program::SelectedProgramBranch {
-            effects: effects.to_vec(),
-            identity,
-            repetitions: 1,
-            scope,
-            child_scope: None,
-            first_scope: None,
-            match_before_first: false,
-        }],
-        Some(Box::new(UnlessBranchProjection)),
-    )
 }
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
@@ -248,6 +206,7 @@ struct UnlessActionProposal {
     effects: Vec<Effect>,
     alternative: Vec<Effect>,
     wants_alternative: bool,
+    payment_scope: Option<crate::costs::PaymentScope>,
     iterated_player: Option<PlayerId>,
 }
 
@@ -349,24 +308,26 @@ impl UnlessActionProposal {
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
                 let proposal = *self;
-                ctx.with_temp_iterated_player(proposal.iterated_player, |ctx| {
-                    // Accepted feasible alternatives remain payment after replacements.
-                    let effects = if proposal.wants_alternative {
-                        &proposal.alternative
-                    } else {
-                        &proposal.effects
-                    };
-                    execute_effect_sequence_with_outputs(
-                        game,
-                        ctx,
+                let effects = if proposal.wants_alternative {
+                    &proposal.alternative
+                } else {
+                    &proposal.effects
+                };
+                let scope = crate::effects::ProgramActionScope {
+                    iterated_player: Some(proposal.iterated_player),
+                    payment: proposal.payment_scope,
+                    ..Default::default()
+                };
+                super::action_program::execute_action_program_with_outputs(
+                    super::branch_program::selected_clause_cursor(
                         effects,
-                        if proposal.wants_alternative {
-                            crate::effects::EffectExecutionPurpose::Payment
-                        } else {
-                            crate::effects::EffectExecutionPurpose::Action
-                        },
-                    )
-                })
+                        vec![usize::from(proposal.wants_alternative)],
+                        scope,
+                    ),
+                    game,
+                    ctx,
+                    crate::effects::EffectExecutionPurpose::Action,
+                )
             },
         )
     }
@@ -421,25 +382,40 @@ impl EffectExecutor for UnlessActionEffect {
         }
         let deciding_player = resolve_player_filter(game, &self.player, ctx)?;
         let wants_alternative = self.choose_alternative(game, ctx, deciding_player);
+        let payment_scope = wants_alternative.then(|| {
+            crate::costs::PaymentScope::new(
+                ctx,
+                deciding_player,
+                crate::costs::PaymentReason::Effect,
+            )
+        });
         let iterated_player = ctx.iteration.iterated_player;
-        let prepared = super::prepared_branch::prepare_branch_for_purpose(
-            if wants_alternative {
-                &self.alternative
-            } else {
-                &self.effects
-            },
-            game,
-            ctx,
-            iterated_player,
-            false,
-            false,
-            if wants_alternative {
-                crate::effects::EffectExecutionPurpose::Payment
-            } else {
-                crate::effects::EffectExecutionPurpose::Action
-            },
-        )?;
+        let prepare = |ctx: &mut ExecutionContext| {
+            super::prepared_branch::prepare_branch_for_purpose(
+                if wants_alternative {
+                    &self.alternative
+                } else {
+                    &self.effects
+                },
+                game,
+                ctx,
+                iterated_player,
+                false,
+                false,
+                if wants_alternative {
+                    crate::effects::EffectExecutionPurpose::Payment
+                } else {
+                    crate::effects::EffectExecutionPurpose::Action
+                },
+            )
+        };
+        let prepared = if let Some(payment) = &payment_scope {
+            payment.run(ctx, prepare)
+        } else {
+            prepare(ctx)
+        }?;
         Ok(Box::new(UnlessActionProposal {
+            payment_scope,
             prepared,
             effects: self.effects.clone(),
             alternative: self.alternative.clone(),
@@ -507,7 +483,15 @@ impl UnlessActionEffect {
         ctx: &mut ExecutionContext,
         deciding_player: PlayerId,
     ) -> bool {
-        !self.alternative_is_infeasible(game, ctx, deciding_player)
+        let payment = crate::costs::PaymentScope::new(
+            ctx,
+            deciding_player,
+            crate::costs::PaymentReason::Effect,
+        );
+        let infeasible = payment.run_value(ctx, |ctx| {
+            self.alternative_is_infeasible(game, ctx, deciding_player)
+        });
+        !infeasible
             && make_boolean_decision(
                 game,
                 &mut ctx.decision_maker,
