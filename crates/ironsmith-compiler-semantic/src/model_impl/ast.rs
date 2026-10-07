@@ -675,6 +675,9 @@ pub enum TriggerSpec {
         /// "... to a player" (once for each damaged player, CR 603.2c) as
         /// opposed to "... to one or more players".
         each_damaged_player: bool,
+        /// Singular “a player/an opponent controls” groups each controller;
+        /// plural “your opponents control” does not.
+        per_source_controller: bool,
     },
     YouCastThisSpell,
     KeywordAction {

@@ -3469,6 +3469,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::DoThisMaxTimesEachTurn(limit) => {
             format!("this effect has been used fewer than {limit} times this turn")
         }
+        Condition::CombatParticipant(condition) => match condition {
+            ironsmith_core::CombatParticipantCondition::YouAreDefendingPlayer => "you're the defending player",
+            ironsmith_core::CombatParticipantCondition::AttackingPlayerAttackedYouOrYourPlaneswalker => "they attacked you and/or a planeswalker you control",
+            ironsmith_core::CombatParticipantCondition::AttackingPlayerIsNotAttackingYou => "they aren't attacking you",
+            ironsmith_core::CombatParticipantCondition::AnyAttackedPlayerIsPoisoned => "one or more players being attacked are poisoned",
+            ironsmith_core::CombatParticipantCondition::TriggeringCreatureAttacksMostLifePlayer => "it's attacking the player with the most life or tied for most life",
+        }.into(),
         Condition::TriggeringEventCausedBy { controller, effect_like_only } => format!(
             "the triggering action was caused by {} controlled by {}",
             if *effect_like_only { "a spell or ability" } else { "a source" },

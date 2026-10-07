@@ -443,8 +443,8 @@ test("canonicalJson sorts object keys recursively", () => {
 });
 
 test("historical signed audits remain signature-only evidence with their original checkpoint bytes", async () => {
-  for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22]) {
-    const checkpoint = { version: protocolVersion === 22 ? 5 : protocolVersion === 21 ? 4 : protocolVersion >= 19 ? 3 : 2, players: [], stack: [],
+  for (const protocolVersion of [14, 16, 17, 18, 19, 20, 21, 22, 23]) {
+    const checkpoint = { version: protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : protocolVersion === 21 ? 4 : protocolVersion >= 19 ? 3 : 2, players: [], stack: [],
       objects: [{ id: 7, stableId: 7, manifested: true }] };
     if (protocolVersion >= 21) {
       checkpoint.objects[0].cloaked = false;
@@ -471,7 +471,7 @@ test("historical signed audits remain signature-only evidence with their origina
     assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "cloaked"), protocolVersion >= 21);
     assert.equal(Object.hasOwn(transcript.finalPublicCheckpoint.objects[0], "numericChoices"), protocolVersion >= 21);
     if (protocolVersion >= 21) {
-      assert.equal(transcript.finalPublicCheckpoint.version, protocolVersion === 22 ? 5 : 4);
+      assert.equal(transcript.finalPublicCheckpoint.version, protocolVersion === 23 ? 6 : protocolVersion === 22 ? 5 : 4);
       assert.equal(transcript.finalPublicCheckpoint.hiddenClaimLedgerDigest,
         "7".repeat(64));
       assert.equal(transcript.finalPublicCheckpoint.objects[0].numericChoices.records[0].number, 0);

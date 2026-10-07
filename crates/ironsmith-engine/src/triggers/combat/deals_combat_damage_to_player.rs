@@ -20,6 +20,7 @@ pub struct DealsCombatDamageToPlayerTrigger {
     /// player and whose "that much damage" is the total dealt to them.
     /// Without it, "to one or more players" is one event for the whole step.
     pub each_damaged_player: bool,
+    pub per_source_controller: bool,
 }
 
 impl DealsCombatDamageToPlayerTrigger {
@@ -29,6 +30,7 @@ impl DealsCombatDamageToPlayerTrigger {
             player,
             one_or_more: false,
             each_damaged_player: false,
+            per_source_controller: false,
         }
     }
 
@@ -40,6 +42,7 @@ impl DealsCombatDamageToPlayerTrigger {
             player,
             one_or_more: true,
             each_damaged_player: false,
+            per_source_controller: false,
         }
     }
 
@@ -51,7 +54,12 @@ impl DealsCombatDamageToPlayerTrigger {
             player,
             one_or_more: true,
             each_damaged_player: true,
+            per_source_controller: false,
         }
+    }
+
+    pub fn per_source_controller(filter: ObjectFilter, player: PlayerFilter, each_damaged_player: bool) -> Self {
+        Self { filter, player, one_or_more: true, each_damaged_player, per_source_controller: true }
     }
 
     fn first_matching_hit_to_player_in_batch(
@@ -90,6 +98,19 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         let DamageTarget::Player(damaged_player) = e.target else {
             return false;
         };
+        if self.per_source_controller {
+            let Some(source) = event.source_snapshot().filter(|snapshot| snapshot.object_id == e.source) else {
+                ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence(
+                    "controller-grouped combat damage requires its exact damage-time source receipt".into()));
+                return false;
+            };
+            let mut player_ctx = ctx.filter_ctx.clone();
+            player_ctx.filter_candidate_players = Some((source.controller, source.owner));
+            // Every matching physical assignment participates; the simultaneous
+            // key groups only this controller's assignments, not another's.
+            return self.filter.matches_snapshot(source, &ctx.filter_ctx, ctx.game)
+                && self.player.matches_player(damaged_player, &player_ctx);
+        }
         let Some(obj) = ctx.game.object(e.source) else {
             return false;
         };
@@ -130,6 +151,11 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             return None;
         }
         let damage = event.downcast::<DamageEvent>()?;
+        if self.per_source_controller {
+            let controller = event.source_snapshot().filter(|snapshot| snapshot.object_id == damage.source)?.controller;
+            return Some(SimultaneousTriggerKey::DamageSourceController(controller,
+                self.each_damaged_player.then_some(damage.target)));
+        }
         if self.each_damaged_player {
             return Some(SimultaneousTriggerKey::DamageTarget(damage.target));
         }
@@ -159,7 +185,14 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if self.one_or_more {
             // The plural form keeps the authored noun: "one or more Ninja or
             // Rogue creatures you control".
-            let subject = crate::static_abilities::pluralized_subject_text(&self.filter);
+            let mut subject = crate::static_abilities::pluralized_subject_text(&self.filter);
+            if self.filter.controller == Some(PlayerFilter::Opponent) {
+                subject = if self.per_source_controller {
+                    subject.replace("your opponents control", "an opponent controls")
+                } else {
+                    subject.replace("an opponent controls", "your opponents control")
+                };
+            }
             let subject = subject.strip_prefix("All ").unwrap_or(&subject);
             let player = match (&self.player, self.each_damaged_player) {
                 (PlayerFilter::Opponent, false) => "one or more of your opponents".to_string(),
@@ -196,6 +229,18 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         let DamageTarget::Player(current_player) = damage.target else {
             return None;
         };
+        if self.per_source_controller {
+            return match i32::try_from(damage.amount) {
+                Ok(amount) => Some(amount),
+                Err(_) => {
+                    ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::ResourceLimitExceeded {
+                        resource: "grouped combat damage amount", requested: u128::from(damage.amount),
+                        maximum: i32::MAX as u128,
+                    });
+                    None
+                }
+            };
+        }
         // "That much damage" / "the amount of damage those creatures dealt to
         // that player": this assignment's share of the per-player total.
         if self.each_damaged_player {
@@ -281,6 +326,32 @@ mod tests {
         let trigger =
             DealsCombatDamageToPlayerTrigger::new(ObjectFilter::creature(), PlayerFilter::Any);
         assert!(trigger.display().contains("deals combat damage"));
+    }
+
+    #[test]
+    fn singular_controller_group_uses_completed_source_snapshots_and_does_not_suppress_a_later_actor() {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        let a = PlayerId(0); let b = PlayerId(1); let c = PlayerId(2);
+        let one = create_creature(&mut game, "B one", b);
+        let two = create_creature(&mut game, "B two", b);
+        let three = create_creature(&mut game, "C one", c);
+        let events = [one, two, three].into_iter().map(|id| {
+            TriggerEvent::new_with_provenance(combat_damage(id, a), Default::default())
+                .with_source_snapshot(crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+        }).collect::<Vec<_>>();
+        let trigger = DealsCombatDamageToPlayerTrigger::per_source_controller(
+            ObjectFilter::creature().opponent_controls(), PlayerFilter::You, true);
+        game.record_combat_damage_player_batch_hit(one, a);
+        for id in [one, two, three] { game.set_current_controller(id, a).unwrap(); }
+        let (resource_root, resource_meter) = game.begin_token_resource_scope();
+        let ctx = TriggerContext::for_source(ObjectId::from_raw(1000), a, &game);
+        for event in &events { assert!(trigger.matches(event, &ctx)); }
+        assert_eq!(trigger.simultaneous_trigger_key(&events[0]), trigger.simultaneous_trigger_key(&events[1]));
+        assert_ne!(trigger.simultaneous_trigger_key(&events[0]), trigger.simultaneous_trigger_key(&events[2]));
+        let missing = TriggerEvent::new_with_provenance(combat_damage(one, a), Default::default());
+        assert!(!trigger.matches(&missing, &ctx));
+        assert!(matches!(game.token_resource_failure(), Some(crate::effects::ExecutionError::IncompleteEvidence(_))));
+        game.end_token_resource_scope(resource_root, &resource_meter);
     }
 
     #[test]

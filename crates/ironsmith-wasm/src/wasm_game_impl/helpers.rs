@@ -189,6 +189,7 @@ mod exact_permission_adapter_tests {
             .card_types(vec![CardType::Enchantment]).build();
         let source = game.create_object_from_card(&card, player, Zone::Battlefield);
         let spell = game.create_hidden_card_placeholder(player, Zone::Exile, 0, "exact-hidden-claim".into());
+        game.set_face_down(spell);
         game.effect_store.grant_registry.grant_play_from_to_card(spell, Zone::Exile, player,
             PlayFromConstraints { cast_mana_spend_mode: ManaSpendMode::AnyColor, ..Default::default() },
             GrantSource::Effect { source_id: source, expires_end_of_turn: u32::MAX });
@@ -202,11 +203,15 @@ mod exact_permission_adapter_tests {
         assert!(resolve_priority_action(&game, &stale, None, Some(&reference)).unwrap().is_none());
         let (claimed_spell, kind) = face_down_cast_claim_for_action_ref(&reference).unwrap();
         game.set_hidden_face_down_cast_claim(claimed_spell, kind);
-        let resolved = resolve_priority_action(&game, &stale, None, Some(&reference)).unwrap().unwrap();
-        assert_eq!(priority_action_ref_for_game(&game, &resolved), reference);
+        assert!(resolve_priority_action(&game, &stale, None, Some(&reference)).unwrap().is_none(),
+            "a public kind claim alone cannot bypass the unseen-exile intent");
+        let intent = PriorityActionRef::CastExiledCardFaceDown { card_id: spell.0, incarnation: Some(0),
+            permission: GrantSelectionRef { source: source.0, index: 0 } };
+        let resolved = resolve_priority_action(&game, &stale, None, Some(&intent)).unwrap().unwrap();
+        assert_eq!(priority_action_ref_for_game(&game, &resolved), intent);
         for (bad_source, bad_index) in [(source.0, 1), (spell.0, 0)] {
-            let mut forged = reference.clone();
-            if let PriorityActionRef::CastSpell { casting_method: CastingMethodRef::ExactPermission { permission, .. }, .. } = &mut forged {
+            let mut forged = intent.clone();
+            if let PriorityActionRef::CastExiledCardFaceDown { permission, .. } = &mut forged {
                 permission.source = bad_source;
                 permission.index = bad_index;
             }
@@ -214,7 +219,7 @@ mod exact_permission_adapter_tests {
         }
         let mut deferred = stale.clone();
         deferred.analysis_complete = false;
-        assert_eq!(resolve_priority_action(&game, &deferred, None, Some(&reference)).unwrap(), Some(resolved));
+        assert_eq!(resolve_priority_action(&game, &deferred, None, Some(&intent)).unwrap(), Some(resolved));
     }
 
     #[test]
@@ -494,6 +499,12 @@ pub(super) fn action_drag_metadata(
             Some(zone_name(Zone::Hand)),
             Some(zone_name(Zone::Battlefield)),
         ),
+        LegalAction::OpenExiledCardForPlay { card_id, .. } => (
+            "open_exiled_card_for_play", Some(card_id.0), None, Some(zone_name(Zone::Exile)), None,
+        ),
+        LegalAction::CastExiledCardFaceDown { card_id, .. } => (
+            "cast_exiled_card_face_down", Some(card_id.0), None, Some(zone_name(Zone::Exile)), None,
+        ),
         LegalAction::PlayLand { land_id } | LegalAction::PlayLandBackFace { land_id } => (
             "play_land",
             Some(land_id.0),
@@ -688,6 +699,8 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             }
             None => format!("Use {}", object_name(game, *card_id)),
         },
+        LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".into(),
+        LegalAction::CastExiledCardFaceDown { .. } => "Cast exiled card face down".into(),
         LegalAction::PlayLand { land_id } => {
             let name = game.object(*land_id).map_or_else(
                 || object_name(game, *land_id),
@@ -1172,6 +1185,8 @@ pub(super) fn object_visible_to_perspective(
 
 pub(super) fn redacted_action_label(action: &LegalAction) -> String {
     match action {
+        LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".into(),
+        LegalAction::CastExiledCardFaceDown { .. } => "Cast exiled card face down".into(),
         LegalAction::CastSpell { .. } => "Cast hidden spell".to_string(),
         LegalAction::PlayLand { .. } | LegalAction::PlayLandBackFace { .. } => {
             "Play hidden land".to_string()
@@ -1216,6 +1231,14 @@ pub(super) fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
         } => PriorityActionRef::UsePregameAction {
             card_id: card_id.0,
             ability_index: *ability_index,
+        },
+        LegalAction::OpenExiledCardForPlay { card_id, incarnation, permission } => PriorityActionRef::OpenExiledCardForPlay {
+            card_id: card_id.0, incarnation: *incarnation,
+            permission: GrantSelectionRef { source: permission.source.0, index: permission.index },
+        },
+        LegalAction::CastExiledCardFaceDown { card_id, incarnation, permission } => PriorityActionRef::CastExiledCardFaceDown {
+            card_id: card_id.0, incarnation: *incarnation,
+            permission: GrantSelectionRef { source: permission.source.0, index: permission.index },
         },
         LegalAction::CastSpell {
             spell_id,
@@ -1413,6 +1436,26 @@ pub(super) fn resolve_priority_action(
 ) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
+        if let (PriorityActionRef::OpenExiledCardForPlay { card_id, incarnation, .. }
+            | PriorityActionRef::CastExiledCardFaceDown { card_id, incarnation, .. }) = action_ref {
+            // Even a completed cached menu is not authority to open a stale
+            // incarnation/grant. Re-derive only the face-independent action.
+            if game.turn.priority_player != Some(priority.player) { return Ok(None); }
+            let card = ObjectId::from_raw(*card_id);
+            let checked = game.continuous_query_snapshot().map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
+            for player in checked.priority_team_players() {
+                if !ironsmith::alternative_cast::blind_play::requires_opening(&checked, card, player) { continue; }
+                let current_incarnation = ironsmith::alternative_cast::blind_play::incarnation(&checked, card)?;
+                if *incarnation != current_incarnation { return Ok(None); }
+                for permission in ironsmith::alternative_cast::blind_play::selections(&checked, card, player)? {
+                    let action = if matches!(action_ref, PriorityActionRef::CastExiledCardFaceDown { .. }) {
+                        LegalAction::CastExiledCardFaceDown { card_id: card, incarnation: current_incarnation, permission }
+                    } else { LegalAction::OpenExiledCardForPlay { card_id: card, incarnation: current_incarnation, permission } };
+                    if priority_action_ref(&action) == *action_ref { return Ok(Some(action)); }
+                }
+            }
+            return Ok(None);
+        }
         // The live context already establishes who has priority. Passing has
         // no payment or target requirements, even while the card menu is still
         // being analyzed. Do not run any affordability query for this action.
@@ -1491,7 +1534,14 @@ pub(super) fn resolve_priority_action(
         return Ok(None);
     }
     let action = action_index.and_then(|index| priority.actions.get(index).cloned());
-    if !priority.analysis_complete && let Some(action) = action.as_ref() {
+    if matches!(action, Some(LegalAction::OpenExiledCardForPlay { .. } | LegalAction::CastExiledCardFaceDown { .. })) {
+        // A menu index supplies neither a frozen incarnation nor the signed
+        // identity used by transport disclosure recovery. Local UI serializes
+        // its selected row to an explicit reference before dispatch.
+        return Ok(None);
+    }
+    if let Some(action) = action.as_ref()
+        && !priority.analysis_complete {
         return resolve_priority_action(game, priority, None, Some(&priority_action_ref(action)));
     }
     Ok(action)

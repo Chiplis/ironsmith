@@ -160,6 +160,8 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceBlockedOrBecameBlockedSinceLastUpkeep) => {
             Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep
         }
+        PredicateAst::Triggering(TriggeringPredicateAst::CombatParticipant(condition)) =>
+            Condition::CombatParticipant(*condition),
         PredicateAst::Triggering(TriggeringPredicateAst::TriggeringEventCausedBy { controller, effect_like_only }) =>
             Condition::TriggeringEventCausedBy { controller: controller.clone(), effect_like_only: *effect_like_only },
         PredicateAst::Triggering(

@@ -73,6 +73,8 @@ mod combat_damage;
 mod combat_decisions;
 mod mandatory_loop;
 mod priority_apply;
+mod exile_play;
+mod exile_face_down;
 mod priority_cast;
 mod priority_core;
 mod priority_mana;

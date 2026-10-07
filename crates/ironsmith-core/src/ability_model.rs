@@ -659,6 +659,13 @@ pub struct TriggeredAbility<T, E, C = Condition> {
 pub enum ActivatedAbilityKeyword {
     Equip,
     PowerUp,
+    /// The Class designation reached by this level ability (CR 716).
+    ClassLevel(u32),
+    // Appended identities: cost selectors read the selected ability, never its text.
+    Cycling,
+    Ninjutsu,
+    Boast,
+    Exhaust,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

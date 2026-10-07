@@ -1041,6 +1041,11 @@ impl Trigger {
         Self::new(DealsCombatDamageToPlayerTrigger::new(filter, player))
     }
 
+    pub fn deals_combat_damage_per_source_controller(filter: ObjectFilter, player: PlayerFilter,
+        each_damaged_player: bool) -> Self {
+        Self::new(DealsCombatDamageToPlayerTrigger::per_source_controller(filter, player, each_damaged_player))
+    }
+
     /// Create a "when one or more [filter] deal combat damage to [player]" trigger.
     pub fn deals_combat_damage_to_player_one_or_more(
         filter: ObjectFilter,

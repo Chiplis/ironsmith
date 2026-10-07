@@ -24,6 +24,9 @@ pub struct AbilityEffectOrigin {
     timestamp: u64,
     static_ability: Option<StaticAbilityInstanceId>,
     generated_by: Option<Box<ContinuousAbilityOrigin>>,
+    // Captured only for the proved source-only Class gate. This never changes
+    // ordinary Effect identity or another consumer's acquisition namespace.
+    linked_exile_root_pair: Option<(ironsmith_core::LinkedExilePair, u32)>,
 }
 impl PartialEq for AbilityEffectOrigin {
     fn eq(&self, other: &Self) -> bool {
@@ -60,6 +63,27 @@ impl Hash for AbilityEffectOrigin {
     }
 }
 impl AbilityEffectOrigin {
+    pub(crate) fn is_class_linked_exile_effect(effect: &ContinuousEffect) -> bool {
+        class_linked_exile_root(effect).is_some()
+    }
+    pub(crate) fn is_source_class_level_effect(effect: &ContinuousEffect) -> bool {
+        effect.source_type == super::EffectSourceType::StaticAbility
+            && matches!(effect.applies_to, super::EffectTarget::Source)
+            && matches!(effect.condition, Some(crate::ConditionExpr::SourceClassLevelAtLeast(_)))
+            && matches!(effect.modification, super::Modification::AddAbilityGeneric(_))
+    }
+    pub(crate) fn linked_exile_parent(
+        &self, host: ObjectId, pair: ironsmith_core::LinkedExilePair,
+    ) -> Option<&AbilityOrigin> {
+        if self.source != host || self.linked_exile_root_pair.map(|(member, _)| member) != Some(pair) { return None; }
+        let parent = self.generated_by.as_ref()?;
+        (parent.host == host).then_some(&parent.ability)
+    }
+
+    pub(crate) fn linked_exile_class_level(&self) -> Option<u32> {
+        self.linked_exile_root_pair.map(|(_, level)| level)
+    }
+
     /// The object whose effect granted the ability.
     pub fn source(&self) -> ObjectId {
         self.source
@@ -77,6 +101,7 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
             source: effect.source,
             replaces_rules_text: matches!(effect.modification,
                 super::Modification::CopyOf { .. } | super::Modification::SetTextBox(_)),
+            linked_exile_root_pair: class_linked_exile_root(effect),
             registration_id: effect.registration_id,
             generated_by: effect.originating_ability.clone(),
             timestamp: effect.timestamp,
@@ -86,6 +111,23 @@ impl From<&ContinuousEffect> for AbilityEffectOrigin {
                 .map(|ability| ability.instance_id()),
         }
     }
+}
+
+/// The immutable definition and exact generating occurrence must both prove
+/// this one wrapper. Broad effect grants, other levels, and resolving effects
+/// retain their own acquisition identity.
+fn class_linked_exile_root(effect: &ContinuousEffect) -> Option<(ironsmith_core::LinkedExilePair, u32)> {
+    use super::{EffectSourceType, EffectTarget, Modification};
+    if effect.source_type != EffectSourceType::StaticAbility
+        || !matches!(&effect.applies_to, EffectTarget::Source)
+            && !matches!(&effect.applies_to, EffectTarget::Specific(id) if *id == effect.source)
+    { return None; }
+    let Some(crate::ConditionExpr::SourceClassLevelAtLeast(level)) = &effect.condition else { return None; };
+    let Modification::AddAbilityGeneric(ability) = &effect.modification else { return None; };
+    let crate::ability::AbilityKind::Static(reader) = &ability.kind else { return None; };
+    let spec = reader.grant_spec()?;
+    if !spec.requires_linked_exile_pair || spec.linked_exile_class_level != Some(*level) { return None; }
+    Some((spec.linked_exile_pair?, *level))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -2789,6 +2789,7 @@ fn verified_library_epoch_private_replay_openings_wait_for_their_zone_or_view() 
         }
         game.queue_verified_hidden_library_epoch(alice, "private".into(), 3, 0, None).unwrap();
         let info = HiddenCardInfo {
+                incarnation: Some(0),
             owner: alice, zone, slot: 7, commitment: "manifest:7".into(),
             origin_slot: Some(2), origin_commitment: Some("ziffle:private:2".into()),
             public_slot: Some(2), public_commitment: Some("ziffle:private:2".into()),
@@ -2898,4 +2899,85 @@ mod departure_lki_batch_contract_tests {
         while !game.stack.is_empty() {crate::game_loop::resolve_stack_entry(&mut game).unwrap();}
         assert_eq!(game.player(bob).unwrap().life,32);
     }
+}
+
+#[test]
+fn hidden_incarnation_tracks_zone_cycles_and_survives_hydration_and_native_rollback() {
+    let alice = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let old = game.create_hidden_card_placeholder(alice, Zone::Exile, 7, "same-commitment".into());
+    let original = game.hidden_card_info(old).unwrap().clone();
+    assert_eq!(original.incarnation, Some(0));
+    let before = game.clone();
+    let hand = game.move_object_by_game_rule(old, Zone::Hand).unwrap();
+    assert_eq!(game.hidden_card_info(hand).unwrap().incarnation, Some(1));
+    let exiled = game.move_object_by_game_rule(hand, Zone::Exile).unwrap();
+    let reentered = game.hidden_card_info(exiled).unwrap().clone();
+    assert_ne!(old, exiled); assert_eq!(reentered.incarnation, Some(2));
+    assert_eq!((reentered.owner, reentered.zone, reentered.slot, &reentered.commitment),
+        (original.owner, original.zone, original.slot, &original.commitment));
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Authenticated incarnation")
+        .card_types(vec![CardType::Sorcery]).build();
+    game.reveal_hidden_card_with_definition(exiled, &definition).unwrap();
+    assert_eq!(game.hidden_card_info(exiled).unwrap().incarnation, Some(2));
+    let mut updated = game.hidden_card_info(exiled).unwrap().clone(); updated.incarnation = Some(0);
+    game.set_hidden_card_info(exiled, updated);
+    assert_eq!(game.hidden_card_info(exiled).unwrap().incarnation, Some(2), "hydration cannot reset generation");
+    let grave = game.move_object_by_game_rule(exiled, Zone::Graveyard).unwrap();
+    let hidden_again = game.move_object_by_game_rule(grave, Zone::Exile).unwrap();
+    assert_eq!(game.hidden_card_info(hidden_again).unwrap().incarnation, Some(4), "public zones retain the generation");
+    game.restore_execution_checkpoint(before, false);
+    assert_eq!(game.hidden_card_info(old).unwrap(), &original);
+    assert!(game.object(hidden_again).is_none());
+}
+
+#[test]
+fn hidden_incarnation_exhaustion_rejects_before_mutation_and_unknown_does_not_restart() {
+    let alice = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let card = game.create_hidden_card_placeholder(alice, Zone::Exile, 7, "commitment".into());
+    game.auxiliary_tracking_mut().hidden_cards.get_mut(&card).unwrap().incarnation = Some(u64::MAX);
+    let ids = game.next_object_id_counter(); let before = game.hidden_card_info(card).unwrap().clone();
+    assert!(game.move_object_by_game_rule(card, Zone::Hand).is_none());
+    assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.hidden_card_info(card).unwrap(), &before);
+    assert_eq!(game.object(card).unwrap().zone, Zone::Exile);
+    game.auxiliary_tracking_mut().hidden_cards.get_mut(&card).unwrap().incarnation = None;
+    let moved = game.move_object_by_game_rule(card, Zone::Hand).unwrap();
+    assert_eq!(game.hidden_card_info(moved).unwrap().incarnation, None);
+    let mut refreshed = game.hidden_card_info(moved).unwrap().clone(); refreshed.incarnation = Some(0);
+    game.set_hidden_card_info(moved, refreshed);
+    assert_eq!(game.hidden_card_info(moved).unwrap().incarnation, None);
+}
+
+#[test]
+fn anonymous_hidden_epochs_do_not_reuse_an_earlier_incarnation_even_with_the_same_ciphertext_hash() {
+    let alice = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["Alice".into()], 20);
+    let card = game.create_hidden_card_placeholder(alice, Zone::Library, 0, "ziffle:reused:0".into());
+    let original = game.hidden_card_info(card).unwrap().clone();
+    game.queue_verified_hidden_library_epoch(alice, "reused".into(), 1, game.irreversible_random_count(), None).unwrap();
+    game.shuffle_player_library(alice);
+    assert!(game.verified_hidden_library_epoch_error().is_none());
+    let first = game.player(alice).unwrap().library[0];
+    let first_info = game.hidden_card_info(first).unwrap().clone();
+    assert_eq!(first_info.commitment, original.commitment);
+    assert!(first_info.incarnation > original.incarnation);
+    let hand = game.move_object_by_game_rule(first, Zone::Hand).unwrap();
+    let exile = game.move_object_by_game_rule(hand, Zone::Exile).unwrap();
+    let offered = game.hidden_card_info(exile).unwrap().incarnation;
+    let _library = game.move_object_by_game_rule(exile, Zone::Library).unwrap();
+    let before = game.clone(); let high_water = game.hidden_incarnation_high_water();
+    game.queue_verified_hidden_library_epoch(alice, "reused".into(), 1, game.irreversible_random_count(), None).unwrap();
+    game.shuffle_player_library(alice);
+    assert!(game.verified_hidden_library_epoch_error().is_none());
+    let second = game.player(alice).unwrap().library[0];
+    assert_eq!(game.hidden_card_info(second).unwrap().commitment, original.commitment);
+    assert!(game.hidden_card_info(second).unwrap().incarnation > offered);
+    assert!(game.hidden_incarnation_high_water() > high_water);
+    game.restore_execution_checkpoint(before, false);
+    assert_eq!(game.hidden_incarnation_high_water(), high_water);
+    game.auxiliary_tracking_mut().hidden_incarnation_high_water = u64::MAX;
+    let library = game.player(alice).unwrap().library.clone();
+    assert!(game.reserve_hidden_incarnation_epoch().is_err());
+    assert_eq!(game.player(alice).unwrap().library, library);
 }

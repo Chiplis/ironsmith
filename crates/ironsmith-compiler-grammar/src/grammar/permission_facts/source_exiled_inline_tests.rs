@@ -96,3 +96,19 @@ fn conditional_mana_rider_belongs_to_one_complete_source_pool_permission() {
         "You may play lands and cast spells from among cards exiled with that creature. If you cast a spell this way, you may spend mana as though it were mana of any color to cast it.",
     ] { assert!(parse_play_source_exiled_with_mana_tokens(&lex_line(line, 0).unwrap()).is_none()); }
 }
+
+#[test]
+fn inline_class_pool_mana_rider_requires_the_complete_shared_spell_reference() {
+    for permission in ["You may play cards exiled with this Class", "You may play lands and cast spells from among cards exiled with this Class"] {
+        let line = format!("{permission}, and you may spend mana as though it were mana of any color to cast those spells.");
+        let tokens = lex_line(&line, 0).unwrap(); let (reference, mode) = parse_play_source_exiled_inline_mana_tokens(&tokens).unwrap();
+        assert_eq!(reference.surface, ironsmith_core::SourceReferenceSurface::ThisPermanentType("this Class".into()));
+        assert_eq!(mode, ironsmith_core::value_model::ManaSpendMode::AnyColor);
+    }
+    for line in [
+        "You may play cards exiled with this Class, and you may spend mana as though it were mana of any color to cast it.",
+        "You may play cards exiled with this Class this turn, and you may spend mana as though it were mana of any color to cast those spells.",
+        "You may play cards exiled with this Class, and you may spend mana as though it were mana of any color to cast those spells. Draw a card.",
+        "You may play creature cards exiled with this Class, and you may spend mana as though it were mana of any color to cast those spells.",
+    ] { assert!(parse_play_source_exiled_inline_mana_tokens(&lex_line(line, 0).unwrap()).is_none()); }
+}

@@ -21,6 +21,10 @@ pub enum PlayerAttackGrouping {
     Defender,
     /// One event for each separately declared attacking/defending player pair.
     Pair,
+    /// One event per player declaring attackers, including declarations only
+    /// against planeswalkers or battles. Existing groupings require a direct
+    /// player attack (CR 508.3b/e).
+    AttackerAnyTarget,
 }
 
 /// Oracle surface for an end-step trigger whose runtime player filter is Any.
@@ -390,6 +394,10 @@ pub enum TriggerKind {
         /// damaged player, "... to one or more players" once per event.
         #[cfg_attr(feature = "serde", serde(default))]
         each_damaged_player: bool,
+        /// Preserve the singular source-controller quantifier independently
+        /// of the controller filter's membership (opponent versus opponents).
+        #[cfg_attr(feature = "serde", serde(default))]
+        per_source_controller: bool,
     },
     PlayerPlaysLand {
         player: PlayerFilter,
@@ -1591,6 +1599,7 @@ impl Trigger {
                 player,
                 one_or_more: false,
                 each_damaged_player: false,
+                per_source_controller: false,
             },
         )
     }
@@ -1605,6 +1614,7 @@ impl Trigger {
                 player,
                 one_or_more: true,
                 each_damaged_player: false,
+                per_source_controller: false,
             },
         )
     }
@@ -1621,8 +1631,18 @@ impl Trigger {
                 player,
                 one_or_more: true,
                 each_damaged_player: true,
+                per_source_controller: false,
             },
         )
+    }
+    pub fn deals_combat_damage_per_source_controller(
+        source: ObjectFilter,
+        player: PlayerFilter,
+        each_damaged_player: bool,
+    ) -> Self {
+        Self::typed("deals_combat_damage_per_source_controller", TriggerKind::DealsCombatDamageToPlayer {
+            source, player, one_or_more: true, each_damaged_player, per_source_controller: true,
+        })
     }
     pub fn player_plays_land(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::typed(

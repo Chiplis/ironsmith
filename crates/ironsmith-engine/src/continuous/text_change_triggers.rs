@@ -211,7 +211,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *player = rewrite_player_filter_words(player, change)?;
         }
         K::DealsDamageToPlayer { source, player, source_surface: _ }
-        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _ } => {
+        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _, per_source_controller: _ } => {
             *source = rewrite_filter_words(source, change)?;
             *player = rewrite_player_filter_words(player, change)?;
         }
@@ -600,6 +600,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     exact!(DealsCombatDamageToPlayerTrigger, n, K::DealsCombatDamageToPlayer {
         source: n.filter.clone(), player: n.player.clone(), one_or_more: n.one_or_more,
         each_damaged_player: n.each_damaged_player,
+        per_source_controller: n.per_source_controller,
     });
     exact!(ThisDealsCombatDamageToPlayerTrigger, n, K::ThisDealsCombatDamageToPlayer {
         player: n.player.clone(), source_surface: n.source_surface.clone(),

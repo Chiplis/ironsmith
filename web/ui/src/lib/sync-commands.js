@@ -96,6 +96,8 @@ export function isDecisionCommandCompatible(decision, command) {
 
   switch (decision.kind) {
     case "priority":
+      if (!command.action_ref && ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(
+        findPriorityActionForCommand(decision, command)?.action_ref?.kind)) return false;
       // A deferred menu is incomplete, not a list of every legal action.
       // Structured refs are re-derived and checked against the live game by
       // the engine's priority resolver. Index-only commands cannot use this
@@ -103,7 +105,7 @@ export function isDecisionCommandCompatible(decision, command) {
       return command.type === "priority_action" && (
         Boolean(findPriorityActionForCommand(decision, command))
         || (decision.analysis_complete === false && [
-          "play_land", "cast_spell", "activate_ability", "activate_mana_ability",
+          "play_land", "cast_spell", "open_exiled_card_for_play", "cast_exiled_card_face_down", "activate_ability", "activate_mana_ability",
           "turn_face_up", "special_action", "untap_land",
         ].includes(command.action_ref?.kind))
       );
@@ -324,9 +326,11 @@ export function resolveSyncedCommand(command) {
         syncedCommand.object_stable_id = stableId;
       }
     }
-    const hiddenRef = normalizeSelectObjectHiddenRef(
-      command.object_hidden_ref ?? command.objectHiddenRef
-    );
+    const rawHiddenRef = command.object_hidden_ref ?? command.objectHiddenRef;
+    // Opaque commands must reach the paired-identity checker unchanged. The
+    // legacy normalizer may complete partial fields or discard a supplied pair.
+    const hiddenRef = ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(command.action_ref?.kind)
+      ? rawHiddenRef : normalizeSelectObjectHiddenRef(rawHiddenRef);
     if (hiddenRef) {
       syncedCommand.object_hidden_ref = hiddenRef;
     }

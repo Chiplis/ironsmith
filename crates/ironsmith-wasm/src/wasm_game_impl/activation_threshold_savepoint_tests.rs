@@ -44,8 +44,8 @@ fn root_and_inactive_turn_lanes_keep_native_counts_without_a_wire_recovery_path(
     assert_eq!(total(&wasm, second), 3);
     pay(&mut wasm, second, b); assert_eq!(total(&wasm, second), 4);
     assert!(wasm.game.effect_store.delayed_triggers.iter().any(|trigger| trigger.controller == b));
-    // Public audit v6 is a projection, never an importer or gameplay state owner.
-    assert_eq!(serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap()["version"], 6);
+    // Public audit v7 is a projection, never an importer or gameplay state owner.
+    assert_eq!(serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap()["version"], 7);
 }
 #[test]
 fn serialized_claim_snapshot_cannot_reconstruct_an_activation_acquisition() {

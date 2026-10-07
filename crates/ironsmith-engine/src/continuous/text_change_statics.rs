@@ -620,7 +620,8 @@ fn activation_cost_condition_words(condition: &mut ironsmith_core::ActivatedAbil
     match condition {
         C::TargetsExactly { filter, .. } => *filter = rewrite_filter_words(filter, change)?,
         C::EquipAbility { targeting } => optional_filter(targeting, change)?,
-        C::ThisAbility { .. } => {}
+        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::LoyaltyAbility => {}
+        C::Activator(player) => *player = rewrite_player_filter_words(player, change)?,
         C::All(conditions) => {
             for condition in conditions { activation_cost_condition_words(condition, change)?; }
         }

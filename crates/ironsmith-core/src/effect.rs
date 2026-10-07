@@ -650,6 +650,8 @@ pub enum DelayedTriggerSpec {
         /// "... to one or more players" (once for the whole event).
         #[cfg_attr(feature = "serde", serde(default))]
         each_damaged_player: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        per_source_controller: bool,
     },
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),

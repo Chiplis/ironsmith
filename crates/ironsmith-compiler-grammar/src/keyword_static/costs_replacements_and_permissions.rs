@@ -4481,7 +4481,10 @@ pub fn parse_you_may_static_grant_line(
     }
     let inspected = crate::grammar::permission_facts::source_exiled::parse_look_and_play_source_exiled_tokens(tokens);
     let may_look = inspected.is_some();
-    let converted = crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_with_mana_tokens(tokens);
+    let inline = crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_inline_mana_tokens(tokens);
+    let rider_surface = if inline.is_some() { ironsmith_core::SourceExiledManaRiderSurface::InlineCastSpells }
+        else { ironsmith_core::SourceExiledManaRiderSurface::ConditionalCast };
+    let converted = inline.or_else(|| crate::grammar::permission_facts::source_exiled::parse_play_source_exiled_with_mana_tokens(tokens));
     let mode = converted.as_ref().map_or(ironsmith_core::value_model::ManaSpendMode::Normal, |(_, mode)| *mode);
     if let Some(reference) = converted.map(|(reference, _)| reference).or(inspected).or_else(|| crate::grammar::permission_facts::source_exiled::
         parse_play_lands_and_spells_from_source_exiled_tokens(tokens))
@@ -4494,7 +4497,7 @@ pub fn parse_you_may_static_grant_line(
         let mut spec = crate::model::CompilerGrantSpecCore::new(
             crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
         ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
-            mana_rider: (!mode.is_normal()).then_some(ironsmith_core::SourceExiledManaRiderSurface::ConditionalCast),
+            mana_rider: (!mode.is_normal()).then_some(rider_surface),
             source: reference.surface, plural_spell_subject: true,
             generic_card_pool: true, generic_cast_this_way_subject: true,
         });

@@ -77,6 +77,8 @@ pub enum SimultaneousTriggerKey {
     DamageTarget(DamageTarget),
     /// A single damaging source and a single recipient, independently of other assignments.
     DamageSourceTarget(ObjectId, DamageTarget),
+    /// Singular source-controller quantifier, optionally per recipient.
+    DamageSourceController(PlayerId, Option<DamageTarget>),
     /// A player's grouped dice remain distinct from another player's rolls.
     PlayerDieRollBatch(PlayerId),
     BecomesBlockedBatch,

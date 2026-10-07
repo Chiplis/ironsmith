@@ -331,7 +331,8 @@ impl Auditor {
             | "TriggeringSpellSnowManaOfAnySpellColorSpentToCast"
             | "TriggeringSpellWasKicked"
             | "AnotherOpponentControlsPotentialTarget" => scope.cast_event,
-            "TriggeringEventCausedBy"
+            "CombatParticipant"
+            | "TriggeringEventCausedBy"
             | "TriggeringObjectWasEnchanted"
             | "TriggeringObjectHadCounters"
             | "EvolveEnteringCreatureIsLarger"

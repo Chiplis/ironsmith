@@ -1102,6 +1102,13 @@ pub(super) fn resolve_triggered_stack_entry_immediately(
     if let Some(event_value_amount) = entry.event_value_amount {
         ctx = ctx.with_event_value_amount(event_value_amount);
     }
+    if entry.triggering_event.is_none() && entry.intervening_if.as_ref()
+        .is_some_and(crate::condition_eval::condition_requires_retained_attack_event)
+    {
+        return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+            "combat intervening-if has no retained triggering attack event".into())));
+    }
+
     if let Some(trigger_identity) = entry.trigger_identity {
         ctx = ctx.with_trigger_identity(trigger_identity);
         ctx.do_this_limit = entry.intervening_if.as_ref().and_then(|condition| {
@@ -1763,6 +1770,11 @@ fn add_triggering_object_tag(
         && let Some(snapshot) = triggering_event.snapshot().cloned().or_else(|| {
             game.object(object_id)
                 .map(|obj| ObjectSnapshot::from_object(obj, game))
+        }).or_else(|| {
+            // State-based actions can remove a declared attacker before its
+            // trigger is stacked. The event still names that exact incarnation.
+            triggering_event.downcast::<crate::events::CreatureAttackedEvent>()
+                .and_then(|_| game.turn_store.turn_history.source_departure_snapshot(object_id).cloned())
         })
     {
         tagged_objects

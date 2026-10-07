@@ -343,6 +343,11 @@ impl GameState {
             }
         }
 
+        // Even an identical ciphertext deck hash at a later accepted shuffle
+        // must not revive a stale origin witness. This public high-water mark
+        // needs no secret permutation and is part of native rollback state.
+        self.reserve_hidden_incarnation_epoch()?;
+
         // Detach any public deferred claim before removing its object. The
         // old ciphertext anchor is disclosed at match end, independently of
         // all new positions. It never provides a link to this epoch.
@@ -378,6 +383,7 @@ impl GameState {
             let tracking = self.auxiliary_tracking_mut();
             tracking.hidden_cards.remove(&id);
             tracking.hidden_face_down_cast_claims.remove(&id);
+            tracking.blind_face_down_declarations.remove(&id);
             tracking.publicly_revealed_hidden_cards.remove(&id);
         }
         // Prior zone changes may still name a retired object. They cannot
@@ -398,6 +404,7 @@ impl GameState {
             self.set_hidden_card_info(
                 id,
                 HiddenCardInfo {
+                incarnation: Some(0),
                     owner: player,
                     zone: Zone::Library,
                     slot,

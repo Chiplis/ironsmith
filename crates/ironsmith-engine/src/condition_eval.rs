@@ -1,4 +1,5 @@
 mod context;
+mod combat_participants;
 use crate::effect::Condition;
 use crate::effect::Value;
 use crate::effects::helpers::resolve_value;
@@ -1939,7 +1940,7 @@ fn evaluate_value_comparison(
     attacking_player: Option<PlayerId>,
     iterated_player: Option<PlayerId>,
     ability_identity: (Option<crate::triggers::TriggerIdentity>, Option<usize>),
-) -> bool {
+) -> Result<bool, ExecutionError> {
     let mut ctx = ExecutionContext::new_default(source, controller);
     ctx.iteration.iterated_player = iterated_player;
     // "If you haven't added mana with this ability this turn": the ability's
@@ -1959,6 +1960,12 @@ fn evaluate_value_comparison(
     }
     if let Some(event) = triggering_event {
         ctx = ctx.with_triggering_event(event.clone());
+        // Numeric combat predicates (for example a defending player's poison
+        // counters) share the exact current-or-last event role. An inferred
+        // live player cannot repair an absent historical attacking tenure.
+        if let Some(reference) = game.defending_reference_for_event(event) {
+            ctx.combat.defending_player_reference = Some(reference);
+        }
         if let Some(snapshot) = event.snapshot() {
             ctx.set_tagged_objects("triggering", vec![snapshot.clone()]);
         }
@@ -2000,20 +2007,26 @@ fn evaluate_value_comparison(
         compare_resolved_values(game, left, operator, right, exec)
     };
     match compare(&ctx) {
-        Ok(result) => result,
+        Ok(result) => Ok(result),
         // "as long as an opponent has 10 or less life": a quantified opponent
         // in a static/trigger condition is satisfied by any opponent.
         Err(ExecutionError::UnresolvableValue(message))
             if message == crate::effects::helpers::AN_OPPONENT_CHOICE_REQUIRED =>
         {
-            crate::effects::helpers::an_opponent_choice_candidates(game, &ctx)
-                .into_iter()
-                .any(|opponent| {
-                    let probe = an_opponent_probe_context(&ctx, opponent);
-                    matches!(compare(&probe), Ok(true))
-                })
+            for opponent in crate::effects::helpers::an_opponent_choice_candidates(game, &ctx) {
+                let probe = an_opponent_probe_context(&ctx, opponent);
+                match compare(&probe) {
+                    Ok(true) => return Ok(true),
+                    Err(error @ ExecutionError::IncompleteEvidence(_)) => return Err(error),
+                    _ => {}
+                }
+            }
+            Ok(false)
         }
-        Err(_) => false,
+        // The checked condition API is callable without a resource scope.
+        // Propagate missing evidence directly so negation cannot turn it true.
+        Err(error @ ExecutionError::IncompleteEvidence(_)) => Err(error),
+        Err(_) => Ok(false),
     }
 }
 
@@ -3255,6 +3268,25 @@ pub fn condition_reads_static_recipient(condition: &Condition) -> bool {
         Condition::And(left, right) | Condition::Or(left, right) => {
             condition_reads_static_recipient(left) || condition_reads_static_recipient(right)
         }
+        _ => false,
+    }
+}
+
+/// These intervening-if conditions require a real retained attack event.
+/// Check this before the stack's optional-event branch, including generic
+/// numeric defending-player predicates used by combat bodies.
+pub(crate) fn condition_requires_retained_attack_event(condition: &Condition) -> bool {
+    let defending_counter_value = |value: &Value| matches!(value,
+        Value::PlayerCounters(player, _) | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
+            if player.mentions_player_filter(&PlayerFilter::Defending));
+    match condition {
+        Condition::CombatParticipant(_) => true,
+        Condition::ValueComparison { left, right, .. } => defending_counter_value(left) || defending_counter_value(right),
+        Condition::PlayerHasPoisonCountersOrMore { player, .. }
+        | Condition::PlayerHasCountersOrMore { player, .. } => player.mentions_player_filter(&PlayerFilter::Defending),
+        Condition::Not(inner) => condition_requires_retained_attack_event(inner),
+        Condition::And(left, right) | Condition::Or(left, right) =>
+            condition_requires_retained_attack_event(left) || condition_requires_retained_attack_event(right),
         _ => false,
     }
 }
@@ -5621,7 +5653,7 @@ fn evaluate_condition_in_context(
                 }
             } else {
                 let external = ctx.external();
-                Ok(evaluate_value_comparison(
+                evaluate_value_comparison(
                     game,
                     ctx.controller,
                     ctx.source,
@@ -5636,7 +5668,7 @@ fn evaluate_condition_in_context(
                         external.and_then(|c| c.trigger_identity),
                         external.and_then(|c| c.ability_index),
                     ),
-                ))
+                )
             }
         }
         Condition::ValueIsPrime(value) => {
@@ -6000,6 +6032,7 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
         Condition::PlayerGraveyardHasCardsAtLeast { player, count } => Ok(game
             .player(*player)
             .is_some_and(|p| p.graveyard.len() >= *count)),
+        Condition::CombatParticipant(condition) => combat_participants::evaluate(game, *condition, ctx),
         Condition::YouChoseAnotherRingBearer => Ok(shared.triggering_event
             .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
             .filter(|event| event.action == crate::events::KeywordActionKind::RingTemptsYou && event.player == shared.controller)

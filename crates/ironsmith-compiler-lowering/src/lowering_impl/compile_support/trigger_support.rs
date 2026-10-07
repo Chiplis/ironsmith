@@ -1401,12 +1401,20 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
             source,
             player,
+            each_damaged_player,
+            per_source_controller: true,
+        } => Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player),
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source,
+            player,
             each_damaged_player: false,
+            per_source_controller: false,
         } => Trigger::deals_combat_damage_to_player_one_or_more(source, player),
         TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
             source,
             player,
             each_damaged_player: true,
+            per_source_controller: false,
         } => Trigger::deals_combat_damage_to_each_player_one_or_more(source, player),
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction {

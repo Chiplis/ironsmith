@@ -2234,6 +2234,9 @@ pub fn resolve_player_filter(
         PlayerFilter::TaggedPlayer(tag) => resolve_tagged_players_from_context(game, ctx, tag)
             .and_then(|players| players.first().copied())
             .ok_or_else(|| {
+                if tag.as_str() == ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG {
+                    return ExecutionError::IncompleteEvidence("missing damage-time source controller".into());
+                }
                 ExecutionError::UnresolvableValue(format!(
                     "TaggedPlayer requires a tagged player for '{tag}'"
                 ))
@@ -2357,7 +2360,17 @@ fn resolve_controller_of(
                 // controller, not the graveyard card's owner). Once it has
                 // left, the snapshot's last known controller stands
                 // (CR 608.2h).
-                let live_controller = resolve_tagged_object_id(game, ctx, snapshot)
+                let exact_attack_participant = ctx.triggering_event.as_ref()
+                    .and_then(|event| event.downcast::<crate::events::CreatureAttackedEvent>())
+                    .is_some_and(|attack| attack.attacker == snapshot.object_id);
+                let live_id = if exact_attack_participant {
+                    // A declaration names this incarnation. A later card with
+                    // the same stable identity is not the attacking creature.
+                    Some(snapshot.object_id)
+                } else {
+                    resolve_tagged_object_id(game, ctx, snapshot)
+                };
+                let live_controller = live_id
                     .and_then(|id| game.object(id))
                     .filter(|object| {
                         matches!(
@@ -2366,7 +2379,10 @@ fn resolve_controller_of(
                         ) && (object.id == snapshot.object_id || object.zone != snapshot.zone)
                     })
                     .map(|object| game.controller_of(object));
-                let departure_controller = ctx
+                let departure_controller = if exact_attack_participant {
+                    game.turn_store.turn_history.source_departure_snapshot(snapshot.object_id)
+                        .map(|departed| departed.controller)
+                } else { ctx
                     .triggering_event
                     .as_ref()
                     .filter(|event| {
@@ -2381,10 +2397,27 @@ fn resolve_controller_of(
                         )
                     })
                     .and_then(|_| latest_zone_change_snapshot_for_object(game, snapshot.object_id))
-                    .map(|departed| departed.controller);
+                    .map(|departed| departed.controller) };
+                if exact_attack_participant {
+                    return live_controller.or(departure_controller).ok_or_else(||
+                        ExecutionError::IncompleteEvidence(
+                            "attacking creature's controller requires its exact live incarnation or departure receipt".into()));
+                }
                 Ok(live_controller
                     .or(departure_controller)
                     .unwrap_or(snapshot.controller))
+            } else if matches!(tag.as_str(), "triggering" | "it" | "__it__")
+                && let Some(attack) = ctx.triggering_event.as_ref()
+                    .and_then(|event| event.downcast::<crate::events::CreatureAttackedEvent>())
+            {
+                // The trigger may be stacked after its exact attacker left.
+                // Its event identity still owns this reference even if no
+                // presentation tag could be populated during stacking.
+                game.controller_of_id(attack.attacker)
+                    .or_else(|| game.turn_store.turn_history.source_departure_snapshot(attack.attacker)
+                        .map(|snapshot| snapshot.controller))
+                    .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                        "attacking creature's controller requires its exact live incarnation or departure receipt".into()))
             } else if let Some(player) = ctx
                 .get_tagged_players(tag.as_str())
                 .and_then(|players| players.first().copied())
@@ -4431,6 +4464,9 @@ pub(crate) fn resolve_player_filter_to_list(
             }),
         PlayerFilter::TaggedPlayer(tag) => resolve_tagged_players_from_context(game, ctx, tag)
             .ok_or_else(|| {
+                if tag.as_str() == ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG {
+                    return ExecutionError::IncompleteEvidence("missing damage-time source controller".into());
+                }
                 ExecutionError::UnresolvableValue(format!(
                     "TaggedPlayer requires a tagged player for '{tag}'"
                 ))

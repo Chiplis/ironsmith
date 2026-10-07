@@ -1376,6 +1376,12 @@ fn resolve_stack_entry_full_inner(
 
     // Check intervening-if condition at resolution time
     // If the condition is false, the ability does nothing (but doesn't fizzle)
+    if entry.triggering_event.is_none() && entry.intervening_if.as_ref()
+        .is_some_and(crate::condition_eval::condition_requires_retained_attack_event)
+    {
+        return Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+            "combat intervening-if has no retained triggering attack event".into())));
+    }
     if let Some(ref condition) = entry.intervening_if
         && let Some(ref triggering_event) = entry.triggering_event
         && !crate::triggers::verify_intervening_if_at_resolution_checked(
@@ -1392,8 +1398,8 @@ fn resolve_stack_entry_full_inner(
         crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
         return Ok(());
     }
-    // If no triggering event is set (shouldn't happen for triggered abilities),
-    // we allow the ability to proceed rather than creating a fake event
+    // Legacy event-independent conditions retain their existing no-event path.
+    // Required combat evidence is checked above, before any body can execute.
 
     ctx.all_targets_legal = valid_targets.len() == entry.targets.len();
     ctx = ctx

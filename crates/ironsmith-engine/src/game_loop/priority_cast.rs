@@ -1904,30 +1904,9 @@ pub(super) fn activation_stage_after_modes(pending: &PendingActivation) -> Activ
 /// the "less than one mana" floor see X as generic mana. Lock the announced
 /// X into every plain mana component before pricing.
 pub(super) fn activation_cost_with_locked_x(
-    cost: &crate::cost::TotalCost,
-    x_value: u32,
+    cost: &crate::cost::TotalCost, x_value: u32,
 ) -> crate::cost::TotalCost {
-    match cost.kind() {
-        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
-            branches
-                .iter()
-                .map(|branch| activation_cost_with_locked_x(branch, x_value))
-                .collect(),
-        ),
-        ironsmith_core::TotalCostKind::All(components) => crate::cost::TotalCost::from_costs(
-            components
-                .iter()
-                .map(|component| match component.mana_cost_ref() {
-                    Some(mana) if mana.has_x() => crate::costs::Cost::mana(
-                        crate::decision::mana_cost_with_locked_x_and_generic_reduction(
-                            mana, x_value, 0,
-                        ),
-                    ),
-                    _ => component.clone(),
-                })
-                .collect(),
-        ),
-    }
+    crate::decision::activation_cost_with_locked_x(cost, x_value)
 }
 
 /// Preserve the captured printed branch separately from menu display prices.
@@ -1956,53 +1935,14 @@ fn selected_activation_cost_branch(
     }
 }
 
-fn activation_cost_mana_value(cost: &crate::cost::TotalCost) -> u32 {
-    cost.as_all().map_or(0, |components| {
-        components
-            .iter()
-            .filter_map(|component| {
-                component
-                    .mana_cost_ref()
-                    .or_else(|| component.dynamic_mana_cost_ref().map(|dynamic| &dynamic.base))
-            })
-            .map(crate::mana::ManaCost::mana_value)
-            .sum()
-    })
-}
-
-/// Generic reductions that the symbolic `{X}` activation cost could not
-/// absorb but will apply once X is announced (CR 602.2b, 601.2f). The X
-/// prompt adds this to the affordable maximum.
-fn activation_x_reduction_headroom(game: &GameState, pending: &PendingActivation) -> u32 {
-    const REDUCTION_PROBE_X: u32 = 1_000;
-    let Some(ability) = game.current_ability(pending.source, pending.ability_index) else {
-        return 0;
-    };
-    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
-        return 0;
-    };
-    let reduction = |base: &crate::cost::TotalCost| {
-        let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
-            game,
-            pending.activator,
-            pending.source,
-            base,
-            &pending.chosen_targets,
-            Some(crate::decision::ActivationCostAbility::of(
-                game,
-                pending.activator,
-                pending.source,
-                activated,
-            )),
-        );
-        let base = selected_activation_cost_branch(base, pending.selected_alternative_cost);
-        let priced = selected_activation_cost_branch(&priced, pending.selected_alternative_cost);
-        base.zip(priced).map_or(0, |(base, priced)| {
-            activation_cost_mana_value(&base).saturating_sub(activation_cost_mana_value(&priced))
-        })
-    };
-    let locked = activation_cost_with_locked_x(&activated.mana_cost, REDUCTION_PROBE_X);
-    reduction(&locked).saturating_sub(reduction(&activated.mana_cost))
+pub(super) fn announced_activation_cost(
+    pending: &PendingActivation,
+) -> Result<&super::priority_state::AnnouncedActivationCost, GameLoopError> {
+    pending.announced_cost.as_ref().ok_or_else(|| GameLoopError::ExecutionFailed(
+        crate::effects::ExecutionError::IncompleteEvidence(
+            "pending activation lost its original ability and cost facts".into(),
+        ),
+    ))
 }
 
 pub(super) fn assign_pending_activation_cost(
@@ -2029,10 +1969,15 @@ pub(super) fn assign_pending_activation_cost(
 
     for component in components {
         if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
+            if pending.x_value.is_none() && dynamic_mana.base.has_x() && dynamic_mana.x_value.is_none() {
+                pending.mana_cost_to_pay = Some(dynamic_mana.base.clone());
+                continue;
+            }
             if !pending.cost_references_ready && dynamic_mana.mana_cost_of.is_some() { continue; }
             let mut execution_ctx =
                 ExecutionContext::new(pending.source, pending.activator, &mut *decision_maker)
                     .with_provenance(pending.provenance);
+            execution_ctx.x_value = pending.x_value.map(|x| x as u32);
             let resolved = crate::special_actions::resolve_dynamic_mana_cost(
                 game,
                 dynamic_mana,
@@ -6858,7 +6803,7 @@ pub(super) fn continue_activation(
                 } else { base };
                 let cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
                     game, pending.activator, pending.source, &base, &pending.chosen_targets,
-                    crate::decision::ActivationCostAbility::at(game, pending.activator, pending.source, pending.ability_index),
+                    Some(announced_activation_cost(&pending)?.facts),
                 );
                 pending.cost_references_ready = true;
                 assign_pending_activation_cost(game, &mut pending, &cost, decision_maker)?;
@@ -6956,18 +6901,14 @@ pub(super) fn continue_activation(
                 } else {
                     None
                 };
-                if let Some(mana_max) = max_x.as_mut()
-                    && let Some(cost) = pending.mana_cost_to_pay.as_ref()
-                    && cost.has_x()
-                {
-                    let x_pips = cost
-                        .pips()
-                        .iter()
-                        .filter(|pip| pip.contains(&crate::mana::ManaSymbol::X))
-                        .count()
-                        .max(1) as u32;
-                    *mana_max = mana_max
-                        .saturating_add(activation_x_reduction_headroom(game, &pending) / x_pips);
+                if pending.mana_cost_to_pay.as_ref().is_some_and(|cost| !cost.has_waterbend_obligation()) {
+                    let announced = announced_activation_cost(&pending)?;
+                    let original = selected_activation_cost_branch(&announced.ability.mana_cost, pending.selected_alternative_cost)
+                        .ok_or_else(|| GameLoopError::ExecutionFailed(crate::effects::ExecutionError::IncompleteEvidence(
+                            "X announcement lost its original cost branch".into())))?;
+                    if let Some(priced_max) = crate::decision::maximum_x_for_activation_cost(
+                        game, pending.activator, pending.source, &original, &pending.chosen_targets, announced.facts,
+                    ).map_err(GameLoopError::ExecutionFailed)? { max_x = Some(priced_max); }
                 }
                 if let Some(cost_max_x) = max_x_from_activation_cost_steps(
                     game,
@@ -6978,15 +6919,7 @@ pub(super) fn continue_activation(
                     max_x = Some(max_x.map_or(cost_max_x, |mana_max| mana_max.min(cost_max_x)));
                 }
                 let max_x = max_x.unwrap_or(0);
-                let min_x = game
-                    .current_ability(pending.source, pending.ability_index)
-                    .and_then(|ability| match &ability.kind {
-                        crate::ability::AbilityKind::Activated(activated) => {
-                            Some(activated.activation_x_minimum())
-                        }
-                        _ => None,
-                    })
-                    .unwrap_or(0);
+                let min_x = announced_activation_cost(&pending)?.ability.activation_x_minimum();
                 if min_x > max_x {
                     return Err(GameLoopError::InvalidState(format!(
                         "No legal X value between {min_x} and {max_x} for this activation"

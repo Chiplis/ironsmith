@@ -134,6 +134,7 @@ impl WasmGame {
             || self.priority_state.pending_activation.is_some()
             || self.priority_state.pending_mana_ability.is_some()
             || self.priority_state.pending_method_selection.is_some()
+            || self.priority_state.has_opened_exile_play_receipt()
             || self.priority_state.pending_continuation.is_some()
     }
 
@@ -184,12 +185,16 @@ impl WasmGame {
 
     fn select_options_uses_live_priority_response(
         &self,
-        _ctx: &ironsmith::decisions::context::SelectOptionsContext,
+        ctx: &ironsmith::decisions::context::SelectOptionsContext,
     ) -> bool {
         // A pending mana ability may be paused inside an effect (for example,
         // choosing its mana color). Generic effect options resume that captured
         // effect; they have no direct PriorityResponse mapping.
-        self.game.effect_store.pending_replacement_choice.is_some()
+        (ctx.exile_face_down_choice && self.priority_state.pending_exile_face_down.as_ref().is_some_and(|pending|
+            ctx.source == Some(pending.card_id) && ctx.player == pending.player))
+            || (ctx.exile_play_choice && self.priority_state.pending_exile_play.as_ref().is_some_and(|pending|
+            ctx.source == Some(pending.card_id) && ctx.player == pending.player))
+            || self.game.effect_store.pending_replacement_choice.is_some()
             || self.priority_state.pending_method_selection.is_some()
             || self
                 .priority_state

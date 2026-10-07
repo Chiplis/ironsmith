@@ -1129,14 +1129,15 @@ impl CardDefinitionBuilder {
             )),
         ]);
 
-        self.with_ability(
-            crate::ability::Ability::activated_with_timing(
-                total_cost,
-                vec![crate::effect::Effect::ninjutsu()],
-                crate::ability::ActivationTiming::DuringCombat,
-            )
-            .in_zones(vec![crate::zone::Zone::Hand]),
-        )
+        let mut ability = crate::ability::Ability::activated_with_timing(
+            total_cost,
+            vec![crate::effect::Effect::ninjutsu()],
+            crate::ability::ActivationTiming::DuringCombat,
+        ).in_zones(vec![crate::zone::Zone::Hand]);
+        if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind {
+            activated.keyword = Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu);
+        }
+        self.with_ability(ability)
     }
 
     /// CR 702.112a: "When this creature deals combat damage to a player, if

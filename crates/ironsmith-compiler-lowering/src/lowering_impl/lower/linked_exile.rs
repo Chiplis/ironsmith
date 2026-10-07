@@ -322,3 +322,99 @@ pub(super) fn bind_private_return_linked_exile(definition: &mut CardDefinition) 
     if let AbilityKind::Static(ability) = &mut definition.abilities[inspector].kind
         && let StaticAbilityPayload::LookAtSourceExiledCards { pair: member, .. } = &mut ability.payload { *member = Some(pair); }
 }
+
+fn class_level_activation(ability: &crate::ability::Ability, level: u32) -> bool {
+    let AbilityKind::Activated(activated) = &ability.kind else { return false; };
+    if activated.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level))
+        || activated.timing != crate::ability::ActivationTiming::SorcerySpeed
+        || !activated.choices.is_empty() || activated.is_loyalty_ability
+        || !activated.activation_restrictions.is_empty() || activated.activation_condition.is_some()
+        || activated.mana_output.is_some() || !activated.mana_usage_restrictions.is_empty()
+        || !activated.mana_cost.as_all().is_some_and(|costs| !costs.is_empty()
+            && costs.iter().all(|cost| matches!(cost, crate::costs::Cost::Mana(_))))
+        || activated.effects.segments.len() != 1 || !activated.effects.segments[0].self_replacements.is_empty()
+    { return false; }
+    let effects = activated.effects.all_effects();
+    if effects.len() != 1 { return false; }
+    let Some(put) = crate::compile_support::effect_without_result_tags(effects[0])
+        .downcast_ref::<crate::effects::PutCountersEffect>() else { return false; };
+    put.counter_type == crate::CounterType::Level && put.amount == Value::Fixed(1)
+        && put.target == ChooseSpec::Source && put.target_count.is_none() && !put.distributed
+        && put.maximum_total.is_none() && put.completion_action.is_none()
+}
+
+fn class_private_library_producer(program: &ResolutionProgram) -> bool {
+    if program.segments.len() != 1 || !program.segments[0].self_replacements.is_empty() { return false; }
+    let effects = program.all_effects();
+    if effects.len() != 2 { return false; }
+    let Some(exile) = crate::compile_support::effect_without_result_tags(effects[0])
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() else { return false; };
+    let Some(look) = crate::compile_support::effect_without_result_tags(effects[1])
+        .downcast_ref::<crate::effects::LookAtObjectsEffect>() else { return false; };
+    if !exile.face_down || exile.count != Value::Fixed(1) || !exile.accumulated_tags.is_empty()
+        || exile.moved_tags.len() != 1 || !look.permit_while_exiled
+        || look.viewer != crate::target::PlayerFilter::You || look.subject != crate::target::PlayerFilter::You
+    { return false; }
+    let mut pool = look.filter.clone();
+    if pool.tagged_constraints.len() != 1
+        || pool.tagged_constraints[0].tag != exile.moved_tags[0]
+        || pool.tagged_constraints[0].relation != crate::target::TaggedOpbjectRelation::IsTaggedObject
+    { return false; }
+    pool.tagged_constraints.clear();
+    if pool.zone.take() != Some(crate::zone::Zone::Exile) { return false; }
+    pool == crate::target::ObjectFilter::default()
+}
+
+/// A complete Class definition proves where the base producer and final
+/// reader live. Only this reader may project its generated level wrapper back
+/// to the enclosing rules-text acquisition. Other effect/level grants retain
+/// their independent owners.
+pub(super) fn bind_class_linked_exile(definition: &mut CardDefinition) {
+    use ironsmith_core::{Grantable, StaticAbilityId, StaticAbilityPayload};
+    if !definition.card.subtypes.contains(&crate::types::Subtype::Class)
+        || definition.abilities.len() != 5 || definition.spell_effect.is_some()
+        || !definition.alternative_casts.is_empty() || !definition.optional_costs.is_empty()
+        || definition.additional_cost.has_non_mana_costs()
+        || definition.additional_cost.dynamic_mana_cost().is_some()
+        || definition.additional_cost.as_one_of().is_some()
+        || definition.abilities.iter().any(|ability| ability.functional_zones != [crate::zone::Zone::Battlefield])
+    { return; }
+    let AbilityKind::Triggered(trigger) = &definition.abilities[0].kind else { return; };
+    if !class_private_library_producer(&trigger.effects)
+        || !class_level_activation(&definition.abilities[1], 2)
+        || !class_level_activation(&definition.abilities[3], 3) { return; }
+    let AbilityKind::Static(menace) = &definition.abilities[2].kind else { return; };
+    let StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &menace.payload else { return; };
+    if grant.filter != crate::target::ObjectFilter::creature().you_control()
+        || !grant.additional_abilities.is_empty() || grant.condition.is_some()
+        || grant.ability.functional_zones != [crate::zone::Zone::Battlefield]
+        || !matches!(&grant.ability.kind, AbilityKind::Static(ability)
+            if ability.id == Some(StaticAbilityId::Menace) && matches!(ability.payload, StaticAbilityPayload::None))
+    { return; }
+    let AbilityKind::Static(reader) = &definition.abilities[4].kind else { return; };
+    let StaticAbilityPayload::Grants(spec) = &reader.payload else { return; };
+    if !spec.requires_linked_exile_pair || !matches!(spec.grantable, Grantable::PlayFrom)
+        || spec.zone != crate::zone::Zone::Exile || !spec.additional_zones.is_empty()
+        || spec.beneficiary != crate::target::PlayerFilter::You
+        || spec.usage_limit.is_some() || spec.max_plays.is_some()
+        || !spec.cast_this_way_grants.is_empty() || !spec.permanent_this_way_grants.is_empty()
+        || !spec.on_use_effects.is_empty() || spec.cast_this_way_filter.is_some()
+        || spec.top_card_only || spec.instant_timing || spec.may_look_at_top || spec.may_look_at_linked_exile
+        || spec.cast_mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::AnyColor
+    { return; }
+    let mut pool = spec.filter.clone();
+    if pool.zone.take() != Some(crate::zone::Zone::Exile) || pool.tagged_constraints.len() != 1
+        || pool.tagged_constraints[0].tag.as_str() != ironsmith_core::SOURCE_EXILED_TAG
+        || pool.tagged_constraints[0].relation != crate::target::TaggedOpbjectRelation::IsTaggedObject { return; }
+    pool.tagged_constraints.clear();
+    if pool != crate::target::ObjectFilter::default() { return; }
+    if let AbilityKind::Static(reader) = &mut definition.abilities[4].kind
+        && let StaticAbilityPayload::Grants(spec) = &mut reader.payload { spec.linked_exile_class_level = Some(3); }
+    let Ok(bytes) = serde_json::to_vec(&definition.abilities) else { return; };
+    let pair = ironsmith_core::LinkedExilePair {
+        definition: ironsmith_core::LinkedExileDefinition(Sha256::digest(bytes).into()), pair: 0,
+    };
+    if let AbilityKind::Triggered(trigger) = &mut definition.abilities[0].kind { trigger.effects.linked_exile_pair = Some(pair); }
+    if let AbilityKind::Static(reader) = &mut definition.abilities[4].kind
+        && let StaticAbilityPayload::Grants(spec) = &mut reader.payload { spec.linked_exile_pair = Some(pair); }
+}

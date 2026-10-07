@@ -602,6 +602,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::SourceIsSoulbondPaired | Condition::PlayerGraveyardHasCardsAtLeast { .. }
         | Condition::XValueAtLeast(_) | Condition::AllTargetsStillLegal
         | Condition::AttackedWithTotalPowerAtLeastThisCombat(_) | Condition::YouChoseAnotherRingBearer
+        | Condition::CombatParticipant(_)
         | Condition::SourceCaseSolved | Condition::ThisSpellWasForetold => {}
     }
     Ok(rewritten)

@@ -3016,7 +3016,7 @@ impl CardDefinitionBuilder {
 
         self.with_ability(Ability {
             kind: AbilityKind::Activated(crate::ability::ActivatedAbility {
-                keyword: None,
+                keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu),
                 mana_cost: total_cost,
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::NinjutsuEffect::new(),

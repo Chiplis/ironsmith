@@ -3,15 +3,30 @@ use crate::game_state::{GameState, Target};
 use crate::ids::PlayerId;
 use std::any::Any;
 
-/// One unique attacking-player/directly-attacked-player pair in a declaration.
-/// Planeswalkers, battles, and creatures put onto the battlefield attacking do
-/// not produce this event (CR 508.3b/e).
+/// Immutable participants in a completed attack declaration. The controller
+/// of an attacked planeswalker is captured before any attack trigger resolves.
+#[derive(Debug, Clone)]
+pub struct DeclaredAttackParticipant {
+    pub creature: crate::ids::ObjectId,
+    pub controller: PlayerId,
+    pub target: crate::triggers::AttackEventTarget,
+    pub defending_player: PlayerId,
+}
+
+/// One attacking-player/defending-player pair and target category in a
+/// declaration. Matchers for directly attacking players exclude non-direct
+/// pairs; the unqualified "a player attacks" also observes the latter.
+/// Creatures put onto the battlefield attacking never produce this event.
 #[derive(Debug, Clone)]
 pub struct PlayerAttackDeclarationEvent {
     pub attacker: PlayerId,
     pub defender: PlayerId,
     pub turn_number: u32,
     pub combat_phase: u32,
+    pub directly_attacked_player: bool,
+    /// Complete declaration, including all targets of this declaring player.
+    /// None is unavailable evidence, never an empty declaration.
+    pub declaration: Option<std::sync::Arc<[DeclaredAttackParticipant]>>,
 }
 impl GameEventType for PlayerAttackDeclarationEvent {
     fn event_kind(&self) -> EventKind {
@@ -24,7 +39,11 @@ impl GameEventType for PlayerAttackDeclarationEvent {
         None
     }
     fn display(&self) -> String {
-        "A player attacks another player".into()
+        if self.directly_attacked_player {
+            "A player attacks another player".into()
+        } else {
+            "A player declares attackers against a planeswalker or Battle".into()
+        }
     }
     fn as_any(&self) -> &dyn Any {
         self

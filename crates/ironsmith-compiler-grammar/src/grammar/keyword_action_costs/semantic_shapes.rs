@@ -280,7 +280,7 @@ pub fn parse_keyword_cost_action_surface_tokens(
     })?;
     if input
         .first()
-        .is_some_and(|word| matches!(*word, "cost" | "costs"))
+        .is_some_and(|word| matches!(*word, "cost" | "costs" | "abilities"))
     {
         return None;
     }

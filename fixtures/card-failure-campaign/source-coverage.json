@@ -1,26 +1,26 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "5d993c24f934059039f580bbfd2f6a466464681b",
+  "source_implementation_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
     "verified_unique_compile_recoveries": 40,
     "verified_unique_remaining": 3193,
-    "additional_proposed_unique_cards": 1241,
-    "additional_proposed_compile_entries": 1246,
+    "additional_proposed_unique_cards": 1256,
+    "additional_proposed_compile_entries": 1261,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1241,
+    "source_proposals_excluding_identified_runtime_gaps": 1256,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 356,
+    "source_identities_until_majority_gate": 341,
     "current_base_owner_admission_blocked": false
   },
   "workflow": {
@@ -5625,6 +5625,60 @@
       "evidence": "architecture/card-failure-counter-recipient-groups.md",
       "tests": "authored_not_run",
       "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "activation-kind-cost-modifiers",
+      "stage": 99,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/activation_kind_costs.json.fixture",
+      "baseline_entries": [
+        "Fluctuator",
+        "Silver-Fur Master",
+        "Dragonkin Berserker",
+        "Boom Scholar",
+        "Hulk, Gamma Goliath",
+        "Eidolon of Obstruction",
+        "Suppression Field",
+        "Zirda, the Dawnwaker"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55",
+      "evidence": "architecture/card-failure-activation-kind-costs.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "combat-participant-conditions",
+      "stage": 99,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/combat_participant_conditions.json.fixture",
+      "baseline_entries": [
+        "Ever-Watching Threshold",
+        "Kazuul, Tyrant of the Cliffs",
+        "Mirkwood Trapper",
+        "Norn's Decree",
+        "Scourge of the Throne",
+        "Septic Rats"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55",
+      "evidence": "architecture/card-failure-combat-participant-predicates.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
+    },
+    {
+      "id": "linked-exile-class-and-blind-play",
+      "stage": 99,
+      "status": "source_implemented_all_validation_deferred",
+      "fixture": "fixtures/linked_exile_static_permissions.json.fixture",
+      "baseline_entries": [
+        "Rogue Class"
+      ],
+      "partial_entries": [],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55",
+      "evidence": "architecture/card-failure-blind-exile-prepared-port.md",
+      "tests": "authored_not_run",
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred"
     }
   ],
   "cards": [
@@ -9177,8 +9231,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Boros Fury-Shield",
@@ -13970,8 +14027,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Dragonscale General",
@@ -14530,8 +14590,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Ekundu Cyclops",
@@ -15484,8 +15547,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Evercoat Ursine",
@@ -16763,8 +16829,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Fly",
@@ -20280,8 +20349,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Hundred-Handed One",
@@ -22418,8 +22490,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Keen Duelist",
@@ -25564,8 +25639,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Mirri, Weatherlight Duelist",
@@ -27253,8 +27331,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Norn's Inquisitor",
@@ -31553,11 +31634,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "partial_not_counted",
-      "source_families": [],
-      "partial_source_families": [
-        "linked-exile-static-play-permissions"
-      ]
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "linked-exile-class-and-blind-play"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Rogues' Gallery",
@@ -32519,8 +32600,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Scout's Warning",
@@ -32898,8 +32982,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "combat-participant-conditions"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Seraphic Greatsword",
@@ -33729,8 +33816,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Silverquill Lecturer",
@@ -35841,8 +35931,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Suppressor Skyguard",
@@ -42917,8 +43010,11 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "activation-kind-cost-modifiers"
+      ],
+      "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55"
     },
     {
       "card_name": "Zndrsplt's Judgment",
@@ -43366,7 +43462,6 @@
         "Nightveil Specter",
         "Intellect Devourer",
         "Colfenor's Plans",
-        "Rogue Class",
         "Intet, the Dreamer",
         "Elder Brain"
       ],
@@ -43377,7 +43472,15 @@
         "source_commit": "3e2faf666eb05f41e100d085644655f245e8863b",
         "status": "bounded_source_reviewed_no_coverage_credit",
         "remaining": "Exact linked pair and acquisition identity still required for Bishop scalar collection."
-      }
+      },
+      "later_source_admissions": [
+        {
+          "card_name": "Rogue Class",
+          "source_review_commit": "bcb508bab15ae49e4bfd40d67ab2e418635fbd55",
+          "evidence": "architecture/card-failure-blind-exile-prepared-port.md",
+          "validation": "unrun"
+        }
+      ]
     },
     {
       "id": "consult-reveal-authentication-before-stop",
@@ -43625,12 +43728,13 @@
       "definitions": "b595fc21dfc9cff126a9ab70325a72eacd31584e"
     },
     "proposed_compatibility_boundary": {
-      "artifact_format": 10,
-      "engine_schema_hash": "e27b521de2a44a2c1c3349a8b8cbf5392da6882c14270112de24faecced0adc9",
-      "public_audit_digest": 6,
-      "signed_audit_protocol": 23,
+      "artifact_format": 11,
+      "engine_schema_hash": "cf9f06e2cea9c4facdfe9b4aad19eaa4bca1062e4e9c9f28d22de18920cbd401",
+      "public_audit_digest": 7,
+      "signed_audit_protocol": 24,
+      "manabrew_protocol": 3,
       "status": "source_reviewed_no_execution",
-      "evidence": "architecture/card-failure-protection-targeting-compatibility.md"
+      "evidence": "architecture/card-failure-activation-combat-blind-compatibility.md"
     },
     "combined_owner_review_commit": "54a523387187b0b5a5c7faa0b8dbe7a175e12b58",
     "token_profile_port_review_commit": "03a183a8be25c7fb7ec590fa648ce25adbb97028",
@@ -43638,7 +43742,7 @@
     "readmitted_pre_port_entries": 1190,
     "restored_specific_naming_holds": 36,
     "new_keyword_action_identities": 6,
-    "current_base_proposed_unique": 1241,
-    "current_base_proposed_entries": 1246
+    "current_base_proposed_unique": 1256,
+    "current_base_proposed_entries": 1261
   }
 }

@@ -192,9 +192,17 @@ struct ManabrewCounterState {
 }
 
 #[derive(Debug, Clone)]
+struct ManabrewOpaqueExileBinding {
+    action_ref: PriorityActionRef,
+    /// Paired public identity captured with the menu, never reconstructed from its index.
+    hidden_identity: Option<(u8, u16, String)>,
+}
+
+#[derive(Debug, Clone)]
 enum ManabrewPromptBinding {
     Priority {
         actions: HashMap<String, usize>,
+        opaque_exile: HashMap<usize, ManabrewOpaqueExileBinding>,
         pass_index: usize,
     },
     Mulligan {
@@ -2679,6 +2687,16 @@ enum PriorityActionRef {
     UsePregameAction {
         card_id: u64,
         ability_index: usize,
+    },
+    OpenExiledCardForPlay {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
+    },
+    CastExiledCardFaceDown {
+        card_id: u64,
+        incarnation: Option<u64>,
+        permission: GrantSelectionRef,
     },
     CastSpell {
         spell_id: u64,
@@ -6031,6 +6049,7 @@ mod native_tests {
         wasm.game.set_hidden_card_info(
             hidden,
             ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                 owner: alice,
                 zone: Zone::Hand,
                 slot: 4,

@@ -48,6 +48,7 @@ fn nonmana_unless_payment_fixture(name: &str, failing: std::sync::Arc<std::sync:
         let card = ironsmith::card::CardBuilder::new(CardId::new(), card_name).card_types(vec![CardType::Artifact]).build();
         let id = wasm.game.create_object_from_card(&card, PlayerId(1), Zone::Hand);
         wasm.game.set_hidden_card_info(id, ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: PlayerId(1), zone: Zone::Hand, slot: slot as u16, commitment: format!("unless-discard-{slot}"),
             origin_slot: None, origin_commitment: None, public_slot: None, public_commitment: None,
         });

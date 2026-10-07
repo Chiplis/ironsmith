@@ -502,6 +502,10 @@ pub struct GrantSpec<SA, E, C, Cond> {
     /// Runtime membership also requires the current rules-text acquisition.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub linked_exile_pair: Option<crate::LinkedExilePair>,
+    /// A compiler-proved Class reader belongs to the enclosing rules text,
+    /// reached through the matching level's source-only static grant.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub linked_exile_class_level: Option<u32>,
     /// Presentation metadata for a persistent source-linked exile grant.
     pub source_exiled_surface: Option<SourceExiledGrantSurface>,
     /// Only the current top card of the beneficiary's library is permitted.
@@ -552,6 +556,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
+            linked_exile_class_level: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
@@ -597,6 +602,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             may_look_at_linked_exile: self.may_look_at_linked_exile,
             cast_mana_spend_mode: self.cast_mana_spend_mode,
             linked_exile_pair: self.linked_exile_pair,
+            linked_exile_class_level: self.linked_exile_class_level,
             source_exiled_surface: self.source_exiled_surface,
             top_card_only: self.top_card_only,
             instant_timing: self.instant_timing,
@@ -707,6 +713,7 @@ where
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
+            linked_exile_class_level: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,
@@ -794,6 +801,7 @@ where
             may_look_at_linked_exile: false,
             cast_mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             linked_exile_pair: None,
+            linked_exile_class_level: None,
             source_exiled_surface: None,
             top_card_only: false,
             instant_timing: false,

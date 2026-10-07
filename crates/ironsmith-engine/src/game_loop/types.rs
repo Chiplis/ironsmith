@@ -87,6 +87,8 @@ pub enum PriorityResponse {
     HybridChoice(usize),
     CastingMethodChoice(usize),
     ReplacementChoice(usize),
+    ExilePlayChoice(usize),
+    ExileFaceDownChoice(usize),
 }
 
 impl From<TurnError> for GameLoopError {

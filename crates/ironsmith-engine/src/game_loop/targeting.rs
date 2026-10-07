@@ -363,14 +363,22 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                         crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceController(_, _)
                     ) && let Some(indices) = damage_groups.get(&key)
                     {
                         for &index in indices {
                             let previous: &mut crate::triggers::TriggeredAbilityEntry =
                                 &mut trigger_queue.entries[index];
                             if let Some(amount) = trigger.event_value_amount {
-                                previous.event_value_amount =
-                                    Some(previous.event_value_amount.unwrap_or(0) + amount);
+                                let Some(total) = previous.event_value_amount.unwrap_or(0).checked_add(amount) else {
+                                    game.record_token_resource_failure(&crate::effects::ExecutionError::ResourceLimitExceeded {
+                                        resource: "grouped damage trigger amount", requested: i32::MAX as u128 + 1,
+                                        maximum: i32::MAX as u128,
+                                    });
+                                    game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
+                                    return;
+                                };
+                                previous.event_value_amount = Some(total);
                             }
                             crate::triggers::merge_trigger_group_tags(
                                 &mut previous.tagged_objects,
@@ -384,6 +392,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                     crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
                         | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
                             | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
+                            | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceController(_, _)
                 ) {
                     damage_groups_from_this_event.push((key, trigger_queue.entries.len()));
                 }

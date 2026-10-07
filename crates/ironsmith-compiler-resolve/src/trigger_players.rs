@@ -158,6 +158,10 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 Some(player.clone())
             }
         }
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+            source, player: PlayerFilter::You, per_source_controller: true, ..
+        } if source.controller.as_ref().is_some_and(|controller| *controller != PlayerFilter::You) =>
+            Some(PlayerFilter::TaggedPlayer(ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG.into())),
         // "Whenever a source an opponent controls deals damage to you, that
         // player ...": the damaged player is you, so the only other player
         // the event names is the source's controller.

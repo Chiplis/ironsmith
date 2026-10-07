@@ -665,6 +665,7 @@ fn registered_grant_may_emit_late_effects(effect: &ContinuousEffect) -> bool {
     use crate::continuous::Modification;
     match &effect.modification {
         Modification::AddAbility(ability) => ability.may_generate_continuous_effects(),
+        Modification::SetAbilities(abilities) => abilities.iter().any(crate::linked_exile::is_class_linked_exile_wrapper),
         Modification::AddAbilityGeneric(ability) => match &ability.kind {
             AbilityKind::Static(ability) => ability.may_generate_continuous_effects(),
             _ => false,
@@ -718,6 +719,14 @@ fn generate_granted_late_static_effects(
             }
             if let Some(source) = originating_source
                 && matches!(effect.applies_to, EffectTarget::Source)
+                && !crate::continuous::AbilityEffectOrigin::is_class_linked_exile_effect(&effect)
+                && !(crate::continuous::AbilityEffectOrigin::is_source_class_level_effect(&effect)
+                    && registered.iter().any(|registered| {
+                        matches!(&origin, crate::continuous::AbilityOrigin::Effect { effect, .. }
+                            if *effect == crate::continuous::AbilityEffectOrigin::from(registered))
+                            && matches!(&registered.modification, Modification::SetAbilities(abilities)
+                                if abilities.iter().any(crate::linked_exile::is_class_linked_exile_wrapper))
+                    }))
             {
                 // A static ability granted by another permanent keeps that
                 // permanent as the source for source-relative filters (for

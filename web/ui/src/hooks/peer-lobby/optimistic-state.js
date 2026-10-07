@@ -61,6 +61,11 @@ export function useOptimisticPeerState(base, servicesRef) {
         if (Number(state?.decision?.player) !== Number(candidate.actorIndex)
           || !isDecisionCommandCompatible(state?.decision, candidate.command)
           || isForfeitCommand(candidate.command)) return null;
+        const disclosure = isNonDispatchSyncCommand(candidate.command) ? null
+          : await current.getPaymentDisclosureForCommand(candidate.command);
+        // Incoming provisional/canonical calculation must obey the same
+        // boundary as local submission, before unverified claims hydrate faces.
+        if (disclosure?.required || disclosure?.active) return null;
         return calculateOptimisticAction(current, candidate, {
           prepare: async (game, entry) => {
             const allowed = commandClaimIds(entry.command, state);

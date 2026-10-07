@@ -243,6 +243,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             may_look_at_linked_exile: spec.may_look_at_linked_exile,
             cast_mana_spend_mode: spec.cast_mana_spend_mode,
             linked_exile_pair: spec.linked_exile_pair,
+            linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface,
             filtered_zone_surface: spec.filtered_zone_surface,
             top_card_only: spec.top_card_only,
@@ -530,6 +531,11 @@ fn combine_level_ability_statics(
 const CLASS_LEVEL_MARKER_PREFIX: &str = "__ironsmith_class_level:";
 
 fn class_level_marker(ability: &ironsmith::ability::ActivatedAbility) -> Option<u32> {
+    if let Some(ironsmith_core::ActivatedAbilityKeyword::ClassLevel(level)) = ability.keyword {
+        return Some(level);
+    }
+    // Previously admitted definitions retain their legacy runtime route. New
+    // definition-local pairing consumes only the typed keyword above.
     ability
         .additional_restrictions
         .iter()

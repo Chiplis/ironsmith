@@ -781,6 +781,8 @@ pub struct FaceDownCastState {
     pub abilities: Arc<Vec<Ability>>,
     pub spell_effect: Option<SharedValue<crate::resolution::ResolutionProgram>>,
     pub aura_attach_filter: Option<AuraAttachmentMetadata>,
+    pub optional_costs: SharedVec<OptionalCost>,
+    pub additional_cost: SharedValue<TotalCost>,
     /// Public face-down kind: this object was cast face down using disguise,
     /// so the face-down overlay carries ward {2} (CR 702.168a).
     ///
@@ -2388,6 +2390,8 @@ impl Object {
             abilities: self.abilities.clone(),
             spell_effect: self.spell_effect.clone(),
             aura_attach_filter: self.aura_attach_filter.clone(),
+            optional_costs: self.optional_costs.clone(),
+            additional_cost: self.additional_cost.clone(),
             disguise_ward,
         }));
 
@@ -2424,6 +2428,8 @@ impl Object {
         }
         self.spell_effect = None;
         self.aura_attach_filter = None;
+        self.optional_costs = Vec::new().into();
+        self.additional_cost = TotalCost::free().into();
         self.bestow_cast_state = None;
         true
     }
@@ -2464,8 +2470,8 @@ impl Object {
         self.linked_face_layout = face_up.linked_face_layout;
         self.alternative_casts = face_up.alternative_casts.clone();
         self.has_fuse = face_up.has_fuse;
-        self.optional_costs = face_up.optional_costs.clone();
-        self.additional_cost = face_up.additional_cost.clone();
+        self.optional_costs = Vec::new().into();
+        self.additional_cost = TotalCost::free().into();
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
             name: face_up.name,
             first_printed_set_name: face_up.first_printed_set_name,
@@ -2484,6 +2490,8 @@ impl Object {
             abilities: face_up.abilities,
             spell_effect: face_up.spell_effect,
             aura_attach_filter: face_up.aura_attach_filter,
+            optional_costs: face_up.optional_costs,
+            additional_cost: face_up.additional_cost,
             disguise_ward,
         }));
         true
@@ -2523,6 +2531,8 @@ impl Object {
         self.abilities = restore.abilities;
         self.spell_effect = restore.spell_effect;
         self.aura_attach_filter = restore.aura_attach_filter;
+        self.optional_costs = restore.optional_costs;
+        self.additional_cost = restore.additional_cost;
         true
     }
 
@@ -2641,6 +2651,8 @@ impl Object {
             abilities: self.abilities.clone(),
             spell_effect: self.spell_effect.clone(),
             aura_attach_filter: self.aura_attach_filter.clone(),
+            optional_costs: self.optional_costs.clone(),
+            additional_cost: self.additional_cost.clone(),
             disguise_ward: false,
         }
     }
@@ -2675,6 +2687,8 @@ impl Object {
         self.abilities = restore.abilities;
         self.spell_effect = restore.spell_effect;
         self.aura_attach_filter = restore.aura_attach_filter;
+        self.optional_costs = restore.optional_costs;
+        self.additional_cost = restore.additional_cost;
         self.other_face = other_face;
         self.other_face_name = other_face_name;
         self.linked_face_layout = linked_face_layout;
@@ -3225,6 +3239,35 @@ mod tests {
         assert_eq!(physical_card_object.card, Some(physical_card.id));
         assert!(physical_card_object.mana_cost.is_some());
         assert!(!ObjectSnapshot::from_object(physical_card_object, &game).is_token);
+    }
+
+    #[test]
+    fn face_down_costs_restore_after_hydration_unveil_and_copy_lifetimes() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(CardId::new(), "Printed costs")
+            .card_types(vec![CardType::Creature])
+            .additional_cost(TotalCost::mana(ManaCost::new().add_generic(9)))
+            .optional_cost(OptionalCost::custom("Printed option", TotalCost::mana(ManaCost::new().add_generic(4))))
+            .build();
+        let id = game.create_object_from_definition(&definition, player, Zone::Hand);
+        let mut face = game.object(id).unwrap().clone();
+        let costs = face.additional_cost.clone(); let optional = face.optional_costs.clone();
+        assert!(face.apply_face_down_cast_overlay_with_disguise_ward(true));
+        assert!(face.additional_cost.is_free()); assert!(face.optional_costs.is_empty());
+        let token = Object::token_copy_of(&face, ObjectId::from_raw(900), player);
+        assert!(token.additional_cost.is_free()); assert!(token.optional_costs.is_empty());
+        face.capture_enters_as_copy_restore_state();
+        let mut restored_copy = face.clone(); assert!(restored_copy.end_enters_as_copy_overlay());
+        assert_eq!(restored_copy.additional_cost, costs); assert_eq!(restored_copy.optional_costs, optional);
+        assert!(face.end_face_down_cast_overlay()); assert_eq!(face.additional_cost, costs); assert_eq!(face.optional_costs, optional);
+        let token = Object::token_copy_of(&face, ObjectId::from_raw(901), player);
+        assert_eq!(token.additional_cost, costs); assert_eq!(token.optional_costs, optional);
+        let hidden = game.create_hidden_card_placeholder(player, Zone::Stack, 0, "overlay-costs".into());
+        game.object_mut(hidden).unwrap().apply_face_down_cast_overlay_with_disguise_ward(false);
+        assert!(game.reveal_hidden_card_with_definition(hidden, &definition).is_some());
+        let learned = game.object_mut(hidden).unwrap(); assert!(learned.additional_cost.is_free()); assert!(learned.optional_costs.is_empty());
+        assert!(learned.end_face_down_cast_overlay()); assert_eq!(learned.additional_cost, costs); assert_eq!(learned.optional_costs, optional);
     }
 
     #[test]

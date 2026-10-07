@@ -1404,6 +1404,12 @@ impl<'a> ExecutionContext<'a> {
         for (tag, players) in event.player_tags() {
             self.set_tagged_players(tag.clone(), players.clone());
         }
+        if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
+            && let Some(snapshot) = event.source_snapshot().filter(|snapshot| snapshot.object_id == damage.source)
+        {
+            self.set_tagged_players(ironsmith_core::tag::DAMAGE_SOURCE_CONTROLLER_TAG,
+                vec![snapshot.controller]);
+        }
         if let Some(controller) = event.cause().and_then(|cause| cause.source_controller) {
             self.set_tagged_players(
                 ironsmith_core::TRIGGERING_EVENT_CAUSE_CONTROLLER_TAG,

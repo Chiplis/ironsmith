@@ -2240,7 +2240,13 @@ fn tagged_objects_for_matched_trigger_with_view(
             _ => None,
         };
         let mut seen = std::collections::HashSet::new();
-        let sources = game
+        let sources = if damage.per_source_controller {
+            // Simultaneous grouping merges the snapshots within this exact
+            // damage-time controller's group. Never collect another actor's
+            // sources from the global live hit list.
+            trigger_event.source_snapshot().filter(|snapshot| snapshot.object_id == event.source)
+                .cloned().into_iter().collect::<Vec<_>>()
+        } else { game
             .combat_damage_player_batch_hits()
             .iter()
             .copied()
@@ -2256,7 +2262,7 @@ fn tagged_objects_for_matched_trigger_with_view(
             .filter(|source| damage.filter.matches(source, &ctx.filter_ctx, game))
             .filter(|source| seen.insert(source.stable_id))
             .filter_map(|source| ObjectSnapshot::capture_for_execution(source, game))
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>() };
         if !sources.is_empty() {
             tagged.insert(
                 crate::tag::TagKey::from(ironsmith_core::COMBAT_DAMAGE_GROUP_TAG),

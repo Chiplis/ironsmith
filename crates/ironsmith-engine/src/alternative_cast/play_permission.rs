@@ -79,8 +79,15 @@ impl PlayPermissionReceipt {
 
 /// Rebuild the selected face from the authoritative object and method. The
 /// caller's provisional Object never authorizes arbitrary characteristics.
-pub(crate) fn selected_face(game: &GameState, spell: &Object, origin: &super::CastingMethod) -> Result<(Object, ObjectId, Zone), ExecutionError> {
+pub(crate) fn selected_face(game: &GameState, player: PlayerId, spell: &Object, method: &super::CastingMethod) -> Result<(Object, ObjectId, Zone), ExecutionError> {
     use super::CastingMethod;
+    let origin = if let CastingMethod::ExactPermission { origin, .. } = method {
+        super::blind_play::admit_pre_stack_method(game, spell.id, player, method)?;
+        origin.as_ref()
+    } else {
+        super::blind_play::admit_pre_stack_origin(game, spell.id, player, method)?;
+        method
+    };
     let physical = game.object(spell.id).ok_or(ExecutionError::ObjectNotFound(spell.id))?;
     let (source, zone, alternative) = match origin {
         CastingMethod::PlayFrom { source, zone, use_alternative }
@@ -111,9 +118,10 @@ pub(crate) fn selected_face(game: &GameState, spell: &Object, origin: &super::Ca
 }
 
 pub(crate) fn selected_alternative(
-    game: &GameState, spell: &Object, method: &super::CastingMethod,
+    game: &GameState, player: PlayerId, spell: &Object, method: &super::CastingMethod,
 ) -> Result<Option<super::AlternativeCastingMethod>, ExecutionError> {
     let super::CastingMethod::ExactPermission { origin, .. } = method else { return Ok(None); };
+    super::blind_play::admit_pre_stack_method(game, spell.id, player, method)?;
     let index = match origin.as_ref() {
         super::CastingMethod::PlayFrom { use_alternative, .. }
         | super::CastingMethod::SplitOtherHalfPlayFrom { use_alternative, .. } => *use_alternative,
@@ -125,15 +133,15 @@ pub(crate) fn selected_alternative(
         return game.object(spell.id).and_then(|object| object.cast_alternative_method_owned())
             .map(Some).ok_or_else(|| ExecutionError::IncompleteEvidence("selected printed alternative lost its casting receipt".into()));
     }
-    let (face, _, _) = selected_face(game, spell, origin)?;
+    let (face, _, _) = selected_face(game, player, spell, method)?;
     Ok(face.alternative_casts.get(index).cloned())
 }
 
 pub(crate) fn resolve_method(
     game: &GameState, player: PlayerId, spell: &Object, method: &super::CastingMethod,
 ) -> Result<Option<Grant>, ExecutionError> {
-    let super::CastingMethod::ExactPermission { origin, permission } = method else { return Ok(None); };
-    let (face, source, zone) = selected_face(game, spell, origin)?;
+    let super::CastingMethod::ExactPermission { permission, .. } = method else { return Ok(None); };
+    let (face, source, zone) = selected_face(game, player, spell, method)?;
     if source != permission.source { return Err(ExecutionError::IncompleteEvidence("selected permission source does not match its origin".into())); }
     resolve(game, player, &face, zone, permission).map(Some)
 }
@@ -157,7 +165,7 @@ pub(crate) fn receipt_for_method(
         if receipt.source != source || receipt.zone != zone { return Err(ExecutionError::IncompleteEvidence("cast receipt and selected origin disagree".into())); }
         return Ok(Some(receipt.clone()));
     }
-    let (face, source, zone) = selected_face(game, spell, origin)?;
+    let (face, source, zone) = selected_face(game, player, spell, method)?;
     if source != permission.source { return Err(ExecutionError::IncompleteEvidence("selected permission source does not match its origin".into())); }
     let mut receipt = PlayPermissionReceipt::capture(game, player, &face, zone, permission)?;
     receipt.origin_method = Some(origin.clone());

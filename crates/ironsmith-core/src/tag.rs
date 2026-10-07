@@ -225,6 +225,8 @@ pub const PHASING_GROUP_TAG: &str = "__phasing_group__";
 /// Frozen actor and directly attacked player of one declared attack pair.
 pub const ATTACK_DECLARATION_ACTOR_TAG: &str = "__attack_declaration_actor__";
 pub const ATTACK_DECLARATION_DEFENDER_TAG: &str = "__attack_declaration_defender__";
+/// Controller when the triggering completed damage was dealt, not the source's current controller.
+pub const DAMAGE_SOURCE_CONTROLLER_TAG: &str = "__damage_source_controller__";
 /// Live controllers attacking the event's frozen defender when an effect
 /// constructs its filter context (CR 508.6), not the declaration's old actors.
 pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
@@ -279,6 +281,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     PHASING_GROUP_TAG,
     ATTACK_DECLARATION_ACTOR_TAG,
     ATTACK_DECLARATION_DEFENDER_TAG,
+    DAMAGE_SOURCE_CONTROLLER_TAG,
     CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,

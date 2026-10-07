@@ -118,6 +118,7 @@ fn card(game: &mut GameState, owner: PlayerId, zone: Zone, name: &str, colors: C
 }
 fn track(game: &mut GameState, id: ObjectId, slot: u16) {
     game.set_hidden_card_info(id, ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
         owner: game.object(id).unwrap().owner, zone: Zone::Hand, slot,
         commitment: format!("reveal-morph-{slot}"), origin_slot: None, origin_commitment: None,
         public_slot: None, public_commitment: None,

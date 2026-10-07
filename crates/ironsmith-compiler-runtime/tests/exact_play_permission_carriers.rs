@@ -98,3 +98,36 @@ fn admitted_non_normal_grants_without_new_surface_keep_canonical_and_public_obje
         }
     }
 }
+
+#[test]
+fn absent_class_scope_preserves_admitted_grants_and_legacy_class_activations_keep_their_surface() {
+    let (baseline, _) = compile_to_artifact("Existing grant", "Type: Enchantment\nYou may play lands from your graveyard.", false).unwrap();
+    let bytes = baseline.to_json().unwrap(); assert!(!std::str::from_utf8(&bytes).unwrap().contains("linked_exile_class_level"));
+    let decoded = ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&bytes).unwrap(); decoded.validate().unwrap(); assert_eq!(decoded.to_json().unwrap(), bytes);
+    let source = "Mana cost: {R}\nType: Enchantment — Class\n{1}{R}: Level 2\nCreatures you control have menace.\n{2}{R}: Level 3\nCreatures you control have haste.";
+    let (baseline, current) = compile_to_artifact("Existing Class shape", source, false).unwrap();
+    let mut legacy = ironsmith_compiler::CompilerFacade::new().compile_definition(
+        ironsmith_compiler::CardDefinitionBuilder::new(ironsmith::CardId::new(), "Existing Class shape"), source.into(),
+        ironsmith_compiler::CompilePolicy { allow_unsupported: false }).unwrap().definition;
+    let mut count = 0;
+    for ability in &mut legacy.abilities { if let AbilityKind::Activated(ability) = &mut ability.kind {
+        assert!(matches!(ability.keyword, Some(ironsmith_core::ActivatedAbilityKeyword::ClassLevel(_)))); ability.keyword = None; count += 1;
+    } }
+    assert_eq!(count, 2); let mut artifact = baseline;
+    artifact.payload.definition = ironsmith_compiled_artifact::wire_definition_from_serializable(&legacy).unwrap(); artifact.refresh_checksum();
+    let bytes = artifact.to_json().unwrap(); assert!(!std::str::from_utf8(&bytes).unwrap().contains("ClassLevel\""));
+    let restored = ironsmith_compiled_artifact::CompiledCardArtifact::from_json(&bytes).unwrap(); restored.validate().unwrap(); assert_eq!(restored.to_json().unwrap(), bytes);
+    for definition in [into_runtime_definition(legacy).unwrap(), ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap()] {
+        assert_eq!(ironsmith_text::canonical_compiled_lines(&definition), ironsmith_text::canonical_compiled_lines(&current));
+        let a = ironsmith::PlayerId::from_index(0); let mut game = ironsmith::GameState::new(vec!["A".into(), "B".into()], 20);
+        let source = game.create_object_from_definition(&definition, a, ironsmith::Zone::Battlefield);
+        let current_source = game.create_object_from_definition(&current, a, ironsmith::Zone::Battlefield);
+        assert_eq!(game.object(source).unwrap().compiled_card_text, game.object(current_source).unwrap().compiled_card_text);
+        let activated = definition.abilities.iter().find_map(|ability| match &ability.kind { ironsmith::ability::AbilityKind::Activated(ability) => Some(ability), _ => None }).unwrap();
+        let effects = activated.effects.all_effects();
+        let effect = effects[0].downcast_ref::<ironsmith::effects::SetClassLevelEffect>().unwrap();
+        assert_eq!(effect.level, 2);
+    }
+    assert_eq!(serde_json::to_string(&ironsmith_core::ActivatedAbilityKeyword::Equip).unwrap(), "\"Equip\"");
+    assert_eq!(serde_json::to_string(&ironsmith_core::ActivatedAbilityKeyword::PowerUp).unwrap(), "\"PowerUp\"");
+}

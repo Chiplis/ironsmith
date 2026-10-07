@@ -294,11 +294,15 @@ fn maximum_emerge_reduction(
 /// What the activation cost pipeline needs to know about the activated
 /// ability being priced (CR 601.2f, 602.2b): some modifiers apply only to
 /// abilities that aren't mana abilities (Tithe Taker, CR 605.1a) or only to
-/// equip abilities (Auriok Steelshaper, CR 702.6).
+/// equip abilities (Auriok Steelshaper, CR 702.6), other keyword abilities,
+/// loyalty abilities, or activations performed by a particular player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ActivationCostAbility {
     pub mana_ability: bool,
     pub equip: bool,
+    pub keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
+    pub loyalty_ability: bool,
+    pub activator: Option<PlayerId>,
     /// Index of the ability among its source's abilities, for "This ability
     /// costs ... less" (CR 602.2b), when known.
     pub ability_index: Option<usize>,
@@ -339,6 +343,9 @@ impl ActivationCostAbility {
         Self {
             mana_ability: activated.is_runtime_mana_ability(game, source, activator),
             equip: super::legal_actions::is_equip_ability(game, source, activated),
+            keyword: activated.keyword,
+            loyalty_ability: activated.is_loyalty_ability(),
+            activator: Some(activator),
             ability_index,
         }
     }
@@ -346,9 +353,9 @@ impl ActivationCostAbility {
 
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
 ///
-/// Without the ability, modifiers restricted to a kind of ability are applied
-/// as if it qualified; prefer
-/// [`calculate_effective_activation_total_cost_for_ability`].
+/// Without the ability, legacy equip/this-ability gates are estimates; exact
+/// keyword, loyalty, nonmana and activator selectors require captured facts.
+/// Actual activation owners use [`calculate_effective_activation_total_cost_for_ability`].
 pub fn calculate_effective_activation_total_cost(
     game: &GameState,
     activator: PlayerId,
@@ -711,6 +718,20 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
     ability: Option<ActivationCostAbility>,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
+    calculate_effective_activation_mana_cost_with_view_and_budget(
+        game, activator, ability_source, base_cost, chosen_targets, ability, view,
+    ).0
+}
+
+pub(crate) fn calculate_effective_activation_mana_cost_with_view_and_budget(
+    game: &GameState,
+    activator: PlayerId,
+    ability_source: ObjectId,
+    base_cost: &crate::mana::ManaCost,
+    chosen_targets: &[Target],
+    ability: Option<ActivationCostAbility>,
+    view: &DerivedGameView<'_>,
+) -> (crate::mana::ManaCost, u32) {
     use crate::ability::AbilityKind;
     use crate::filter::FilterContext;
 
@@ -724,8 +745,9 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
     }
 
     let mut adjusted = base_cost.clone();
+    let mut reductions = Vec::new();
     let Some(ability_source_object) = game.object(ability_source) else {
-        return adjusted;
+        return (adjusted, 0);
     };
 
     let mut cost_modifier_sources = view.activated_ability_cost_modifier_sources();
@@ -823,29 +845,121 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
 
                 if let Some(replacement) = &reduction.replacement_mana_cost {
                     adjusted = replacement.clone();
+                    reductions.clear();
                     continue;
                 }
 
-                let before = adjusted.clone();
-                adjusted = adjusted.reduce_generic(reduction.reduction.saturating_mul(multiplier));
-                if let Some(minimum_total_mana) = reduction.minimum_total_mana
-                    && before.mana_value() > 0
-                    && adjusted.mana_value() < minimum_total_mana
-                {
-                    let missing = minimum_total_mana - adjusted.mana_value();
-                    adjusted = add_generic_mana_cost(&adjusted, missing);
-                }
+                reductions.push((reduction.reduction.saturating_mul(multiplier), reduction.minimum_total_mana));
             }
         }
     }
 
-    apply_payment_reason_mana_adjustments(
+    // CR 601.2f: the activator chooses reduction order. Applying larger
+    // floors first, and unbounded reductions last, gives the least legal
+    // generic price independently of battlefield insertion order.
+    reductions.sort_by_key(|(_, minimum)| std::cmp::Reverse(minimum.unwrap_or(0)));
+    let mut budget = 0u32;
+    for (amount, minimum) in reductions {
+        budget = budget.saturating_add(amount);
+        let before = adjusted.clone();
+        adjusted = adjusted.reduce_generic(amount);
+        if let Some(minimum) = minimum
+            && before.mana_value() > 0 && adjusted.mana_value() < minimum
+        { adjusted = add_generic_mana_cost(&adjusted, minimum - adjusted.mana_value()); }
+    }
+    (apply_payment_reason_mana_adjustments(
         game,
         activator,
         Some(ability_source),
         &adjusted,
         crate::costs::PaymentReason::ActivateAbility,
-    )
+    ), budget)
+}
+
+/// Lock announced X in the original cost before taxes and reductions.
+pub(crate) fn activation_cost_with_locked_x(cost: &crate::cost::TotalCost, x: u32) -> crate::cost::TotalCost {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches.iter().map(|branch| activation_cost_with_locked_x(branch, x)).collect()),
+        ironsmith_core::TotalCostKind::All(components) => crate::cost::TotalCost::from_costs(
+            components.iter().map(|component| match component.mana_cost_ref() {
+                Some(mana) if mana.has_x() => crate::costs::Cost::mana(
+                    mana_cost_with_locked_x_and_generic_reduction(mana, x, 0)),
+                _ => if let Some(dynamic) = component.dynamic_mana_cost_ref() {
+                    let mut dynamic = dynamic.clone();
+                    if dynamic.base.has_x() {
+                        dynamic.base = mana_cost_with_locked_x_and_generic_reduction(&dynamic.base, x, 0);
+                    }
+                    crate::costs::Cost::dynamic_mana(dynamic)
+                } else { component.clone() },
+            }).collect()),
+    }
+}
+
+/// Maximum ordinary mana-funded X for one selected activation-cost branch.
+/// The upper bound retains all matching generic reduction capacity, then each
+/// binary-search candidate is locked and priced by the same total-cost owner.
+/// No fixed trial X clips a large legitimate reduction.
+pub(crate) fn maximum_x_for_activation_cost(
+    game: &GameState, activator: PlayerId, source: ObjectId,
+    original: &crate::cost::TotalCost, targets: &[Target], facts: ActivationCostAbility,
+) -> Result<Option<u32>, crate::effects::ExecutionError> {
+    super::with_complete_legality_query(game, |checked| {
+        maximum_x_for_activation_cost_in_query(checked, activator, source, original, targets, facts)
+    })
+}
+
+fn maximum_x_for_activation_cost_in_query(
+    game: &GameState, activator: PlayerId, source: ObjectId,
+    original: &crate::cost::TotalCost, targets: &[Target], facts: ActivationCostAbility,
+) -> Result<Option<u32>, crate::effects::ExecutionError> {
+    let components = original.as_all().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
+        "activation X has no selected original cost branch".into()))?;
+    let symbolic = calculate_effective_activation_total_cost_for_ability(
+        game, activator, source, original, targets, Some(facts));
+    let Some(mana) = symbolic.mana_cost().or_else(|| symbolic.dynamic_mana_cost().map(|cost| &cost.base)) else {
+        return Ok(None);
+    };
+    if !mana.has_x() { return Ok(None); }
+    let x_pips = mana.pips().iter().filter(|pip| pip.contains(&crate::mana::ManaSymbol::X)).count() as u32;
+    let policy = game.mana_spend_policy(activator, Some(source));
+    let allow_black_life = mana_cost_has_black_symbol(mana)
+        && game.player_can_pay_black_with_life_for_reason(activator, Some(source),
+            crate::costs::PaymentReason::activation(facts.keyword, facts.mana_ability));
+    let potential = if components.iter().any(|cost| cost.requires_tap()) {
+        // A tapped resource cannot finance the activation that reserves its tap.
+        let mut funding = game.clone();
+        funding.tap(source);
+        compute_potential_mana(&funding, activator)
+    } else { compute_potential_mana(game, activator) };
+    let view = DerivedGameView::new(game);
+    let (_, budget) = calculate_effective_activation_mana_cost_with_view_and_budget(
+        game, activator, source, mana, targets, Some(facts), &view);
+    let intrinsic_credit = symbolic.dynamic_mana_cost()
+        .filter(|cost| cost.source_mana_cost_reduction_condition.is_some())
+        .and_then(|_| game.object(source)).and_then(|object| object.mana_cost.as_ref())
+        .map_or(0, |cost| cost.mana_value());
+    let mut high = potential.total().saturating_add(budget).saturating_add(intrinsic_credit) / x_pips.max(1);
+    let mut low = 0;
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        let locked = activation_cost_with_locked_x(original, middle);
+        let price = calculate_effective_activation_total_cost_for_ability(
+            game, activator, source, &locked, targets, Some(facts));
+        let mut context = ExecutionContext::new_default(source, activator).with_x(middle);
+        let fixed = if let Some(dynamic) = price.dynamic_mana_cost() {
+            Some(crate::special_actions::resolve_dynamic_mana_cost(game, dynamic, &mut context).map_err(|error| match error {
+                crate::costs::CostPaymentError::ExecutionFailed(error) => error,
+                error => crate::effects::ExecutionError::UnresolvableValue(format!("activation X price: {error:?}")),
+            })?)
+        } else { price.mana_cost().cloned() };
+        let affordable = fixed.as_ref().is_none_or(|mana| {
+            potential.clone().try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+                mana, 0, &policy, allow_black_life).0
+        });
+        if affordable { low = middle; } else { high = middle - 1; }
+    }
+    Ok(Some(low))
 }
 
 /// Resolve an alternative method index for `CastingMethod::PlayFrom`.
@@ -1106,9 +1220,9 @@ fn spell_view_for_cost_filter_match(
     casting_method: &CastingMethod,
     cast_from_zone: Option<Zone>,
 ) -> Option<crate::object::Object> {
-    let selected_price_face = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let selected_price_face = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack { game.object(spell.id).cloned() }
-        else { match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+        else { match crate::alternative_cast::play_permission::selected_face(game, caster, spell, casting_method) {
             Ok((face, _, _)) => Some(face),
             Err(error) => { game.record_token_resource_failure(&error); return None; }
         } }
@@ -2427,6 +2541,11 @@ pub fn spell_mana_cost_for_cast(
     casting_method: &CastingMethod,
     from_zone: Zone,
 ) -> Option<crate::mana::ManaCost> {
+    if matches!(casting_method, CastingMethod::ExactPermission { .. })
+        && let Err(error) = crate::alternative_cast::blind_play::admit_pre_stack_method(game, spell.id, player, casting_method) {
+        game.record_token_resource_failure(&error);
+        return None;
+    }
     let base_cost = match casting_method.without_exact_permission() {
         CastingMethod::ExactPermission { .. } => {
             game.record_token_resource_failure(&crate::effects::ExecutionError::IncompleteEvidence("nested exact permission is not a casting method".into()));
@@ -2556,7 +2675,7 @@ pub(crate) fn alternative_method_for_casting_method(
     casting_method: &CastingMethod,
 ) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
     if matches!(casting_method, CastingMethod::ExactPermission { .. }) {
-        return match crate::alternative_cast::play_permission::selected_alternative(game, spell, casting_method) {
+        return match crate::alternative_cast::play_permission::selected_alternative(game, player, spell, casting_method) {
             Ok(method) => method,
             Err(error) => { game.record_token_resource_failure(&error); None }
         };
@@ -3598,11 +3717,11 @@ pub(crate) fn can_cast_spell_with_context(
         }
         _ => cast_view,
     };
-    let cast_view = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let cast_view = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack {
             game.object(spell.id).cloned()
         } else {
-            match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+            match crate::alternative_cast::play_permission::selected_face(game, player, spell, casting_method) {
                 Ok((face, _, _)) => Some(face),
                 Err(error) => { game.record_token_resource_failure(&error); return false; }
             }
@@ -3677,10 +3796,9 @@ pub(crate) fn can_cast_spell_with_context(
     }
 
     let target_started_at = PerfTimer::start();
-    let program = cast_view
-        .as_ref()
-        .and_then(|view| view.spell_effect.as_deref())
-        .or(spell.spell_effect.as_deref());
+    // An explicit face-down view intentionally has no printed program.
+    // Absence on that face must not recover the secret face's targets.
+    let program = cast_view.as_ref().map_or(spell.spell_effect.as_deref(), |view| view.spell_effect.as_deref());
     // Target legality is a pure function of the analysis snapshot, and this is
     // the dominant fixed cost of a menu pass. Under a sliced analysis the
     // snapshot is frozen, so the answer is memoized across slices; synchronous
@@ -4074,11 +4192,11 @@ pub(crate) fn can_cast_with_cost_with_context(
     } else {
         None
     };
-    let cast_view = if let CastingMethod::ExactPermission { origin, .. } = casting_method {
+    let cast_view = if let CastingMethod::ExactPermission { .. } = casting_method {
         if spell.zone == Zone::Stack {
             game.object(spell.id).cloned()
         } else {
-            match crate::alternative_cast::play_permission::selected_face(game, spell, origin) {
+            match crate::alternative_cast::play_permission::selected_face(game, player, spell, casting_method) {
                 Ok((face, _, _)) => Some(face),
                 Err(error) => { game.record_token_resource_failure(&error); return false; }
             }

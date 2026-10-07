@@ -1291,6 +1291,10 @@ fn can_play_land(
                 error: crate::effects::ExecutionError::ContinuousDiscovery(error),
             })?;
     let game = &checked;
+    if crate::alternative_cast::blind_play::requires_opening(game, card_id, player) {
+        return Err(ActionError::ExecutionFailure { source: card_id, error: crate::effects::ExecutionError::Impossible(
+            "Open this exiled card before announcing a land play".into()) });
+    }
     // Must be the active player
     if !game.is_active_player(player) {
         return Err(ActionError::NotActivePlayer);
@@ -1422,6 +1426,20 @@ impl LandPlayPermissionReceipt {
         }
     }
 }
+pub(crate) fn opened_land_play_permission(
+    game: &GameState, player: PlayerId, card: ObjectId,
+    permission: &crate::alternative_cast::GrantSelection,
+) -> Result<LandPlayPermissionReceipt, crate::effects::ExecutionError> {
+    let grant = crate::alternative_cast::blind_play::resolve(game, card, player, permission)?;
+    Ok(LandPlayPermissionReceipt {
+        shared: grant.shared_usage_id, identity: grant.permission_identity,
+        completion: crate::grant_registry::GrantUseCompletion::capture(game,
+            grant.source.source_id(), player, grant.on_use_effects),
+        permanent_grants: grant.permanent_this_way_grants, original_land: Some(card),
+        enters_tapped: grant.play_from_constraints.lands_enter_tapped,
+    })
+}
+
 pub(crate) fn choose_land_play_permission(
     game: &GameState,
     player: PlayerId,
@@ -1550,6 +1568,7 @@ pub(crate) fn execute_land_play_with_observer(
     player: PlayerId,
     card_id: ObjectId,
     back_face: bool,
+    opened_permission: Option<&crate::alternative_cast::GrantSelection>,
     timing: LandPlayObservationTiming,
     decision_maker: &mut impl crate::decision::DecisionMaker,
     mut observe: impl FnMut(
@@ -1567,7 +1586,7 @@ pub(crate) fn execute_land_play_with_observer(
         &mut execution,
         card_id,
         player,
-        crate::effects::zones::LandPlayAuthorization::SelectedPermission { back_face },
+        crate::effects::zones::LandPlayAuthorization::SelectedPermission { back_face, opened_permission: opened_permission.cloned() },
         timing,
         |game, execution, object, kind, event| {
             observe(game, execution.decision_maker, object, kind, event)
@@ -1591,6 +1610,7 @@ fn perform_play_land(
         player,
         card_id,
         back_face,
+        None,
         LandPlayObservationTiming::AfterHistory,
         decision_maker,
         |game, _, _, _, event| {
@@ -2430,22 +2450,12 @@ fn can_activate_mana_ability(
                     mana_ability,
                 )),
             );
-            // Check mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
-            let ctx = CostContext::new(permanent_id, player, decision_maker)
-                .with_reason(mana_ability.payment_reason(game, permanent_id, player));
-            for cost in total_cost.costs() {
-                game.validate_cost_for_payment_reason(player, permanent_id, cost, ctx.reason)
-                    .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
-                // For mana costs, use can_potentially_pay to show abilities that could
-                // be activated after tapping mana sources.
-                if cost.processing_mode().is_mana_payment() {
-                    cost.can_potentially_pay(game, &ctx)
-                        .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
-                } else {
-                    cost.can_pay(game, &ctx)
-                        .map_err(|error| cost_error_to_action_error(error, permanent_id))?;
-                }
-            }
+            let view = crate::derived_view::DerivedGameView::new(game);
+            let mut execution = ExecutionContext::new(permanent_id, player, decision_maker);
+            can_potentially_pay_total_cost_in_context_with_view(
+                game, player, permanent_id, &total_cost,
+                mana_ability.payment_reason(game, permanent_id, player), &mut execution, &view,
+            ).map_err(|error| cost_error_to_action_error(error, permanent_id))?;
             Ok(())
         },
     )
@@ -2766,6 +2776,52 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
     )
 }
 
+/// Select an original alternative branch, announce X, then determine its
+/// total exactly once. Both root/pending and planner/direct mana owners use
+/// this procedure before flattening components or paying any resource.
+pub(crate) fn prepare_mana_activation_cost(
+    game: &GameState, player: PlayerId, source: ObjectId, ability_index: usize,
+    activated: &crate::ability::ActivatedAbility, decision_maker: &mut dyn DecisionMaker,
+) -> Result<Option<(crate::cost::TotalCost, Option<u32>)>, ActionError> {
+    let mut facts = crate::decision::ActivationCostAbility::of(game, player, source, activated);
+    facts.ability_index = Some(ability_index);
+    let mut original = activated.mana_cost.clone();
+    while let Some(branches) = original.as_one_of() {
+        let priced: Vec<_> = branches.iter().map(|branch|
+            crate::decision::calculate_effective_activation_total_cost_for_ability(
+                game, player, source, branch, &[], Some(facts))).collect();
+        let mut payable = Vec::new();
+        for (index, price) in priced.iter().enumerate() {
+            if crate::cost::prospective_references::activation_branch_preflight_checked(
+                game, source, ability_index, player, None, price,
+            ).map_err(|error| ActionError::ExecutionFailure { source, error })? {
+                payable.push(index);
+            }
+        }
+        let selected = choose_payable_branch(game, player, source, &priced, &payable, decision_maker);
+        if decision_maker.awaiting_choice() { return Ok(None); }
+        let selected = selected.map_err(|error| cost_error_to_action_error(error, source))?
+            .ok_or(ActionError::CantPayCost)?;
+        original = branches[selected].clone();
+    }
+    let mut announced_x = None;
+    if let Some(maximum) = crate::decision::maximum_x_for_activation_cost(
+        game, player, source, &original, &[], facts,
+    ).map_err(|error| ActionError::ExecutionFailure { source, error })? {
+        let minimum = activated.activation_x_minimum();
+        if maximum < minimum { return Err(ActionError::CantPayCost); }
+        let context = crate::decisions::context::NumberContext::x_value_with_min(player, source, minimum, maximum);
+        let chosen = decision_maker.decide_number(game, &context);
+        if decision_maker.awaiting_choice() { return Ok(None); }
+        if chosen < minimum || chosen > maximum { return Err(ActionError::InvalidTarget); }
+        announced_x = Some(chosen);
+        original = crate::decision::activation_cost_with_locked_x(&original, chosen);
+    }
+    let priced = crate::decision::calculate_effective_activation_total_cost_for_ability(
+        game, player, source, &original, &[], Some(facts));
+    Ok(Some((priced, announced_x)))
+}
+
 pub(crate) fn perform_mana_ability_with_payment_mode(
     game: &mut GameState,
     player: PlayerId,
@@ -2796,19 +2852,9 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
         if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
         {
-            let total_cost = crate::decision::calculate_effective_activation_total_cost_for_ability(
-                game,
-                player,
-                permanent_id,
-                &mana_ability.mana_cost,
-                &[],
-                Some(crate::decision::ActivationCostAbility::of(
-                    game,
-                    player,
-                    permanent_id,
-                    mana_ability,
-                )),
-            );
+            let Some((total_cost, announced_x)) = prepare_mana_activation_cost(
+                game, player, permanent_id, ability_index, mana_ability, decision_maker,
+            )? else { return Ok(Vec::new()); };
             let mana_production_provenance =
                 mana_production_provenance_for_activation_cost(&total_cost);
             let effects = mana_ability.effects.clone();
@@ -2850,6 +2896,7 @@ pub(crate) fn perform_mana_ability_with_payment_mode(
             // Pay mana costs from TotalCost (for abilities like Blood Celebrant that cost {B})
             let mut cost_ctx = CostContext::new(permanent_id, player, decision_maker)
                 .with_reason(mana_ability.payment_reason(game, permanent_id, player));
+            cost_ctx.x_value = announced_x;
             cost_ctx.interactive_mana_exclusions = interactive_mana_exclusions;
             cost_ctx.reserved_tap_sources = reserved_tap_sources;
             let cost_summary =
@@ -4153,7 +4200,16 @@ fn resolve_and_adjust_component_in_context(
     execution_ctx: &mut ExecutionContext<'_>,
 ) -> Result<crate::costs::Cost, CostPaymentError> {
     if let Some(dynamic_mana) = component.dynamic_mana_cost_ref() {
-        let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx)?;
+        // This is a feasibility query before announcement. Like a plain {X}
+        // component, an unbound authored dynamic base can be considered at 0;
+        // execution still requires the explicit announced X.
+        let previous_x = execution_ctx.x_value;
+        if previous_x.is_none() && dynamic_mana.base.has_x() && dynamic_mana.x_value.is_none() {
+            execution_ctx.x_value = Some(0);
+        }
+        let resolved = resolve_dynamic_mana_cost(game, dynamic_mana, execution_ctx);
+        execution_ctx.x_value = previous_x;
+        let resolved = resolved?;
         return Ok(crate::costs::Cost::mana(
             game.adjust_mana_cost_for_payment_reason(payer, Some(source), &resolved, reason),
         ));

@@ -22,6 +22,7 @@ fn player(words: &[&str]) -> Option<PlayerFilter> {
 pub(super) fn parse_player_attack_declaration(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
+    if tokens.iter().any(|token| token.as_word().is_none()) { return Ok(None); }
     let view = ActivationRestrictionCompatWords::new(tokens);
     let words = view.to_word_refs();
     if let Some(subject) = words.strip_suffix(&["is", "attacked"])
@@ -43,6 +44,13 @@ pub(super) fn parse_player_attack_declaration(
         return Ok(None);
     };
     let recipient = &words[verb + 1..];
+    if recipient.is_empty() {
+        return Ok(Some(TriggerSpec::PlayerAttackDeclaration {
+            attacker,
+            defender: PlayerFilter::Any,
+            grouping: PlayerAttackGrouping::AttackerAnyTarget,
+        }));
+    }
     let (recipient, grouping) =
         if let Some(rest) = recipient.strip_prefix(&["one", "or", "more", "of"]) {
             (rest, PlayerAttackGrouping::Attacker)
@@ -94,7 +102,13 @@ mod tests {
                 grouping: PlayerAttackGrouping::Pair,
             }
         ));
+        assert!(matches!(parse("a player attacks"), TriggerSpec::PlayerAttackDeclaration {
+            attacker: PlayerFilter::Any, defender: PlayerFilter::Any,
+            grouping: PlayerAttackGrouping::AttackerAnyTarget,
+        }));
         for text in [
+            "a player attacks while singing",
+            "a player attacks {3}",
             "unknown player is attacked",
             "one or more opponents attack you",
             "an unknown player on your team attacks you",

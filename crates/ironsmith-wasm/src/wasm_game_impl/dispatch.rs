@@ -2,6 +2,7 @@
 #[serde(rename_all = "camelCase")]
 struct HiddenCardMetadata {
     object_id: u64,
+    incarnation: Option<u64>,
     owner: u8,
     zone: String,
     slot: u16,
@@ -46,6 +47,7 @@ impl WasmGame {
         let info = self.game.hidden_card_info(id)?;
         Some(HiddenCardMetadata {
             object_id: id.0,
+            incarnation: info.incarnation,
             owner: info.owner.0,
             zone: sync_zone_name(object.zone).to_string(),
             slot: info.slot,
@@ -926,6 +928,7 @@ mod dispatch_tests {
     #[test]
     fn position_reveal_preserves_existing_public_hidden_identity() {
         let info = ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: ironsmith::ids::PlayerId::from_index(0),
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
@@ -946,6 +949,7 @@ mod dispatch_tests {
     #[test]
     fn position_reveal_sets_public_identity_when_none_exists() {
         let info = ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
             owner: ironsmith::ids::PlayerId::from_index(0),
             zone: ironsmith::zone::Zone::Hand,
             slot: 10,
@@ -972,6 +976,7 @@ mod dispatch_tests {
             (
                 original_slot_object,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone: ironsmith::zone::Zone::Hand,
                     slot: 13,
@@ -985,6 +990,7 @@ mod dispatch_tests {
             (
                 position_object,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone: ironsmith::zone::Zone::Library,
                     slot: 6,
@@ -1376,7 +1382,8 @@ impl WasmGame {
         // decision while priority_state still holds the staged action, so the
         // chain's remaining decision commands (synced from the actor) would no
         // longer match the pending decision and the peer would flag a cheat.
-        let mid_action_chain = self.priority_state.pending_activation.is_some()
+        let mid_action_chain = self.priority_state.has_opened_exile_play_receipt()
+            || self.priority_state.pending_activation.is_some()
             || self.priority_state.pending_cast.is_some()
             || self.pending_live_continuation.is_some();
         let recompute_decision = recompute_decision && !mid_action_chain;
@@ -2632,6 +2639,7 @@ impl WasmGame {
             input.position_commitment.as_deref(),
         );
         let updated_info = ironsmith::game_state::HiddenCardInfo {
+            incarnation: info.incarnation,
             owner,
             zone,
             slot: input.original_slot,
@@ -3030,6 +3038,14 @@ impl WasmGame {
 
     #[wasm_bindgen(js_name = previewCryptoRequirements)]
     pub fn preview_crypto_requirements(&mut self, command: JsValue) -> Result<JsValue, JsValue> {
+        let typed: UiCommand = serde_wasm_bindgen::from_value(command.clone())
+            .map_err(|error| payment_disclosure_error(&format!("invalid preview command: {error}")))?;
+        if let Some(requirements) = self.blind_exile_opening_requirements(&typed)? {
+            // This action opens before any face-dependent proposal. Dispatching
+            // a placeholder to discover its requirements would be circular.
+            return serde_wasm_bindgen::to_value(&requirements)
+                .map_err(|error| payment_disclosure_error(&error.to_string()));
+        }
         let crypto_before = self.capture_crypto_audit_state();
         let checkpoint = self.capture_replay_checkpoint();
         let pregame = self.pregame.clone();
@@ -3361,6 +3377,7 @@ impl WasmGame {
                     self.game.set_hidden_card_info(
                         object_id,
                         ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                             owner,
                             zone,
                             slot: position as u16,
@@ -3402,6 +3419,7 @@ impl WasmGame {
             self.game.set_hidden_card_info(
                 object_id,
                 ironsmith::game_state::HiddenCardInfo {
+                incarnation: Some(0),
                     owner,
                     zone,
                     origin_slot: None,
@@ -5758,7 +5776,7 @@ mod narrow_hidden_metadata_tests {
             .find(|object| object["id"].as_u64() == Some(id.0)).unwrap();
         let hidden = &object["hiddenCard"];
         let expected = serde_json::json!({
-            "objectId": id.0, "owner": hidden["owner"], "zone": object["zone"],
+            "objectId": id.0, "incarnation": hidden["incarnation"], "owner": hidden["owner"], "zone": object["zone"],
             "slot": hidden["slot"], "commitment": hidden["commitment"],
             "publicSlot": hidden["publicSlot"],
             "publicCommitment": hidden["publicCommitment"].as_str().unwrap_or_default(),

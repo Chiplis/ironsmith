@@ -405,6 +405,7 @@ impl StaticAbilityModelInterpreter {
             may_look_at_linked_exile: spec.may_look_at_linked_exile,
             cast_mana_spend_mode: spec.cast_mana_spend_mode,
             linked_exile_pair: spec.linked_exile_pair,
+            linked_exile_class_level: spec.linked_exile_class_level,
             source_exiled_surface: spec.source_exiled_surface.clone(),
             filtered_zone_surface: spec.filtered_zone_surface.clone(),
             top_card_only: spec.top_card_only,
@@ -612,6 +613,10 @@ impl StaticAbilityModelInterpreter {
             Model::ThisAbility { ability_index } => Runtime::ThisAbility {
                 ability_index: *ability_index,
             },
+            Model::Keyword(keyword) => Runtime::Keyword(*keyword),
+            Model::NonManaAbility => Runtime::NonManaAbility,
+            Model::LoyaltyAbility => Runtime::LoyaltyAbility,
+            Model::Activator(player) => Runtime::Activator(player.clone()),
             Model::All(conditions) => Runtime::All(
                 conditions
                     .iter()
