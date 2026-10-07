@@ -90,7 +90,7 @@ pub(super) fn apply_exile_play_choice(
     if result.is_err() || dm.awaiting_choice() {
         game.restore_execution_checkpoint(before.0, result.is_ok() && dm.awaiting_choice());
         *queue = before.1; *state = before.2;
-        if dm.awaiting_choice() { return Ok(GameProgress::Continue); }
+        if result.is_ok() && dm.awaiting_choice() { return Ok(GameProgress::Continue); }
     } else if is_land {
         state.clear_checkpoint();
     }

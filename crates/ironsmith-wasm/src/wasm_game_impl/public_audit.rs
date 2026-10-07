@@ -322,10 +322,23 @@ struct PublicAuditClaimState {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncFaceDownCastClaim {
-    object: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object: Option<u64>,
     kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     permission_source: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blind_exile_origin: Option<SyncBlindExileClaimOrigin>,
+}
+
+/// Public evidence only. Explicit field names keep this distinct from the
+/// native exact ObjectId authority and from legacy ordinary cast claim IDs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncBlindExileClaimOrigin {
+    card_stable_id: u64,
+    incarnation: Option<u64>,
+    permission_source_stable_id: Option<u64>,
 }
 
 
@@ -1439,23 +1452,46 @@ impl WasmGame {
     }
 
 
+    fn sync_face_down_cast_claim(&self, object: ObjectId, kind: ironsmith::game_state::FaceDownCastKind) -> Result<SyncFaceDownCastClaim, String> {
+        let declaration = std::iter::once(&self.priority_state)
+            .chain(self.grand_melee_host_lanes.values().map(|lane| &lane.priority_state))
+            .flat_map(|state| [state.pending_exile_face_down.as_ref(), state.declared_exile_face_down.as_ref()])
+            .flatten().find(|declaration| declaration.card_id == object);
+        if let Some(declaration) = declaration {
+            if declaration.declared_kind != Some(kind) {
+                return Err("blind exile claim and accepted declaration disagree".into());
+            }
+            let card = self.game.object(object).ok_or_else(|| "blind exile claim lost its exact original object".to_string())?;
+            let permission_source_stable_id = kind.permission_source().map(|source|
+                declaration.kind_source_public_ids.get(&source).map(|id| id.0.0)
+                    .ok_or_else(|| "blind exile claim lost its captured permission source identity".to_string())).transpose()?;
+            return Ok(SyncFaceDownCastClaim {
+                object: None, kind: kind.as_str().to_string(), permission_source: None,
+                blind_exile_origin: Some(SyncBlindExileClaimOrigin {
+                    card_stable_id: card.stable_id.0.0, incarnation: declaration.incarnation,
+                    permission_source_stable_id,
+                }),
+            });
+        }
+        let (kind, permission_source) = sync_face_down_kind_fields(kind);
+        Ok(SyncFaceDownCastClaim { object: Some(object.0), kind, permission_source, blind_exile_origin: None })
+    }
+
     fn hidden_claim_ledger_rules_state(&self) -> Result<PublicAuditClaimState, String> {
         Ok(PublicAuditClaimState {
             hidden_identity_obligations: self.game.hidden_identity_obligations().iter()
                 .map(sync_hidden_identity_obligation).collect::<Result<_, _>>()?,
-            hidden_face_down_cast_claims: self
-                .game
-                .hidden_face_down_cast_claims()
-                .into_iter()
-                .map(|(object, kind)| {
-                    let (kind, permission_source) = sync_face_down_kind_fields(kind);
-                    SyncFaceDownCastClaim {
-                        object: object.0,
-                        kind,
-                        permission_source,
-                    }
-                })
-                .collect(),
+            hidden_face_down_cast_claims: {
+                let mut claims = self.game.hidden_face_down_cast_claims().into_iter()
+                    .map(|(object, kind)| self.sync_face_down_cast_claim(object, kind)).collect::<Result<Vec<_>, _>>()?;
+                // Legacy rows retain their prior raw-ID order. Blind rows use
+                // their explicit captured public origin, never local allocation order.
+                claims.sort_by_key(|claim| match &claim.blind_exile_origin {
+                    Some(origin) => (1, origin.card_stable_id, origin.incarnation),
+                    None => (0, claim.object.unwrap_or(0), None),
+                });
+                claims
+            },
             hidden_claim_subjects: self
                 .game
                 .hidden_claim_subjects()

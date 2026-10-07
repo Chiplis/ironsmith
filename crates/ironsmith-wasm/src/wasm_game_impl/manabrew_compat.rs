@@ -2060,6 +2060,7 @@ impl WasmGame {
                     })
                     .ok_or_else(|| unsupported("priority without a pass action"))?;
                 let mut actions = HashMap::new();
+                let mut opaque_exile = HashMap::new();
                 let available = ctx
                     .actions
                     .iter()
@@ -2067,6 +2068,13 @@ impl WasmGame {
                     .filter_map(|(index, action)| {
                         let available = self.manabrew_available_action(index, action)?;
                         actions.insert(available.id.clone(), index);
+                        if let LegalAction::OpenExiledCardForPlay { card_id, .. }
+                            | LegalAction::CastExiledCardFaceDown { card_id, .. } = action {
+                            opaque_exile.insert(index, ManabrewOpaqueExileBinding {
+                                action_ref: priority_action_ref(action),
+                                hidden_identity: self.manabrew_opaque_exile_identity(*card_id),
+                            });
+                        }
                         Some(available)
                     })
                     .collect();
@@ -2074,6 +2082,7 @@ impl WasmGame {
                     PromptInput::ChooseAction(ChooseActionInput { actions: available }),
                     ManabrewPromptBinding::Priority {
                         actions,
+                        opaque_exile,
                         pass_index,
                     },
                 ))
@@ -2760,6 +2769,16 @@ impl WasmGame {
         Ok(ManabrewResponseAction::Continue { input, binding })
     }
 
+    fn manabrew_opaque_exile_identity(&self, card: ObjectId) -> Option<(u8, u16, String)> {
+        self.game.hidden_card_info(card).map(|info| {
+            let (slot, commitment) = match (info.public_slot, info.public_commitment.as_ref()) {
+                (Some(slot), Some(commitment)) => (slot, commitment.clone()),
+                _ => (info.slot, info.commitment.clone()),
+            };
+            (info.owner.0, slot, commitment)
+        })
+    }
+
     fn manabrew_response_action(
         &self,
         open: &ManabrewOpenPrompt,
@@ -2776,6 +2795,7 @@ impl WasmGame {
             (
                 ManabrewPromptBinding::Priority {
                     actions,
+                    opaque_exile,
                     pass_index,
                 },
                 PromptOutput::ChooseAction(output),
@@ -2789,6 +2809,27 @@ impl WasmGame {
                         return Err(invalid("snapshot restoration is not supported".to_string()));
                     }
                 };
+                if let Some(captured) = opaque_exile.get(&index) {
+                    let Some(context @ DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
+                        return Err(invalid("opaque exile prompt no longer owns priority".into()));
+                    };
+                    if hash_debug_value(context) != open.decision_hash || priority.player != open.deciding_player {
+                        return Err(invalid("opaque exile prompt belongs to a different decision epoch".into()));
+                    }
+                    let card = match &captured.action_ref {
+                        PriorityActionRef::OpenExiledCardForPlay { card_id, .. }
+                        | PriorityActionRef::CastExiledCardFaceDown { card_id, .. } => ObjectId::from_raw(*card_id),
+                        _ => return Err(invalid("opaque exile prompt lost its captured reference".into())),
+                    };
+                    if self.manabrew_opaque_exile_identity(card) != captured.hidden_identity
+                        || resolve_priority_action(&self.game, priority, None, Some(&captured.action_ref))
+                            .map_err(|error| invalid(error.to_string()))?.is_none() {
+                        return Err(invalid("opaque exile prompt lost its exact paired origin".into()));
+                    }
+                    return Ok(ManabrewResponseAction::Dispatch(UiCommand::PriorityAction {
+                        action_index: None, action_ref: Some(captured.action_ref.clone()),
+                    }));
+                }
                 Ok(ManabrewResponseAction::Dispatch(
                     UiCommand::PriorityAction {
                         action_index: Some(index),

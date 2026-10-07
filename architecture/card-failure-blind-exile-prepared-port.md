@@ -36,7 +36,9 @@ replacement completion retain one owner. The port does not restore the old manua
 land-entry implementation. The new observer scenario selects a second tapped-entry
 grant, observes both originals before replacement additions, then checks one land
 allowance and source departure during completion. Error/choice rollback and
-recovery scenarios continue through the owning full native state.
+recovery scenarios continue through the owning full native state. A simultaneous
+pending-choice flag cannot mask an execution error in the opened-play owner;
+only a successful pending result becomes `Continue`.
 
 ## Public correction findings
 
@@ -49,8 +51,11 @@ recovery scenarios continue through the owning full native state.
    hidden metadata exists, including when the physical ObjectId happens to match.
    Private and public pairs never combine partial fields. Frozen generations,
    unique current membership and the paired identity are checked before live,
-   transcript or reveal-token material release. Untracked local cards retain only
-   their exact ObjectId route.
+   transcript or reveal-token material release. Both normalizers preserve the
+   raw opaque reference for that check. Index-only opaque commands are rejected
+   before material or replay hydration; UI row selection still serializes an
+   explicit reference before signing. Untracked local cards retain only their
+   exact ObjectId route.
 3. Effect declaration kinds capture public source IDs at grant time keyed by
    exact source ObjectId, and copy that evidence into the native declaration.
    Source departure cannot trigger a current stable-card lookup. `kinds` and
@@ -58,6 +63,26 @@ recovery scenarios continue through the owning full native state.
    root and inactive-lane hashes normalize both. Missing captured evidence fails
    public checkpoint construction. These display/hash IDs are not authority to
    adopt a later incarnation. Native state/savepoints retain the exact source key.
+
+The Manabrew adapter keeps its advertised opaque actions. Each prompt captures
+its exact action ref and paired public hidden origin; the response checks the
+same decision hash/player, exact current authority and original pair before
+emitting the captured explicit ref. It never reconstructs an action from a stale
+menu index. Both intent responses and stale pair/reentry negatives use the actual
+Manabrew prompt builder, response validation and response-dispatch owner in the
+new unrun scenario.
+
+Accepted effect-kind payment cancellation also restores an inner hidden cast
+claim. Its native-ledger projection now has a distinct `blindExileOrigin`, with
+explicit original stable-card ID, frozen hidden generation and captured effect
+source public ID, and omits the ordinary claim's raw object/source fields. Only
+claims owned by an exact retained blind declaration use this projection; ordinary
+claim formats remain unchanged. Blind rows sort by captured public origin. A real
+WASM scenario captures a native prefix, performs equivalent source/card moves with
+different allocation offsets, removes the permission source, accepts its kind,
+cancels payment, and compares actual emitted checkpoint ledger digests. The
+synthetic outer-receipt hash scenarios alone are not evidence for this inner path.
+This is a bounded blind-cancel correction, not a general claim-ledger audit.
 
 ## New compatibility surfaces for coordinator review
 
@@ -80,9 +105,13 @@ in the coordinator's combined artifact/current-peer decision:
   IDs and pending-choice state. Face-down kinds use objects containing `kind`,
   `permissionSource` and `permissionSourceStableId`; an accepted `declaredKind`
   stays part of the hash through payment rollback.
+- Public hidden-claim digest rows for retained blind declarations additionally
+  contain `blindExileOrigin { cardStableId, incarnation,
+  permissionSourceStableId }`, omit legacy raw `object`/`permissionSource`, and
+  sort by their public origin. Nonblind rows keep their previous encoding.
 - Native-only state: pre-opening physical/trigger rollback, face-down root trigger
-  queue and declaration ownership, exact-keyed source public-ID evidence, hidden
-  generation tracking, and restored printed additional/optional costs under the
+  queue and declaration ownership, exact-keyed source public-ID evidence,
+  Manabrew prompt-captured refs/pairs, hidden generation tracking, and restored printed additional/optional costs under the
   face-down overlay. These clone through root, replay, branch exchange and inactive
   lanes. They are not a serialized gameplay recovery API.
 

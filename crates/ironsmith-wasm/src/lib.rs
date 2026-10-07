@@ -192,9 +192,17 @@ struct ManabrewCounterState {
 }
 
 #[derive(Debug, Clone)]
+struct ManabrewOpaqueExileBinding {
+    action_ref: PriorityActionRef,
+    /// Paired public identity captured with the menu, never reconstructed from its index.
+    hidden_identity: Option<(u8, u16, String)>,
+}
+
+#[derive(Debug, Clone)]
 enum ManabrewPromptBinding {
     Priority {
         actions: HashMap<String, usize>,
+        opaque_exile: HashMap<usize, ManabrewOpaqueExileBinding>,
         pass_index: usize,
     },
     Mulligan {

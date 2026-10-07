@@ -493,3 +493,90 @@ fn blind_exile_native_preview_and_dispatch_reject_index_only_opening_or_declarat
         assert!(!wasm.game.can_player_look_at_face_down_exiled_card(card, PlayerId(1)));
     }
 }
+
+
+#[test]
+fn blind_exile_manabrew_response_dispatches_the_captured_ref_and_rejects_stale_prompt_origins() {
+    use manabrew_protocol::prompts::{PromptInput, PromptOutput, ChooseActionOutput};
+    let _ids = crate::test_id_counter_guard();
+    for opening in [true, false] {
+        let (mut wasm, _, card) = blind_exile_fixture(CardType::Sorcery, 100, false);
+        let context = wasm.pending_decision.clone().unwrap();
+        let (input, binding) = wasm.build_manabrew_prompt(&context).unwrap();
+        let PromptInput::ChooseAction(available) = &input else { panic!("action prompt"); };
+        let label = if opening { "Play exiled card" } else { "Cast exiled card face down" };
+        let action_id = available.actions.iter().find(|action| matches!(&action.kind,
+            manabrew_protocol::prompts::common::AvailableActionKind::Cast { label: actual, .. } if actual == label)).unwrap().id.clone();
+        let open = ManabrewOpenPrompt { prompt_id: 7, deciding_player: PlayerId(1), decision_hash: hash_debug_value(&context),
+            source_card_id: None, source_card: None, input, binding };
+        wasm.manabrew_open_prompt = Some(open.clone());
+        let answer = PromptOutput::ChooseAction(ChooseActionOutput::Act { action_id });
+        wasm.validate_manabrew_response(PlayerId(1), 7, &answer).unwrap();
+        let ManabrewResponseAction::Dispatch(command) = wasm.manabrew_response_action(&open, answer.clone()).unwrap() else { panic!("dispatch"); };
+        assert!(matches!(command, UiCommand::PriorityAction { action_index: None, action_ref: Some(_) }));
+        let point = RuntimeSavepoint::capture(&wasm);
+        let mut changed = wasm.game.hidden_card_info(card).unwrap().clone(); changed.commitment = "wrong-current-commitment".into();
+        wasm.game.set_hidden_card_info(card, changed);
+        assert!(wasm.manabrew_response_action(&open, answer.clone()).is_err());
+        point.clone().restore(&mut wasm);
+        let moved = wasm.game.move_object_by_game_rule(card, Zone::Hand).unwrap();
+        wasm.game.move_object_by_game_rule(moved, Zone::Exile).unwrap();
+        assert!(wasm.manabrew_response_action(&open, answer.clone()).is_err(), "a frozen prompt cannot adopt a later incarnation");
+        point.restore(&mut wasm);
+        disclosure_command(&mut wasm, command).unwrap();
+        if opening {
+            assert!(wasm.game.can_player_look_at_face_down_exiled_card(card, PlayerId(1)));
+        } else {
+            assert!(wasm.priority_state.pending_exile_face_down.is_some());
+            assert!(!wasm.game.can_player_look_at_face_down_exiled_card(card, PlayerId(1)));
+        }
+    }
+}
+
+
+#[test]
+fn blind_exile_accepted_cancel_emits_the_same_claim_digest_across_runtime_ids_and_source_departure() {
+    use ironsmith::grant_registry::{GrantSource, PlayFromConstraints};
+    let _ids = crate::test_id_counter_guard();
+    let (mut wasm, grant_source, original_card) = blind_exile_fixture(CardType::Sorcery, 100, false);
+    let actor = PlayerId(1);
+    let original_source = wasm.game.create_object_from_definition(&CardDefinitionBuilder::new(CardId::new(), "Face-down rule")
+        .card_types(vec![CardType::Enchantment]).build(), actor, Zone::Battlefield);
+    let prefix = RuntimeSavepoint::capture(&wasm);
+    let mut emitted = Vec::new(); let mut runtime_ids = Vec::new();
+    for offset in [0, 5] {
+        prefix.clone().restore(&mut wasm);
+        for _ in 0..offset { wasm.game.new_object_id(); }
+        let graveyard = wasm.game.move_object_by_game_rule(original_source, Zone::Graveyard).unwrap();
+        let source = wasm.game.move_object_by_game_rule(graveyard, Zone::Battlefield).unwrap();
+        let hand = wasm.game.move_object_by_game_rule(original_card, Zone::Hand).unwrap();
+        let card = wasm.game.move_object_by_game_rule(hand, Zone::Exile).unwrap();
+        wasm.game.set_face_down(card);
+        wasm.game.effect_store.grant_registry.grant_play_from_to_card(card, Zone::Exile, actor, PlayFromConstraints::default(),
+            GrantSource::Effect { source_id: grant_source, expires_end_of_turn: u32::MAX });
+        wasm.game.grant_face_down_cast_permission(ironsmith::game_state::FaceDownCastPermission {
+            source, player: actor, zone: Zone::Exile, filter: ironsmith::target::ObjectFilter::creature(),
+            description: "Public creature face-down rule".into(), requires_source_on_battlefield: false,
+            expires_after_turn: None, single_use: true,
+        });
+        wasm.game.move_object_by_game_rule(source, Zone::Graveyard).unwrap();
+        assert!(wasm.game.object(source).is_none());
+        wasm.game.player_mut(actor).unwrap().mana_pool.colorless = 3;
+        blind_exile_priority(&mut wasm);
+        let command = blind_exile_face_down_command(&wasm, card); disclosure_command(&mut wasm, command).unwrap();
+        blind_exile_choose(&mut wasm, 3);
+        assert!(matches!(wasm.pending_decision, Some(DecisionContext::ManaPayment(_))));
+        disclosure_command(&mut wasm, UiCommand::ManaPayment { response: ManaPaymentCommand::Cancel }).unwrap();
+        assert_eq!(wasm.game.hidden_face_down_cast_claim(card), Some(ironsmith::game_state::FaceDownCastKind::Permission { source }));
+        let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
+        assert!(checkpoint["hiddenClaimLedgerDigest"].is_string(), "the real emitted checkpoint must include its inner claim digest");
+        let rules = wasm.hidden_claim_ledger_rules_state().unwrap();
+        let claims = serde_json::to_value(&rules.hidden_face_down_cast_claims).unwrap();
+        assert!(claims[0].get("object").is_none()); assert!(claims[0].get("permissionSource").is_none());
+        assert_eq!(claims[0]["blindExileOrigin"]["permissionSourceStableId"], original_source.0);
+        emitted.push((checkpoint["hiddenClaimLedgerDigest"].clone(), claims));
+        runtime_ids.push((card, source));
+    }
+    assert_ne!(runtime_ids[0], runtime_ids[1]);
+    assert_eq!(emitted[0], emitted[1], "the inner ledger comes from native accepted payment/cancel, not a synthetic outer receipt");
+}
