@@ -84,6 +84,7 @@ pub enum LandTypeAdditionFact<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LandAnimationFact<'a> {
     pub subject_tokens: &'a [OwnedLexToken],
+    pub descriptor_tokens: &'a [OwnedLexToken],
     pub power: i32,
     pub toughness: i32,
 }
@@ -129,6 +130,7 @@ pub fn parse_skip_your_upkeep_tokens(tokens: &[OwnedLexToken]) -> Option<SkipYou
 pub fn parse_subject_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectTypeAdditionFact<'_>> {
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) { return None; }
     crate::grammar::primitives::probe_all(
         tokens,
         parse_subject_type_addition,
@@ -139,6 +141,7 @@ pub fn parse_subject_type_addition_tokens(
 pub fn parse_subject_card_type_identity_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectCardTypeIdentityFact<'_>> {
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) { return None; }
     crate::grammar::primitives::probe_all(
         tokens,
         parse_subject_card_type_identity,
@@ -254,6 +257,7 @@ pub fn parse_land_type_addition_tokens(
 }
 
 pub fn parse_land_animation_tokens(tokens: &[OwnedLexToken]) -> Option<LandAnimationFact<'_>> {
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) { return None; }
     crate::grammar::primitives::probe_all(tokens, parse_land_animation, "static land animation")
 }
 
@@ -301,7 +305,7 @@ pub fn parse_base_power_toughness_grant_tokens(
 fn parse_subject_type_addition<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<SubjectTypeAdditionFact<'a>> {
-    let subject_tokens = take_until(input, 1, is_or_are)?;
+    let subject_tokens = take_until(input, 1, || alt((is_or_are(), semantic_kw("has"), semantic_kw("have"))))?;
     // The broad "subject is/are TYPE in addition" shape must not absorb an
     // earlier completed predicate.  Compound static lines such as
     // "equipped creature gets +1/+1 and is an artifact ..." are owned by the
@@ -317,12 +321,15 @@ fn parse_subject_type_addition<'a>(
             "subject without an earlier predicate",
         ));
     }
-    is_or_are().parse_next(input)?;
+    let has_type = alt((is_or_are().value(false), semantic_kw("has").value(true), semantic_kw("have").value(true))).parse_next(input)?;
     let descriptor_tokens = take_until(input, 1, || other_type_addition_tail)?;
     other_type_addition_tail.parse_next(input)?;
     semantic_finish(input)?;
     let subject_tokens = trim_sentence_edges(subject_tokens);
     let descriptor_tokens = trim_sentence_edges(descriptor_tokens);
+    if has_type && !is_chosen_type(descriptor_tokens) {
+        return Err(primitives::backtrack_err("static type possession", "chosen creature type"));
+    }
     Ok(SubjectTypeAdditionFact {
         subject_tokens,
         descriptor_tokens,
@@ -448,7 +455,7 @@ fn parse_land_animation<'a>(input: &mut LexStream<'a>) -> WResult<LandAnimationF
     let subject_tokens = take_until(input, 1, is_or_are)?;
     is_or_are().parse_next(input)?;
     let (power, toughness) = fixed_power_toughness(input)?;
-    alt((semantic_kw("creature"), semantic_kw("creatures"))).parse_next(input)?;
+    let descriptor_tokens = take_until(input, 1, || semantic_kw("that"))?;
     semantic_kw("that").parse_next(input)?;
     is_or_are().parse_next(input)?;
     semantic_kw("still").parse_next(input)?;
@@ -456,6 +463,7 @@ fn parse_land_animation<'a>(input: &mut LexStream<'a>) -> WResult<LandAnimationF
     semantic_finish(input)?;
     Ok(LandAnimationFact {
         subject_tokens: trim_sentence_edges(subject_tokens),
+        descriptor_tokens: trim_sentence_edges(descriptor_tokens),
         power,
         toughness,
     })
@@ -542,7 +550,7 @@ fn land_subtype_token<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {
 fn is_chosen_type(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
-        (semantic_phrase(&["chosen", "type"]), semantic_finish).void(),
+        (semantic_kw("chosen"), opt(semantic_kw("creature")), semantic_kw("type"), semantic_finish).void(),
         "chosen type descriptor",
     )
     .is_ok()

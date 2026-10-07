@@ -2217,9 +2217,14 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         return Ok(None);
     };
     if fact.chosen_type {
-        let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
+        let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else {
+            return Ok(None);
+        };
+        // The authored family wins over recipient types. A land or land/creature
+        // union may receive the chosen creature type without choosing a land type.
+        let explicit_creature_type = fact.descriptor_tokens.iter().any(|token| token.is_word("creature"));
         for card_type in &filter.card_types {
-            if *card_type == CardType::Land {
+            if !explicit_creature_type && *card_type == CardType::Land {
                 return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
                     filter,
                     render_token_slice(tokens),
@@ -2265,6 +2270,79 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         abilities.push(StaticAbility::add_subtypes(filter, subtypes));
     }
     Ok(Some(abilities))
+}
+
+/// Whole nominal subjects for the bounded copular characteristic productions.
+/// No suffix recovery: unrelated words cannot become an ignored qualifier.
+pub fn complete_characteristic_subject(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if !tokens.iter().all(|token| token.as_word().is_some()) { return Ok(None); }
+    let words = parser_token_word_refs(tokens);
+    if words.contains(&"instead") || words.last().is_some_and(|word| matches!(*word, "and" | "or" | "and/or")) {
+        return Ok(None);
+    }
+    if is_source_reference_words(&words) || anthem_grant_grammar::is_source_it_subject(tokens) {
+        return Ok(Some(ObjectFilter::source()));
+    }
+    if matches!(words.as_slice(), ["enchanted" | "equipped", "creature" | "permanent" | "artifact" | "land" | "vehicle"]) {
+        return parse_object_filter_lexed(tokens, false).map(Some);
+    }
+    let tokens = if tokens.first().is_some_and(|token| token.is_any_word(&["all", "each"])) {
+        &tokens[1..]
+    } else { tokens };
+    let Some(mut filter) = crate::grammar::filters::parse_simple_object_filter_lexed(tokens, false) else {
+        return Ok(None);
+    };
+    if filter.zone.is_none() && !filter.has_explicit_card_noun() && filter.stack_kind.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some(filter))
+}
+
+/// Unconditional additive subtype assertions use the existing source-zone and
+/// origin owners to distinguish printed characteristic definitions from grants.
+pub fn parse_subject_is_also_subtypes_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(fact) = type_and_color_facts::parse_subject_card_type_identity_tokens(tokens) else {
+        return Ok(None);
+    };
+    if !fact.descriptor_tokens.first().is_some_and(|token| token.is_word("also")) { return Ok(None); }
+    let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else { return Ok(None); };
+    if !fact.descriptor_tokens.last().and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| parse_subtype_flexible(word).is_some()) {
+        return Ok(None);
+    }
+    let mut subtypes = Vec::new();
+    for token in &fact.descriptor_tokens[1..] {
+        if token.is_comma() { continue; }
+        let Some(word) = token.as_word() else { return Ok(None); };
+        if matches!(word, "a" | "an" | "and") { continue; }
+        let Some(subtype) = parse_subtype_flexible(word) else { return Ok(None); };
+        crate::slice_primitives::push_unique(&mut subtypes, subtype);
+    }
+    if subtypes.is_empty() { return Ok(None); }
+    Ok(Some(StaticAbility::add_subtypes(filter, subtypes)))
+}
+
+pub fn parse_subject_is_chosen_color_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if keyword_static_lines::parse_source_is_chosen_color_tokens(tokens).is_some() {
+        // Preserve the established source owner and its canonical display.
+        return Ok(None);
+    }
+    let Some(fact) = type_and_color_facts::parse_subject_card_type_identity_tokens(tokens) else {
+        return Ok(None);
+    };
+    if !fact.descriptor_tokens.iter().all(|token| token.as_word().is_some()) { return Ok(None); }
+    let words = parser_token_word_refs(fact.descriptor_tokens);
+    if !matches!(words.as_slice(), ["the", "chosen", "color"] | ["chosen", "color"]) {
+        return Ok(None);
+    }
+    let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else { return Ok(None); };
+    Ok(Some(StaticAbility::set_chosen_color(filter, render_token_slice(tokens))))
 }
 
 pub fn parse_subject_is_card_types_line(
@@ -2574,12 +2652,27 @@ pub fn parse_lands_are_pt_creatures_still_lands_line(
     let Some(fact) = type_and_color_facts::parse_land_animation_tokens(tokens) else {
         return Ok(None);
     };
-    let filter = parse_object_filter_lexed(fact.subject_tokens, false)?;
-
-    Ok(Some(vec![
-        StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature]),
-        StaticAbility::set_base_power_toughness(filter, fact.power, fact.toughness),
-    ]))
+    let Some(filter) = complete_characteristic_subject(fact.subject_tokens)? else {
+        return Ok(None);
+    };
+    let mut colors = ColorSet::new();
+    let mut subtypes = Vec::new();
+    let mut creature = false;
+    for token in fact.descriptor_tokens {
+        let Some(word) = token.as_word() else { return Ok(None); };
+        if matches!(word, "a" | "an" | "and") { continue; }
+        if matches!(word, "creature" | "creatures") { creature = true; }
+        else if let Some(color) = parse_color(word) { colors = colors.union(color); }
+        else if let Some(subtype) = parse_subtype_flexible(word).filter(Subtype::is_creature_type) {
+            crate::slice_primitives::push_unique(&mut subtypes, subtype);
+        } else { return Ok(None); }
+    }
+    if !creature { return Ok(None); }
+    let mut abilities = vec![StaticAbility::add_card_types(filter.clone(), vec![CardType::Creature])];
+    if !subtypes.is_empty() { abilities.push(StaticAbility::add_subtypes(filter.clone(), subtypes)); }
+    if !colors.is_empty() { abilities.push(StaticAbility::set_colors(filter.clone(), colors)); }
+    abilities.push(StaticAbility::set_base_power_toughness(filter, fact.power, fact.toughness));
+    Ok(Some(abilities))
 }
 
 pub fn parse_static_base_power_toughness_value_tail(
@@ -2590,6 +2683,107 @@ pub fn parse_static_base_power_toughness_value_tail(
     }
     let value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
     Some((value.clone(), value))
+}
+
+/// Conditional copular creature descriptors with optional base size. Both the
+/// leading condition and a trailing "as long as" are owned in full. This reader
+/// does not absorb grants, durations, or quoted abilities.
+pub fn parse_conditional_copular_creature_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if parse_filter_is_pt_creature_in_addition_line(tokens)?.is_some() {
+        // The established complete sized-addition bundle owns its ordering,
+        // condition representation and canonical rendering.
+        return Ok(None);
+    }
+    let tokens = crate::grammar::document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    if tokens.iter().any(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Period | TokenKind::Semicolon)) {
+        return Ok(None);
+    }
+    let (body, condition_tokens) = if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens) {
+        (split.remainder_tokens, split.condition_tokens)
+    } else if let Some(index) = tokens.windows(3).position(|part| {
+        part[0].is_word("as") && part[1].is_word("long") && part[2].is_word("as")
+    }) {
+        (&tokens[..index], &tokens[index + 3..])
+    } else { return Ok(None); };
+    let Some(be) = static_keyword_line_shapes::parse_animation_copula(body) else { return Ok(None); };
+    let contracted = be.token == 0 && body[0].is_any_word(&["it's", "it’s", "its"]);
+    let subject_tokens = if contracted { &body[..1] } else { &body[..be.token] };
+    let source_pronoun = contracted || matches!(parser_token_word_refs(subject_tokens).as_slice(), ["it"]);
+    let predicate = &body[be.token + 1..];
+    let addition = predicate.windows(3).position(|part| {
+        part[0].is_word("in") && part[1].is_word("addition") && part[2].is_word("to")
+    });
+    let descriptor = if let Some(index) = addition {
+        if type_and_color_facts::parse_other_type_addition_tail_tokens(&predicate[index..]).is_none() {
+            return Ok(None);
+        }
+        &predicate[..index]
+    } else { predicate };
+    if !descriptor.iter().all(|token| token.as_word().is_some() || token.kind == TokenKind::Number) {
+        return Ok(None);
+    }
+    let words = parser_token_word_refs(descriptor);
+    let words = strip_leading_article_word_refs(&words);
+    let fixed = words.first().and_then(|word| crate::grammar::primitives::probe_shape(parse_pt_modifier(word)));
+    let type_words = if fixed.is_some() { &words[1..] } else { words };
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    for word in type_words {
+        if let Some(card_type) = parse_card_type(word) {
+            crate::slice_primitives::push_unique(&mut card_types, card_type);
+        } else if let Some(subtype) = parse_subtype_flexible(word).filter(Subtype::is_creature_type) {
+            crate::slice_primitives::push_unique(&mut subtypes, subtype);
+        } else { return Ok(None); }
+    }
+    if !card_types.contains(&CardType::Creature) { return Ok(None); }
+    // CR 205.1b: becoming an artifact creature retains existing types and
+    // subtypes even without "in addition". Other replacements are not this rule.
+    if addition.is_none() && card_types != [CardType::Artifact, CardType::Creature] {
+        return Ok(None);
+    }
+    let condition = parse_static_condition_clause(condition_tokens)?;
+    // Explicit off-battlefield functioning belongs to its separate owner;
+    // a battlefield-only conditional would otherwise be a vacuous success.
+    if copular_condition_has_source_zone(&condition) {
+        return Err(CardTextError::ParseError("unsupported source-zone condition in copular static".into()));
+    }
+    let filter = if source_pronoun {
+        match infer_attached_subject_filter_from_condition_expr(Some(&condition)) {
+            Some(filter) => filter,
+            None if condition_tokens.iter().any(|token| token.is_any_word(&["enchanted", "equipped", "fortified"])) => {
+                // Do not silently bind an attachment-dependent pronoun to the
+                // granting permanent when a compound antecedent is not modeled.
+                return Err(CardTextError::ParseError("unsupported compound attachment antecedent in copular static".into()));
+            }
+            None => ObjectFilter::source(),
+        }
+    } else {
+        let Some(filter) = complete_characteristic_subject(subject_tokens)? else { return Ok(None); };
+        filter
+    };
+    let mut result = vec![StaticAbility::add_card_types(filter.clone(), card_types).with_condition(condition.clone()).into()];
+    if !subtypes.is_empty() {
+        result.push(StaticAbility::add_subtypes(filter.clone(), subtypes).with_condition(condition.clone()).into());
+    }
+    if let Some((power, toughness)) = fixed {
+        result.push(StaticAbility::set_base_power_toughness(filter, power, toughness).with_condition(condition).into());
+    }
+    Ok(Some(result))
+}
+
+fn copular_condition_has_source_zone(condition: &PredicateAst) -> bool {
+    match condition {
+        PredicateAst::Source(SourcePredicateAst::SourceIsInZone(_)) => true,
+        PredicateAst::CountComparison { count: AnthemCountExpression::MatchingFilter(filter), .. } =>
+            filter.source && filter.zone.is_some(),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) =>
+            copular_condition_has_source_zone(left) || copular_condition_has_source_zone(right),
+        PredicateAst::Not(inner) => copular_condition_has_source_zone(inner),
+        _ => false,
+    }
 }
 
 pub fn parse_filter_is_pt_creature_in_addition_and_has_line(
@@ -8352,3 +8546,7 @@ mod static_color_subject_tests {
         assert_eq!(colors, crate::color::ColorSet::COLORLESS);
     }
 }
+
+#[cfg(test)]
+#[path = "copular_characteristic_tests.rs"]
+mod copular_characteristic_tests;

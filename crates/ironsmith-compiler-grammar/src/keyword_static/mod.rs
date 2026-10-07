@@ -857,6 +857,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         "parse_lose_game_replacement_line" | "parse_token_creation_templates_line" => {
             vec![StaticAbilityLineHeadHint::Single("if")]
         }
+        // The rule name describes the changed characteristic, not the
+        // authored subject. "Enchanted land" must reach its complete tail.
+        "parse_land_type_addition_line" => Vec::new(),
         // "Each nonland permanent you control is all colors." (Leyline of the
         // Guildpact) and the older "All creatures are ..." lines share one
         // color-identity grammar whose subject can start with any object noun.
@@ -1526,6 +1529,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_filter_is_pt_creature_in_addition_and_has_line
         ),
         multi_static_ability_ast_passthrough_rule!(parse_filter_is_pt_creature_in_addition_line),
+        multi_static_ability_ast_passthrough_rule!(parse_conditional_copular_creature_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_type_color_addition_static_line
         ),
@@ -1598,6 +1602,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_subject_are_card_types_in_addition_to_their_other_types_line
         ),
         single_static_ability_ast_rule!(parse_subject_is_card_types_line),
+        single_static_ability_ast_rule!(parse_subject_is_also_subtypes_line),
+        single_static_ability_ast_rule!(parse_subject_is_chosen_color_line),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
         multi_static_ability_ast_rule!(parse_all_are_pt_color_type_addition_line),
@@ -2321,6 +2327,11 @@ fn parse_static_ability_ast_line_lexed_unstacked(
         return parse_static_ability_ast_line_lexed_unstacked(body_tokens);
     }
     if let Some(abilities) = parse_filtered_toughness_assignment_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    // Keep optional-size/additive artifact-creature semantics and attached
+    // pronouns ahead of the older generic card-type identity wrapper.
+    if let Some(abilities) = parse_conditional_copular_creature_line(tokens)? {
         return Ok(Some(abilities));
     }
     // Bound the condition before reading the characteristic-setting subject.
