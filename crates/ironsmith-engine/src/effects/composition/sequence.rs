@@ -563,6 +563,7 @@ mod tests {
     use crate::effects::continuous::RuntimeModification;
     use crate::game_state::TargetAssignment;
     use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::effects::execute_effect;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
     use crate::target::ChooseSpec;

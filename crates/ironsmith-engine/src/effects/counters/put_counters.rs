@@ -1435,6 +1435,6 @@ mod retained_counter_draw_boundary_tests {
         assert_eq!(game.player(alice).unwrap().hand.len(), 1);
         assert_eq!(completed.outcome.count_or_zero(), 2);
         assert_eq!(completed.outcome.events_of_type::<crate::events::MarkersChangedEvent>().count(), 2);
-        assert_eq!(completed.outcome.events_of_type::<crate::events::CardDrawnEvent>().count(), 1);
+        assert_eq!(completed.outcome.events_of_type::<crate::events::CardsDrawnEvent>().count(), 1);
     }
 }

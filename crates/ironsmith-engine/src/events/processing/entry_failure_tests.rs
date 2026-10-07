@@ -2347,6 +2347,7 @@ fn typed_zone_entry_phase_handoff_retains_history_temporary_effects_and_original
         proposal,
         &mut dm,
         vec![(CounterType::PlusOnePlusOne, 3)],
+        None,
     )
     .map(require_plain_prepared_zone_outcome)
     .unwrap() else {

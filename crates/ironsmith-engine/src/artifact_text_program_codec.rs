@@ -367,4 +367,46 @@ mod tests {
             PlayerFilter::ControlsMost { filter: Box::new(blue) })));
         assert!(model.individual_targets);
     }
+
+    fn elf_token_template() -> crate::effects::CreateTokenEffect {
+        use crate::card::{CardBuilder, PowerToughness};
+        use crate::static_abilities::StaticAbility;
+        use ironsmith_core::{CardType, Subtype, TokenNameTextRole, TokenTextRoles};
+        let card = CardBuilder::new(crate::ids::CardId::new(), "Elf Token").token().card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf]).color_indicator(ColorSet::RED)
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Black]]))
+            .power_toughness(PowerToughness::fixed(2, 2)).build();
+        let ability = crate::ability::Ability::static_ability(StaticAbility::protection(
+            crate::ability::ProtectionFrom::Color(ColorSet::GREEN)));
+        crate::effects::CreateTokenEffect::one(crate::cards::CardDefinition::with_abilities(card, vec![ability]))
+            .with_text_roles(TokenTextRoles::authored(TokenNameTextRole::SubtypeDerived, 1))
+    }
+
+    #[test]
+    fn token_word_edits_and_fresh_native_codecs_preserve_captured_numeric_pair_evidence() {
+        let pair = ironsmith_core::LinkedExilePair {
+            definition: ironsmith_core::LinkedExileDefinition([67; 32]), pair: 5,
+        };
+        let count = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: Some(pair) };
+        let mut token = elf_token_template();
+        token.count = count.clone();
+        token.link_source_exiled_this_resolution = true;
+        token.enters_tapped = true;
+        let id = token.token.card.id;
+        let source = Effect::new(token);
+        let changed = source.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Elf, Subtype::Human).unwrap()).unwrap();
+        let changed = changed.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap();
+        assert_eq!(changed.count, count);
+        assert_eq!(changed.token.card.id, id);
+        let wire = crate::artifact_materializer::encode_runtime_effect(Effect::new(changed.clone())).unwrap();
+        let restored = crate::artifact_materializer::materialize_effect(wire).unwrap();
+        let restored = restored.with_text_change(TextChange::creature_type(ironsmith_core::Subtype::Human, Subtype::Zombie).unwrap()).unwrap();
+        let actual = restored.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap();
+        assert_eq!(actual.count, count);
+        assert_eq!(actual.token.card.id, id);
+        assert_eq!(actual.token.card.name, "Zombie Token");
+        assert_eq!(actual.text_roles, changed.text_roles);
+        assert!(actual.link_source_exiled_this_resolution && actual.enters_tapped);
+        assert_eq!(source.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap().token.card.name, "Elf Token");
+    }
 }

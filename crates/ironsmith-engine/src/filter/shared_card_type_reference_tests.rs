@@ -67,8 +67,8 @@ fn unavailable_type_evidence_cannot_commit_outer_negation_or_zero_counts_and_rec
         let candidate = card(&mut game, Zone::Battlefield, vec![CardType::Artifact]);
         let exiled = card(&mut game, Zone::Exile, vec![CardType::Land]); game.add_exiled_with_source_link(source, exiled);
         let pool = game.player(B).unwrap().mana_pool.clone(); game.player_mut(B).unwrap().mana_pool.blue = u32::MAX;
-        let effect = if counted { Effect::gain_life(Value::Add(Box::new(Value::Fixed(1)), Box::new(Value::Count(filter)))) }
-            else { Effect::conditional_only(Condition::Not(Box::new(Condition::TargetMatches(filter))), vec![Effect::gain_life(7)]) };
+        let effect = if counted { Effect::gain_life(Value::Add(Box::new(Value::Fixed(1)), Box::new(Value::Count(filter.clone())))) }
+            else { Effect::conditional_only(Condition::Not(Box::new(Condition::TargetMatches(filter.clone()))), vec![Effect::gain_life(7)]) };
         let mut ctx = EffectContext::new_default(source, A).with_targets(vec![ResolvedTarget::Object(candidate)]);
         assert!(execute_effect(&mut game, &effect, &mut ctx).unwrap_err().is_incomplete_execution());
         assert_eq!(game.player(A).unwrap().life, 20); assert!(game.take_pending_trigger_events().is_empty());

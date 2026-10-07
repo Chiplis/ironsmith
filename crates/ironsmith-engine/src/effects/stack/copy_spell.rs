@@ -588,7 +588,7 @@ impl EffectExecutor for CopySpellEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
-    use crate::effect::Value;
+    use crate::effect::{Effect, Value};
     use crate::events::EventKind;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};

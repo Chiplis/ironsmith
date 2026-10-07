@@ -106,7 +106,7 @@ mod tests {
     const B: PlayerId = PlayerId::from_index(1);
     fn setup(tracked: bool, kind: Option<FaceDownCastKind>, mana: u32) -> (GameState, ObjectId) {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
-        game.turn.active_player = B; game.turn.priority_player = Some(B); game.turn.phase = Phase::FirstMain; game.turn.step = None;
+        game.turn.active_player = B; game.turn.priority_player = Some(B); game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
         game.player_mut(B).unwrap().mana_pool.red = mana;
         let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Public origin").card_types(vec![CardType::Enchantment]).build(), A, Zone::Battlefield);
         let card = if tracked { game.create_hidden_card_placeholder(A, Zone::Exile, 0, "blind-morph-commitment".into()) }

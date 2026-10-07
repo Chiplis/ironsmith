@@ -40,7 +40,7 @@ pub(crate) fn rewrite_program_words(
     Ok(rewritten)
 }
 
-pub(crate) fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Result<Ability, Error> {
+pub fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Result<Ability, Error> {
     let mut rewritten = ability.clone();
     match &mut rewritten.kind {
         AbilityKind::Static(ability) => *ability = ability.with_text_change(change)?,

@@ -787,15 +787,15 @@ mod tests {
             PlayerFilter::Opponent,
             vec![damage],
         );
-        assert!(effect_only_deals_damage(&Effect::new(players.clone())));
+        assert!(Effect::new(players.clone()).0.shares_iterated_damage_action());
         players.sequential = true;
-        assert!(!effect_only_deals_damage(&Effect::new(players.clone())));
+        assert!(!Effect::new(players.clone()).0.shares_iterated_damage_action());
         players.sequential = false;
         players.stop_after_first_happened = true;
-        assert!(!effect_only_deals_damage(&Effect::new(players.clone())));
+        assert!(!Effect::new(players.clone()).0.shares_iterated_damage_action());
         players.stop_after_first_happened = false;
         players.effects.push(Effect::new(crate::effects::DrawCardsEffect::you(1)));
-        assert!(!effect_only_deals_damage(&Effect::new(players)));
+        assert!(!Effect::new(players).0.shares_iterated_damage_action());
     }
 
     #[test]

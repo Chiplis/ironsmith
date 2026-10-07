@@ -3156,6 +3156,7 @@ mod tests {
     use crate::mana::ManaSymbol;
     use crate::static_abilities::StaticAbility;
     use crate::target::ObjectFilter;
+    use crate::game_state::GameState;
 
     #[test]
     fn test_object_from_card() {

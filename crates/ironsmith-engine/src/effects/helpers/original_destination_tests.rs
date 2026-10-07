@@ -19,7 +19,7 @@ fn actual_destination_queries_require_the_exact_completed_original_receipt() {
     let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(120_060), "Arrival")
         .card_types(vec![CardType::Artifact]).build();
     let object = game.create_object_from_card(&card, controller, Zone::Graveyard);
-    let memory = OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(game.object(object).unwrap(), &game));
+    let memory = crate::effect::OutcomeObjectMemory::from_snapshot(&ObjectSnapshot::from_object(game.object(object).unwrap(), &game));
     let original = EffectOutcome::count(1).with_execution_fact(ExecutionFact::OriginalZoneMoveCards(vec![memory.clone()]));
     let additions = EffectOutcome::count(1).with_execution_fact(ExecutionFact::OriginalZoneMoveCards(vec![memory]));
     ctx.store_outcome(id, EffectOutcome::aggregate_replacement_outcomes(original, [additions]));

@@ -35,7 +35,7 @@ pub use ability_origins::{
 mod layer_resolution;
 pub mod text_changes;
 pub(crate) mod text_change_predicates;
-pub(crate) mod text_change_programs;
+pub mod text_change_programs;
 pub(crate) mod text_change_modifications;
 pub(crate) mod text_change_statics;
 pub(crate) mod text_change_triggers;

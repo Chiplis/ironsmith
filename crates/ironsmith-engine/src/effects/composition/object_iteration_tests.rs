@@ -545,7 +545,7 @@ fn quantified_native_and_wrapped_iterators_publish_results_after_their_draw_tail
         assert_eq!(dm.players, vec![alice, bob]);
         assert_eq!(game.take_pending_trigger_entries().len(), 2);
         assert_eq!(outcome.events.iter().filter_map(|event| event.downcast::<crate::events::CardsDrawnEvent>())
-            .map(|event| event.amount()).sum::<usize>(), 2);
+            .map(|event| event.amount()).sum::<u32>(), 2);
     } } }
 }
 

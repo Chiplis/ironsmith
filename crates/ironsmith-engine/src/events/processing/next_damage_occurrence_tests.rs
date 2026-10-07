@@ -74,7 +74,7 @@ fn next_time_redirects_every_sibling_and_retains_actual_source_and_combat_histor
                 }
             }
             let mut ctx = ExecutionContext::new_default(shield_source, bob);
-            let outcome = crate::effects::damage::commit_damage_batch(
+            let outcome = crate::effects::damage::execute_damage_batch(
                 &mut game, &mut ctx, events.clone(), None,
             ).unwrap();
             assert_eq!(outcome.count_or_zero(), 5);
@@ -94,7 +94,7 @@ fn next_time_redirects_every_sibling_and_retains_actual_source_and_combat_histor
                 assert_eq!(receipt.cause, original.cause);
             }
             assert!(game.effect_store.replacement_effects.get_effect(id).is_none());
-            let later = crate::effects::damage::commit_damage_batch(
+            let later = crate::effects::damage::execute_damage_batch(
                 &mut game, &mut ctx, events, None,
             ).unwrap();
             assert_eq!(later.count_or_zero(), 5);

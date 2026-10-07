@@ -63,7 +63,7 @@ fn exact_color_and_reveal_receipts_survive_unrelated_choices_mutations_and_depar
     let card=CardBuilder::new(CardId::new(),"Revealed blue").card_types(vec![CardType::Instant])
         .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![crate::mana::ManaSymbol::Blue]])).build();
     let card_id=game.create_object_from_card(&card,a,Zone::Hand);
-    let memory=OutcomeObjectMemory::from_object_id(&game,card_id).unwrap();
+    let memory=crate::effect::OutcomeObjectMemory::from_object_id(&game,card_id).unwrap();
     let color_id=EffectId(2);let reveal_id=EffectId(7);let query=reveal_query(color_id);
     let mut ctx=ExecutionContext::new_default(source,a);
     ctx.store_outcome(color_id,EffectOutcome::count(1).with_execution_fact(ExecutionFact::ChosenColor(blue)));

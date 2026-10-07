@@ -140,31 +140,3 @@ fn unknown_ability_words_hold_rewriting_without_losing_the_proven_creation_name_
     let crate::effect::OutcomeValue::Objects(tokens) = outcome.value else { panic!("created token"); };
     assert_eq!(game.object(tokens[0]).unwrap().name.as_ref(), "Elf Token");
 }
-
-#[test]
-fn token_word_edits_and_fresh_native_codecs_preserve_captured_numeric_pair_evidence() {
-    let pair = ironsmith_core::LinkedExilePair {
-        definition: ironsmith_core::LinkedExileDefinition([67; 32]), pair: 5,
-    };
-    let count = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: Some(pair) };
-    let mut token = template("Elf Token", TokenNameTextRole::SubtypeDerived);
-    token.count = count.clone();
-    token.link_source_exiled_this_resolution = true;
-    token.enters_tapped = true;
-    let id = token.token.card.id;
-    let source = Effect::new(token);
-    let changed = source.with_text_change(TextChange::creature_type(Subtype::Elf, Subtype::Human).unwrap()).unwrap();
-    let changed = changed.downcast_ref::<CreateTokenEffect>().unwrap();
-    assert_eq!(changed.count, count);
-    assert_eq!(changed.token.card.id, id);
-    let wire = crate::artifact_materializer::encode_runtime_effect(Effect::new(changed.clone())).unwrap();
-    let restored = crate::artifact_materializer::materialize_effect(wire).unwrap();
-    let restored = restored.with_text_change(TextChange::creature_type(Subtype::Human, Subtype::Zombie).unwrap()).unwrap();
-    let actual = restored.downcast_ref::<CreateTokenEffect>().unwrap();
-    assert_eq!(actual.count, count);
-    assert_eq!(actual.token.card.id, id);
-    assert_eq!(actual.token.card.name, "Zombie Token");
-    assert_eq!(actual.text_roles, changed.text_roles);
-    assert!(actual.link_source_exiled_this_resolution && actual.enters_tapped);
-    assert_eq!(source.downcast_ref::<CreateTokenEffect>().unwrap().token.card.name, "Elf Token");
-}

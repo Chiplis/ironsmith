@@ -110,7 +110,7 @@ mod tests {
     const B: PlayerId = PlayerId::from_index(1);
     fn fixture(kind: CardType, cost: u32) -> (GameState, ObjectId, ObjectId) {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
-        game.turn.active_player = B; game.turn.priority_player = Some(B); game.turn.phase = Phase::FirstMain; game.turn.step = None;
+        game.turn.active_player = B; game.turn.priority_player = Some(B); game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
         let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Public permission source").card_types(vec![CardType::Enchantment]).build(), A, Zone::Battlefield);
         let card = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Previously private face")
             .card_types(vec![kind]).mana_cost(ManaCost::new().add_generic(cost)).build(), A, Zone::Exile);
@@ -256,7 +256,7 @@ mod independent_price_tests {
     #[test]
     fn an_independent_free_price_is_hidden_before_opening_and_keeps_the_selected_origin_afterward() {
         let player = PlayerId::from_index(0); let owner = PlayerId::from_index(1);
-        let mut game = GameState::new(vec!["A".into(), "B".into()], 20); game.turn.active_player = player; game.turn.priority_player = Some(player); game.turn.phase = Phase::FirstMain; game.turn.step = None;
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20); game.turn.active_player = player; game.turn.priority_player = Some(player); game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
         let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Origin").card_types(vec![CardType::Enchantment]).build(), player, Zone::Battlefield);
         let price = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Independent price").card_types(vec![CardType::Enchantment]).build(), player, Zone::Battlefield);
         let card = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Expensive secret").card_types(vec![CardType::Sorcery])

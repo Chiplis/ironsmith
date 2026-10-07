@@ -2034,7 +2034,7 @@ mod checked_first_draw_producer_tests {
         game.turn_store.turn_history.draw_occurrences = None;
         let library = game.player(a).unwrap().library.to_vec();
         let records = game.turn_store.turn_history.event_records.len();
-        assert!(matches!(DrawCardsEffect::you(1).can_execute_as_cost(&game, source, a),
+        assert!(matches!(crate::effects::CostExecutableEffect::can_execute_as_cost(&DrawCardsEffect::you(1), &game, source, a),
             Err(CostValidationError::ExecutionFailed(ExecutionError::IncompleteEvidence(_)))));
         let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(5), Effect::draw(1)]));
         let result = execute_effect(&mut game, &sequence, &mut ExecutionContext::new_default(source, a));
@@ -2044,7 +2044,7 @@ mod checked_first_draw_producer_tests {
         assert!(game.player(a).unwrap().hand.is_empty());
         assert_eq!(game.turn_store.turn_history.event_records.len(), records);
         assert!(game.turn_store.turn_history.draw_occurrences.is_none());
-        DrawCardsEffect::you(0).can_execute_as_cost(&game, source, a).unwrap();
+        crate::effects::CostExecutableEffect::can_execute_as_cost(&DrawCardsEffect::you(0), &game, source, a).unwrap();
         let zero = draw(&mut game, source, a, 0);
         assert_eq!(zero.events_of_type::<CardsDrawnEvent>().count(), 0);
         assert!(game.turn_store.turn_history.draw_occurrences.is_none(), "a no-op cannot invent history");

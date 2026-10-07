@@ -2456,7 +2456,7 @@ mod retained_damage_draw_boundary_tests {
             assert_eq!(game.player(bob).unwrap().hand.len(), 1);
             assert_eq!(completed.outcome.count_or_zero(), 2);
             assert_eq!(completed.outcome.events_of_type::<DamageEvent>().count(), 2);
-            assert_eq!(completed.outcome.events_of_type::<crate::events::CardDrawnEvent>().count(), 1);
+            assert_eq!(completed.outcome.events_of_type::<crate::events::CardsDrawnEvent>().count(), 1);
             assert!(completed.projections_complete);
         }
     }
@@ -2516,7 +2516,7 @@ mod original_damage_replacement_draw_tests {
         assert_eq!(game.player(bob).unwrap().hand.len(), 1);
         assert_eq!(completed.outcome.count_or_zero(), 1, "the replaced damage assignment contributes no damage");
         assert_eq!(completed.outcome.events_of_type::<DamageEvent>().count(), 1);
-        assert_eq!(completed.outcome.events_of_type::<crate::events::CardDrawnEvent>().count(), 1);
+        assert_eq!(completed.outcome.events_of_type::<crate::events::CardsDrawnEvent>().count(), 1);
         assert!(completed.projections_complete);
     }
 }

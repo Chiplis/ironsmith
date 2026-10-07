@@ -1169,10 +1169,10 @@ mod tests {
                 _ => ReplacementAction::Additionally(vec![Effect::new(crate::effects::SacrificeTargetEffect::new(crate::ChooseSpec::SpecificObject(added)))]),
             };
             game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, player,
-                crate::events::zones::matchers::WouldChangeZoneMatcher::new(ObjectFilter::specific(original), Some(crate::Zone::Battlefield), Some(crate::Zone::Graveyard)), action));
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(crate::target::ObjectFilter::specific(original), Some(crate::Zone::Battlefield), Some(crate::Zone::Graveyard)), action));
             let chosen_tag = SacrificeCostTag::Selected(7).key();
             let actual_tag = SacrificeCostTag::OriginalResult(7).key();
-            let cost = crate::costs::Cost::effect(Effect::sacrifice(ObjectFilter::specific(original), 1).tag(chosen_tag.clone()));
+            let cost = crate::costs::Cost::try_effect(Effect::sacrifice(crate::target::ObjectFilter::specific(original), 1).tag(chosen_tag.clone())).unwrap();
             let mut dm = crate::decision::SelectFirstDecisionMaker;
             let mut context = CostContext::new(source, player, &mut dm).with_pre_chosen_cards(vec![original]);
             assert!(matches!(cost.pay(&mut game, &mut context).unwrap(), CostPaymentResult::Paid));

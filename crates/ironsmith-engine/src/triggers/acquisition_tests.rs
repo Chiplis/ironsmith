@@ -89,7 +89,7 @@ fn equal_printed_slots_independent_registered_grants_and_incarnations_are_distin
     let effect = ContinuousEffect::from_resolution(ObjectId::from_raw(99), PlayerId::from_index(0),
         vec![ObjectId::from_raw(20)], Modification::AddAbilityGeneric(authored.clone()));
     grants.add_effect(effect.clone()); grants.add_effect(effect);
-    let grant = |index| bind(authored.clone(), 20, AbilityOrigin::Effect {
+    let grant = |index: usize| bind(authored.clone(), 20, AbilityOrigin::Effect {
         effect: (&grants.effects()[index]).into(), slot: 0,
     });
     let grant_a = grant(0); let grant_b = grant(1);

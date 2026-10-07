@@ -976,7 +976,7 @@ mod tests {
         let P::AddChosenCreatureType { filter, display } = changed.payload else { unreachable!() };
         assert!(filter.chosen_creature_type);
         assert_eq!(display, "chosen Elf is not an authored literal");
-        let original = model(P::BlockingAsThoughNoLandwalk(ironsmith_core::BlockingAsThoughNoLandwalkSpec {
+        let original = model(P::BlockingAsThoughNoLandwalk(ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec {
             objects: ObjectFilter::default(),
             landwalk: Some(ironsmith_core::LandwalkKind::Subtype { subtype: Subtype::Island, snow: true }),
             display: "Island is presentation".into(),
