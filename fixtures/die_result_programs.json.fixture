@@ -66,7 +66,7 @@
     "name": "Wyll's Reversal",
     "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
     "oracle_text": "Choose target spell or ability with one or more targets. Roll a d20 and add the greatest power among creatures you control.\n1—14 | You may choose new targets for that spell or ability.\n15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.",
-    "text": "Mana cost: {1}{R}{R}\nType: Instant\nChoose target spell or ability with one or more targets. Roll a d20 and add the greatest power among creatures you control.\n1—14 | You may choose new targets for that spell or ability.\n15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.",
+    "text": "Mana cost: {2}{R}\nType: Instant\nChoose target spell or ability with one or more targets. Roll a d20 and add the greatest power among creatures you control.\n1—14 | You may choose new targets for that spell or ability.\n15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.",
     "status": "UNVALIDATED proposed complete; independently source-cleared 2026-10-05 through 72c011bae, including separate Song review; native scenarios authored and unrun"
   }
 ]

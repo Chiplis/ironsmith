@@ -14,17 +14,32 @@ use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definit
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;
 const A: PlayerId = PlayerId(0);
 const B: PlayerId = PlayerId(1);
-fn program_definitions(name: &str, text: &str) -> [CardDefinition; 2] {
+fn direct_definition(name: &str, text: &str) -> CardDefinition {
+    let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, text, false));
+    let definition = result.unwrap_or_else(|error| panic!("{name} independent direct: {error}"));
+    assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+    definition
+}
+fn artifact_definition(name: &str, text: &str) -> CardDefinition {
     let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, text, false));
+    // The artifact compiler's companion definition is not the direct route.
     let (artifact, _) = result.unwrap_or_else(|error| panic!("{name}: {error}"));
     assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
-    let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, text, false));
-    let direct = direct.unwrap_or_else(|error| panic!("{name} direct: {error}"));
-    assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+    assert_eq!(artifact.diagnostics.error_count, 0);
     let decoded = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
     decoded.validate().unwrap();
     assert_eq!(artifact, decoded);
     let restored = materialize_artifact(&decoded).unwrap();
+    assert_eq!(restored.card.name, decoded.card.name);
+    assert_eq!(restored.canonical_text, decoded.payload.canonical_text);
+    assert_eq!(restored.ability_labels, decoded.payload.ability_labels);
+    restored
+}
+fn program_definitions(name: &str, text: &str) -> [CardDefinition; 2] {
+    let direct = direct_definition(name, text);
+    let restored = artifact_definition(name, text);
+    assert_eq!(direct.canonical_text, restored.canonical_text, "{name}");
+    assert_eq!(direct.ability_labels, restored.ability_labels, "{name}");
     for definition in [&direct, &restored] {
         assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(definition));
         let rendered = ironsmith_text::canonical_compiled_lines(definition).join("\n");
@@ -35,6 +50,99 @@ fn program_definitions(name: &str, text: &str) -> [CardDefinition; 2] {
         if text.contains("and add") { assert!(rendered.contains("and add"), "{name}: {rendered}"); }
     }
     [direct, restored]
+}
+const ORIGINAL_TABLES: [(&str, &str, &str); 4] = [
+    ("Diviner's Portent", "119585c7-ddfa-47ed-b2f8-488ebc156222", "{X}{U}{U}{U}"),
+    ("Druid of the Emerald Grove", "acf54a85-0e9e-43fb-99d9-c223c02f13c4", "{3}{G}"),
+    ("Song of Inspiration", "bdb80d7b-672c-4e2a-b93b-9b96721b93f2", "{3}{G}{G}"),
+    ("Wyll's Reversal", "8d35cef8-a52d-45fb-8f5f-cccea26826d0", "{2}{R}"),
+];
+fn assert_original_metadata(definition: &CardDefinition, name: &str, mana: &str) {
+    assert_eq!(definition.card.name, name);
+    assert_eq!(definition.card.mana_cost.as_ref().unwrap().to_oracle(), mana);
+    assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(definition));
+    let druid = name == "Druid of the Emerald Grove";
+    assert_eq!(definition.card.card_types, vec![if druid { ironsmith::CardType::Creature } else { ironsmith::CardType::Instant }]);
+    if druid {
+        let pt = definition.card.power_toughness.as_ref().unwrap();
+        assert_eq!((pt.power.base_value(), pt.toughness.base_value()), (2, 2));
+        assert_eq!(definition.card.subtypes, vec![ironsmith::Subtype::Dwarf, ironsmith::Subtype::Druid]);
+        assert!(definition.spell_effect.is_none());
+        assert_eq!(definition.abilities.len(), 1);
+        assert!(matches!(definition.abilities[0].kind, AbilityKind::Triggered(_)));
+    } else {
+        assert!(definition.card.power_toughness.is_none());
+        assert!(definition.abilities.is_empty(), "a numeric row became a permanent ability: {name}");
+        assert!(!definition.spell_effect.as_ref().unwrap().flattened_default_effects().is_empty());
+    }
+    assert!(!definition.canonical_text.contains("Station"));
+    assert!(!definition.canonical_text.contains("tagged-object-reference"));
+    assert!(definition.canonical_text.to_ascii_lowercase().contains("roll a d20"));
+}
+fn original_route_metadata(compile: fn(&str, &str) -> CardDefinition) {
+    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/die_result_programs.json.fixture")).unwrap();
+    for (name, id, mana) in ORIGINAL_TABLES {
+        let row = rows.iter().find(|row| row["oracle_id"] == id).unwrap();
+        assert_eq!(row["name"], name);
+        let text = row["text"].as_str().unwrap();
+        assert!(text.ends_with(row["oracle_text"].as_str().unwrap()));
+        let definition = compile(name, text);
+        assert_original_metadata(&definition, name, mana);
+    }
+}
+#[test]
+fn four_original_frozen_bodies_compile_independently_to_runtime_with_full_metadata() {
+    original_route_metadata(direct_definition);
+}
+#[test]
+fn four_original_frozen_bodies_compile_separately_through_validated_json_artifacts() {
+    original_route_metadata(artifact_definition);
+}
+
+fn collect_runtime_nodes(effect: &ironsmith::Effect, nodes: &mut Vec<ironsmith::Effect>) {
+    nodes.push(effect.clone());
+    effect.visit_child_effects(&mut |child| collect_runtime_nodes(child, nodes));
+}
+
+fn exact_die_instruction(mut effect: &ironsmith::Effect) -> bool {
+    while let Some(inner) = effect.transparent_child_effect() { effect = inner; }
+    effect.downcast_ref::<RollDieEffect>().is_some()
+}
+
+#[test]
+fn original_full_body_tables_read_the_exact_die_instruction_and_portent_quantities_keep_paid_x() {
+    for (name, _, _) in ORIGINAL_TABLES {
+        for definition in definitions(name) {
+            let program = if name == "Druid of the Emerald Grove" {
+                let AbilityKind::Triggered(trigger) = &definition.abilities[0].kind else { panic!("Druid trigger missing"); };
+                &trigger.effects
+            } else {
+                definition.spell_effect.as_ref().unwrap()
+            };
+            let mut nodes = Vec::new();
+            for effect in program.all_effects() { collect_runtime_nodes(effect, &mut nodes); }
+            let rolls = nodes.iter().filter(|effect| effect.downcast_ref::<RollDieEffect>().is_some()).count();
+            assert_eq!(rolls, 1, "{name}: one physical die instruction");
+            let gates = nodes.iter().filter_map(|effect| effect.downcast_ref::<ironsmith::effects::IfEffect>())
+                .filter(|gate| matches!(gate.predicate, ironsmith::effect::EffectPredicate::Value(_)))
+                .collect::<Vec<_>>();
+            assert_eq!(gates.len(), if name == "Druid of the Emerald Grove" { 3 } else { 2 }, "{name}");
+            let die_id = gates[0].condition;
+            assert!(gates.iter().all(|gate| gate.condition == die_id), "{name}: sibling rows must share one result");
+            let producers = nodes.iter().filter_map(|effect| effect.downcast_ref::<ironsmith::effects::WithIdEffect>())
+                .filter(|producer| producer.id == die_id).collect::<Vec<_>>();
+            assert_eq!(producers.len(), 1, "{name}: one exact producer for all rows");
+            assert!(exact_die_instruction(&producers[0].effect), "{name}: a draw/search/aggregate cannot own the die result");
+            if name == "Diviner's Portent" {
+                let draws = nodes.iter().filter_map(|effect| effect.downcast_ref::<ironsmith::effects::DrawCardsEffect>()).collect::<Vec<_>>();
+                let scries = nodes.iter().filter_map(|effect| effect.downcast_ref::<ironsmith::effects::ScryEffect>()).collect::<Vec<_>>();
+                assert_eq!(draws.len(), 2);
+                assert_eq!(scries.len(), 1);
+                assert!(draws.iter().all(|draw| matches!(draw.count.unhinted(), ironsmith::effect::Value::X)));
+                assert!(matches!(scries[0].count.unhinted(), ironsmith::effect::Value::X));
+            }
+        }
+    }
 }
 fn definitions(name: &str) -> [CardDefinition; 2] {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/die_result_programs.json.fixture")).unwrap();
@@ -54,6 +162,16 @@ fn game() -> GameState {
     }
     game
 }
+fn assert_die_receipt(game: &GameState, natural: u32, modified: u32) {
+    let receipts = game.turn_store.turn_history.event_records.iter()
+        .chain(game.turn_store.turn_history.staged_event_records.iter())
+        .filter_map(|record| record.event.downcast::<ironsmith::events::other::DieRolledEvent>())
+        .map(|event| (event.player, event.natural_result, event.result, event.sides, event.ordinal_this_turn))
+        .collect::<Vec<_>>();
+    assert_eq!(receipts, vec![(A, natural, modified, 20, Some(1))]);
+    assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 1);
+    assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [modified]);
+}
 fn object(game: &mut GameState, owner: PlayerId, zone: Zone, name: &str, text: &str) -> ObjectId {
     game.create_object_from_definition(&compile_to_runtime_definition(name, text, false).unwrap(), owner, zone)
 }
@@ -66,6 +184,7 @@ struct Choices {
     options: std::collections::VecDeque<usize>,
     targets: std::collections::VecDeque<Vec<Target>>,
     views: Vec<(PlayerId, bool, Vec<ObjectId>)>,
+    viewed_hand_sizes: Vec<usize>,
 }
 impl DecisionMaker for Choices {
     fn decide_targets(&mut self, game: &GameState, context: &TargetsContext) -> Vec<Target> {
@@ -87,8 +206,9 @@ impl DecisionMaker for Choices {
     fn decide_mana_payment(&mut self, _: &GameState, context: &ironsmith::decisions::context::ManaPaymentContext) -> ironsmith::mana_payment::ManaPaymentResponse {
         ironsmith::mana_payment::ManaPaymentResponse::Confirm { plan_id: context.plan.id, request_hash: context.plan.request_hash }
     }
-    fn view_cards(&mut self, _: &GameState, viewer: PlayerId, cards: &[ObjectId], context: &ViewCardsContext) {
+    fn view_cards(&mut self, game: &GameState, viewer: PlayerId, cards: &[ObjectId], context: &ViewCardsContext) {
         self.views.push((viewer, context.public, cards.to_vec()));
+        self.viewed_hand_sizes.push(game.player(viewer).unwrap().hand.len());
     }
 }
 fn action(game: &mut GameState, action: LegalAction, dm: &mut Choices) {
@@ -178,7 +298,10 @@ fn druid_preserves_revealed_search_selection_across_roll_and_all_three_rows() {
             for selected in [0, 1, 2] {
                 let mut game = game();
                 let source = game.create_object_from_definition(&definition, A, Zone::Hand);
-                for index in 0..3 { object(&mut game, A, Zone::Library, &format!("Forest {index}"), "Type: Basic Land — Forest"); }
+                let original_lands = (0..3).map(|index| {
+                    let name = format!("Forest {index}");
+                    (object(&mut game, A, Zone::Library, &name, "Type: Basic Land — Forest"), name)
+                }).collect::<Vec<_>>();
                 let excluded = object(&mut game, A, Zone::Library, "Nonbasic", "Type: Land");
                 let before = game.player(A).unwrap().mana_pool.total();
                 let mut dm = Choices { select_maximum: Some(selected), ..Default::default() };
@@ -193,7 +316,24 @@ fn druid_preserves_revealed_search_selection_across_roll_and_all_three_rows() {
                 let lands = game.battlefield.iter().filter(|id| game.object(**id).unwrap().name.starts_with("Forest ")).copied().collect::<Vec<_>>();
                 assert_eq!(lands.len(), battlefield);
                 assert!(lands.into_iter().all(|id| game.is_tapped(id)));
-                assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 1);
+                assert_die_receipt(&game, result, result);
+                let revealed = dm.views.iter().filter(|(_, public, _)| *public)
+                    .flat_map(|(_, _, cards)| cards.iter().copied()).collect::<std::collections::HashSet<_>>();
+                assert_eq!(revealed.len(), selected, "only the search selection is revealed");
+                for (original, name) in &original_lands {
+                    if revealed.contains(original) {
+                        let destinations = game.player(A).unwrap().hand.iter().chain(game.battlefield.iter())
+                            .filter(|id| game.object(**id).unwrap().name == *name).count();
+                        assert_eq!(destinations, 1, "every selected land moves exactly once: {name}");
+                    } else {
+                        assert_eq!(game.object(*original).unwrap().zone, Zone::Library);
+                    }
+                }
+                let shuffles = game.turn_store.turn_history.event_records.iter()
+                    .chain(game.turn_store.turn_history.staged_event_records.iter())
+                    .filter_map(|record| record.event.downcast::<ironsmith::events::ShuffleLibraryEvent>())
+                    .map(|event| event.player).collect::<Vec<_>>();
+                assert_eq!(shuffles, vec![A], "each row completes the deferred search shuffle once");
                 if selected > 0 { assert!(dm.views.iter().any(|(_, public, cards)| *public && cards.len() == selected)); }
             }
         }
@@ -202,7 +342,7 @@ fn druid_preserves_revealed_search_selection_across_roll_and_all_three_rows() {
 #[test]
 fn portent_counts_remaining_hand_after_cast_and_keeps_announced_x_for_both_rows() {
     for definition in definitions("Diviner's Portent") {
-        for (natural, hand_size, x) in [(14, 0, 2), (14, 1, 3), (10, 5, 1), (20, 0, 0)] {
+        for (natural, hand_size, x) in [(14, 0, 2), (14, 1, 3), (10, 5, 1), (20, 5, 2), (20, 0, 0), (1, 0, 0), (1, 0, 5), (20, 0, 5)] {
             let mut game = game();
             let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
             for index in 0..hand_size { object(&mut game, A, Zone::Hand, &format!("Held {index}"), "Type: Land"); }
@@ -215,10 +355,13 @@ fn portent_counts_remaining_hand_after_cast_and_keeps_announced_x_for_both_rows(
             assert_eq!(game.player(A).unwrap().mana_pool.total(), before - x - 3);
             settle(&mut game, &mut dm);
             assert_eq!(game.player(A).unwrap().hand.len(), hand_size + x as usize);
-            assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [natural + hand_size as u32]);
-            assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 1);
+            assert_die_receipt(&game, natural, natural + hand_size as u32);
             let scry_views = dm.views.iter().filter(|(_, public, cards)| !public && cards.len() == x as usize).count();
-            if natural + hand_size as u32 >= 15 && x > 0 { assert!(scry_views > 0); }
+            if natural + hand_size as u32 >= 15 && x > 0 {
+                assert!(scry_views > 0);
+                assert!(dm.viewed_hand_sizes.iter().all(|size| *size == hand_size),
+                    "the full-body high row scries before drawing its paid X cards");
+            }
             else { assert_eq!(scry_views, 0); }
         }
     }
@@ -240,6 +383,193 @@ fn malformed_die_suffixes_and_unbound_roll_quantities_fail_without_partial_artif
         let text = format!("Type: Sorcery\n{text}");
         assert!(compile_to_artifact("Incomplete die instruction", &text, false).is_err(), "{text}");
         assert!(compile_to_runtime_definition("Incomplete die instruction", &text, false).is_err(), "{text}");
+    }
+}
+#[test]
+fn numeric_rows_without_a_local_die_and_incomplete_headers_fail_on_both_public_routes() {
+    for text in [
+        "15+ | Draw a card.",
+        "9 or less | Draw a card.",
+        "15+ | Flying",
+        "Draw a card.\n15+ | Draw two cards.",
+        "Draw a card.\n9 or less | Draw two cards.",
+        "{0}: Draw a card.\n15+ | Draw two cards.",
+        "When this artifact enters, draw a card.\n15+ | Draw two cards instead.",
+        "Roll a d20. Draw a card.\n15+ | You gain 5 life.",
+        "Roll a d20, then draw a card.\n15+ | You gain 5 life.",
+        "{0}: Roll a d20. Draw a card.\n15+ | You gain 5 life.",
+        "Fortune — {0}: Roll a d20. Draw a card.\n15+ | You gain 5 life.",
+        "When this artifact enters, roll a d20. Draw a card.\n15+ | You gain 5 life.",
+        "You may roll a d20.\n15+ | You gain 5 life.",
+        "If you control a creature, roll a d20.\n15+ | You gain 5 life.",
+        "Target creature gains \"{T}: Roll a d20.\" until end of turn.\n15+ | You gain 5 life.",
+        "Roll a d20.\n15 + banana | Draw a card.",
+        "Roll a d20.\n9 or less banana | Draw a card.",
+        "Roll a d20.\n1—14 banana | Draw a card.",
+        "Roll a d20.\n14—1 | Draw a card.",
+        "Roll a d20.\n15+ |",
+        "Roll a d20.\n9 or less |",
+        "Roll a d20.\n15+ | Draw a card. Purple the moon.",
+        "Station\n9 or less | Flying",
+        "Station\n15+ | Draw a card.",
+        "Station\n3+ | Flying\n{T}: Roll a d20.\n9+ | You gain 5 life.",
+    ] {
+        for card_type in ["Sorcery", "Artifact"] {
+            let text = format!("Mana cost: {{0}}\nType: {card_type}\n{text}");
+            assert!(compile_to_runtime_definition("Unowned or incomplete numeric row", &text, false).is_err(), "direct: {text}");
+            assert!(compile_to_artifact("Unowned or incomplete numeric row", &text, false).is_err(), "artifact: {text}");
+        }
+    }
+}
+
+#[test]
+fn activated_paid_x_is_local_to_its_cost_and_does_not_inherit_the_permanents_printed_x() {
+    for (printed, activation, announced, natural, expected_draw, expected_payment) in [
+        ("{0}", "{X}{U}", 3, 7, 3, 4),
+        ("{0}", "{X}{U}", 0, 20, 0, 1),
+        ("{X}", "{1}", 0, 7, 7, 1),
+    ] {
+        let text = format!("Mana cost: {printed}\nType: Artifact\n{activation}: Roll a d20.\n1—20 | Draw X cards.");
+        for definition in program_definitions("Activation X scope", &text) {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            for index in 0..24 { object(&mut game, A, Zone::Library, &format!("Library {index}"), "Type: Land"); }
+            let before = game.player(A).unwrap().mana_pool.total();
+            let mut dm = Choices { x: announced, ..Default::default() };
+            game.force_next_die_roll(natural);
+            action(&mut game, LegalAction::ActivateAbility { source, ability_index: 0 }, &mut dm);
+            assert_eq!(game.player(A).unwrap().mana_pool.total(), before - expected_payment);
+            settle(&mut game, &mut dm);
+            assert_eq!(game.player(A).unwrap().hand.len(), expected_draw);
+            assert_die_receipt(&game, natural, natural);
+        }
+    }
+}
+
+#[test]
+fn earlier_draws_do_not_own_a_later_table_and_rolls_inside_one_row_do_not_rebind_siblings() {
+    for definition in program_definitions("Exact terminal die", "Mana cost: {0}\nType: Sorcery\nDraw a card, then roll a d20.\n1—14 | You gain 1 life.\n15+ | You gain 5 life.") {
+        for (natural, life) in [(1, 31), (20, 35)] {
+            let mut game = game();
+            object(&mut game, A, Zone::Library, "Only draw", "Type: Land");
+            let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+            let mut dm = Choices::default();
+            game.force_next_die_roll(natural);
+            cast(&mut game, spell, &mut dm);
+            settle(&mut game, &mut dm);
+            assert_eq!(game.player(A).unwrap().hand.len(), 1);
+            assert_eq!(game.player(A).unwrap().life, life);
+            assert_die_receipt(&game, natural, natural);
+        }
+    }
+    for definition in program_definitions("Latest direct die", "Mana cost: {0}\nType: Sorcery\nRoll a d20. Roll a d20.\n1—14 | You gain 1 life.\n15+ | You gain 5 life.") {
+        let mut game = game();
+        let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+        let mut dm = Choices::default();
+        game.force_next_die_roll(20);
+        game.force_next_die_roll(1);
+        cast(&mut game, spell, &mut dm);
+        settle(&mut game, &mut dm);
+        assert_eq!(game.player(A).unwrap().life, 31);
+        assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [20, 1]);
+        assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 2);
+    }
+    for definition in program_definitions("Row-local die", "Mana cost: {0}\nType: Sorcery\nRoll a d20.\n1—14 | Roll a d20.\n15+ | You gain 5 life.") {
+        let mut game = game();
+        let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+        let mut dm = Choices::default();
+        game.force_next_die_roll(1);
+        game.force_next_die_roll(20);
+        cast(&mut game, spell, &mut dm);
+        settle(&mut game, &mut dm);
+        assert_eq!(game.player(A).unwrap().life, 30);
+        assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [1, 20]);
+        assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 2);
+    }
+}
+#[test]
+fn low_open_ended_row_includes_zero_and_high_row_is_not_capped_at_die_sides() {
+    for (operation, natural, modified, life) in [("subtract twenty", 20, 0, 31), ("add twenty", 20, 40, 33)] {
+        let text = format!("Mana cost: {{0}}\nType: Sorcery\nRoll a d20 and {operation}.\n9 or less | You gain 1 life.\n10—19 | You gain 2 life.\n20+ | You gain 3 life.");
+        for definition in program_definitions("Open-ended result bounds", &text) {
+            let mut game = game();
+            let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+            let mut dm = Choices::default();
+            game.force_next_die_roll(natural);
+            cast(&mut game, spell, &mut dm);
+            settle(&mut game, &mut dm);
+            assert_eq!(game.player(A).unwrap().life, life);
+            assert_die_receipt(&game, natural, modified);
+        }
+    }
+}
+#[test]
+fn eternity_elevator_retains_real_station_ownership_and_charge_gated_mana_in_both_routes() {
+    // The complete body and metadata are retained from the existing native
+    // The Eternity Elevator regression, independently on both public routes.
+    let text = "Mana cost: {5}\nType: Legendary Artifact — Spacecraft\n{T}: Add {C}{C}{C}.\nStation (Tap another creature you control: Put charge counters equal to its power on this Spacecraft. Station only as a sorcery.)\n20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.";
+    for definition in program_definitions("The Eternity Elevator", text) {
+        assert!(definition.spell_effect.is_none());
+        assert_eq!(definition.abilities.len(), 3);
+        assert!(definition.canonical_text.contains("Station"));
+        assert!(definition.canonical_text.contains("20+ |"));
+        let threshold = definition.abilities.iter().position(|ability| matches!(&ability.kind,
+            AbilityKind::Activated(activated) if activated.effects.flattened_default_effects().iter()
+                .any(|effect| effect.downcast_ref::<ironsmith::effects::AddManaOfAnyOneColorEffect>().is_some())
+        )).unwrap();
+        for count in [0, 19, 20, 23] {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            if count > 0 { game.add_counters(source, ironsmith::CounterType::Charge, count).unwrap(); }
+            let legal = ironsmith::decision::compute_legal_actions(&game, A).unwrap().iter().any(|action| matches!(action,
+                LegalAction::ActivateManaAbility { source: id, ability_index } if *id == source && *ability_index == threshold
+            ));
+            assert_eq!(legal, count >= 20);
+            if legal {
+                let before = game.player(A).unwrap().mana_pool.total();
+                action(&mut game, LegalAction::ActivateManaAbility { source, ability_index: threshold }, &mut Choices::default());
+                assert_eq!(game.player(A).unwrap().mana_pool.total(), before + count);
+                assert!(game.is_tapped(source));
+            }
+            assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 0);
+        }
+    }
+}
+
+#[test]
+fn station_thresholds_keep_precedence_over_an_intervening_die_activation() {
+    let text = "Mana cost: {0}\nType: Artifact\nStation\n3+ | Flying\n{T}: Roll a d20.\n9+ | Vigilance";
+    for definition in program_definitions("Station with a roll", text) {
+        assert!(definition.spell_effect.is_none());
+        assert_eq!(definition.abilities.len(), 4);
+        assert!(definition.canonical_text.contains("3+ |"));
+        assert!(definition.canonical_text.contains("9+ |"));
+        let roll_index = definition.abilities.iter().position(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else { return false; };
+            let mut nodes = Vec::new();
+            for effect in activated.effects.all_effects() { collect_runtime_nodes(effect, &mut nodes); }
+            nodes.iter().any(|effect| effect.downcast_ref::<RollDieEffect>().is_some())
+        }).expect("standalone die activation remains under the 3+ Station striation");
+        for count in [0, 2, 3, 8, 9, 12] {
+            let mut game = game();
+            let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+            if count > 0 { game.add_counters(source, ironsmith::CounterType::Charge, count).unwrap(); }
+            assert_eq!(game.current_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Flying), count >= 3);
+            assert_eq!(game.current_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Vigilance), count >= 9);
+            let available = ironsmith::decision::compute_legal_actions(&game, A).unwrap().iter().any(|action| matches!(action,
+                LegalAction::ActivateAbility { source: id, ability_index } if *id == source && *ability_index == roll_index
+            ));
+            assert_eq!(available, count >= 3);
+            if available {
+                let mut dm = Choices::default();
+                game.force_next_die_roll(20);
+                action(&mut game, LegalAction::ActivateAbility { source, ability_index: roll_index }, &mut dm);
+                settle(&mut game, &mut dm);
+                assert_die_receipt(&game, 20, 20);
+                assert_eq!(game.current_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Vigilance), count >= 9,
+                    "the die result does not turn a Station striation into a result row");
+            }
+        }
     }
 }
 #[test]
@@ -396,11 +726,12 @@ fn bag_uses_the_local_roll_to_stop_public_reveal_and_randomizes_only_the_remaind
 #[test]
 fn reversal_uses_saved_stack_target_and_power_then_independently_retargets_original_and_copy() {
     for definition in definitions("Wyll's Reversal") {
-        for (natural, power, copy) in [(14, None, false), (14, Some(1), true), (20, Some(-6), false)] {
+        for (natural, power, copy) in [(14, None, false), (14, Some(1), true), (20, Some(-6), false), (20, Some(4), true)] {
             let mut game = game();
             let original = object(&mut game, B, Zone::Hand, "Original bolt", "Mana cost: {R}\nType: Instant\nThis spell deals 3 damage to target player.");
             let reversal = game.create_object_from_definition(&definition, A, Zone::Hand);
             if let Some(power) = power { object(&mut game, A, Zone::Battlefield, "Arithmetic creature", &format!("Type: Creature — Beast\nPower/Toughness: {power}/3")); }
+            if power == Some(4) { object(&mut game, A, Zone::Battlefield, "Smaller controlled creature", "Type: Creature — Beast\nPower/Toughness: 3/3"); }
             // A larger opposing creature is outside the arithmetic operand.
             object(&mut game, B, Zone::Battlefield, "Opposing creature", "Type: Creature — Beast\nPower/Toughness: 20/20");
             let mut dm = Choices { accept: true, targets: vec![vec![Target::Player(A)]].into(), ..Default::default() };
@@ -415,7 +746,7 @@ fn reversal_uses_saved_stack_target_and_power_then_independently_retargets_origi
             dm.targets.push_back(vec![Target::Player(B)]);
             if copy { dm.targets.push_back(vec![Target::Player(A)]); }
             resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-            assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 1);
+            assert_die_receipt(&game, natural, (natural as i32 + power.unwrap_or(0)).max(0) as u32);
             assert_eq!(game.stack.len(), if copy { 2 } else { 1 });
             let original_entry = game.stack.iter().find(|entry| entry.target_id() == original_stack).unwrap();
             assert_eq!(original_entry.controller, B);
@@ -447,6 +778,7 @@ fn reversal_can_copy_the_exact_activated_ability_after_its_source_leaves_and_dec
         game.move_object_by_effect(source, Zone::Graveyard).unwrap();
         game.force_next_die_roll(20);
         resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_die_receipt(&game, 20, 20);
         assert_eq!(game.stack.len(), 2);
         let original = game.stack.iter().find(|entry| entry.target_id() == original_stack).unwrap();
         assert!(original.is_ability);
@@ -739,7 +1071,7 @@ fn empty_and_all_land_consults_keep_a_known_empty_hit_and_finish_the_complete_da
 #[test]
 fn inspiration_preserves_optional_announced_graveyard_targets_and_sums_every_surviving_member() {
     for definition in definitions("Song of Inspiration") {
-        for (natural, chosen, remove_high, expected_life) in [(14, 0, false, 30), (12, 1, false, 30), (9, 2, false, 37), (12, 2, true, 30), (13, 2, true, 32)] {
+        for (natural, chosen, remove_high, expected_life) in [(14, 0, false, 30), (20, 0, false, 30), (12, 1, false, 30), (9, 2, false, 37), (20, 2, false, 37), (12, 2, true, 30), (13, 2, true, 32)] {
             let mut game = game();
             let low = object(&mut game, A, Zone::Graveyard, "Two mana card", "Mana cost: {2}\nType: Artifact");
             let high = object(&mut game, A, Zone::Graveyard, "Five mana card", "Mana cost: {5}\nType: Enchantment");
@@ -762,7 +1094,7 @@ fn inspiration_preserves_optional_announced_graveyard_targets_and_sums_every_sur
             assert_eq!(game.object(untouched).unwrap().zone, Zone::Graveyard);
             if let Some(later) = later_incarnation { assert_eq!(game.object(later).unwrap().zone, Zone::Graveyard); }
             let mana_sum = if chosen == 0 { 0 } else if chosen == 1 || remove_high { 2 } else { 7 };
-            assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [natural + mana_sum]);
+            assert_die_receipt(&game, natural, natural + mana_sum);
         }
     }
 }

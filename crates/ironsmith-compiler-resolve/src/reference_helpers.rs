@@ -2201,7 +2201,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::LifeGainedThisTurn(player) => Ok(Value::LifeGainedThisTurn(
             resolve_contextual_player_filter(player, refs)?,
         )),
-        Value::X if refs.bind_unbound_x_to_last_effect => {
+        Value::X if refs.bind_unbound_x_to_last_effect && !refs.has_announced_x => {
             if let Some(id) = refs.known_last_effect_id() {
                 Ok(Value::EffectValue(id))
             } else {

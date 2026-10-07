@@ -511,6 +511,31 @@ pub type CompilerAlternativeCastingMethod = ironsmith_core::AlternativeCastingMe
     crate::static_abilities::ThisSpellCostCondition,
 >;
 
+/// Whether the payment declares the X read by its resolution program.
+/// Keep this based on typed costs, not an X occurring in unrelated effects
+/// or in the source permanent's own printed mana cost.
+pub fn cost_has_announced_x(cost: &ironsmith_core::TotalCost<CompilerCost>) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| match cost {
+            CompilerCost::Mana(mana) => mana.has_x(),
+            CompilerCost::DynamicMana(mana) => mana.base.has_x(),
+            CompilerCost::Life(amount) | CompilerCost::RevealFromHand { count: amount, .. } => {
+                matches!(amount.unhinted(), Value::X)
+            }
+            CompilerCost::TapChosen { count, .. }
+            | CompilerCost::UntapChosen { count, .. }
+            | CompilerCost::Sacrifice { count, .. }
+            | CompilerCost::ExileChosen { count, .. }
+            | CompilerCost::ExileSourceAndChosen { count, .. } => count.dynamic_x,
+            CompilerCost::RemoveCounters { display_x, .. } => *display_x,
+            _ => false,
+        }),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            branches.iter().any(cost_has_announced_x)
+        }
+    }
+}
+
 /// Ambiguous branches and opaque effects cannot identify one counter payment.
 pub fn unique_counter_removal_cost(cost: &ironsmith_core::TotalCost<CompilerCost>)
     -> Option<super::reference_state::CounterRemovalCostReference>

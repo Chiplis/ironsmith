@@ -5123,7 +5123,7 @@ pub(super) fn single_subtype_descriptor_clause<'a>(
 }
 
 pub(super) fn is_card_graveyard_existential_clause(clause: LexedClause<'_>) -> bool {
-    surface::exact_any(clause, &[&["there", "is"], &["there", "are"]])
+    surface::exact_any(clause, &[&["there", "is"], &["there", "are"], &["there's"]])
 }
 
 pub(super) fn is_graveyard_location_clause(clause: LexedClause<'_>) -> bool {
@@ -5161,9 +5161,17 @@ pub(super) fn parse_subtype_card_descriptor_clause(
 pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_word("there's"))
+        && tokens.iter().any(|token| token.as_word().is_none() && !token.is_comma())
+    {
+        return Ok(None);
+    }
     let clause = LexedClause::new(tokens);
     let outer_atoms = [
-        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::subject(
+            "existential",
+            WinnowCaptureKind::OneOfPhrase(&[&["there", "is"], &["there", "are"], &["there's"]]),
+        ),
         WinnowSequence::object("descriptors", WinnowCaptureKind::UntilPhrase(&["in"])),
         WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
         WinnowSequence::modifier("location", WinnowCaptureKind::Rest),
@@ -5246,6 +5254,13 @@ pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
 pub(super) fn parse_card_in_your_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    // The contracted surface is newly admitted. Do not let a word-only
+    // capture discard a mana symbol or an unsupported operator in its tail.
+    if tokens.first().is_some_and(|token| token.is_word("there's"))
+        && tokens.iter().any(|token| token.as_word().is_none() && !token.is_comma())
+    {
+        return None;
+    }
     // Counting card types is distinct from finding a card. The broad object
     // descriptor scanner must not discard the cardinality and "among" scope.
     if parse_card_types_in_graveyard_predicate(tokens).is_some() {
@@ -5258,7 +5273,10 @@ pub(super) fn parse_card_in_your_graveyard_predicate(
     }
     let clause = LexedClause::new(tokens);
     let atoms = [
-        WinnowSequence::subject("existential", WinnowCaptureKind::WordCount(2)),
+        WinnowSequence::subject(
+            "existential",
+            WinnowCaptureKind::OneOfPhrase(&[&["there", "is"], &["there", "are"], &["there's"]]),
+        ),
         WinnowSequence::object("descriptor", WinnowCaptureKind::UntilPhrase(&["in"])),
         WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
         WinnowSequence::modifier("location", WinnowCaptureKind::Rest),

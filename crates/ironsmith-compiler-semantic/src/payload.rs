@@ -667,6 +667,10 @@ pub enum IfResultPredicate {
     PriorEffectResult(ironsmith_core::PriorEffectResultSurface),
     WasDeclined,
     Value(ironsmith_core::Comparison),
+    /// A printed numeric die-result row. Retain its producer family until
+    /// reference resolution; a generic numeric outcome is not a die roll.
+    /// Lowering uses the existing runtime numeric-result predicate.
+    DieValue(ironsmith_core::Comparison),
     AffectedObjectsShare {
         required_count: u32,
         characteristic: ironsmith_core::ObjectCharacteristic,

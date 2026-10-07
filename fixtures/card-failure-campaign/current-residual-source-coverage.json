@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "source_accounting_reconciled_execution_closed_until_original_source_majority",
   "source_ledger_base_commit": "b39a94f1799ace53f0a4562acfaeb1f5577145ac",
-  "source_implementation_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+  "source_implementation_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
   "source_validation": "UNRUN; independent source review plus inventory/JSON/hash/Git reconciliation only. No new-source build, test, probe, formatter, code generation or replay.",
   "current_measurement": {
     "source": {
@@ -95,7 +95,7 @@
     "current_residual_unique": 2005,
     "current_residual_ids_sha256": "0b47c4cfdc670426f507308dd4431c8717e841f535c882f83bc7f26e1dd742ae",
     "new_current_scope_regressed_unique": 151,
-    "new_current_scope_note": "These 151 identities were supported at original e874 baseline and remain outside original-failure card rows and original-majority credit. Of them, 56 have shared blocker repair proposals and 21 have full-body source proposals; 74 remain unaddressed. All 151 remain unresolved on the measured main snapshot, with no new measured recovery.",
+    "new_current_scope_note": "151 measured regressions remain outside original-failure rows and original-majority credit: 56 shared-blocker proposals plus 23 full-body proposals, leaving 72 unaddressed. NEXT03 addition is independently source-reviewed. All 151 remain unresolved in the retained measurement.",
     "compiler_facing_source_changes": {
       "oracle_text_changed_entries": 0,
       "semantic_metadata_changed_entries": 0,
@@ -115,19 +115,19 @@
     "inherited_pre_refresh_entries": 1261,
     "inherited_supported_on_current_main_unique": 1201,
     "inherited_supported_on_current_main_entries": 1205,
-    "reheld_inherited_unique": 45,
-    "reheld_inherited_entries": 46,
+    "reheld_inherited_unique": 30,
+    "reheld_inherited_entries": 30,
     "rehold_unique_parse_status_counts": {
-      "parse_failed": 44,
+      "parse_failed": 29,
       "compiled_with_allow_unsupported": 1
     },
-    "new_source_proposed_unique": 132,
-    "new_source_proposed_current_residual_unique": 124,
+    "new_source_proposed_unique": 154,
+    "new_source_proposed_current_residual_unique": 146,
     "new_source_proposed_already_supported_semantic_change_unique": 8,
-    "original_baseline_source_eligible_union_unique": 1256,
-    "original_baseline_source_eligible_union_entries": 1260,
-    "original_baseline_source_eligible_ids_sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826",
-    "current_residual_source_eligible_unique": 124,
+    "original_baseline_source_eligible_union_unique": 1276,
+    "original_baseline_source_eligible_union_entries": 1281,
+    "original_baseline_source_eligible_ids_sha256": "72cb8399a29c945b7b683f7885393cc8e2638630708e0f25e8c698b5e79c66e9",
+    "current_residual_source_eligible_unique": 146,
     "new_fixture_partials_excluded_unique": 13,
     "new_source_measured_recoveries": 0,
     "historical_source_evidence_preserved": true,
@@ -144,25 +144,25 @@
       "reheld_inherited_unique": 55,
       "reheld_inherited_entries": 56
     },
-    "restored_inherited_source_proposals_unique": 10,
-    "restored_inherited_source_proposals_entries": 10,
-    "restored_inherited_oracle_ids_sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c",
-    "new_source_proposed_entries": 133,
-    "new_source_proposed_scope": "Cumulative next01/next02 union of 76 full-body source proposals and 56 shared blocker repair proposals, including 8 already-supported semantic corrections. 132 identities / 133 entries describe source scope, not verified whole-card or runtime recoveries.",
-    "new_full_body_source_proposed_unique": 76,
+    "restored_inherited_source_proposals_unique": 25,
+    "restored_inherited_source_proposals_entries": 26,
+    "restored_inherited_oracle_ids_sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a",
+    "new_source_proposed_entries": 156,
+    "new_source_proposed_scope": "Cumulative source-reviewed next01/next02/next03 union: 98 full-body source proposals and 56 shared-blocker proposals, including 8 already-supported semantic corrections. 154 identities / 156 entries are source scope only; no verified recovery.",
+    "new_full_body_source_proposed_unique": 98,
     "new_shared_blocker_repair_proposed_unique": 56,
-    "new_source_proposed_current_residual_entries": 125,
-    "current_residual_source_eligible_entries": 125,
-    "current_residual_source_eligible_ids_sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1",
-    "current_residual_full_body_source_proposed_unique": 68,
+    "new_source_proposed_current_residual_entries": 148,
+    "current_residual_source_eligible_entries": 148,
+    "current_residual_source_eligible_ids_sha256": "42a54ba1c2232f64a93eb74de6e88bf2fde88195e4d9179f84d97bb731d463e7",
+    "current_residual_full_body_source_proposed_unique": 90,
     "current_residual_shared_blocker_repair_proposed_unique": 56,
-    "current_residual_original_baseline_source_proposed_unique": 47,
-    "current_regression_source_proposed_unique": 77,
-    "current_regression_source_proposed_entries": 78,
-    "current_regression_unaddressed_unique": 74,
+    "current_residual_original_baseline_source_proposed_unique": 67,
+    "current_regression_source_proposed_unique": 79,
+    "current_regression_source_proposed_entries": 80,
+    "current_regression_unaddressed_unique": 72,
     "current_regression_original_baseline_credit": 0,
-    "current_packet_total_touched_unique": 132,
-    "current_packet_total_touched_entries": 133,
+    "current_packet_total_touched_unique": 154,
+    "current_packet_total_touched_entries": 156,
     "prior_next01_source_admission": {
       "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
       "source_accounting": {
@@ -225,7 +225,138 @@
     "next_series_02_proposed_unique": 28,
     "next_series_02_original_baseline_credit": 18,
     "next_series_02_regression_unique": 10,
-    "next_series_02_held_candidates_excluded_unique": 12
+    "next_series_02_held_candidates_excluded_unique": 12,
+    "prior_next02_source_admission": {
+      "source_implementation_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "source_accounting": {
+        "pre_refresh_proposed_unique": 1283,
+        "pre_refresh_proposed_entries": 1288,
+        "inherited_pre_refresh_unique": 1256,
+        "inherited_pre_refresh_entries": 1261,
+        "inherited_supported_on_current_main_unique": 1201,
+        "inherited_supported_on_current_main_entries": 1205,
+        "reheld_inherited_unique": 45,
+        "reheld_inherited_entries": 46,
+        "rehold_unique_parse_status_counts": {
+          "parse_failed": 44,
+          "compiled_with_allow_unsupported": 1
+        },
+        "new_source_proposed_unique": 132,
+        "new_source_proposed_current_residual_unique": 124,
+        "new_source_proposed_already_supported_semantic_change_unique": 8,
+        "original_baseline_source_eligible_union_unique": 1256,
+        "original_baseline_source_eligible_union_entries": 1260,
+        "original_baseline_source_eligible_ids_sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826",
+        "current_residual_source_eligible_unique": 124,
+        "new_fixture_partials_excluded_unique": 13,
+        "new_source_measured_recoveries": 0,
+        "historical_source_evidence_preserved": true,
+        "readmission_requirement": "Re-held identities require subsequent substantive source corrections plus full-body source review; historical source evidence alone cannot restore credit.",
+        "attribution": "Measured clean-main recoveries belong to the pinned main snapshot. No recovery is attributed to this unrun new source.",
+        "prior_source_admission": {
+          "source_implementation_commit": "2f00b78b082d02179a3730b97143904712223e1b",
+          "original_baseline_source_eligible_unique": 1228,
+          "original_baseline_source_eligible_entries": 1232,
+          "original_baseline_source_eligible_ids_sha256": "e8090de3469a3c988dc547bdfe4f82f646e073af7e10f2e3d03935621839f8da",
+          "current_residual_source_proposed_unique": 19,
+          "new_full_body_source_proposed_unique": 27,
+          "new_supported_semantic_corrections_unique": 8,
+          "reheld_inherited_unique": 55,
+          "reheld_inherited_entries": 56
+        },
+        "restored_inherited_source_proposals_unique": 10,
+        "restored_inherited_source_proposals_entries": 10,
+        "restored_inherited_oracle_ids_sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c",
+        "new_source_proposed_entries": 133,
+        "new_source_proposed_scope": "Cumulative next01/next02 union of 76 full-body source proposals and 56 shared blocker repair proposals, including 8 already-supported semantic corrections. 132 identities / 133 entries describe source scope, not verified whole-card or runtime recoveries.",
+        "new_full_body_source_proposed_unique": 76,
+        "new_shared_blocker_repair_proposed_unique": 56,
+        "new_source_proposed_current_residual_entries": 125,
+        "current_residual_source_eligible_entries": 125,
+        "current_residual_source_eligible_ids_sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1",
+        "current_residual_full_body_source_proposed_unique": 68,
+        "current_residual_shared_blocker_repair_proposed_unique": 56,
+        "current_residual_original_baseline_source_proposed_unique": 47,
+        "current_regression_source_proposed_unique": 77,
+        "current_regression_source_proposed_entries": 78,
+        "current_regression_unaddressed_unique": 74,
+        "current_regression_original_baseline_credit": 0,
+        "current_packet_total_touched_unique": 132,
+        "current_packet_total_touched_entries": 133,
+        "prior_next01_source_admission": {
+          "source_implementation_commit": "a363ea924f6ef98d160060960228688fede0c6a0",
+          "source_accounting": {
+            "pre_refresh_proposed_unique": 1283,
+            "pre_refresh_proposed_entries": 1288,
+            "inherited_pre_refresh_unique": 1256,
+            "inherited_pre_refresh_entries": 1261,
+            "inherited_supported_on_current_main_unique": 1201,
+            "inherited_supported_on_current_main_entries": 1205,
+            "reheld_inherited_unique": 45,
+            "reheld_inherited_entries": 46,
+            "rehold_unique_parse_status_counts": {
+              "parse_failed": 44,
+              "compiled_with_allow_unsupported": 1
+            },
+            "new_source_proposed_unique": 104,
+            "new_source_proposed_current_residual_unique": 96,
+            "new_source_proposed_already_supported_semantic_change_unique": 8,
+            "original_baseline_source_eligible_union_unique": 1238,
+            "original_baseline_source_eligible_union_entries": 1242,
+            "original_baseline_source_eligible_ids_sha256": "fdf5158c5df7684c79710402e291775ebc98074b9682eefe7675edbf7951ffe7",
+            "current_residual_source_eligible_unique": 96,
+            "new_fixture_partials_excluded_unique": 13,
+            "new_source_measured_recoveries": 0,
+            "historical_source_evidence_preserved": true,
+            "readmission_requirement": "Re-held identities require subsequent substantive source corrections plus full-body source review; historical source evidence alone cannot restore credit.",
+            "attribution": "Measured clean-main recoveries belong to the pinned main snapshot. No recovery is attributed to this unrun new source.",
+            "prior_source_admission": {
+              "source_implementation_commit": "2f00b78b082d02179a3730b97143904712223e1b",
+              "original_baseline_source_eligible_unique": 1228,
+              "original_baseline_source_eligible_entries": 1232,
+              "original_baseline_source_eligible_ids_sha256": "e8090de3469a3c988dc547bdfe4f82f646e073af7e10f2e3d03935621839f8da",
+              "current_residual_source_proposed_unique": 19,
+              "new_full_body_source_proposed_unique": 27,
+              "new_supported_semantic_corrections_unique": 8,
+              "reheld_inherited_unique": 55,
+              "reheld_inherited_entries": 56
+            },
+            "restored_inherited_source_proposals_unique": 10,
+            "restored_inherited_source_proposals_entries": 10,
+            "restored_inherited_oracle_ids_sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c",
+            "new_source_proposed_entries": 105,
+            "new_source_proposed_scope": "Union of 48 full-body source proposals and 56 shared blocker repair proposed identities, including 8 already-supported semantic corrections. This is source scope, not 104 verified whole-card or runtime recoveries.",
+            "new_full_body_source_proposed_unique": 48,
+            "new_shared_blocker_repair_proposed_unique": 56,
+            "new_source_proposed_current_residual_entries": 97,
+            "current_residual_source_eligible_entries": 97,
+            "current_residual_source_eligible_ids_sha256": "b1b93b0ecba60c51b2f103ab1bee5402f62fc467f866ad8ce371d48f42f971f4",
+            "current_residual_full_body_source_proposed_unique": 40,
+            "current_residual_shared_blocker_repair_proposed_unique": 56,
+            "current_residual_original_baseline_source_proposed_unique": 29,
+            "current_regression_source_proposed_unique": 67,
+            "current_regression_source_proposed_entries": 68,
+            "current_regression_unaddressed_unique": 84,
+            "current_regression_original_baseline_credit": 0,
+            "current_packet_total_touched_unique": 104,
+            "current_packet_total_touched_entries": 105
+          }
+        },
+        "next_series_02_proposed_unique": 28,
+        "next_series_02_original_baseline_credit": 18,
+        "next_series_02_regression_unique": 10,
+        "next_series_02_held_candidates_excluded_unique": 12
+      }
+    },
+    "current_residual_original_baseline_source_proposed_entries": 68,
+    "next_series_03_proposed_unique": 22,
+    "next_series_03_proposed_entries": 23,
+    "next_series_03_original_baseline_credit": 20,
+    "next_series_03_restored_original_unique": 15,
+    "next_series_03_restored_original_entries": 16,
+    "next_series_03_regression_unique": 2,
+    "next_series_03_held_candidates_excluded_unique": 8,
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "current_reholds": [
     {
@@ -275,31 +406,6 @@
           "parse_error_sha256": "b8dd997e7e50a8e1c3cafc74a483197a9ae3294dfb7751370384bcb4e19d551e",
           "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
           "diagnostic_signature_sha256": "5de6df6507f9300df13131204197080e6a3d571b687c04c3f8efaa8866c7f9a4"
-        }
-      ]
-    },
-    {
-      "oracle_id": "119585c7-ddfa-47ed-b2f8-488ebc156222",
-      "names": [
-        "Diviner's Portent"
-      ],
-      "historical_source_families": [
-        "complete-die-result-programs"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 4,
-      "current_failure_entries": [
-        {
-          "card_name": "Diviner's Portent",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "parser could not lower station threshold line: '15+ | Scry X, then draw X cards.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | Scry X, then draw X cards.' [rule-path=station-threshold-line]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "5e6bdeb634442a8f8669a1ae8064df9d990f278ace9adf517415ae706ec49571",
-          "parse_loss_reasons_sha256": "c82b44589d6ddabf5b00e7a72ed9d4c51e2957e45dc92bb4e2120e4ca99b5e9e",
-          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
         }
       ]
     },
@@ -479,56 +585,6 @@
       ]
     },
     {
-      "oracle_id": "32e915fb-3836-4bed-93b1-61c9c3951ad1",
-      "names": [
-        "Sudden Storm"
-      ],
-      "historical_source_families": [
-        "plural-controller-and-fixed-untap-steps"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 14,
-      "current_failure_entries": [
-        {
-          "card_name": "Sudden Storm",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=statement-line > statement-probe]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "1264b0d8c9d596790adc40734df7f4717767a4d43b2e9c6ac09eb77266c66bd9",
-          "parse_loss_reasons_sha256": "a36d6a2f381d344f4005e38ea011b8d3908d4d55d1e2b3e7992828f04161a20c",
-          "diagnostic_signature_sha256": "26f1e726b12714e476af660fcaf6a2a271afba91dd7bb62f8ffc9a6ded7e6897"
-        }
-      ]
-    },
-    {
-      "oracle_id": "3afe854a-7daa-4745-a5d9-04879e5d940a",
-      "names": [
-        "Shivan Sand-Mage"
-      ],
-      "historical_source_families": [
-        "suspended-counter-complete-bodies"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 15,
-      "current_failure_entries": [
-        {
-          "card_name": "Shivan Sand-Mage",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
-          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
-          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
-        }
-      ]
-    },
-    {
       "oracle_id": "41d11144-32fc-4e45-a8db-3edb9dc0ce80",
       "names": [
         "God-Eternal Kefnet"
@@ -575,56 +631,6 @@
           "parse_error_sha256": "07e7d5703d46384bfa0f92676537d5f8b3ab84c82d05fd5afca7c6f869a62b7f",
           "parse_loss_reasons_sha256": "4e9bdb289d932dce1159630785c134f5b7661be597d6535fd0b48378ae0ea164",
           "diagnostic_signature_sha256": "f33e5044c2c1107e44514b3d3ce8ae6c500261f8c61dbe5dc9bc2516b4d1259f"
-        }
-      ]
-    },
-    {
-      "oracle_id": "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
-      "names": [
-        "Cone of Cold"
-      ],
-      "historical_source_families": [
-        "plural-controller-and-fixed-untap-steps"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 18,
-      "current_failure_entries": [
-        {
-          "card_name": "Cone of Cold",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps'; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps'",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
-          "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
-          "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
-        }
-      ]
-    },
-    {
-      "oracle_id": "57939644-6f9a-4653-920b-f2d28559a9ca",
-      "names": [
-        "Timecrafting"
-      ],
-      "historical_source_families": [
-        "suspended-counter-complete-bodies"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 19,
-      "current_failure_entries": [
-        {
-          "card_name": "Timecrafting",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
-          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
-          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
         }
       ]
     },
@@ -679,31 +685,6 @@
       ]
     },
     {
-      "oracle_id": "7d249b16-33ef-463e-9e5d-0b84d434f093",
-      "names": [
-        "Breaching Leviathan"
-      ],
-      "historical_source_families": [
-        "plural-controller-and-fixed-untap-steps"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 25,
-      "current_failure_entries": [
-        {
-          "card_name": "Breaching Leviathan",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
-          "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
-          "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
-        }
-      ]
-    },
-    {
       "oracle_id": "7e6ca948-a66d-46a9-9174-ac7b75d7b348",
       "names": [
         "Mutalith Vortex Beast"
@@ -750,68 +731,6 @@
           "parse_error_sha256": "ed82520794e3b2272dd1cb218bcb5daf05fdcbd19e5bfe93e4ee57c8a9e47b6b",
           "parse_loss_reasons_sha256": "1c798c22472423bf6b6c5967191dea6f7ee865aa8e78af9a7c10b5876920169c",
           "diagnostic_signature_sha256": "f772a7273ada7b23cd6d9b6bb6b5c4160fcc1a48a3e6eca4d573f5d3ec3c38c1"
-        }
-      ]
-    },
-    {
-      "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
-      "names": [
-        "Wyll's Reversal"
-      ],
-      "historical_source_families": [
-        "complete-die-result-programs"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 28,
-      "current_failure_entries": [
-        {
-          "card_name": "Wyll's Reversal",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "parser could not lower station threshold line: '15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.' [rule-path=station-threshold-line]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "929c37ff3ebe3b96a71a8cd4d166a54a6f7483f3b0c4f66ee07c6076a8a7293b",
-          "parse_loss_reasons_sha256": "1555a024b52982db0ab00b2cb4fdc4fec2b10ae713fedaca025b292e4a142f37",
-          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
-        }
-      ]
-    },
-    {
-      "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
-      "names": [
-        "Sakashima of a Thousand Faces",
-        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
-      ],
-      "historical_source_families": [
-        "enter-copy-exceptions"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 29,
-      "current_failure_entries": [
-        {
-          "card_name": "Sakashima of a Thousand Faces",
-          "parse_status": "parse_failed",
-          "category": "semantic_output_failure",
-          "parse_lossy": 0,
-          "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
-          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
-        },
-        {
-          "card_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
-          "parse_status": "parse_failed",
-          "category": "semantic_output_failure",
-          "parse_lossy": 0,
-          "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
-          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
         }
       ]
     },
@@ -891,56 +810,6 @@
       ]
     },
     {
-      "oracle_id": "a3270e64-38d2-49e5-8a1e-a5e81205776b",
-      "names": [
-        "Dragon Turtle"
-      ],
-      "historical_source_families": [
-        "plural-controller-and-fixed-untap-steps"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 33,
-      "current_failure_entries": [
-        {
-          "card_name": "Dragon Turtle",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps'; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps'",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
-          "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
-          "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
-        }
-      ]
-    },
-    {
-      "oracle_id": "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
-      "names": [
-        "Druid of the Emerald Grove"
-      ],
-      "historical_source_families": [
-        "complete-die-result-programs"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 34,
-      "current_failure_entries": [
-        {
-          "card_name": "Druid of the Emerald Grove",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "parser could not lower station threshold line: '20+ | Put those cards onto the battlefield tapped, then shuffle.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '20+ | Put those cards onto the battlefield tapped, then shuffle.' [rule-path=station-threshold-line]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "e5342cd179572c171cb7c3ad44fb60d5c219660117f8f8599ca8af784625d666",
-          "parse_loss_reasons_sha256": "1fc4bb5dbad712093396f75499d53e222faad7c31c1a73fc9ab6780f3cfdf583",
-          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
-        }
-      ]
-    },
-    {
       "oracle_id": "aee2cd1b-9bf9-4b91-83a4-2f1dbc82dcf4",
       "names": [
         "Malevolent Witchkite"
@@ -987,31 +856,6 @@
           "parse_error_sha256": "e0f9c459cf0f1c534b50c5f440a6a8f4e0f6f6c03412d0dda2ad7e57defede9f",
           "parse_loss_reasons_sha256": "647937b8ae07b44d5c2deac54d7544d760ff05c73023e1549036f765ba89a00e",
           "diagnostic_signature_sha256": "d80750c81af5816de5ad13a8d2920e0ef5c71be41e31a66c1d629bc02a5f4a6c"
-        }
-      ]
-    },
-    {
-      "oracle_id": "b2f6a75e-5637-41a8-a32b-56666716492d",
-      "names": [
-        "Protean Raider"
-      ],
-      "historical_source_families": [
-        "enter-copy-exceptions"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 37,
-      "current_failure_entries": [
-        {
-          "card_name": "Protean Raider",
-          "parse_status": "parse_failed",
-          "category": "semantic_output_failure",
-          "parse_lossy": 0,
-          "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
-          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
         }
       ]
     },
@@ -1063,56 +907,6 @@
           "parse_error_sha256": "c022db7609aedc4c70fbb90b75dd17582bfb6f3bdd6c4251ba168f0df88dc452",
           "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
           "diagnostic_signature_sha256": "e132f1f76c8f4c2a0834cac705e04d63a04191666f4620a32af4fbd3c9d76659"
-        }
-      ]
-    },
-    {
-      "oracle_id": "b86b1878-65a9-48df-9727-1e80683d7e86",
-      "names": [
-        "Fury Charm"
-      ],
-      "historical_source_families": [
-        "suspended-counter-complete-bodies"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 40,
-      "current_failure_entries": [
-        {
-          "card_name": "Fury Charm",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
-          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
-          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
-        }
-      ]
-    },
-    {
-      "oracle_id": "bdb80d7b-672c-4e2a-b93b-9b96721b93f2",
-      "names": [
-        "Song of Inspiration"
-      ],
-      "historical_source_families": [
-        "complete-die-result-programs"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 42,
-      "current_failure_entries": [
-        {
-          "card_name": "Song of Inspiration",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "parser could not lower station threshold line: '15+ | Return those cards to your hand. You gain life equal to their total mana value.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | Return those cards to your hand. You gain life equal to their total mana value.' [rule-path=station-threshold-line]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "9f08ef351546603cf686777ccaf80b14f1b9ab6ebcdd568b7a6c7e97dbfeb2be",
-          "parse_loss_reasons_sha256": "bc808d81dfd3086020d6e63e01fa8be5c254de11f89d8f1ec4f1b36db27e7132",
-          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
         }
       ]
     },
@@ -1243,31 +1037,6 @@
       ]
     },
     {
-      "oracle_id": "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4",
-      "names": [
-        "Lorthos, the Tidemaker"
-      ],
-      "historical_source_families": [
-        "plural-controller-and-fixed-untap-steps"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 50,
-      "current_failure_entries": [
-        {
-          "card_name": "Lorthos, the Tidemaker",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
-          "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
-          "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
-        }
-      ]
-    },
-    {
       "oracle_id": "ecb81888-589b-4486-a444-e0c26384854e",
       "names": [
         "Avatar Destiny"
@@ -1289,31 +1058,6 @@
           "parse_error_sha256": "291f096b97c86f74cd864a29057c46d543e51225ba0648ce9780a35d45a3548c",
           "parse_loss_reasons_sha256": "e4b9b2c18e8a5baaa537891d74b51c66a01c3c4ebcd512e85200ff5ad70f922b",
           "diagnostic_signature_sha256": "ea5bdce6c8721203cdf471c0b10f3db70e77ba9dfb315a5fa50b551e0e33e99f"
-        }
-      ]
-    },
-    {
-      "oracle_id": "efa3e524-1591-4036-81ec-74199cee25aa",
-      "names": [
-        "Timebender"
-      ],
-      "historical_source_families": [
-        "suspended-counter-complete-bodies"
-      ],
-      "status": "reheld_current_main_failure",
-      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
-      "source_record_index": 52,
-      "current_failure_entries": [
-        {
-          "card_name": "Timebender",
-          "parse_status": "parse_failed",
-          "category": "parser_failure",
-          "parse_lossy": 1,
-          "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
-          "diagnostic_summary_is_complete": true,
-          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
-          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
-          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
         }
       ]
     },
@@ -4774,6 +4518,741 @@
           "diagnostic_signature_sha256": "d3b4545be30596ee34ca7aa81f4c8b75dbd03b99059ceb8e605472b27bcc2406"
         }
       ]
+    },
+    {
+      "oracle_id": "a4499cf9-04a0-45c5-9c73-19f8e7e95da6",
+      "names": [
+        "Aurora Champion"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        96
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Aurora Champion",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "c6038337e13fc17e5f1f5dd04702533a4210f3e014703a9879a362e3cdd20588",
+          "parse_loss_reasons_sha256": "837496e9fd189253351051df01dac0f382af3addc5d313b3bb45ca3a4ccb416c",
+          "diagnostic_signature_sha256": "db75ac6deb4f17c8b1d6d2c051d323097c95d441d7d9742deb2b822e3f4881bc"
+        }
+      ]
+    },
+    {
+      "oracle_id": "d5a7412a-2258-4d3e-9e0f-a150cc69081e",
+      "names": [
+        "Bull-Rush Bruiser"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        200
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Bull-Rush Bruiser",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "6006cedab49a08db4ca7abd767b607e64dc75ce66afbd1a7dc5f69131e806dbc",
+          "parse_loss_reasons_sha256": "8f7fba38d2c8aed4e32e05c83e17eaa8941e4ec5eed01815ea3d69c26e255cfd",
+          "diagnostic_signature_sha256": "db75ac6deb4f17c8b1d6d2c051d323097c95d441d7d9742deb2b822e3f4881bc"
+        }
+      ]
+    },
+    {
+      "oracle_id": "836bfcad-014a-40cc-ab79-906fcab723a0",
+      "names": [
+        "Sickle Dancer"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1489
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Sickle Dancer",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "e1d378b4f28ec042957639ee52179f20f98f65180290500be8f5a8ff4cee9266",
+          "parse_loss_reasons_sha256": "96b2063842e9d849f8598119333217540b3396136c727cb8d38c9b6995775f92",
+          "diagnostic_signature_sha256": "db75ac6deb4f17c8b1d6d2c051d323097c95d441d7d9742deb2b822e3f4881bc"
+        }
+      ]
+    },
+    {
+      "oracle_id": "83abf1d0-04e4-49e5-bf63-59f77829ffd1",
+      "names": [
+        "Dragonfly Swarm"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        443
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Dragonfly Swarm",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "aa55065808ff7b9fbc0279395bef364ce4edfa9e7611063fb6c777e9b39cac93",
+          "parse_loss_reasons_sha256": "c44739ef66ed01f620492b7a3644350951e62f2bb0dd77becf38d442439cfbe3",
+          "diagnostic_signature_sha256": "1e0b458a8f2726ecff3c85e0f4297a1b49f781329e87e0155f57b77d2d93b9ba"
+        }
+      ]
+    },
+    {
+      "oracle_id": "fb3a0910-a582-41ef-b5b9-3cda1f1cd5ce",
+      "names": [
+        "Walltop Sentries"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1911
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Walltop Sentries",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "c136de9cd8fd6d14d9fc75076e38ca18c6d565bc3f83152ee44132194051c3b1",
+          "parse_loss_reasons_sha256": "638ae15901e263785f02d837cb90ccb7fb8ac95072b63cc696c2ca8d45892e39",
+          "diagnostic_signature_sha256": "b8fbc90eb3bb51cb8afbfa855f22990c8191321f09c8706bdaa3212220e24a8d"
+        }
+      ]
+    },
+    {
+      "oracle_id": "1ce239f2-79ad-4a30-8e8f-f985045f78dc",
+      "names": [
+        "Chameleon, Master of Disguise"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        251
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Chameleon, Master of Disguise",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+        }
+      ]
+    },
+    {
+      "oracle_id": "78699161-fc14-4a44-8a15-0f7c08be0343",
+      "names": [
+        "Moritte of the Frost"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "full-body source proposal",
+      "original_baseline_source_credit": 0,
+      "formerly_supported_regression": true,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1088
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Moritte of the Frost",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+        }
+      ]
+    },
+    {
+      "oracle_id": "b2f6a75e-5637-41a8-a32b-56666716492d",
+      "names": [
+        "Protean Raider"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1283
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Protean Raider",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+        }
+      ]
+    },
+    {
+      "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
+      "names": [
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1415,
+        1416
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Sakashima of a Thousand Faces",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+        },
+        {
+          "card_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+          "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+        }
+      ]
+    },
+    {
+      "oracle_id": "b86b1878-65a9-48df-9727-1e80683d7e86",
+      "names": [
+        "Fury Charm"
+      ],
+      "family_id": "suspended-filter-union",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        624
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Fury Charm",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+        }
+      ]
+    },
+    {
+      "oracle_id": "3afe854a-7daa-4745-a5d9-04879e5d940a",
+      "names": [
+        "Shivan Sand-Mage"
+      ],
+      "family_id": "suspended-filter-union",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1485
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Shivan Sand-Mage",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+        }
+      ]
+    },
+    {
+      "oracle_id": "efa3e524-1591-4036-81ec-74199cee25aa",
+      "names": [
+        "Timebender"
+      ],
+      "family_id": "suspended-filter-union",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1781
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Timebender",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+        }
+      ]
+    },
+    {
+      "oracle_id": "57939644-6f9a-4653-920b-f2d28559a9ca",
+      "names": [
+        "Timecrafting"
+      ],
+      "family_id": "suspended-filter-union",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1782
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Timecrafting",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+          "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+          "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+        }
+      ]
+    },
+    {
+      "oracle_id": "119585c7-ddfa-47ed-b2f8-488ebc156222",
+      "names": [
+        "Diviner's Portent"
+      ],
+      "family_id": "numeric-result-tables",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        423
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Diviner's Portent",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "5e6bdeb634442a8f8669a1ae8064df9d990f278ace9adf517415ae706ec49571",
+          "parse_loss_reasons_sha256": "c82b44589d6ddabf5b00e7a72ed9d4c51e2957e45dc92bb4e2120e4ca99b5e9e",
+          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+        }
+      ]
+    },
+    {
+      "oracle_id": "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+      "names": [
+        "Druid of the Emerald Grove"
+      ],
+      "family_id": "numeric-result-tables",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        455
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Druid of the Emerald Grove",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "e5342cd179572c171cb7c3ad44fb60d5c219660117f8f8599ca8af784625d666",
+          "parse_loss_reasons_sha256": "1fc4bb5dbad712093396f75499d53e222faad7c31c1a73fc9ab6780f3cfdf583",
+          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+        }
+      ]
+    },
+    {
+      "oracle_id": "bdb80d7b-672c-4e2a-b93b-9b96721b93f2",
+      "names": [
+        "Song of Inspiration"
+      ],
+      "family_id": "numeric-result-tables",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1537
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Song of Inspiration",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "9f08ef351546603cf686777ccaf80b14f1b9ab6ebcdd568b7a6c7e97dbfeb2be",
+          "parse_loss_reasons_sha256": "bc808d81dfd3086020d6e63e01fa8be5c254de11f89d8f1ec4f1b36db27e7132",
+          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+        }
+      ]
+    },
+    {
+      "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+      "names": [
+        "Wyll's Reversal"
+      ],
+      "family_id": "numeric-result-tables",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1976
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Wyll's Reversal",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "929c37ff3ebe3b96a71a8cd4d166a54a6f7483f3b0c4f66ee07c6076a8a7293b",
+          "parse_loss_reasons_sha256": "1555a024b52982db0ab00b2cb4fdc4fec2b10ae713fedaca025b292e4a142f37",
+          "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+        }
+      ]
+    },
+    {
+      "oracle_id": "7d249b16-33ef-463e-9e5d-0b84d434f093",
+      "names": [
+        "Breaching Leviathan"
+      ],
+      "family_id": "plural-controller-untap",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        183
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Breaching Leviathan",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
+          "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
+          "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+      "names": [
+        "Cone of Cold"
+      ],
+      "family_id": "plural-controller-untap",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        309
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Cone of Cold",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
+          "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
+          "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
+        }
+      ]
+    },
+    {
+      "oracle_id": "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+      "names": [
+        "Dragon Turtle"
+      ],
+      "family_id": "plural-controller-untap",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        440
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Dragon Turtle",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
+          "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
+          "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
+        }
+      ]
+    },
+    {
+      "oracle_id": "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4",
+      "names": [
+        "Lorthos, the Tidemaker"
+      ],
+      "family_id": "plural-controller-untap",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        980
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Lorthos, the Tidemaker",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
+          "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
+          "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
+        }
+      ]
+    },
+    {
+      "oracle_id": "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+      "names": [
+        "Sudden Storm"
+      ],
+      "family_id": "plural-controller-untap",
+      "measurement": "unresolved_on_measured_main",
+      "source_tier": "restored full-body source proposal",
+      "original_baseline_source_credit": 1,
+      "formerly_supported_regression": false,
+      "new_source_validation": "UNRUN",
+      "verified_compile_recovery": false,
+      "verified_runtime_recovery": false,
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz",
+      "source_record_indexes": [
+        1620
+      ],
+      "measured_entry_digests": [
+        {
+          "card_name": "Sudden Storm",
+          "parse_status": "parse_failed",
+          "parse_error_sha256": "1264b0d8c9d596790adc40734df7f4717767a4d43b2e9c6ac09eb77266c66bd9",
+          "parse_loss_reasons_sha256": "a36d6a2f381d344f4005e38ea011b8d3908d4d55d1e2b3e7992828f04161a20c",
+          "diagnostic_signature_sha256": "26f1e726b12714e476af660fcaf6a2a271afba91dd7bb62f8ffc9a6ded7e6897"
+        }
+      ]
     }
   ],
   "new_source_supported_but_semantic_change": [
@@ -5300,8 +5779,16 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "copy-entry-semantic-integrity",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "1e4032f6-9741-4845-9325-781c9e489172",
@@ -5901,8 +6388,16 @@
       ],
       "source_credit": 0,
       "source_credit_scope": "original_baseline_source_majority",
-      "current_residual_source_proposal": false,
-      "source_tier": "unaddressed"
+      "current_residual_source_proposal": true,
+      "source_tier": "full-body source proposal",
+      "family_id": "copy-entry-semantic-integrity",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_recovery": false
     },
     {
       "oracle_id": "790d3ee2-8b93-464c-9b16-afe62db0048c",
@@ -6955,39 +7450,43 @@
     "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
     "threshold_denominator_unique_remaining": 3193,
     "majority_minimum_unique_remaining": 1597,
-    "reconciled_source_eligible_unique": 1256,
-    "source_eligible_shortfall_to_threshold": 341,
+    "reconciled_source_eligible_unique": 1276,
+    "source_eligible_shortfall_to_threshold": 321,
     "semantic_holds_count_as_coverage": false,
-    "reheld_inherited_unique_excluded": 45,
-    "reheld_inherited_entries_excluded": 46,
+    "reheld_inherited_unique_excluded": 30,
+    "reheld_inherited_entries_excluded": 30,
     "partial_bodies_count_as_coverage": false,
     "new_fixture_partials_excluded_unique": 13,
     "execution_authorized": false,
     "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
-    "next_series_02_held_candidates_excluded_unique": 12
+    "next_series_02_held_candidates_excluded_unique": 12,
+    "next_series_03_held_candidates_excluded_unique": 8,
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "current_residual_prioritization": {
     "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
     "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
     "current_residual_unique": 2005,
-    "reviewed_new_source_proposed_residual_unique": 124,
+    "reviewed_new_source_proposed_residual_unique": 146,
     "mathematical_comparison_only": {
       "majority_unique": 1003,
-      "shortfall_unique": 879,
+      "shortfall_unique": 857,
       "execution_gating_role": "none"
     },
     "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
-    "reheld_inherited_identities_excluded_from_residual_coverage": 45,
+    "reheld_inherited_identities_excluded_from_residual_coverage": 30,
     "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
     "new_fixture_partials_excluded_from_residual_coverage": 13,
     "changes_original_execution_stopping_condition": false,
-    "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
-    "reviewed_new_source_proposed_residual_entries": 125,
-    "full_body_source_proposed_residual_unique": 68,
+    "note": "146/2005 residual source proposals: 90 full-body (including 25 restored) and 56 shared blocker repairs. Comparison-only 1003/857 has no execution authority; original source gate remains 1597/3193. NEXT03 source accounting cleared by independent bounded review. No new measured recovery.",
+    "reviewed_new_source_proposed_residual_entries": 148,
+    "full_body_source_proposed_residual_unique": 90,
     "shared_blocker_repair_proposed_residual_unique": 56,
-    "formerly_supported_regression_proposed_unique": 77,
-    "formerly_supported_regression_unaddressed_unique": 74,
-    "next_series_02_held_candidates_excluded_from_residual_coverage": 12
+    "formerly_supported_regression_proposed_unique": 79,
+    "formerly_supported_regression_unaddressed_unique": 72,
+    "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+    "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "restored_previous_source_holds": [
     {
@@ -7369,32 +7868,645 @@
           }
         ]
       }
+    },
+    {
+      "oracle_id": "b2f6a75e-5637-41a8-a32b-56666716492d",
+      "names": [
+        "Protean Raider"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "copy-entry-semantic-integrity",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "b2f6a75e-5637-41a8-a32b-56666716492d",
+        "names": [
+          "Protean Raider"
+        ],
+        "historical_source_families": [
+          "enter-copy-exceptions"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 37,
+        "current_failure_entries": [
+          {
+            "card_name": "Protean Raider",
+            "parse_status": "parse_failed",
+            "category": "semantic_output_failure",
+            "parse_lossy": 0,
+            "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+            "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
+      "names": [
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "copy-entry-semantic-integrity",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "8ecdaf4b-4442-42da-9714-4257a83faf50",
+        "names": [
+          "Sakashima of a Thousand Faces",
+          "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+        ],
+        "historical_source_families": [
+          "enter-copy-exceptions"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 29,
+        "current_failure_entries": [
+          {
+            "card_name": "Sakashima of a Thousand Faces",
+            "parse_status": "parse_failed",
+            "category": "semantic_output_failure",
+            "parse_lossy": 0,
+            "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+            "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+          },
+          {
+            "card_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
+            "parse_status": "parse_failed",
+            "category": "semantic_output_failure",
+            "parse_lossy": 0,
+            "diagnostic_summary": "compiled text dropped required semantic marker: enter-as-copy",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "edc6de7794a6170e0b0d6221401847f81cea9a924ce9755ec4326561bebccba7",
+            "parse_loss_reasons_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "diagnostic_signature_sha256": "1d2368159d97ecb6d01ab294bd423f4af3e08a50df990330a2aff365e9cc4645"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "b86b1878-65a9-48df-9727-1e80683d7e86",
+      "names": [
+        "Fury Charm"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "suspended-filter-union",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "b86b1878-65a9-48df-9727-1e80683d7e86",
+        "names": [
+          "Fury Charm"
+        ],
+        "historical_source_families": [
+          "suspended-counter-complete-bodies"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 40,
+        "current_failure_entries": [
+          {
+            "card_name": "Fury Charm",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+            "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+            "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "3afe854a-7daa-4745-a5d9-04879e5d940a",
+      "names": [
+        "Shivan Sand-Mage"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "suspended-filter-union",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "3afe854a-7daa-4745-a5d9-04879e5d940a",
+        "names": [
+          "Shivan Sand-Mage"
+        ],
+        "historical_source_families": [
+          "suspended-counter-complete-bodies"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 15,
+        "current_failure_entries": [
+          {
+            "card_name": "Shivan Sand-Mage",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+            "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+            "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "efa3e524-1591-4036-81ec-74199cee25aa",
+      "names": [
+        "Timebender"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "suspended-filter-union",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "efa3e524-1591-4036-81ec-74199cee25aa",
+        "names": [
+          "Timebender"
+        ],
+        "historical_source_families": [
+          "suspended-counter-complete-bodies"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 52,
+        "current_failure_entries": [
+          {
+            "card_name": "Timebender",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+            "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+            "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "57939644-6f9a-4653-920b-f2d28559a9ca",
+      "names": [
+        "Timecrafting"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "suspended-filter-union",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "57939644-6f9a-4653-920b-f2d28559a9ca",
+        "names": [
+          "Timecrafting"
+        ],
+        "historical_source_families": [
+          "suspended-counter-complete-bodies"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 19,
+        "current_failure_entries": [
+          {
+            "card_name": "Timecrafting",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]; oracle-only fallback also failed: unsupported complete object filter: permanent or suspended card [rule-path=verb-first-clause-fallback] [rule-path=clause-primitives > clause-reading]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "48e581f49327246656779a4529ab96f3d2b833e20625c1367a379986524dc10b",
+            "parse_loss_reasons_sha256": "2a175943237071dd6d8db352394273f34a64acd2af147f07e2bd778dd6eff6ed",
+            "diagnostic_signature_sha256": "8519ae3e595c8e0bba3737f410640bf14b08078f489ff85845fd37876e256e59"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "119585c7-ddfa-47ed-b2f8-488ebc156222",
+      "names": [
+        "Diviner's Portent"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "numeric-result-tables",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "119585c7-ddfa-47ed-b2f8-488ebc156222",
+        "names": [
+          "Diviner's Portent"
+        ],
+        "historical_source_families": [
+          "complete-die-result-programs"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 4,
+        "current_failure_entries": [
+          {
+            "card_name": "Diviner's Portent",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "parser could not lower station threshold line: '15+ | Scry X, then draw X cards.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | Scry X, then draw X cards.' [rule-path=station-threshold-line]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "5e6bdeb634442a8f8669a1ae8064df9d990f278ace9adf517415ae706ec49571",
+            "parse_loss_reasons_sha256": "c82b44589d6ddabf5b00e7a72ed9d4c51e2957e45dc92bb4e2120e4ca99b5e9e",
+            "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+      "names": [
+        "Druid of the Emerald Grove"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "numeric-result-tables",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+        "names": [
+          "Druid of the Emerald Grove"
+        ],
+        "historical_source_families": [
+          "complete-die-result-programs"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 34,
+        "current_failure_entries": [
+          {
+            "card_name": "Druid of the Emerald Grove",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "parser could not lower station threshold line: '20+ | Put those cards onto the battlefield tapped, then shuffle.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '20+ | Put those cards onto the battlefield tapped, then shuffle.' [rule-path=station-threshold-line]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "e5342cd179572c171cb7c3ad44fb60d5c219660117f8f8599ca8af784625d666",
+            "parse_loss_reasons_sha256": "1fc4bb5dbad712093396f75499d53e222faad7c31c1a73fc9ab6780f3cfdf583",
+            "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "bdb80d7b-672c-4e2a-b93b-9b96721b93f2",
+      "names": [
+        "Song of Inspiration"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "numeric-result-tables",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "bdb80d7b-672c-4e2a-b93b-9b96721b93f2",
+        "names": [
+          "Song of Inspiration"
+        ],
+        "historical_source_families": [
+          "complete-die-result-programs"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 42,
+        "current_failure_entries": [
+          {
+            "card_name": "Song of Inspiration",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "parser could not lower station threshold line: '15+ | Return those cards to your hand. You gain life equal to their total mana value.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | Return those cards to your hand. You gain life equal to their total mana value.' [rule-path=station-threshold-line]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "9f08ef351546603cf686777ccaf80b14f1b9ab6ebcdd568b7a6c7e97dbfeb2be",
+            "parse_loss_reasons_sha256": "bc808d81dfd3086020d6e63e01fa8be5c254de11f89d8f1ec4f1b36db27e7132",
+            "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+      "names": [
+        "Wyll's Reversal"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "numeric-result-tables",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+        "names": [
+          "Wyll's Reversal"
+        ],
+        "historical_source_families": [
+          "complete-die-result-programs"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 28,
+        "current_failure_entries": [
+          {
+            "card_name": "Wyll's Reversal",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "parser could not lower station threshold line: '15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.' [rule-path=station-threshold-line]; oracle-only fallback also failed: parser could not lower station threshold line: '15+ | You may choose new targets for that spell or ability. Then copy it. You may choose new targets for the copy.' [rule-path=station-threshold-line]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "929c37ff3ebe3b96a71a8cd4d166a54a6f7483f3b0c4f66ee07c6076a8a7293b",
+            "parse_loss_reasons_sha256": "1555a024b52982db0ab00b2cb4fdc4fec2b10ae713fedaca025b292e4a142f37",
+            "diagnostic_signature_sha256": "255adcac4d85dcb75ab1fd6fa7d0839b934a25411f8823c3cb8f692391ad9aa5"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "7d249b16-33ef-463e-9e5d-0b84d434f093",
+      "names": [
+        "Breaching Leviathan"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "plural-controller-untap",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "7d249b16-33ef-463e-9e5d-0b84d434f093",
+        "names": [
+          "Breaching Leviathan"
+        ],
+        "historical_source_families": [
+          "plural-controller-and-fixed-untap-steps"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 25,
+        "current_failure_entries": [
+          {
+            "card_name": "Breaching Leviathan",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
+            "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
+            "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+      "names": [
+        "Cone of Cold"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "plural-controller-untap",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+        "names": [
+          "Cone of Cold"
+        ],
+        "historical_source_families": [
+          "plural-controller-and-fixed-untap-steps"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 18,
+        "current_failure_entries": [
+          {
+            "card_name": "Cone of Cold",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps'; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps'",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
+            "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
+            "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+      "names": [
+        "Dragon Turtle"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "plural-controller-untap",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+        "names": [
+          "Dragon Turtle"
+        ],
+        "historical_source_families": [
+          "plural-controller-and-fixed-untap-steps"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 33,
+        "current_failure_entries": [
+          {
+            "card_name": "Dragon Turtle",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps'; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps'",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "5e73cff87b144fdb5979a82d4b9eb737e9118572d4aad63badaf8023592cbce2",
+            "parse_loss_reasons_sha256": "6f36663f54fbe913637458b058fa37d84b546ae6211ea66430b30c1507bf87f1",
+            "diagnostic_signature_sha256": "eccd02d6bec36d1a0a91086cffd371f9446a3c1b7d063c92416c04c91ae17149"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4",
+      "names": [
+        "Lorthos, the Tidemaker"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "plural-controller-untap",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4",
+        "names": [
+          "Lorthos, the Tidemaker"
+        ],
+        "historical_source_families": [
+          "plural-controller-and-fixed-untap-steps"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 50,
+        "current_failure_entries": [
+          {
+            "card_name": "Lorthos, the Tidemaker",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=compiler-trigger-facts]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "ac8ed279d89ec89cb9881fe622e7761a34b99b40e7cfdc84349c0ece6a1a6d9d",
+            "parse_loss_reasons_sha256": "4e12c8ebc239417ab8c0e0933619f44da44f6e2a7fbf3938385dbb0f768af83d",
+            "diagnostic_signature_sha256": "a18df0e8842896d8522134677570cfb5b4fb0855289c89e3e7c182bb5230427a"
+          }
+        ]
+      }
+    },
+    {
+      "oracle_id": "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+      "names": [
+        "Sudden Storm"
+      ],
+      "status": "restored_full_body_source_proposal_unvalidated",
+      "family_id": "plural-controller-untap",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "new_source_validation": "UNRUN",
+      "measured_rehold_record": {
+        "oracle_id": "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+        "names": [
+          "Sudden Storm"
+        ],
+        "historical_source_families": [
+          "plural-controller-and-fixed-untap-steps"
+        ],
+        "status": "reheld_current_main_failure",
+        "source_report": "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz",
+        "source_record_index": 14,
+        "current_failure_entries": [
+          {
+            "card_name": "Sudden Storm",
+            "parse_status": "parse_failed",
+            "category": "parser_failure",
+            "parse_lossy": 1,
+            "diagnostic_summary": "unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=statement-line > statement-probe]; oracle-only fallback also failed: unrecognized target or selection phrase 'during their controllers next untap steps' [rule-path=statement-line > statement-probe]",
+            "diagnostic_summary_is_complete": true,
+            "parse_error_sha256": "1264b0d8c9d596790adc40734df7f4717767a4d43b2e9c6ac09eb77266c66bd9",
+            "parse_loss_reasons_sha256": "a36d6a2f381d344f4005e38ea011b8d3908d4d55d1e2b3e7992828f04161a20c",
+            "diagnostic_signature_sha256": "26f1e726b12714e476af660fcaf6a2a271afba91dd7bb62f8ffc9a6ded7e6897"
+          }
+        ]
+      }
     }
   ],
   "combined_source_review": {
-    "status": "independently_source_reviewed_execution_unrun",
-    "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
-    "source_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
-    "compatibility_source_review_commit": "903fcf8db0b35428aa7955815e68b281380dade8",
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+    "source_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+    "compatibility_source_review_commit": "00780491925c79b215884fb5c1ba09088ce40cd9",
     "family_source_review_commits": {
-      "conditional-damage-amounts": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
-      "player-counter-anthems": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
-      "delayed-player-attack-declarations": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
-      "repeat-process-boundaries": "7e437f182cab438b4eef34aa890ae2518c64722d",
-      "residual-static-condition-cohort": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
-      "next-step-durations": "d7f8065731fd4989db8ef2e8073854b36b47ec13"
+      "intervening-predicate-cohort": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "copy-entry-semantic-integrity": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "suspended-filter-union": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "numeric-result-tables": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "plural-controller-untap": "99c09f994aafc7396a72eb57e723ab38bff82c99"
     },
-    "compiled_artifact_version": 13,
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "compiled_artifact_version": 14,
     "public_digest_version": 9,
-    "signed_audit_protocol_version": 26,
+    "signed_audit_protocol_version": 27,
     "manabrew_protocol_version": 3,
-    "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
-    "published_parent_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
-    "published_parent_pr": 867,
-    "evidence": "architecture/card-failure-next-series-02-compatibility.md",
-    "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
-    "execution": "All authored scenarios UNRUN; genuine v13 artifacts/catalogs, original v5 fixture, custom WASM/glue/layout, native recovery and authenticated replay remain deferred execution gates.",
-    "review_scope": "Six source-cleared bounded cohorts and coordinated successor compatibility; exact integrated final source anchor supplied by the coordinator. No executable or measured recovery claim."
+    "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+    "published_parent_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+    "published_parent_pr": 868,
+    "evidence": "architecture/card-failure-next-series-03-compatibility.md",
+    "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+    "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+    "review_scope": "Five bounded source-reviewed cohorts plus coordinated 14/9/27 compatibility; final combined review cleared at the pinned anchor. Wyll printed mana correction at final anchor. No executable or measured recovery claim.",
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/next03-independent-final-review.md",
+        "sha256": "8f34317d12a7bcf1fe0d1bcb10b096b61fc96c1c1cb4308e8a994261c6a961ac",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next03-compatibility-independent-review.md",
+        "sha256": "62e2eec1fd90f569b5b08c0a1e0c2028db11513934d70011be5f272c930ea29c",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ]
   },
   "next_series_02_holds_excluded": [
     {
@@ -7567,6 +8679,31 @@
       "evidence": "architecture/card-failure-next-series-01-compatibility.md",
       "admission_evidence": "architecture/card-failure-next-series-01-source-admission.md",
       "execution": "All authored scenarios UNRUN; original-v5/current-v12 generation, custom WASM/glue/layout, native recovery and replay gates remain open."
+    },
+    {
+      "status": "independently_source_reviewed_execution_unrun",
+      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+      "source_tree": "4aec7617a339916a66bf4d4aa0d0c77207892993",
+      "compatibility_source_review_commit": "903fcf8db0b35428aa7955815e68b281380dade8",
+      "family_source_review_commits": {
+        "conditional-damage-amounts": "780dd40e9b3b004a79a03f3887a1c5596c0546cd",
+        "player-counter-anthems": "4bb5ee690968d8d3f935e2fac1ada9b518d5c629",
+        "delayed-player-attack-declarations": "da924fd2e21469ba9bcf1c6e610d3fbb61cb752f",
+        "repeat-process-boundaries": "7e437f182cab438b4eef34aa890ae2518c64722d",
+        "residual-static-condition-cohort": "cbe6412a82ff58a43213e8471263f6b2ee66c15f",
+        "next-step-durations": "d7f8065731fd4989db8ef2e8073854b36b47ec13"
+      },
+      "compiled_artifact_version": 13,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 26,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "published_parent_schema_hash": "fbc604c03fa9eed8de6567576052324b9c8bee8d9ddc319f2ae25bc0a62b9c5d",
+      "published_parent_pr": 867,
+      "evidence": "architecture/card-failure-next-series-02-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-02-source-admission.md",
+      "execution": "All authored scenarios UNRUN; genuine v13 artifacts/catalogs, original v5 fixture, custom WASM/glue/layout, native recovery and authenticated replay remain deferred execution gates.",
+      "review_scope": "Six source-cleared bounded cohorts and coordinated successor compatibility; exact integrated final source anchor supplied by the coordinator. No executable or measured recovery claim."
     }
   ],
   "next_series_02_reconciliation": {
@@ -7833,5 +8970,661 @@
     ],
     "execution": "UNRUN. Only offline retained JSON/file/hash/Git inspection and source-accounting document edits. No build, compiler, test, corpus/analysis rerun, formatter, generation, probe or replay.",
     "accounting": "1238 + 18 = 1256 original source-eligible IDs / 1260 entries; 96 + 28 = 124 current residual source proposals / 125 entries. 68 residual full-body + 56 shared-blocker = 124. 47 original-residual + 77 regression = 124. Eight supported semantic corrections yield 132 touched identities / 133 entries. All measured outcomes remain unchanged."
+  },
+  "next_series_03_holds_excluded": [
+    {
+      "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+      "names": [
+        "Consul's Lieutenant"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Renown and complete combat body remain outside the five reviewed predicate bodies.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "Consul's Lieutenant",
+        "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+        "source_matrix_statuses": [
+          "unaddressed"
+        ],
+        "original_matrix_member": true,
+        "comparison_outcome": "still_failing",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+      "names": [
+        "The Notary Hobbits"
+      ],
+      "family_id": "intervening-predicate-cohort",
+      "status": "held_not_counted",
+      "remaining_blocker": "Whole-body copy-token and characteristic-exception ownership remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "The Notary Hobbits",
+        "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+        "source_matrix_statuses": [
+          "unaddressed"
+        ],
+        "original_matrix_member": true,
+        "comparison_outcome": "still_failing",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+      "names": [
+        "Sakashima the Impostor"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete compound name/legendary/activated-ability exception remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "Sakashima the Impostor",
+        "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+        "source_matrix_statuses": [],
+        "original_matrix_member": false,
+        "comparison_outcome": "regressed",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+      "names": [
+        "Superior Spider-Man"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete entry-copy choice and exception body remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "Superior Spider-Man",
+        "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+        "source_matrix_statuses": [],
+        "original_matrix_member": false,
+        "comparison_outcome": "regressed",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+      "names": [
+        "The Fourteenth Doctor"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete reveal/copy body remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "The Fourteenth Doctor",
+        "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+        "source_matrix_statuses": [],
+        "original_matrix_member": false,
+        "comparison_outcome": "regressed",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+      "names": [
+        "The Master, Formed Anew"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete linked-exile/copy body remains held.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "The Master, Formed Anew",
+        "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+        "source_matrix_statuses": [],
+        "original_matrix_member": false,
+        "comparison_outcome": "regressed",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": false
+      }
+    },
+    {
+      "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+      "names": [
+        "Vesuvan Doppelganger"
+      ],
+      "family_id": "copy-entry-semantic-integrity",
+      "status": "held_not_counted",
+      "remaining_blocker": "Complete copy body remains a historical partial.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "Vesuvan Doppelganger",
+        "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+        "source_matrix_statuses": [
+          "partial_not_counted"
+        ],
+        "original_matrix_member": true,
+        "comparison_outcome": "still_failing",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": true
+      }
+    },
+    {
+      "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+      "names": [
+        "Revivify"
+      ],
+      "family_id": "numeric-result-tables",
+      "status": "held_not_counted",
+      "remaining_blocker": "Historical collection-binding ownership remains held; numeric-table source repair alone is insufficient.",
+      "original_baseline_source_credit": 0,
+      "current_residual_source_credit": 0,
+      "new_source_validation": "UNRUN",
+      "prior_scope": {
+        "name": "Revivify",
+        "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+        "source_matrix_statuses": [
+          "partial_not_counted"
+        ],
+        "original_matrix_member": true,
+        "comparison_outcome": "still_failing",
+        "current_failure_entries": 1,
+        "overlaps_current_rehold": false,
+        "overlaps_prior_13_partials": false,
+        "overlaps_next02_12_holds": false,
+        "overlaps_any_original_partial": true
+      }
+    }
+  ],
+  "next_series_03_reconciliation": {
+    "series": "next03",
+    "stage": 102,
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+    "source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+    "evidence": "architecture/card-failure-next-series-03-source-admission.md",
+    "fresh_full_body_unique": 22,
+    "fresh_full_body_entries": 23,
+    "fresh_original_baseline_credit": 20,
+    "fresh_restored_original_unique": 15,
+    "fresh_restored_original_entries": 16,
+    "fresh_new_original_unique": 5,
+    "fresh_regression_proposals_unique": 2,
+    "fresh_held_unique_not_counted": 8,
+    "current_base_proposed_unique": 1276,
+    "current_base_proposed_entries": 1281,
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_packet_total_touched_unique": 154,
+    "current_packet_total_touched_entries": 156,
+    "current_reheld_inherited_unique": 30,
+    "current_reheld_inherited_entries": 30,
+    "prior_admission": "next_series_02_reconciliation",
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1276,
+      "source_eligible_shortfall_to_threshold": 321,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 146,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 857,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "146/2005 residual source proposals: 90 full-body (including 25 restored) and 56 shared blocker repairs. Comparison-only 1003/857 has no execution authority; original source gate remains 1597/3193. NEXT03 source accounting cleared by independent bounded review. No new measured recovery.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "source_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "compatibility_source_review_commit": "00780491925c79b215884fb5c1ba09088ce40cd9",
+      "family_source_review_commits": {
+        "intervening-predicate-cohort": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+        "copy-entry-semantic-integrity": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+        "suspended-filter-union": "5db6fa3aa673192cc83d241631e229583711be2c",
+        "numeric-result-tables": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+        "plural-controller-untap": "99c09f994aafc7396a72eb57e723ab38bff82c99"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "published_parent_pr": 868,
+      "evidence": "architecture/card-failure-next-series-03-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Five bounded source-reviewed cohorts plus coordinated 14/9/27 compatibility; final combined review cleared at the pinned anchor. Wyll printed mana correction at final anchor. No executable or measured recovery claim.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/next03-independent-final-review.md",
+          "sha256": "8f34317d12a7bcf1fe0d1bcb10b096b61fc96c1c1cb4308e8a994261c6a961ac",
+          "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next03-compatibility-independent-review.md",
+          "sha256": "62e2eec1fd90f569b5b08c0a1e0c2028db11513934d70011be5f272c930ea29c",
+          "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    "current_recovery_architecture": {
+      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "note": "architecture/card-failure-next-series-03-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-03-compatibility.md"
+    },
+    "identity_sets": {
+      "next03_all": {
+        "unique": 22,
+        "sha256": "b75f192f2c159f476a87a5f7f7c284b9d3df044388dcb84d7d0202f69867fe60"
+      },
+      "next03_original": {
+        "unique": 20,
+        "sha256": "cdbd03e036ce4e2b3ad53ad13309e86c3e6441306bf26193507d7359ac718715"
+      },
+      "next03_new_original": {
+        "unique": 5,
+        "sha256": "51225eb0bd921eb24f788aaec658a0ad7192ed1e392e2d32fe3e192ba73d2413"
+      },
+      "next03_restored_original": {
+        "unique": 15,
+        "sha256": "77abb03a5506dd2a2925d0749cf99ac3e1a3434bc19b29d54a15ba7f9c9fc257"
+      },
+      "next03_regression": {
+        "unique": 2,
+        "sha256": "52fe88601285b45f279f74635d775932dff209720fb50b1509026fb32600953c"
+      },
+      "next03_scoped_holds": {
+        "unique": 8,
+        "sha256": "203d3964d8505a57ee58624134e530c9955129c4716f99733211487ea2bdb80a"
+      },
+      "before_eligible_original": {
+        "unique": 1256,
+        "sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826"
+      },
+      "after_eligible_original_if_cleared": {
+        "unique": 1276,
+        "sha256": "72cb8399a29c945b7b683f7885393cc8e2638630708e0f25e8c698b5e79c66e9"
+      },
+      "before_residual_proposals": {
+        "unique": 124,
+        "sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1"
+      },
+      "after_residual_proposals_if_cleared": {
+        "unique": 146,
+        "sha256": "42a54ba1c2232f64a93eb74de6e88bf2fde88195e4d9179f84d97bb731d463e7"
+      },
+      "before_reholds": {
+        "unique": 45,
+        "sha256": "dae0d4d90e8d279e247e08ac4c3c1c5ac010225a0749219bfa2b8302cf27ade5"
+      },
+      "after_reholds_if_cleared": {
+        "unique": 30,
+        "sha256": "8c368119db9906cbf7fb910e55a03137136ff900325b92b48c72cf8d337032af"
+      },
+      "before_restored": {
+        "unique": 10,
+        "sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c"
+      },
+      "after_restored_if_cleared": {
+        "unique": 25,
+        "sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a"
+      },
+      "after_total_touched_if_cleared": {
+        "unique": 154,
+        "sha256": "c6f059250c4a78efcc532a685dab00bee76b62a0b3cf8a61c0be3dedd2e1f9a9"
+      },
+      "before_tier_full-body source proposal": {
+        "unique": 58,
+        "sha256": "d598002db1216b370a0b610fc2306a454317fa81c0b0e2ed1097c285f6576e10"
+      },
+      "after_tier_full-body source proposal": {
+        "unique": 65,
+        "sha256": "5dfdf7f3c9dd3dd2a3910aa22267c041802cac8eba5554739549816837806633"
+      },
+      "before_tier_restored full-body source proposal": {
+        "unique": 10,
+        "sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c"
+      },
+      "after_tier_restored full-body source proposal": {
+        "unique": 25,
+        "sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a"
+      },
+      "before_tier_shared blocker repair proposed": {
+        "unique": 56,
+        "sha256": "be1dda2024ac3037b5cb08ca02a2504fcac577d3d101ded8090608443d1bff42"
+      },
+      "after_tier_shared blocker repair proposed": {
+        "unique": 56,
+        "sha256": "be1dda2024ac3037b5cb08ca02a2504fcac577d3d101ded8090608443d1bff42"
+      }
+    },
+    "held_candidates": [
+      {
+        "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+        "names": [
+          "Consul's Lieutenant"
+        ],
+        "family_id": "intervening-predicate-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Renown and complete combat body remain outside the five reviewed predicate bodies.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Consul's Lieutenant",
+          "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+          "source_matrix_statuses": [
+            "unaddressed"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+        "names": [
+          "The Notary Hobbits"
+        ],
+        "family_id": "intervening-predicate-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Whole-body copy-token and characteristic-exception ownership remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Notary Hobbits",
+          "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+          "source_matrix_statuses": [
+            "unaddressed"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+        "names": [
+          "Sakashima the Impostor"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete compound name/legendary/activated-ability exception remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Sakashima the Impostor",
+          "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+        "names": [
+          "Superior Spider-Man"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete entry-copy choice and exception body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Superior Spider-Man",
+          "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+        "names": [
+          "The Fourteenth Doctor"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete reveal/copy body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Fourteenth Doctor",
+          "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+        "names": [
+          "The Master, Formed Anew"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete linked-exile/copy body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Master, Formed Anew",
+          "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+        "names": [
+          "Vesuvan Doppelganger"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete copy body remains a historical partial.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Vesuvan Doppelganger",
+          "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+          "source_matrix_statuses": [
+            "partial_not_counted"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": true
+        }
+      },
+      {
+        "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+        "names": [
+          "Revivify"
+        ],
+        "family_id": "numeric-result-tables",
+        "status": "held_not_counted",
+        "remaining_blocker": "Historical collection-binding ownership remains held; numeric-table source repair alone is insufficient.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Revivify",
+          "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+          "source_matrix_statuses": [
+            "partial_not_counted"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": true
+        }
+      }
+    ],
+    "family_ids": [
+      "intervening-predicate-cohort",
+      "copy-entry-semantic-integrity",
+      "suspended-filter-union",
+      "numeric-result-tables",
+      "plural-controller-untap"
+    ],
+    "fixture_fidelity_scope": "All positive candidate fixture semantic fields and four full copy literals match frozen source. Four unrelated/held numeric fixture text mismatches remain excluded. Positive Wyll mana is corrected to {2}{R}.",
+    "frozen_uncompressed_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "input_file_sha256": {
+      "fixtures/intervening_predicate_cohort.json.fixture": "4b5b2cfc3247ce535a0a79b3b047fec8af34301b06ba834908e0739390b1eaa7",
+      "fixtures/enter_copy_exceptions.json.fixture": "a24280db0e26b4bb27bc7879974d0fe40cfc38caec4866d990adb61bf14f6a99",
+      "fixtures/suspended_counter_bodies.json.fixture": "1a67ae27b2652dacda60e5a460477d44635d40f9c075c2be2dcca1baf4a3c91a",
+      "fixtures/die_result_programs.json.fixture": "3e3ed2cf3bd70dc0c48738b6f839e19eee6b0a7a0f10c66bc99506bc4540ac49",
+      "fixtures/plural_controller_untap.json.fixture": "d499bf4a68b644a595dfb1ae0c394291d4259769c8a82c4e8fc3b0a872d0fc97",
+      "crates/ironsmith-compiler-runtime/tests/copy_entry_semantic_integrity.rs": "6794cd27076b324c86b067461d646eeab2f5484203abbf34012e94005b081ac0",
+      "fixtures/card-failure-campaign/cards-20261003.json.xz": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+      "fixtures/card-failure-campaign/source-coverage.json": "7131a720ad56d9f71e9f94e7699537a8c87825e784f6d4ba371685ea2c8085bf",
+      "fixtures/card-failure-campaign/current-residual-source-coverage.json": "e1d2a50446482f55b2f5128dc62ba3a342c55fc90d046bd6247202540e3d10cd",
+      "fixtures/card-failure-campaign/baseline-e8740178.snapshot.json.gz": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz": "b0fa38345f7f9195013d3c74360742381c89c994d3866f71137c76c36ca9fcc1",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/summary.json": "981480eb73b8bcedcb3136841070ced5a8ea45f29a04df91cfc5666ff533dd12"
+    },
+    "execution": "UNRUN. Offline retained source/JSON/hash/Git inspection and metadata edits only. No builds, tests, probes, formatters, corpus/analysis pipeline, generation or remote writes.",
+    "accounting": "1256 + 20 = 1276 originals / 1281 entries; 124 + 22 = 146 residual / 148 entries. Re-holds 45 - 15 = 30; restored 10 + 15 = 25 IDs / 26 entries. Residual 67 original + 79 regression = 146; 90 full-body + 56 shared blocker = 146. Eight supported semantic corrections yield 154 touched IDs / 156 entries. Measured outcomes unchanged.",
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/next03-independent-final-review.md",
+        "sha256": "8f34317d12a7bcf1fe0d1bcb10b096b61fc96c1c1cb4308e8a994261c6a961ac",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next03-compatibility-independent-review.md",
+        "sha256": "62e2eec1fd90f569b5b08c0a1e0c2028db11513934d70011be5f272c930ea29c",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ]
   }
 }

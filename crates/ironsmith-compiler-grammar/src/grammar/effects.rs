@@ -193,6 +193,9 @@ pub mod subject_verb_registry_shapes;
 pub mod triple_sequence_shapes;
 #[path = "effects/typed_clause_heads.rs"]
 pub mod typed_clause_heads;
+#[cfg(test)]
+#[path = "effects/negated_untap_routing_tests.rs"]
+mod negated_untap_routing_tests;
 pub use sequence_pairs::*;
 #[path = "effects/sentence_prelude.rs"]
 mod sentence_prelude;
@@ -478,40 +481,43 @@ pub fn find_cant_sentence_negation_span_lexed(tokens: &[OwnedLexToken]) -> Optio
 
     while cursor < tokens.len() {
         let token = &tokens[cursor];
-        if token.as_word().is_some_and(is_cant_negation_word) {
+        // Clause-boundary callers retain authored case and curly apostrophes.
+        // Match the token's semantic spelling without discarding its surface.
+        let word = token.as_word().map(|_| token.parser_text());
+        if word.is_some_and(is_cant_negation_word) {
             return Some((cursor, cursor + 1));
         }
-        if token.as_word().is_some_and(is_dont_negation_word) {
+        if word.is_some_and(is_dont_negation_word) {
             if cursor >= 2
-                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
+                && parser_token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 1;
                 continue;
             }
             if tokens
                 .get(cursor + 1)
-                .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
+                .is_some_and(|next| next.as_word().map(|_| next.parser_text()).is_some_and(is_control_or_own_word))
             {
                 cursor += 1;
                 continue;
             }
             return Some((cursor, cursor + 1));
         }
-        if token.as_word().is_some_and(is_does_do_can_word)
+        if word.is_some_and(is_does_do_can_word)
             && tokens
                 .get(cursor + 1)
                 .is_some_and(|next| token_is_any_word(next, &["not"]))
         {
             if cursor >= 2
-                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
+                && parser_token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 2;
                 continue;
             }
-            if token.as_word().is_some_and(is_does_or_do_word)
+            if word.is_some_and(is_does_or_do_word)
                 && tokens
                     .get(cursor + 2)
-                    .is_some_and(|next| next.as_word().is_some_and(is_control_or_own_word))
+                    .is_some_and(|next| next.as_word().map(|_| next.parser_text()).is_some_and(is_control_or_own_word))
             {
                 cursor += 1;
                 continue;

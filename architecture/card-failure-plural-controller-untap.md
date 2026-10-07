@@ -1,5 +1,10 @@
 # Plural-controller untap restrictions
 
+## Current NEXT03 disposition
+
+Independent final source review cleared `92168f50060c362c88d5c1ecf6477dbbffa11839`. The [NEXT03 admission](card-failure-next-series-03-source-admission.md) records only the bounded source proposals: predicate 5, copy 4 IDs / 5 entries, suspended 4, numeric 4, plural untap 5. All held neighbors remain excluded. All executable scenarios are **UNRUN**, the source remains **UNVALIDATED**, and no new measured recovery is claimed. The historical scoped-work notes below describe their original stages; coordinated compatibility is now artifact 14 / digest 9 / audit 27.
+
+
 Status: **UNVALIDATED source proposals**. Independent bounded review clears six full frozen bodies through `0692003a7`, with additive integration reviewed at `020896ba8`. Builds, tests, compiler probes, formatters and corpus execution remain deferred.
 
 The exact inputs are in `fixtures/plural_controller_untap.json.fixture`: Breaching Leviathan, Cone of Cold, Dragon Turtle, Lorthos, Sudden Storm and Code of Constraint. The complete plural duration now parses through the shared leaf. Conditional imperative bodies use the existing typed effect discriminator, preserving Code's tap-and-freeze sequence instead of treating its suffix as a static ability.

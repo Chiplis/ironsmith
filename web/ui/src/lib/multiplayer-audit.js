@@ -19,12 +19,12 @@ export const DISCONNECT_FORFEIT_REASON = "disconnect_timeout_policy";
 export const DISCONNECT_AUTO_FORFEIT_MS = 60 * 1000;
 export const PROTOCOL_RESPONSE_TIMEOUT_REASON = "protocol_response_timeout_policy";
 export const PROTOCOL_RESPONSE_TIMEOUT_MS = 120 * 1000;
-// Coordinated repeat, delayed-combat, player-counter and next-step boundary.
-// Genesis has no exact engine build identity. Current numeric protocol/digest
-// gates own replay admission; historical signatures retain their original bytes.
-export const CURRENT_AUDIT_PROTOCOL_VERSION = 26;
+// Coordinated strict compiler/source-cache release boundary; digest 9 is unchanged.
+// Genesis has no signed engine hash. Numeric protocol admission is a release
+// gate, not exact-build authentication; historical signatures keep their bytes.
+export const CURRENT_AUDIT_PROTOCOL_VERSION = 27;
 export const CURRENT_PUBLIC_AUDIT_CHECKPOINT_VERSION = 9;
-const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, CURRENT_AUDIT_PROTOCOL_VERSION]);
+const SUPPORTED_AUDIT_PROTOCOL_VERSIONS = new Set([14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, CURRENT_AUDIT_PROTOCOL_VERSION]);
 
 // The current rules engine must never reinterpret a historical signed record.
 // Signature-only verification keeps the original version and canonical payload.

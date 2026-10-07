@@ -1,0 +1,34 @@
+# Final disposition: source-review CLEAR, UNVALIDATED / UNRUN
+
+The final disposition below supersedes the chronological in-progress notes. Source anchor: `92168f50060c362c88d5c1ecf6477dbbffa11839`. No executable validation or measured recovery is claimed.
+
+# Next03 independent final source review
+
+Review in progress, 2026-10-07. Source anchor: 92168f50060c362c88d5c1ecf6477dbbffa11839; inherited baseline 94e075587. Scope: five card cohorts, production ownership and authored full-body scenario routes. Compatibility is separately reviewed. Documentation/ledger edits concurrent with this review are not source changes.
+
+Restrictions observed: read-only source inspection only; no builds, tests, compiler probes, formatters, corpus or generation, and no remote writes. This report is not executable validation.
+
+Initial inspected findings:
+- All five cohort test files independently call compile_to_runtime_definition and compile_to_artifact; artifact companion definitions are not mislabeled as an independent direct route.
+- Copy tests retain four complete named bodies and the reversible Sakashima face identity, exact mana/type/P/T assertions, and separate native codec materialization. The production fix preserves causative infinitives and rejects unowned name-exception suffixes.
+- Predicate correction uses exact-source paired counts rather than target-context-sensitive `other`; owned-graveyard predicates remain scoped to the controller's own graveyard. Explicit held Consul/Notary bodies remain outside this scope.
+- Suspended unions have complete-owner dispatch before qualifier extraction. Direct/artifact scenario modules and literal target predicate assertions retain complete modal and secondary bodies.
+- Numeric document continuations require a terminal local die owner and stop at Station striations. DieValue retains exact producer binding and sibling-row scope. Paid X is carried independently from die outcomes.
+
+Final API and scenario inspection pending below.
+
+## Final bounded disposition
+
+Independent source-only clearance at source anchor 92168f50060c362c88d5c1ecf6477dbbffa11839 for the five requested cohort proposals: predicate (5 identities), entry-copy (4 identities / 5 catalog entries), suspended counter bodies (4 identities), original numeric tables (4 identities), and plural-controller untap bodies (5 identities). No remaining concrete source blocker was found in the inspected changes, original-body test inputs, ownership boundaries, or scenario API usage. This clears source review only; it does not say any scenario compiles or passes, does not award measured recovery credit, and does not independently clear compatibility.
+
+### Final checks and evidence
+
+- Predicate: `advanced/predicate_readings/part_4.rs` emits Count(team subtype) > Count(the same exact-source subset), with the renderer recognizing only that exact structure. `intervening_predicate_cohort.rs` pins costs/subtypes/P/T and retains all original abilities; sibling targeted triggers, source departure/blink/control changes, own versus teammate graveyards, ward payment and printed static companions have authored native witnesses. The two held predicates remain held.
+- Copy: `document_parser/mod.rs` preserves `have <source> enter` tokens; `copy_shapes.rs` exposes the name remainder and `keyword_static/mod.rs` rejects any unsupported complete tail. The tests independently check complete rendered bodies, copy filters/optionality and name/retention metadata. The choice witness's fallback is consistent with the engine's first inserted optional no-copy choice. Entry APIs return `EntryCommitResult` with the checked pending/program/original fields. The active Hand/Battlefield grants are removed before asserting they were not copied. The canonical alias gate uses the real catalog loader and its `parse_name`, rather than pretending two independent faces establish the combined-name catalog route. The five explicit compound-copy holds are unaffected.
+- Suspended: `reference_tag_stage_library.rs` recognizes the union before relation extraction, while an enclosing targeting relation retains its own operand. Both arms consume their full supported qualifiers; malformed relation tails are errors. Renderer compaction requires the exact full two-arm predicate. The test grant correctly uses an Exile Filter with resolution-locked identities; the actual continuous-effect and current-abilities APIs support this setup. Counter-removal receipts, real Suspend casts and Morph actions use current API shapes. Generic single-target Exile-grant lowering is not claimed fixed.
+- Numeric: complete numeric header recognition shares comparison/body offsets with lowering. Document continuation checks only the terminal unquoted unconditional die and stops at Station N+ boundaries. Wrapped search/reveal/roll tables are transported into the terminal roll's local sequence. `DieValue` validates the immediate producer and binds its exact effect ID; reannotation preserves resolved IDs through singleton source/sequence wrappers and row-local dice cannot replace the sibling owner. Announced-X metadata survives imports/exports, frame staging and both X-binding paths. Printed spell X does not seed a separate fixed-cost activation. Original Druid, Portent, Song and Wyll scenarios retain full bodies; metadata expects Wyll's corrected `{2}{R}`. The two-literal Wyll correction is the only changed fixture text in this packet and does not shorten Oracle rules. Revivify remains held.
+- Plural untap: `Restriction` head routing reaches the existing Cant owner at both indexed sentence and direct clause boundaries; it blocks affirmative fallback for unsupported negated restrictions. Quote-aware negation leaves relative control qualifiers, outer conditionals and earlier affirmative actions with their owners. Authored lifetime negatives distinguish during from until and reject unsupported two-step tails. Native scenarios cover all five original full bodies, target legality/zero targets, current-controller changes, blink incarnation, real untap steps, paid Lorthos and hand-cast Leviathan conditions. Existing `turn.rs` consumes object-bound controller-next-step restrictions at the correct completed untap occurrence.
+
+Review also read the declared method signatures for continuous grants, current abilities, counter removal, entry processing and native encoding/materialization, and inspected new reference-state initializer call sites. No concrete API mismatch was identified by inspection. Build/type correctness remains unverified without execution.
+
+The initial clean worktree was confirmed; no production or fixture file was changed by this reviewer. Only this external durable review file was written. Documentation disposition should say source-cleared, UNVALIDATED / UNRUN, and leave all independent execution/corpus/compatibility gates explicit.

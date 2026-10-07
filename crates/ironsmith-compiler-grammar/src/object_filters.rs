@@ -1424,6 +1424,15 @@ pub fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // Commit this complete cross-zone noun phrase before the branch-shape
+    // registry can mistake an unknown suspended-card qualifier for a zone arm.
+    if let Some(result) = super::grammar::filters::reference_tag_stage::parse_complete_permanent_or_suspended_card_filter(tokens, other) {
+        let mut filter = result?;
+        preserve_union_surface(&mut filter, tokens);
+        preserve_controller_qualifier_order(&mut filter, tokens);
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(finalize_public_object_filter(filter, tokens));
+    }
     let words = crate::lexer::TokenWordView::new(tokens);
     let words_ref = words.word_refs();
     // A seat-qualified controller is one complete relative player phrase.
@@ -1800,6 +1809,13 @@ pub fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(result) = super::grammar::filters::reference_tag_stage::parse_complete_permanent_or_suspended_card_filter(tokens, other) {
+        let mut filter = result?;
+        preserve_union_surface(&mut filter, tokens);
+        preserve_controller_qualifier_order(&mut filter, tokens);
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(finalize_public_object_filter(filter, tokens));
+    }
     let words = crate::lexer::TokenWordView::new(tokens);
     let words_ref = words.word_refs();
     if let Some(index) = words_ref

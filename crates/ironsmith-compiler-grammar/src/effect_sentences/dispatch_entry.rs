@@ -1396,7 +1396,7 @@ fn try_merge_otherwise_into_previous_conditional(
             conditional
         }
         EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::Value(_),
+            predicate: IfResultPredicate::Value(_) | IfResultPredicate::DieValue(_),
             effects,
         }) => {
             let Some(
@@ -1542,7 +1542,7 @@ mod nested_numeric_otherwise_tests {
     #[test]
     fn otherwise_can_fill_the_conditional_inside_one_numeric_result_row() {
         let mut prior = vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::Value(crate::effect::Comparison::Equal(20)),
+            predicate: IfResultPredicate::DieValue(crate::effect::Comparison::Equal(20)),
             effects: vec![EffectAst::SolveCase, conditional(Vec::new())],
         })];
         assert!(try_merge_otherwise_into_previous_conditional(
@@ -1568,7 +1568,7 @@ mod nested_numeric_otherwise_tests {
     #[test]
     fn nested_otherwise_does_not_overwrite_a_populated_false_arm() {
         let mut prior = vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-            predicate: IfResultPredicate::Value(crate::effect::Comparison::Equal(20)),
+            predicate: IfResultPredicate::DieValue(crate::effect::Comparison::Equal(20)),
             effects: vec![conditional(vec![EffectAst::SolveCase])],
         })];
         assert!(!try_merge_otherwise_into_previous_conditional(
@@ -1591,7 +1591,7 @@ fn try_append_to_previous_numeric_result_branch(
         return false;
     }
     let Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-        predicate: IfResultPredicate::Value(_),
+        predicate: IfResultPredicate::DieValue(_),
         effects: branch_effects,
     })) = effects.last_mut()
     else {
@@ -1609,7 +1609,7 @@ fn numeric_result_branch_line(
     match sentence_effects {
         [
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-                predicate: IfResultPredicate::Value(_),
+                predicate: IfResultPredicate::DieValue(_),
                 ..
             }),
         ] => sentence_tokens.first().map(|token| token.span.line),
@@ -6184,6 +6184,7 @@ pub fn parse_effect_sentences_lexed(
                 }
             }
             transport_coin_flip_outcomes_into_owner(&mut effects);
+            transport_die_result_rows_into_owner(&mut effects);
             bind_triggering_clash_win_followups(&mut effects);
             preserve_linked_target_fanout_group(tokens, &mut effects);
             bind_where_x_threshold_conditions(tokens, &mut effects);
@@ -7436,6 +7437,66 @@ fn transport_coin_flip_outcomes_into_owner(effects: &mut Vec<EffectAst>) {
         owner_index += 1;
     }
 }
+
+fn is_die_result_row(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+            if effects.len() == 1 => is_die_result_row(&effects[0]),
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::DieValue(_), ..
+        }) => true,
+        _ => false,
+    }
+}
+
+fn wrapped_die_row_owner_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    let body = match effect {
+        EffectAst::Sequence { effects } | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. } => effects,
+        EffectAst::Coordination(coordination)
+            if coordination.kind != crate::model::CoordinationKindAst::Disjunction
+                && coordination.boundaries.iter().all(|boundary|
+                    boundary.ordering == crate::model::EffectOrderingAst::Ordered) =>
+        {
+            &mut coordination.members.last_mut()?.effects
+        }
+        _ => return None,
+    };
+    let terminal = body.iter().rposition(|effect| !is_die_result_row(effect))?;
+    if matches!(&body[terminal], EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Random(
+            RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. }),
+        ..
+    })) {
+        return Some(body);
+    }
+    wrapped_die_row_owner_body_mut(&mut body[terminal])
+}
+
+/// A sequential search/reveal/roll sentence owns its result table inside
+/// the same sequence. The table must read the terminal die instruction's
+/// receipt, not the combined result of the enclosing comma-then program.
+fn transport_die_result_rows_into_owner(effects: &mut Vec<EffectAst>) {
+    let mut index = 0;
+    while index < effects.len() {
+        if wrapped_die_row_owner_body_mut(&mut effects[index]).is_some() {
+            let mut end = index + 1;
+            while effects.get(end).is_some_and(is_die_result_row) { end += 1; }
+            if end > index + 1 {
+                let rows = effects.drain(index + 1..end).collect::<Vec<_>>();
+                wrapped_die_row_owner_body_mut(&mut effects[index])
+                    .expect("terminal die owner was retained while draining its rows")
+                    .extend(rows);
+            }
+        }
+        index += 1;
+    }
+}
+
+#[cfg(test)]
+#[path = "dispatch_entry/numeric_table_ownership_tests.rs"]
+mod numeric_table_ownership_tests;
 
 fn direct_all_object_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {

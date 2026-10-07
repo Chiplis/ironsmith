@@ -123,6 +123,19 @@ pub(super) fn parse_effect_clause_unstacked(
     if let Some(effect) = crate::effect_sentences::clause_pattern_helpers::parse_can_attack_as_though_no_defender_clause(tokens)? {
         return Ok(effect);
     }
+    let restriction_head = matches!(
+        crate::grammar::effects::typed_clause_heads::classify_typed_clause_head(tokens),
+        ParseOutcome::Match(matched)
+            if matched.value.form
+                == crate::grammar::effects::typed_clause_heads::ClauseHeadFormAst::Restriction
+    );
+    if restriction_head
+        && let Some(effects) = crate::grammar::effects::parse_cant_effect_sentence(tokens)?
+    {
+        // Trigger-facts and nested consequence readers may enter at the
+        // clause boundary, bypassing the sentence primitive index entirely.
+        return Ok(EffectAst::Sequence { effects });
+    }
     let input = clause_readings::Clause {
         tokens,
         read_by_cache: Default::default(),
@@ -131,6 +144,12 @@ pub(super) fn parse_effect_clause_unstacked(
         ParseOutcome::Match(matched) => return Ok(matched.value.value),
         ParseOutcome::NoMatch => clause_readings::diagnose(&input)?,
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
+    }
+    if restriction_head {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported complete negated restriction clause (clause: '{}')",
+            render_lower_words(tokens)
+        )));
     }
     let (verb, _) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);

@@ -1872,6 +1872,11 @@ pub fn restore_runtime_aura_metadata(
             }
         })
 }
+/// Decode an already trusted current model; this raw type has no release or
+/// compiler-provenance envelope. Never use it as fallback for a rejected cached
+/// artifact. Cached compiled-card definitions must pass materialize_artifact
+/// admission, or be regenerated from complete source by the current compiler.
+/// Existing trusted native retention remains owned by its savepoint/build gate.
 pub fn materialize_definition(
     definition: wire::WireCardDefinition,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {

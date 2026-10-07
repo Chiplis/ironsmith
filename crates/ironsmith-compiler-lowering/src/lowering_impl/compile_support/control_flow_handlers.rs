@@ -1098,7 +1098,7 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         }
         IfResultPredicate::ConditionMatched => EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0)),
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
-        IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
+        IfResultPredicate::Value(cmp) | IfResultPredicate::DieValue(cmp) => EffectPredicate::Value(cmp),
     }
 }
 

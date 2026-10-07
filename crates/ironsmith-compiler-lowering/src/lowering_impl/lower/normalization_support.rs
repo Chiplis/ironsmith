@@ -8,6 +8,7 @@ use ironsmith_compiler::ir::RewriteSemanticDocument;
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct RewriteNormalizationState {
+    spell_has_announced_x: bool,
     latest_spell_exports: ReferenceExports,
     latest_additional_cost_exports: ReferenceExports,
     source_number_domain: Option<(u32, Option<u32>)>,
@@ -38,11 +39,43 @@ impl RewriteNormalizationState {
                 tag.clone(),
             ));
         }
-        if !additional_cost_imports.is_empty() {
-            return additional_cost_imports;
-        }
-        self.latest_spell_exports.to_imports()
+        // A cost's X binding alone must not displace an earlier statement's
+        // object/result antecedents when choosing which references to import.
+        let additional_cost_has_announced_x = additional_cost_imports.has_announced_x;
+        additional_cost_imports.has_announced_x = false;
+        let mut imports = if !additional_cost_imports.is_empty() {
+            additional_cost_imports
+        } else {
+            self.latest_spell_exports.to_imports()
+        };
+        imports.has_announced_x |= self.spell_has_announced_x
+            || self.latest_spell_exports.has_announced_x
+            || additional_cost_has_announced_x;
+        imports
     }
+}
+
+fn spell_costs_have_announced_x(items: &[ParsedCardItem]) -> bool {
+    fn chunk_has_x(chunk: &LineAst) -> bool {
+        match chunk {
+            LineAst::Multiple(chunks) => chunks.iter().any(chunk_has_x),
+            LineAst::OptionalCost(cost)
+            | LineAst::GiftKeyword { cost, .. }
+            | LineAst::OptionalCostWithCastTrigger { cost, .. } => {
+                crate::model::costs::cost_has_announced_x(&cost.cost)
+            }
+            LineAst::AlternativeCastingMethod(method) => {
+                method.mana_cost().is_some_and(crate::mana::ManaCost::has_x)
+                    || method.total_cost().is_some_and(crate::model::costs::cost_has_announced_x)
+            }
+            // A separate ability has its own X scope, even on an X spell.
+            _ => false,
+        }
+    }
+    items.iter().any(|item| match item {
+        ParsedCardItem::Line(line) => line.chunks.iter().any(chunk_has_x),
+        _ => false,
+    })
 }
 
 fn materialize_optional_cost(
@@ -76,6 +109,10 @@ fn materialize_alternative_casting_method(
 fn normalize_parsed_ability(
     mut parsed: ParsedAbility,
 ) -> Result<NormalizedParsedAbility, CardTextError> {
+    if let crate::model::CompilerAbilityKindCore::Activated(activated) = parsed.kind() {
+        let has_announced_x = crate::model::costs::cost_has_announced_x(&activated.mana_cost);
+        parsed.reference_imports.has_announced_x |= has_announced_x;
+    }
     let runtime_payload_present = match parsed.kind() {
         crate::model::CompilerAbilityKindCore::Activated(activated) => {
             !activated.effects.is_empty() || !activated.choices.is_empty()
@@ -426,19 +463,30 @@ fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
     }
 }
 
-fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, CardTextError> {
+fn normalize_modal_ast(
+    modal: ParsedModalAst,
+    spell_has_announced_x: bool,
+) -> Result<NormalizedModalAst, CardTextError> {
+    let imports = ReferenceImports {
+        has_announced_x: if let Some(activated) = modal.header.activated.as_ref() {
+            crate::model::costs::cost_has_announced_x(&activated.mana_cost)
+        } else {
+            modal.header.trigger.is_none() && spell_has_announced_x
+        },
+        ..Default::default()
+    };
     let prepared_prefix = if modal.header.prefix_effects_ast.is_empty() {
         None
     } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
         Some(stage_effects_with_trigger_context_for_lowering(
             modal.header.trigger.as_ref(),
             &modal.header.prefix_effects_ast,
-            ReferenceImports::default(),
+            imports.clone(),
         )?)
     } else {
         Some(stage_effects_for_lowering(
             &modal.header.prefix_effects_ast,
-            ReferenceImports::default(),
+            imports.clone(),
         )?)
     };
 
@@ -448,17 +496,22 @@ fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, Card
         Some(stage_effects_with_trigger_context_for_lowering(
             modal.header.trigger.as_ref(),
             &modal.header.common_prefix_effects_ast,
-            ReferenceImports::default(),
+            imports.clone(),
         )?)
     } else {
         Some(stage_effects_for_lowering(
             &modal.header.common_prefix_effects_ast,
-            ReferenceImports::default(),
+            imports.clone(),
         )?)
     };
 
     let mut modes = Vec::with_capacity(modal.modes.len());
     for mode in modal.modes {
+        let mut mode_imports = imports.clone();
+        mode_imports.has_announced_x |= mode
+            .additional_mana_cost
+            .as_ref()
+            .is_some_and(crate::mana::ManaCost::has_x);
         // A triggered mode's pronouns ("• Put a +1/+1 counter on that
         // creature", "• It gains double strike") name the trigger's event
         // object exactly like an unmoded trigger body does.
@@ -466,10 +519,10 @@ fn normalize_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalAst, Card
             stage_effects_with_trigger_context_for_lowering(
                 Some(trigger),
                 &mode.effects_ast,
-                ReferenceImports::default(),
+                mode_imports,
             )?
         } else {
-            stage_effects_for_lowering(&mode.effects_ast, ReferenceImports::default())?
+            stage_effects_for_lowering(&mode.effects_ast, mode_imports)?
         };
         modes.push(NormalizedModalModeAst {
             info: mode.info,
@@ -499,7 +552,10 @@ fn normalized_item_from_parsed_item(
             line.semantic_facts,
             state,
         )?)),
-        ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_modal_ast(modal)?)),
+        ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_modal_ast(
+            modal,
+            state.spell_has_announced_x,
+        )?)),
         ParsedCardItem::LevelAbility(level) => Ok(NormalizedCardItem::LevelAbility(level)),
     }
 }
@@ -540,8 +596,15 @@ pub fn normalize_parsed_card_ast_for_lowering(
         &symbols,
         document_scope,
     );
+    let initial_state = RewriteNormalizationState {
+        // Alternative/optional costs can be printed after the resolution
+        // text, so establish their X binding before preparing any statement.
+        spell_has_announced_x: card.mana_cost_ref().is_some_and(crate::mana::ManaCost::has_x)
+            || spell_costs_have_announced_x(&items),
+        ..Default::default()
+    };
     let overload_branch = if let Some(branch) = overload_branch {
-        let mut state = RewriteNormalizationState::default();
+        let mut state = initial_state.clone();
         let mut items = Vec::new();
         for item in branch.items {
             items.push(normalized_item_from_parsed_item(item, &mut state)?);
@@ -551,7 +614,7 @@ pub fn normalize_parsed_card_ast_for_lowering(
         None
     };
     let cleave_branch = if let Some(branch) = cleave_branch {
-        let mut state = RewriteNormalizationState::default();
+        let mut state = initial_state.clone();
         let mut items = Vec::new();
         for item in branch.items {
             items.push(normalized_item_from_parsed_item(item, &mut state)?);
@@ -560,7 +623,7 @@ pub fn normalize_parsed_card_ast_for_lowering(
     } else {
         None
     };
-    let mut state = RewriteNormalizationState::default();
+    let mut state = initial_state;
     let mut normalized_items = Vec::new();
     for item in items {
         normalized_items.push(normalized_item_from_parsed_item(item, &mut state)?);

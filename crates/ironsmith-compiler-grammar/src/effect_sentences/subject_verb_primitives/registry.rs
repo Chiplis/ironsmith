@@ -521,7 +521,16 @@ fn recognize_subject_verb_primitives_lexed(
     };
     let lowered = OnceCell::new();
     let view = LexClauseView::from_tokens(tokens);
-    let candidate_indices = index.candidate_indices(typed_head.first_word, typed_head.second_word);
+    let mut candidate_indices = index.candidate_indices(typed_head.first_word, typed_head.second_word);
+    if typed_head.form
+        == crate::grammar::effects::typed_clause_heads::ClauseHeadFormAst::Restriction
+    {
+        // `cant` is also the restriction-family index, not a required first
+        // word. Send the complete subject and duration to that owner.
+        candidate_indices.extend(index.candidate_indices("cant", None));
+        candidate_indices.sort_unstable();
+        candidate_indices.dedup();
+    }
     let mut candidates = Vec::new();
     let mut diagnostics = Vec::new();
     for idx in candidate_indices {

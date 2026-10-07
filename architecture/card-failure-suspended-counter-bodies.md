@@ -1,5 +1,10 @@
 # Complete permanent-or-suspended counter bodies
 
+## Current NEXT03 disposition
+
+Independent final source review cleared `92168f50060c362c88d5c1ecf6477dbbffa11839`. The [NEXT03 admission](card-failure-next-series-03-source-admission.md) records only the bounded source proposals: predicate 5, copy 4 IDs / 5 entries, suspended 4, numeric 4, plural untap 5. All held neighbors remain excluded. All executable scenarios are **UNRUN**, the source remains **UNVALIDATED**, and no new measured recovery is claimed. The historical scoped-work notes below describe their original stages; coordinated compatibility is now artifact 14 / digest 9 / audit 27.
+
+
 Source-only closure proposal for Fury Charm, Shivan Sand-Mage, Timebender, and
 Timecrafting. The four rows in `fixtures/suspended_counter_bodies.json.fixture`
 retain the exact names, Oracle identities, complete Oracle text, printed mana

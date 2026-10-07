@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "spell_filters_suspended_union_tests.rs"]
+mod suspended_union_tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ObjectFilterGrammarDomain {
     Characteristic,
@@ -169,6 +173,17 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         let mut filter = parse_object_filter_with_grammar_entrypoint(&tokens[1..], other)?;
         filter.power = Some(crate::filter::Comparison::Equal(power));
         filter.toughness = Some(crate::filter::Comparison::Equal(toughness));
+        return Ok(filter);
+    }
+    // A bare `permanent or suspended card` has no relational keyword after
+    // target extraction, but its two arms have different zones and predicates.
+    // Let the complete union owner decide, including rejecting unknown tails;
+    // adding `suspended` to the tolerant relation classifier would be too broad.
+    if let Some(result) =
+        super::reference_tag_stage::parse_complete_permanent_or_suspended_card_filter(tokens, other)
+    {
+        let mut filter = result?;
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
         return Ok(filter);
     }
     let words = crate::lexer::parser_token_word_refs(tokens);

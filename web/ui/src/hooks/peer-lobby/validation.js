@@ -4841,6 +4841,11 @@ export function usePeerLobbyValidation(base, servicesRef) {
 
 	  const applyMatchStart = useCallback(
 	    async (payload, options = {}) => {
+      // Direct/internal starts must pass admission even when genesis was
+      // already accepted or its verification is intentionally skipped.
+      if (payload?.protocolVersion !== PROTOCOL_VERSION) {
+        throw new Error(`Match start requires audit protocol ${PROTOCOL_VERSION}`);
+      }
       assertRuntimeVersion(payload);
 	      let currentGame = gameRef.current;
 	      if (!currentGame || typeof currentGame.startMatch !== "function") {

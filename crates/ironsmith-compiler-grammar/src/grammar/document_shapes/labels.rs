@@ -2,6 +2,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use super::super::primitives;
+use crate::effect::Comparison;
 use crate::lexer::{LexStream, OwnedLexToken, TokenKind};
 use crate::token_primitives::split_em_dash_label_prefix_tokens;
 
@@ -18,7 +19,10 @@ pub enum LabelPrefixKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NumericResultPrefixShape;
+pub struct NumericResultPrefixShape {
+    pub comparison: Comparison,
+    pub body_start: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatementLabelSplitShape<'a> {
@@ -53,33 +57,35 @@ pub fn parse_preserved_keyword_label_tokens(
 pub fn parse_numeric_result_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<NumericResultPrefixShape> {
-    if matches!(tokens, [number, pipe, ..]
-        if number.kind == TokenKind::Number && pipe.kind == TokenKind::Pipe)
-    {
-        return Some(NumericResultPrefixShape);
-    }
-    if tokens
-        .first()
-        .is_some_and(token_is_compact_ascii_numeric_range)
-        && tokens
-            .get(1)
-            .is_some_and(|token| token.kind == TokenKind::Pipe)
-    {
-        return Some(NumericResultPrefixShape);
-    }
-    let (_, remaining) = primitives::parse_prefix(tokens, numeric_result_head)?;
-    primitives::find_prefix(remaining, || primitives::token_kind(TokenKind::Pipe).void())?;
-    Some(NumericResultPrefixShape)
-}
-
-fn token_is_compact_ascii_numeric_range(token: &OwnedLexToken) -> bool {
-    if token.kind != TokenKind::Word {
-        return false;
-    }
-    matches!(
-        crate::word_primitives::parse_ascii_numeric_range(token.parser_text()),
-        Some((min, max)) if min <= max
-    )
+    // Recognize the complete header, not a numeric prefix somewhere before
+    // a pipe. Recognition, continuation attachment and lowering must agree.
+    let pipe = tokens.iter().position(|token| token.kind == TokenKind::Pipe)?;
+    let number = |token: &OwnedLexToken| {
+        (token.kind == TokenKind::Number)
+            .then(|| token.parser_text().parse::<i32>().ok())
+            .flatten()
+    };
+    let comparison = match &tokens[..pipe] {
+        [exact] if exact.kind == TokenKind::Number => Comparison::Equal(number(exact)?),
+        [range] if range.kind == TokenKind::Word => {
+            let (min, max) = crate::word_primitives::parse_ascii_numeric_range(range.parser_text())?;
+            if min > max { return None; }
+            Comparison::BetweenInclusive(min, max)
+        }
+        [min, plus] if plus.kind == TokenKind::Plus => {
+            Comparison::GreaterThanOrEqual(number(min)?)
+        }
+        [max, or, less] if or.is_word("or") && less.is_word("less") => {
+            Comparison::LessThanOrEqual(number(max)?)
+        }
+        [min, dash, max] if matches!(dash.kind, TokenKind::Dash | TokenKind::EmDash) => {
+            let (min, max) = (number(min)?, number(max)?);
+            if min > max { return None; }
+            Comparison::BetweenInclusive(min, max)
+        }
+        _ => return None,
+    };
+    Some(NumericResultPrefixShape { comparison, body_start: pipe + 1 })
 }
 
 pub fn parse_statement_label_split_tokens(
@@ -110,21 +116,6 @@ pub fn parse_statement_label_strip_tokens(
         body_tokens: tokens,
         stripped_labels,
     }
-}
-
-fn numeric_result_head(input: &mut LexStream<'_>) -> WResult<()> {
-    primitives::token_kind(TokenKind::Number)
-        .void()
-        .parse_next(input)?;
-    winnow::combinator::alt((
-        primitives::token_kind(TokenKind::Dash),
-        primitives::token_kind(TokenKind::EmDash),
-    ))
-    .void()
-    .parse_next(input)?;
-    primitives::token_kind(TokenKind::Number)
-        .void()
-        .parse_next(input)
 }
 
 fn council_choice_label(input: &mut LexStream<'_>) -> WResult<()> {

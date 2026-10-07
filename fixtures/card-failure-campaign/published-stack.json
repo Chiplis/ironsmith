@@ -1386,6 +1386,27 @@
       "source_current_residual_proposed_unique": 96,
       "new_measured_recoveries": 0,
       "checks_note": "No status contexts or workflow checks were reported at verification; none is represented as passed."
+    },
+    {
+      "series": "20261007-next",
+      "batch": "next02-repeat-static-and-durations",
+      "branch": "fix/card-repair-next-02-repeat-static-and-durations",
+      "base": "fix/card-repair-next-01-counter-prevention-and-bodies",
+      "working_main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+      "source_integration_commit": "94e075587a07b4ba659bcca84ded1d98605ccb82",
+      "remote_commit": "d29bfe2206fc17e8b5bbeaf5848573cdf89efca1",
+      "tree": "d76dc1fb283514aeccb4e4d068598ded0ba11cf8",
+      "remote_ref_verified": true,
+      "remote_tree_verified": true,
+      "pr": 868,
+      "draft": true,
+      "validation_status": "UNVALIDATED_source_reviewed_new_scenarios_UNRUN",
+      "pr_url": "https://github.com/Chiplis/ironsmith/pull/868",
+      "verified_at": "2026-10-07T20:56:00Z",
+      "source_original_eligible_unique": 1256,
+      "source_current_residual_proposed_unique": 124,
+      "new_measured_recoveries": 0,
+      "checks_note": "No executable checks were run for this packet; source clearance is not test validation. Publication receipt and later read-only parent verification retained."
     }
   ]
 }

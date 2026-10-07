@@ -12,8 +12,80 @@ use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definit
 const A: PlayerId = PlayerId(0);
 const B: PlayerId = PlayerId(1);
 const C: PlayerId = PlayerId(2);
+const ORIGINAL_CANDIDATES: [(&str, &str); 5] = [
+    ("Breaching Leviathan", "7d249b16-33ef-463e-9e5d-0b84d434f093"),
+    ("Cone of Cold", "56fd0752-9fb0-4c05-90e5-c3b268b57c6f"),
+    ("Dragon Turtle", "a3270e64-38d2-49e5-8a1e-a5e81205776b"),
+    ("Lorthos, the Tidemaker", "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4"),
+    ("Sudden Storm", "32e915fb-3836-4bed-93b1-61c9c3951ad1"),
+];
+fn fixtures() -> Vec<serde_json::Value> {
+    serde_json::from_str(include_str!("../../../fixtures/plural_controller_untap.json.fixture")).unwrap()
+}
+fn assert_metadata(row: &serde_json::Value, definition: &CardDefinition) {
+    use ironsmith::{CardType, Subtype, Supertype};
+    let name = row["name"].as_str().unwrap();
+    assert_eq!(definition.card.name, name);
+    assert_eq!(definition.card.mana_cost.as_ref().unwrap().to_oracle(), row["mana_cost"].as_str().unwrap());
+    let (kind, subtypes, legendary) = match name {
+        "Breaching Leviathan" => (CardType::Creature, vec![Subtype::Leviathan], false),
+        "Cone of Cold" => (CardType::Sorcery, vec![], false),
+        "Dragon Turtle" => (CardType::Creature, vec![Subtype::Dragon, Subtype::Turtle], false),
+        "Lorthos, the Tidemaker" => (CardType::Creature, vec![Subtype::Octopus], true),
+        "Sudden Storm" | "Code of Constraint" => (CardType::Instant, vec![], false),
+        _ => panic!("unexpected frozen body: {name}"),
+    };
+    assert_eq!(definition.card.card_types, vec![kind]);
+    assert_eq!(definition.card.subtypes, subtypes);
+    assert_eq!(definition.card.supertypes, if legendary { vec![Supertype::Legendary] } else { vec![] });
+    if let Some(power) = row["power"].as_str() {
+        let stats = definition.card.power_toughness.as_ref().unwrap();
+        assert_eq!(stats.power.to_string(), power);
+        assert_eq!(stats.toughness.to_string(), row["toughness"].as_str().unwrap());
+    } else {
+        assert!(definition.card.power_toughness.is_none());
+    }
+    assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(definition));
+}
+
+#[test]
+fn all_five_original_bodies_compile_directly_with_complete_metadata() {
+    let rows = fixtures();
+    for (name, oracle_id) in ORIGINAL_CANDIDATES {
+        let row = rows.iter().find(|row| row["oracle_id"] == oracle_id).unwrap();
+        assert_eq!(row["name"], name);
+        let mut source = format!("Mana cost: {}\nType: {}\n", row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap());
+        if let Some(power) = row["power"].as_str() {
+            source.push_str(&format!("Power/Toughness: {power}/{}\n", row["toughness"].as_str().unwrap()));
+        }
+        source.push_str(row["oracle_text"].as_str().unwrap());
+        assert_eq!(source, row["text"].as_str().unwrap(), "the original body may not be rewritten");
+        let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, source, false));
+        let direct = direct.unwrap_or_else(|error| panic!("{name} ({oracle_id}): {error}"));
+        assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+        assert_metadata(row, &direct);
+    }
+}
+
+#[test]
+fn all_five_original_bodies_compile_independently_through_artifact_transport() {
+    let rows = fixtures();
+    for (name, oracle_id) in ORIGINAL_CANDIDATES {
+        let row = rows.iter().find(|row| row["oracle_id"] == oracle_id).unwrap();
+        let (result, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_artifact(name, row["text"].as_str().unwrap(), false));
+        // The returned companion definition is deliberately not called direct.
+        let (artifact, _) = result.unwrap_or_else(|error| panic!("{name} ({oracle_id}): {error}"));
+        assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
+        let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+        restored.validate().unwrap();
+        assert_eq!(artifact, restored);
+        let definition = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap();
+        assert_metadata(row, &definition);
+    }
+}
+
 fn definitions(name: &str) -> [CardDefinition; 2] {
-    let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/plural_controller_untap.json.fixture")).unwrap();
+    let rows = fixtures();
     let row = rows.iter().find(|row| row["name"] == name).unwrap();
     let text = row["text"].as_str().unwrap();
     let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, text, false));
@@ -23,7 +95,9 @@ fn definitions(name: &str) -> [CardDefinition; 2] {
     let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
     restored.validate().unwrap(); assert_eq!(artifact, restored);
     let definitions = [direct, ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap()];
-    for definition in &definitions { assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(definition)); }
+    assert_eq!(definitions[0].canonical_text, definitions[1].canonical_text);
+    assert_eq!(definitions[0].ability_labels, definitions[1].ability_labels);
+    for definition in &definitions { assert_metadata(row, definition); }
     definitions
 }
 fn game() -> GameState {
@@ -38,9 +112,9 @@ fn object(g: &mut GameState,p:PlayerId,z:Zone,name:&str,text:&str)->ObjectId {
 }
 fn creature(g:&mut GameState,p:PlayerId)->ObjectId { object(g,p,Zone::Battlefield,"Witness","Type: Creature — Bear\nPower/Toughness: 2/6") }
 #[derive(Default)]
-struct Choices { targets:Vec<Target>, accept:bool, views:usize }
+struct Choices { targets:Vec<Target>, accept:bool, views:usize, target_contexts:Vec<TargetsContext> }
 impl DecisionMaker for Choices {
-    fn decide_targets(&mut self,_:&GameState,_:&TargetsContext)->Vec<Target>{self.targets.clone()}
+    fn decide_targets(&mut self,_:&GameState,context:&TargetsContext)->Vec<Target>{self.target_contexts.push(context.clone());self.targets.clone()}
     fn decide_boolean(&mut self,_:&GameState,_:&BooleanContext)->bool{self.accept}
     fn decide_mana_payment(&mut self,_:&GameState,c:&ManaPaymentContext)->ironsmith::mana_payment::ManaPaymentResponse {
         ironsmith::mana_payment::ManaPaymentResponse::Confirm{plan_id:c.plan.id,request_hash:c.plan.request_hash}
@@ -81,6 +155,8 @@ fn storm_preserves_zero_partial_and_all_illegal_targets_and_scry(){
         g.tap(first); // Already tapped remains part of the affected set.
         let mut dm=Choices{targets:[first,second].into_iter().take(selected).map(Target::Object).collect(),..Default::default()};
         cast(&mut g,&definition,&mut dm);
+        let requirements=&dm.target_contexts.last().unwrap().requirements;
+        assert_eq!(requirements.len(),1);assert_eq!(requirements[0].min_targets,0);assert_eq!(requirements[0].max_targets,Some(2));
         for id in [first,second].into_iter().take(removed){g.move_object_by_effect(id,Zone::Graveyard).unwrap();}
         settle(&mut g,&mut dm);
         assert_eq!(dm.views,usize::from(selected==0 || removed<selected));
@@ -100,17 +176,23 @@ fn storm_tracks_new_controller_not_old_player_and_does_not_follow_blink(){
         g.turn.phase=ironsmith::Phase::FirstMain;g.turn.step=None;g.turn.active_player=A;
         cast(&mut g,&definition,&mut dm);settle(&mut g,&mut dm);
         let hand=g.move_object_by_effect(target,Zone::Hand).unwrap();let returned=g.move_object_by_effect(hand,Zone::Battlefield).unwrap();
-        g.tap(returned);untap(&mut g,C);assert!(!g.is_tapped(returned));
+        assert_eq!(g.current_controller(returned),Some(B));
+        g.tap(returned);untap(&mut g,B);assert!(!g.is_tapped(returned));
     }
 }
 #[test]
 fn dragon_flash_optional_target_and_all_illegal_trigger_are_distinct(){
     for definition in definitions("Dragon Turtle") {for mode in 0..3 {
         let mut g=game();g.turn.active_player=B;g.turn.phase=ironsmith::Phase::Ending;
-        let target=creature(&mut g,B);let mut dm=Choices{targets:if mode==0{vec![]}else{vec![Target::Object(target)]},..Default::default()};
+        let target=creature(&mut g,B);let own=creature(&mut g,A);let land=object(&mut g,B,Zone::Battlefield,"Noncreature","Type: Land");
+        let mut dm=Choices{targets:if mode==0{vec![]}else{vec![Target::Object(target)]},..Default::default()};
         let spell=cast(&mut g,&definition,&mut dm);resolve_stack_entry_with(&mut g,&mut dm).unwrap();
         let turtle=*g.battlefield.iter().find(|id|g.object(**id).unwrap().name=="Dragon Turtle").unwrap();assert_ne!(spell,turtle);
         put_triggers_on_stack_with_dm(&mut g,&mut TriggerQueue::new(),&mut dm).unwrap();
+        let requirements=&dm.target_contexts.last().unwrap().requirements;
+        assert_eq!(requirements.len(),1);assert_eq!(requirements[0].min_targets,0);assert_eq!(requirements[0].max_targets,Some(1));
+        assert!(requirements[0].legal_targets.contains(&Target::Object(target)));
+        for illegal in [own,land,turtle]{assert!(!requirements[0].legal_targets.contains(&Target::Object(illegal)));}
         if mode==2{g.move_object_by_effect(target,Zone::Graveyard).unwrap();}
         settle(&mut g,&mut dm);assert_eq!(g.is_tapped(turtle),mode!=2);
         if mode!=2{untap(&mut g,A);assert!(g.is_tapped(turtle));untap(&mut g,A);assert!(!g.is_tapped(turtle));}
@@ -134,19 +216,34 @@ fn breaching_requires_a_hand_cast_and_locks_only_nonblue_original_creatures(){
 }
 #[test]
 fn lorthos_attack_keeps_payment_and_targets_after_source_departure(){
-    for definition in definitions("Lorthos, the Tidemaker") {for accept in [false,true] {
-        let mut g=game();let lorthos=g.create_object_from_definition(&definition,A,Zone::Battlefield);let enemy=creature(&mut g,B);
+    for definition in definitions("Lorthos, the Tidemaker") {for (accept,mana) in [(false,40),(true,40),(true,7)] {for (selected,removed) in [(0,0),(1,0),(1,1),(8,0),(8,3),(8,8)] {
+        let mut g=game();let lorthos=g.create_object_from_definition(&definition,A,Zone::Battlefield);
+        g.player_mut(A).unwrap().mana_pool.blue=mana;
+        let targets=(0..8).map(|index|if index%2==0{creature(&mut g,B)}else{object(&mut g,C,Zone::Battlefield,"Target land","Type: Land")}).collect::<Vec<_>>();
+        g.tap(targets[0]); // Already-tapped permanents remain legal recipients.
         g.remove_summoning_sickness(lorthos);g.turn.phase=ironsmith::Phase::Combat;g.turn.step=Some(ironsmith::game_state::Step::DeclareAttackers);
         let mut combat=ironsmith::combat_state::CombatState::default();let mut q=TriggerQueue::new();
         apply_attacker_declarations(&mut g,&mut combat,&mut q,&[AttackerDeclaration{creature:lorthos,target:ironsmith::combat_state::AttackTarget::Player(B)}]).unwrap();g.combat=Some(combat);
-        let mut dm=Choices{targets:vec![Target::Object(enemy)],accept,..Default::default()};put_triggers_on_stack_with_dm(&mut g,&mut q,&mut dm).unwrap();
-        g.move_object_by_effect(lorthos,Zone::Graveyard).unwrap();settle(&mut g,&mut dm);assert_eq!(g.is_tapped(enemy),accept);
-        untap(&mut g,B);assert_eq!(g.is_tapped(enemy),accept);untap(&mut g,B);assert!(!g.is_tapped(enemy));
-    }}
+        let mut dm=Choices{targets:targets.iter().take(selected).copied().map(Target::Object).collect(),accept,..Default::default()};put_triggers_on_stack_with_dm(&mut g,&mut q,&mut dm).unwrap();
+        let requirements=&dm.target_contexts.last().unwrap().requirements;
+        assert_eq!(requirements.len(),1);assert_eq!(requirements[0].min_targets,0);assert_eq!(requirements[0].max_targets,Some(8));
+        for id in &targets{assert!(requirements[0].legal_targets.contains(&Target::Object(*id)));}
+        let mana_before=g.player(A).unwrap().mana_pool.total();
+        for id in targets.iter().take(removed){g.move_object_by_effect(*id,Zone::Graveyard).unwrap();}
+        g.move_object_by_effect(lorthos,Zone::Graveyard).unwrap();settle(&mut g,&mut dm);
+        let resolves=selected==0 || removed<selected;
+        let paid=accept && mana>=8 && resolves;
+        assert_eq!(g.player(A).unwrap().mana_pool.total(),mana_before-if paid{8}else{0});
+        for (index,id) in targets.iter().enumerate().skip(removed){assert_eq!(g.is_tapped(*id),index==0 || (paid && index<selected));}
+        untap(&mut g,B);untap(&mut g,C);
+        for (index,id) in targets.iter().enumerate().skip(removed){assert_eq!(g.is_tapped(*id),paid && index<selected);}
+        untap(&mut g,B);untap(&mut g,C);
+        for id in targets.iter().skip(removed){assert!(!g.is_tapped(*id));}
+    }}}
 }
 #[test]
 fn cone_keeps_all_three_dice_bodies_and_timed_entry_restriction(){
-    for definition in definitions("Cone of Cold") {for result in [1,10,20] {
+    for definition in definitions("Cone of Cold") {for result in [1,9,10,19,20] {
         let mut g=game();let own=creature(&mut g,A);let enemy=creature(&mut g,B);let other=creature(&mut g,C);
         g.force_next_die_roll(result);let mut dm=Choices::default();cast(&mut g,&definition,&mut dm);settle(&mut g,&mut dm);
         assert!(!g.is_tapped(own));assert!(g.is_tapped(enemy));assert!(g.is_tapped(other));

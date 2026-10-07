@@ -1,5 +1,57 @@
 use super::*;
 
+/// This cross-zone phrase is a complete typed union, even when its caller has
+/// already consumed `target`. Do not send a malformed instance to the tolerant
+/// relational noun scanner after the complete owner rejects it.
+pub(crate) fn parse_complete_permanent_or_suspended_card_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Option<Result<ObjectFilter, CardTextError>> {
+    if tokens.first().is_some_and(|token| token.is_word("all")) {
+        return parse_complete_permanent_or_suspended_card_filter(&tokens[1..], other)
+            .map(|result| result.map(|mut filter| {
+                filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+                filter
+            }));
+    }
+    let words = parser_token_word_refs(tokens);
+    // Only the noun phrase before the first targeting relation can establish
+    // this owner. A relation enclosing the union remains with its own reader,
+    // but a union followed by a relation must consume or reject that full tail.
+    let noun_end = words.windows(2)
+        .position(|part| matches!(part, ["that", "target" | "targets"]))
+        .unwrap_or(words.len());
+    let noun_words = &words[..noun_end];
+    let head = noun_words.iter().copied().skip_while(|word| {
+        is_article(word) || matches!(*word, "each" | "other" | "another" | "target" | "targets" | "nonland")
+    }).next();
+    // A nested union belongs to its enclosing relation first, for example a
+    // `spell that targets a permanent or suspended card`.
+    if !matches!(head, Some("permanent" | "permanents" | "suspended"))
+        || !noun_words.iter().any(|word| matches!(*word, "permanent" | "permanents"))
+        || !noun_words.contains(&"suspended")
+        || !noun_words.iter().any(|word| matches!(*word, "or" | "and" | "and/or"))
+    {
+        return None;
+    }
+    // Word projection must not erase punctuation or empty extra arms. The
+    // established owner consumes the complete qualifiers of both noun arms.
+    let complete_tokens = tokens.iter().all(|token| token.as_word().is_some())
+        && words.iter().filter(|word| matches!(**word, "or" | "and" | "and/or")).count() == 1;
+    let parsed = if complete_tokens {
+        parse_permanent_or_suspended_card_disjunction(tokens)
+    } else {
+        None
+    };
+    Some(parsed.map(|mut filter| {
+        filter.other = other;
+        filter
+    }).ok_or_else(|| CardTextError::ParseError(format!(
+        "unsupported complete permanent-or-suspended filter: {}",
+        crate::lexer::render_token_slice(tokens)
+    ))))
+}
+
 pub(super) fn strip_other_than_basic_land_cards_clause(
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,

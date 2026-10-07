@@ -3634,6 +3634,23 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::Count(source_filter),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && let [subtype] = filter.subtypes.as_slice()
+            {
+                let expected = ObjectFilter::default()
+                    .with_subtype(*subtype)
+                    .in_zone(Zone::Battlefield)
+                    .controlled_by(PlayerFilter::your_team());
+                let mut expected_source = expected.clone();
+                expected_source.source = true;
+                if filter == &expected && source_filter == &expected_source {
+                    return format!("your team controls another {subtype}");
+                }
+            }
             if right.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCounterPresence)
                 && let (Value::CountersOn(spec, Some(counter)), crate::effect::ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(1)) = (left.unhinted(), operator, right.unhinted())
             {

@@ -26,6 +26,12 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // Own the complete union before any relation, attachment, source reference,
+    // or qualifier is peeled off. Returning a freshly parsed union after those
+    // passes would silently discard their accumulated semantic constraints.
+    if let Some(result) = parse_complete_permanent_or_suspended_card_filter(tokens, other) {
+        return result;
+    }
     if let Some(filter) =
         crate::grammar::filters::simple::parse_simple_object_filter_lexed(tokens, other)
         && filter.ring_bearer
@@ -710,10 +716,6 @@ pub(in super::super) fn parse_object_filter_inner(
             crate::tag::CompilerReferenceTag::Rest.bind(),
         ));
     }
-    if let Some(filter) = parse_permanent_or_suspended_card_disjunction(&base_tokens) {
-        return Ok(filter);
-    }
-
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_mana_values_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);

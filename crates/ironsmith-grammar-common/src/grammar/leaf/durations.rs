@@ -146,6 +146,10 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
         LeafDurationPhrase::ControllersNextUntapStep,
     ),
     (
+        &["during", "their", "controllers'", "next", "untap", "steps"],
+        LeafDurationPhrase::ControllersNextUntapStep,
+    ),
+    (
         &["for", "the", "rest", "of", "the", "game"],
         LeafDurationPhrase::Forever,
     ),

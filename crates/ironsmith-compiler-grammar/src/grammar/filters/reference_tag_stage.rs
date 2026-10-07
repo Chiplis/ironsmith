@@ -1409,8 +1409,9 @@ pub(crate) use reference_tag_stage_resource_programs::lift_shared_trailing_mana_
 use reference_tag_stage_resource_programs::try_apply_distinct_mana_values_clause;
 #[path = "reference_tag_stage/reference_tag_stage_library.rs"]
 mod reference_tag_stage_library_programs;
+pub(crate) use reference_tag_stage_library_programs::parse_complete_permanent_or_suspended_card_filter;
 use reference_tag_stage_library_programs::{
     consume_permanent_or_suspended_card_tail, parse_permanent_or_suspended_card_arm,
-    parse_permanent_or_suspended_card_disjunction, strip_other_than_basic_land_cards_clause,
+    strip_other_than_basic_land_cards_clause,
     strip_other_than_basic_land_cards_tokens,
 };

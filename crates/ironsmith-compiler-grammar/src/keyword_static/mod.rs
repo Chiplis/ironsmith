@@ -5707,19 +5707,29 @@ pub fn parse_enter_as_copy_as_enters_line(
                 // addition to his other types": a name exception followed by
                 // a characteristic exception in one clause.
                 let mut exceptions = vec![exception];
-                if matches!(
-                    exceptions[0],
-                    keyword_static_lines::CopyExceptionShape::Name { .. }
-                ) && let Some(and_index) = exception_tokens.windows(2).position(|pair| {
-                    pair[0].is_word("and") && pair[1].is_any_word(&["it's", "it’s", "it"])
-                }) && let Some(
-                    characteristics @ keyword_static_lines::CopyExceptionShape::Characteristics {
-                        ..
-                    },
-                ) = keyword_static_lines::parse_copy_exception_tokens(
-                    &exception_tokens[and_index + 1..],
-                ) {
-                    exceptions.push(characteristics);
+                if let keyword_static_lines::CopyExceptionShape::Name { remainder_tokens, .. } = &exceptions[0] {
+                    let remainder = trim_lexed_commas(*remainder_tokens);
+                    if !remainder.is_empty() {
+                        let remainder = if remainder[0].is_word("and") {
+                            trim_lexed_commas(&remainder[1..])
+                        } else {
+                            return Err(CardTextError::ParseError(
+                                "unsupported complete enters-as-copy name exception tail".into(),
+                            ));
+                        };
+                        // A name exception must not discard a second exception.
+                        // Only the already supported complete characteristic
+                        // suffix may accompany it; other compound bodies stay
+                        // unsupported instead of merely retaining their prose.
+                        let Some(characteristics @ keyword_static_lines::CopyExceptionShape::Characteristics { .. }) =
+                            keyword_static_lines::parse_copy_exception_tokens(remainder)
+                        else {
+                            return Err(CardTextError::ParseError(
+                                "unsupported complete enters-as-copy name exception tail".into(),
+                            ));
+                        };
+                        exceptions.push(characteristics);
+                    }
                 }
                 for exception in exceptions {
                     match exception {
@@ -5789,6 +5799,7 @@ pub fn parse_enter_as_copy_as_enters_line(
                         keyword_static_lines::CopyExceptionShape::Name {
                             name_tokens,
                             use_named_subject,
+                            ..
                         } => {
                             if use_named_subject {
                                 name_override = named_copy_subject.clone();
@@ -6060,6 +6071,28 @@ pub fn parse_choose_color_as_enters_line(
 #[cfg(test)]
 mod enter_as_copy_added_color_tests {
     use super::*;
+
+    #[test]
+    fn copy_name_exception_never_drops_unmodeled_compound_tails() {
+        for tail in [
+            "and it has flying",
+            "and it can't block",
+            ", it's legendary in addition to its other types",
+        ] {
+            let text = format!("You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror {tail}.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            assert!(parse_enter_as_copy_as_enters_line(&tokens).is_err(), "{text}");
+        }
+        let text = "You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror and it's a 4/4 Spider Human Hero in addition to its other types.";
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let ability = parse_enter_as_copy_as_enters_line(&tokens).unwrap().unwrap();
+        let ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, .. } = ability.payload else {
+            panic!("copy model");
+        };
+        assert_eq!(spec.name_override.as_deref(), Some("Mirror"));
+        assert_eq!(spec.set_base_power_toughness, Some((4, 4)));
+        assert_eq!(spec.added_subtypes, [Subtype::Spider, Subtype::Human, Subtype::Hero]);
+    }
 
     #[test]
     fn copy_exception_adds_a_color_alongside_types_subtypes_and_fixed_pt() {

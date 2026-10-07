@@ -2006,6 +2006,9 @@ fn describe_shared_creature_battlefield_or_graveyard_filter(
 }
 
 pub(crate) fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilter) -> String {
+    if let Some(suspended_union) = describe_permanent_or_suspended_card_union(filter) {
+        return suspended_union;
+    }
     if let Some(prior_result) = describe_prior_effect_tagged_filter_surface(filter) {
         return prior_result;
     }
@@ -2055,6 +2058,74 @@ pub(crate) fn describe_object_filter_with_fixed_pt_shorthand(filter: &ObjectFilt
         }
     }
     format!("{shorthand} {description}")
+}
+
+/// Use the suspended noun only for the full executable predicate. An exiled
+/// card with Time counters alone, or Suspend without Time counters, is not one.
+fn describe_permanent_or_suspended_card_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() != 2
+        || filter.union_connective() != ironsmith_core::ObjectFilterUnionConnective::Or
+    {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = Default::default();
+    if outer != ObjectFilter::default() { return None; }
+    let suspended = ObjectFilter::default().in_zone(Zone::Exile)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    let permanent = ObjectFilter::permanent();
+    let timed_permanent = permanent.clone().with_counter_type(crate::object::CounterType::Time);
+    let mut has_permanent = false;
+    let mut has_suspended = false;
+    let mut arms = Vec::new();
+    for arm in &filter.any_of {
+        if arm == &suspended && !has_suspended {
+            has_suspended = true;
+            arms.push("suspended card");
+        } else if (arm == &permanent || arm == &timed_permanent) && !has_permanent {
+            has_permanent = true;
+            arms.push(if arm == &timed_permanent {
+                "permanent with a time counter on it"
+            } else { "permanent" });
+        } else { return None; }
+    }
+    (has_permanent && has_suspended).then(|| arms.join(" or "))
+}
+
+#[cfg(test)]
+mod suspended_union_render_tests {
+    use super::*;
+
+    #[test]
+    fn suspended_noun_requires_the_exact_predicate_and_never_hides_qualifiers() {
+        let suspended = ObjectFilter::default().in_zone(Zone::Exile)
+            .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+            .with_counter_type(crate::object::CounterType::Time);
+        let filter = ObjectFilter {
+            any_of: vec![ObjectFilter::permanent(), suspended], ..ObjectFilter::default()
+        };
+        assert_eq!(describe_permanent_or_suspended_card_union(&filter).as_deref(),
+            Some("permanent or suspended card"));
+        let mut put = filter.clone();
+        put.any_of[0].with_counter = Some(crate::filter::CounterConstraint::Typed(crate::object::CounterType::Time));
+        assert_eq!(describe_permanent_or_suspended_card_union(&put).as_deref(),
+            Some("permanent with a time counter on it or suspended card"));
+        for change in ["zone", "counter", "suspend", "owner", "outer", "extra arm"] {
+            let mut near_miss = filter.clone();
+            match change {
+                "zone" => near_miss.any_of[1].zone = Some(Zone::Hand),
+                "counter" => near_miss.any_of[1].with_counter = None,
+                "suspend" => near_miss.any_of[1].alternative_cast = None,
+                "owner" => near_miss.any_of[1].owner = Some(PlayerFilter::You),
+                "outer" => near_miss.controller = Some(PlayerFilter::You),
+                "extra arm" => near_miss.any_of.push(ObjectFilter::creature()),
+                _ => unreachable!(),
+            }
+            assert!(describe_permanent_or_suspended_card_union(&near_miss).is_none(), "{change}");
+        }
+    }
 }
 
 fn describe_object_or_player_union(

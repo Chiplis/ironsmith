@@ -2528,6 +2528,7 @@ fn stage_effects_from_normalized(
         config.bind_unbound_x_to_last_effect,
         config.initial_last_effect_id,
     );
+    initial_env.has_announced_x |= config.has_announced_x;
     initial_env.allow_excess_damage_event_value = config.allow_excess_damage_event_value;
     initial_env.milling_event_filter = config.milling_event_filter.clone();
     initial_env.dice_event_grouped = config.dice_event_grouped;
@@ -4142,13 +4143,13 @@ fn stage_parsed_ability_payload(
             )?;
             Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
         }
-        (crate::model::CompilerAbilityKindCore::Activated(_), _) => Some(
-            NormalizedPreparedAbility::Activated(stage_effects_with_trigger_context_for_lowering(
-                None,
-                effects_ast,
-                parsed.reference_imports.clone(),
-            )?),
-        ),
+        (crate::model::CompilerAbilityKindCore::Activated(activated), _) => {
+            let mut imports = parsed.reference_imports.clone();
+            imports.has_announced_x |= crate::model::costs::cost_has_announced_x(&activated.mana_cost);
+            Some(NormalizedPreparedAbility::Activated(
+                stage_effects_with_trigger_context_for_lowering(None, effects_ast, imports)?,
+            ))
+        }
         _ => None,
     })
 }
@@ -5714,7 +5715,7 @@ pub(crate) fn lower_compiler_static_ability_core(
 fn lower_compiler_resolution_program(
     program: ironsmith_core::ResolutionProgram<EffectAst>,
 ) -> Result<(ironsmith_core::ResolutionProgram<Effect>, Vec<ChooseSpec>), CardTextError> {
-    lower_compiler_resolution_program_with(program, None)
+    lower_compiler_resolution_program_with(program, None, false)
 }
 
 /// Lowers a resolution program. With a shared context, every child resolves
@@ -5723,10 +5724,12 @@ fn lower_compiler_resolution_program(
 fn lower_compiler_resolution_program_with(
     program: ironsmith_core::ResolutionProgram<EffectAst>,
     mut shared: Option<&mut crate::model::facts::EffectLoweringContext>,
+    has_announced_x: bool,
 ) -> Result<(ironsmith_core::ResolutionProgram<Effect>, Vec<ChooseSpec>), CardTextError> {
     let mut choices = Vec::new();
     let lowered = program.try_map_effects(|effect| {
         let mut isolated = crate::model::facts::EffectLoweringContext::new();
+        isolated.has_announced_x = has_announced_x;
         let ctx = match shared.as_deref_mut() {
             Some(ctx) => ctx,
             None => &mut isolated,
@@ -5782,7 +5785,7 @@ fn lower_compiler_triggered_ability_core_with(
     shared: Option<&mut crate::model::facts::EffectLoweringContext>,
 ) -> Result<crate::ability::TriggeredAbility, CardTextError> {
     let (effects, derived_choices) =
-        lower_compiler_resolution_program_with(triggered.effects, shared)?;
+        lower_compiler_resolution_program_with(triggered.effects, shared, false)?;
     let mut choices = triggered.choices;
     for choice in derived_choices {
         if !choices.contains(&choice) {
@@ -5847,7 +5850,9 @@ pub(crate) fn resolve_trigger_intervening_if(
 fn lower_compiler_activated_ability_core(
     activated: crate::model::CompilerActivatedAbilityCore,
 ) -> Result<crate::ability::ActivatedAbility, CardTextError> {
-    let (effects, derived_choices) = lower_compiler_resolution_program(activated.effects)?;
+    let has_announced_x = crate::model::costs::cost_has_announced_x(&activated.mana_cost);
+    let (effects, derived_choices) =
+        lower_compiler_resolution_program_with(activated.effects, None, has_announced_x)?;
     let mut choices = activated.choices;
     for choice in derived_choices {
         if !choices.contains(&choice) {

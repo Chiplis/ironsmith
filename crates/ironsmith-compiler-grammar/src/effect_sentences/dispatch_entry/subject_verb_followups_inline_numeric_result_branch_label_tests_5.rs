@@ -12,7 +12,7 @@ fn parsed_row(text: &str) -> EffectAst {
 fn exact_numeric_result_row_retains_its_authored_inner_label() {
     let effect = parsed_row("1 | Trapped! — You lose 3 life.");
     let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
-        predicate: IfResultPredicate::Value(crate::effect::Comparison::Equal(1)),
+        predicate: IfResultPredicate::DieValue(crate::effect::Comparison::Equal(1)),
         effects,
     }) = effect
     else {

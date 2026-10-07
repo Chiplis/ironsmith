@@ -6,6 +6,11 @@ pub(super) fn is_die_query(query: &ironsmith_core::PriorEffectMetricQuery) -> bo
     Family::Die.query(query)
 }
 pub(super) fn remember_producer(producers: &mut Vec<Option<EffectId>>, id: Option<EffectId>, effect: &EffectAst) {
+    if result_gate_surface(effect)
+        .is_some_and(|(predicate, _)| matches!(predicate, IfResultPredicate::DieValue(_)))
+    {
+        return;
+    }
     Family::Die.remember(producers, id, effect)
 }
 pub(super) fn bind_die_query(query: &ironsmith_core::PriorEffectMetricQuery, state: EffectReferenceResolutionState<'_>) -> Result<Value, CardTextError> {

@@ -58,7 +58,7 @@ pub(super) fn post_rule_numeric_result_branch_label(
     else {
         return Ok(None);
     };
-    let IfResultPredicate::Value(_) = &prefix.predicate else {
+    let IfResultPredicate::DieValue(_) = &prefix.predicate else {
         return Ok(None);
     };
     let authored_tokens = sentences

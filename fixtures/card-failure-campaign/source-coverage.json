@@ -1,24 +1,24 @@
 {
   "schema_version": 1,
   "baseline_commit": "e8740178a7f7367ffa3147e7642607042079237c",
-  "source_implementation_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
+  "source_implementation_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
   "dataset_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
   "summary": {
     "frozen_baseline_unique_unresolved": 3233,
-    "additional_proposed_unique_cards": 1256,
-    "additional_proposed_compile_entries": 1260,
+    "additional_proposed_unique_cards": 1276,
+    "additional_proposed_compile_entries": 1281,
     "extra_fixture_entries_not_baseline_failures": [],
     "source_coverage_is_not_verified_recovery": true,
     "known_runtime_partial_previous_proposals": 0,
     "source_proposals_include_explicit_runtime_limit_caveats": true,
     "identified_source_proposals_with_known_runtime_gaps": 0,
-    "source_proposals_excluding_identified_runtime_gaps": 1256,
+    "source_proposals_excluding_identified_runtime_gaps": 1276,
     "runtime_gap_inventory_is_not_exhaustive": true,
     "source_proposals_use_checked_host_limits_not_arbitrary_precision": true,
     "unported_previously_proposed_unique_cards": 0,
     "unported_previously_proposed_entries": 0,
     "current_base_majority_gate_blocked": true,
-    "source_identities_until_majority_gate": 341,
+    "source_identities_until_majority_gate": 321,
     "current_base_owner_admission_blocked": true,
     "measurement_scope": "Current measurements are clean main5cc46c1. Source-card inventory remains the original frozen e8740178 failure scope; current-residual accounting, regressions and exclusions are explicit in current-residual-source-coverage.json.",
     "current_main_refresh_status": "completed_override_consumed",
@@ -29,24 +29,26 @@
     "current_main_original_baseline_recovered_unique": 1379,
     "current_main_original_baseline_still_unresolved_unique": 1854,
     "current_main_regressed_unique": 151,
-    "current_residual_source_proposed_unique": 124,
-    "current_residual_source_proposed_entries": 125,
-    "current_reheld_previously_proposed_unique": 45,
-    "current_reheld_previously_proposed_entries": 46,
-    "original_baseline_source_proposed_scope": "1256 unique / 1260 entries: 1201 inherited identities supported on measured main, 10 restored inherited source proposals, 27 next01 original-body proposals (including 8 supported semantic corrections), and 18 new next02 original proposals. The residual intersection is 47 IDs. The separate 77 regression proposals add zero original-majority credit.",
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_reheld_previously_proposed_unique": 30,
+    "current_reheld_previously_proposed_entries": 30,
+    "original_baseline_source_proposed_scope": "Source-reviewed 1276 IDs / 1281 entries: 1201 inherited supported + 25 restored inherited + 27 next01 original-body + 18 next02 original + 5 next03 new original. Residual intersection 67 IDs / 68 entries. Separate 79 regression proposals receive zero original credit.",
     "historical_stack07_measurement": {
       "verified_unique_compile_recoveries": 40,
       "verified_unique_remaining": 3193
     },
     "current_residual_source_coverage_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
     "broad_execution_gate": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
-    "current_base_owner_admission_blocked_scope": "The remaining 45 re-held inherited identities require substantive source corrections and readmission. The 1256 source-eligible original identities retain source review with all execution deferred.",
-    "execution_gate_scope": "Current clean-main measurement remains 2005 unresolved identities. The 124 residual source proposals (68 full-body, 56 shared blocker repairs) are prioritization only. The active execution criterion remains the original source-majority 1597/3193: 1256 eligible leaves 341. The 77 regression proposals receive no original-majority credit. All new-source execution remains closed.",
-    "current_regression_source_proposed_unique": 77,
-    "current_regression_unaddressed_unique": 74,
-    "current_packet_total_touched_unique": 132,
-    "current_packet_scope_note": "Cumulative 124 current residual source proposals (68 full-body, 56 shared blocker repairs) plus 8 already-supported semantic corrections; no new measured or verified runtime recoveries.",
-    "next_series_02_held_candidates_excluded_unique": 12
+    "current_base_owner_admission_blocked_scope": "30 inherited re-holds / 30 entries remain; 15 IDs / 16 entries restored by independent NEXT03 source review. No execution admission.",
+    "execution_gate_scope": "Current clean-main measurement remains 2005 unresolved. Source-reviewed NEXT03 accounting: 1276 original eligible / 1281 entries, shortfall 321 to 1597/3193; 146 residual proposals / 148 entries (90 full-body, 56 shared-blocker), 79 regression proposals with zero original credit. All new-source execution remains closed.",
+    "current_regression_source_proposed_unique": 79,
+    "current_regression_unaddressed_unique": 72,
+    "current_packet_total_touched_unique": 154,
+    "current_packet_scope_note": "Source-reviewed 146 residual source proposals / 148 entries plus 8 supported semantic corrections = 154 touched IDs / 156 entries. No new measured/runtime recovery.",
+    "next_series_02_held_candidates_excluded_unique": 12,
+    "next_series_03_held_candidates_excluded_unique": 8,
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
   },
   "workflow": {
     "effective_at": "2026-10-03T21:19:53Z",
@@ -64,19 +66,19 @@
       "log": "reports/card-failure-campaign/stack-14/validation-logs.tar.gz#release-build-final.log"
     },
     "current_recovery_architecture": {
-      "source_commit": "e3270fe05843e0e2f2d9962258e14c45193f12f0",
-      "note": "architecture/card-failure-next-series-02-compatibility.md",
+      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "note": "architecture/card-failure-next-series-03-compatibility.md",
       "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
       "public_audit_checkpoint_version": 9,
       "public_audit_is_gameplay_restore": false,
-      "compiled_artifact_version": 13,
-      "signed_audit_protocol_version": 26,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 27,
       "manabrew_protocol_version": 3,
-      "engine_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
-      "validation": "Independent family and coordinated compatibility source clearance recorded at the final integrated source anchor. All authored executable scenarios, generation, recovery and replay gates remain UNRUN.",
-      "semantic_migration_note": "architecture/card-failure-next-series-02-compatibility.md"
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-03-compatibility.md"
     },
-    "measurement_and_threshold_scope": "Current clean-main measurement remains 2005 unresolved identities. The 124 residual source proposals (68 full-body, 56 shared blocker repairs) are prioritization only. The active execution criterion remains the original source-majority 1597/3193: 1256 eligible leaves 341. The 77 regression proposals receive no original-majority credit. All new-source execution remains closed.",
+    "measurement_and_threshold_scope": "Current clean-main measurement remains 2005 unresolved. Source-reviewed NEXT03 accounting: 1276 original eligible / 1281 entries, shortfall 321 to 1597/3193; 146 residual proposals / 148 entries (90 full-body, 56 shared-blocker), 79 regression proposals with zero original credit. All new-source execution remains closed.",
     "one_time_current_main_refresh": {
       "authorized_at": "2026-10-07T12:11Z",
       "source_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
@@ -95,39 +97,43 @@
       "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
       "threshold_denominator_unique_remaining": 3193,
       "majority_minimum_unique_remaining": 1597,
-      "reconciled_source_eligible_unique": 1256,
-      "source_eligible_shortfall_to_threshold": 341,
+      "reconciled_source_eligible_unique": 1276,
+      "source_eligible_shortfall_to_threshold": 321,
       "semantic_holds_count_as_coverage": false,
-      "reheld_inherited_unique_excluded": 45,
-      "reheld_inherited_entries_excluded": 46,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
       "partial_bodies_count_as_coverage": false,
       "new_fixture_partials_excluded_unique": 13,
       "execution_authorized": false,
       "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
-      "next_series_02_held_candidates_excluded_unique": 12
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     },
     "current_residual_prioritization": {
       "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
       "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
       "current_residual_unique": 2005,
-      "reviewed_new_source_proposed_residual_unique": 124,
+      "reviewed_new_source_proposed_residual_unique": 146,
       "mathematical_comparison_only": {
         "majority_unique": 1003,
-        "shortfall_unique": 879,
+        "shortfall_unique": 857,
         "execution_gating_role": "none"
       },
       "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
-      "reheld_inherited_identities_excluded_from_residual_coverage": 45,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
       "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
       "new_fixture_partials_excluded_from_residual_coverage": 13,
       "changes_original_execution_stopping_condition": false,
-      "note": "Use 124/2005 to prioritize repairs: 68 full-body source proposals and 56 shared blocker repair proposed identities. The mathematical 1003/879 comparison has no execution authority or gating role; the active original source-majority criterion remains 1597/3193. No new measured or runtime recovery is claimed.",
-      "reviewed_new_source_proposed_residual_entries": 125,
-      "full_body_source_proposed_residual_unique": 68,
+      "note": "146/2005 residual source proposals: 90 full-body (including 25 restored) and 56 shared blocker repairs. Comparison-only 1003/857 has no execution authority; original source gate remains 1597/3193. NEXT03 source accounting cleared by independent bounded review. No new measured recovery.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
       "shared_blocker_repair_proposed_residual_unique": 56,
-      "formerly_supported_regression_proposed_unique": 77,
-      "formerly_supported_regression_unaddressed_unique": 74,
-      "next_series_02_held_candidates_excluded_from_residual_coverage": 12
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
     }
   },
   "families": [
@@ -6776,6 +6782,342 @@
         "Fatigue",
         "Misstep"
       ]
+    },
+    {
+      "id": "intervening-predicate-cohort",
+      "stage": 102,
+      "series": "next03",
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/intervening_predicate_cohort.json.fixture",
+      "fixture_sha256": "4b5b2cfc3247ce535a0a79b3b047fec8af34301b06ba834908e0739390b1eaa7",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "source_review_tree": "119a739e6786e679bb485e6f0e37d56de31af2aa",
+      "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+      "review_scope": "Exact-source team counts and owned-graveyard predicates retain complete conjunctions; five whole bodies only.",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Aurora Champion",
+        "Bull-Rush Bruiser",
+        "Sickle Dancer",
+        "Dragonfly Swarm",
+        "Walltop Sentries"
+      ],
+      "baseline_entries": [
+        "Aurora Champion",
+        "Bull-Rush Bruiser",
+        "Sickle Dancer",
+        "Dragonfly Swarm",
+        "Walltop Sentries"
+      ],
+      "current_residual_oracle_ids": [
+        "836bfcad-014a-40cc-ab79-906fcab723a0",
+        "83abf1d0-04e4-49e5-bf63-59f77829ffd1",
+        "a4499cf9-04a0-45c5-9c73-19f8e7e95da6",
+        "d5a7412a-2258-4d3e-9e0f-a150cc69081e",
+        "fb3a0910-a582-41ef-b5b9-3cda1f1cd5ce"
+      ],
+      "current_residual_unique": 5,
+      "current_residual_entries": 5,
+      "original_baseline_new_oracle_ids": [
+        "836bfcad-014a-40cc-ab79-906fcab723a0",
+        "83abf1d0-04e4-49e5-bf63-59f77829ffd1",
+        "a4499cf9-04a0-45c5-9c73-19f8e7e95da6",
+        "d5a7412a-2258-4d3e-9e0f-a150cc69081e",
+        "fb3a0910-a582-41ef-b5b9-3cda1f1cd5ce"
+      ],
+      "original_baseline_new_unique": 5,
+      "restored_original_oracle_ids": [],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": [
+        {
+          "card_name": "Consul's Lieutenant",
+          "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+          "remaining_blocker": "Renown and complete combat body remain outside the five reviewed predicate bodies."
+        },
+        {
+          "card_name": "The Notary Hobbits",
+          "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+          "remaining_blocker": "Whole-body copy-token and characteristic-exception ownership remains held."
+        }
+      ]
+    },
+    {
+      "id": "copy-entry-semantic-integrity",
+      "stage": 102,
+      "series": "next03",
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "crates/ironsmith-compiler-runtime/tests/copy_entry_semantic_integrity.rs",
+      "fixture_sha256": "6794cd27076b324c86b067461d646eeab2f5484203abbf34012e94005b081ac0",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "source_review_tree": "3123308b34e9e925ecf7b6ecc8f31edcff5f97f7",
+      "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+      "review_scope": "Causative enter spelling and complete exception-tail ownership; four identities including the canonical Sakashima reversible alias.",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Chameleon, Master of Disguise",
+        "Moritte of the Frost",
+        "Protean Raider",
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+      ],
+      "baseline_entries": [
+        "Protean Raider",
+        "Sakashima of a Thousand Faces",
+        "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces"
+      ],
+      "current_residual_oracle_ids": [
+        "1ce239f2-79ad-4a30-8e8f-f985045f78dc",
+        "78699161-fc14-4a44-8a15-0f7c08be0343",
+        "8ecdaf4b-4442-42da-9714-4257a83faf50",
+        "b2f6a75e-5637-41a8-a32b-56666716492d"
+      ],
+      "current_residual_unique": 4,
+      "current_residual_entries": 5,
+      "original_baseline_new_oracle_ids": [
+        "8ecdaf4b-4442-42da-9714-4257a83faf50",
+        "b2f6a75e-5637-41a8-a32b-56666716492d"
+      ],
+      "original_baseline_new_unique": 2,
+      "restored_original_oracle_ids": [
+        "8ecdaf4b-4442-42da-9714-4257a83faf50",
+        "b2f6a75e-5637-41a8-a32b-56666716492d"
+      ],
+      "formerly_supported_regression_oracle_ids": [
+        "1ce239f2-79ad-4a30-8e8f-f985045f78dc",
+        "78699161-fc14-4a44-8a15-0f7c08be0343"
+      ],
+      "formerly_supported_regression_unique": 2,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": [
+        {
+          "card_name": "Sakashima the Impostor",
+          "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+          "remaining_blocker": "Complete compound name/legendary/activated-ability exception remains held."
+        },
+        {
+          "card_name": "Superior Spider-Man",
+          "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+          "remaining_blocker": "Complete entry-copy choice and exception body remains held."
+        },
+        {
+          "card_name": "The Fourteenth Doctor",
+          "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+          "remaining_blocker": "Complete reveal/copy body remains held."
+        },
+        {
+          "card_name": "The Master, Formed Anew",
+          "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+          "remaining_blocker": "Complete linked-exile/copy body remains held."
+        },
+        {
+          "card_name": "Vesuvan Doppelganger",
+          "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+          "remaining_blocker": "Complete copy body remains a historical partial."
+        }
+      ]
+    },
+    {
+      "id": "suspended-filter-union",
+      "stage": 102,
+      "series": "next03",
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/suspended_counter_bodies.json.fixture",
+      "fixture_sha256": "1a67ae27b2652dacda60e5a460477d44635d40f9c075c2be2dcca1baf4a3c91a",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "source_review_tree": "376e5ec1c6c8ea618a613b31814124839f74fb1b",
+      "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+      "review_scope": "Complete permanent-or-suspended union ownership and fail-closed unsupported relations; four complete bodies.",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Fury Charm",
+        "Shivan Sand-Mage",
+        "Timebender",
+        "Timecrafting"
+      ],
+      "baseline_entries": [
+        "Fury Charm",
+        "Shivan Sand-Mage",
+        "Timebender",
+        "Timecrafting"
+      ],
+      "current_residual_oracle_ids": [
+        "3afe854a-7daa-4745-a5d9-04879e5d940a",
+        "57939644-6f9a-4653-920b-f2d28559a9ca",
+        "b86b1878-65a9-48df-9727-1e80683d7e86",
+        "efa3e524-1591-4036-81ec-74199cee25aa"
+      ],
+      "current_residual_unique": 4,
+      "current_residual_entries": 4,
+      "original_baseline_new_oracle_ids": [
+        "3afe854a-7daa-4745-a5d9-04879e5d940a",
+        "57939644-6f9a-4653-920b-f2d28559a9ca",
+        "b86b1878-65a9-48df-9727-1e80683d7e86",
+        "efa3e524-1591-4036-81ec-74199cee25aa"
+      ],
+      "original_baseline_new_unique": 4,
+      "restored_original_oracle_ids": [
+        "3afe854a-7daa-4745-a5d9-04879e5d940a",
+        "57939644-6f9a-4653-920b-f2d28559a9ca",
+        "b86b1878-65a9-48df-9727-1e80683d7e86",
+        "efa3e524-1591-4036-81ec-74199cee25aa"
+      ],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
+    },
+    {
+      "id": "numeric-result-tables",
+      "stage": 102,
+      "series": "next03",
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/die_result_programs.json.fixture",
+      "fixture_sha256": "3e3ed2cf3bd70dc0c48738b6f839e19eee6b0a7a0f10c66bc99506bc4540ac49",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+      "source_review_tree": "f2bd1a040a69f847e7b9f35614102c230b1a6a86",
+      "evidence": "architecture/card-failure-die-result-programs.md",
+      "review_scope": "Immediate exact die producer, Station precedence and separately preserved announced X; four complete bodies with corrected Wyll metadata.",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Diviner's Portent",
+        "Druid of the Emerald Grove",
+        "Song of Inspiration",
+        "Wyll's Reversal"
+      ],
+      "baseline_entries": [
+        "Diviner's Portent",
+        "Druid of the Emerald Grove",
+        "Song of Inspiration",
+        "Wyll's Reversal"
+      ],
+      "current_residual_oracle_ids": [
+        "119585c7-ddfa-47ed-b2f8-488ebc156222",
+        "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+        "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+        "bdb80d7b-672c-4e2a-b93b-9b96721b93f2"
+      ],
+      "current_residual_unique": 4,
+      "current_residual_entries": 4,
+      "original_baseline_new_oracle_ids": [
+        "119585c7-ddfa-47ed-b2f8-488ebc156222",
+        "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+        "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+        "bdb80d7b-672c-4e2a-b93b-9b96721b93f2"
+      ],
+      "original_baseline_new_unique": 4,
+      "restored_original_oracle_ids": [
+        "119585c7-ddfa-47ed-b2f8-488ebc156222",
+        "8d35cef8-a52d-45fb-8f5f-cccea26826d0",
+        "acf54a85-0e9e-43fb-99d9-c223c02f13c4",
+        "bdb80d7b-672c-4e2a-b93b-9b96721b93f2"
+      ],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": [
+        {
+          "card_name": "Revivify",
+          "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+          "remaining_blocker": "Historical collection-binding ownership remains held; numeric-table source repair alone is insufficient."
+        }
+      ]
+    },
+    {
+      "id": "plural-controller-untap",
+      "stage": 102,
+      "series": "next03",
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "fixture": "fixtures/plural_controller_untap.json.fixture",
+      "fixture_sha256": "d499bf4a68b644a595dfb1ae0c394291d4259769c8a82c4e8fc3b0a872d0fc97",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
+      "source_review_tree": "a0af42e9881ea1541ff6df8c2248c812043cfefa",
+      "evidence": "architecture/card-failure-plural-controller-untap.md",
+      "review_scope": "Complete plural negative untap through its Cant owner; five restored whole bodies, excluding existing Code of Constraint credit.",
+      "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "tests": "authored_not_run",
+      "measured_recoveries": 0,
+      "working_base_admission": "integrated_owner_source_reviewed_validation_deferred",
+      "proposed_complete_entries": [
+        "Breaching Leviathan",
+        "Cone of Cold",
+        "Dragon Turtle",
+        "Lorthos, the Tidemaker",
+        "Sudden Storm"
+      ],
+      "baseline_entries": [
+        "Breaching Leviathan",
+        "Cone of Cold",
+        "Dragon Turtle",
+        "Lorthos, the Tidemaker",
+        "Sudden Storm"
+      ],
+      "current_residual_oracle_ids": [
+        "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+        "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+        "7d249b16-33ef-463e-9e5d-0b84d434f093",
+        "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+        "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4"
+      ],
+      "current_residual_unique": 5,
+      "current_residual_entries": 5,
+      "original_baseline_new_oracle_ids": [
+        "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+        "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+        "7d249b16-33ef-463e-9e5d-0b84d434f093",
+        "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+        "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4"
+      ],
+      "original_baseline_new_unique": 5,
+      "restored_original_oracle_ids": [
+        "32e915fb-3836-4bed-93b1-61c9c3951ad1",
+        "56fd0752-9fb0-4c05-90e5-c3b268b57c6f",
+        "7d249b16-33ef-463e-9e5d-0b84d434f093",
+        "a3270e64-38d2-49e5-8a1e-a5e81205776b",
+        "d9fd4ff3-5ada-40f4-b949-6fe65624a0c4"
+      ],
+      "formerly_supported_regression_oracle_ids": [],
+      "formerly_supported_regression_unique": 0,
+      "formerly_supported_regression_original_baseline_credit": 0,
+      "held_entries": []
     }
   ],
   "cards": [
@@ -8672,8 +9014,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intervening-predicate-cohort"
+      ],
+      "previous_source_coverage_status_before_next03": "unaddressed",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Aurora Shifter",
@@ -10494,16 +10850,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "plural-controller-and-fixed-untap-steps"
+        "plural-controller-and-fixed-untap-steps",
+        "plural-controller-untap"
       ],
-      "source_review_commit": "0692003a701201f7abd1476ac8cecad20cb5b3b6",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
       "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-plural-controller-untap.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Break Out",
@@ -10744,8 +11112,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intervening-predicate-cohort"
+      ],
+      "previous_source_coverage_status_before_next03": "unaddressed",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Bumi's Feast Lecture",
@@ -12573,16 +12955,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "plural-controller-and-fixed-untap-steps"
+        "plural-controller-and-fixed-untap-steps",
+        "plural-controller-untap"
       ],
-      "source_review_commit": "0692003a701201f7abd1476ac8cecad20cb5b3b6",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
       "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-plural-controller-untap.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Confession Dial",
@@ -14858,16 +15252,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "complete-die-result-programs"
+        "complete-die-result-programs",
+        "numeric-result-tables"
       ],
-      "source_review_commit": "b1ba7ad294ea5fd0866313410d472f46e9c1672d",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
       "integrated_source_review_commit": "b7a9be902092fbfa9246f9eabd302a2d75b4311a",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-die-result-programs.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Djeru and Hazoret",
@@ -15210,16 +15616,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "plural-controller-and-fixed-untap-steps"
+        "plural-controller-and-fixed-untap-steps",
+        "plural-controller-untap"
       ],
-      "source_review_commit": "0692003a701201f7abd1476ac8cecad20cb5b3b6",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
       "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-plural-controller-untap.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Dragon Whelp",
@@ -15276,8 +15694,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intervening-predicate-cohort"
+      ],
+      "previous_source_coverage_status_before_next03": "unaddressed",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Dragonhawk, Fate's Tempest",
@@ -15552,16 +15984,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "complete-die-result-programs"
+        "complete-die-result-programs",
+        "numeric-result-tables"
       ],
-      "source_review_commit": "b1ba7ad294ea5fd0866313410d472f46e9c1672d",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
       "integrated_source_review_commit": "b7a9be902092fbfa9246f9eabd302a2d75b4311a",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-die-result-programs.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Dubious Challenge",
@@ -18715,14 +19159,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "suspended-counter-complete-bodies"
+        "suspended-counter-complete-bodies",
+        "suspended-filter-union"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Fyndhorn Druid",
@@ -25720,16 +26177,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "plural-controller-and-fixed-untap-steps"
+        "plural-controller-and-fixed-untap-steps",
+        "plural-controller-untap"
       ],
-      "source_review_commit": "0692003a701201f7abd1476ac8cecad20cb5b3b6",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
       "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-plural-controller-untap.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Lost in Thought",
@@ -31141,14 +31610,27 @@
       ],
       "baseline_category": "semantic_output_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "enter-copy-exceptions"
+        "enter-copy-exceptions",
+        "copy-entry-semantic-integrity"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Protection Racket",
@@ -33642,14 +34124,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "enter-copy-exceptions"
+        "enter-copy-exceptions",
+        "copy-entry-semantic-integrity"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Sakashima of a Thousand Faces // Sakashima of a Thousand Faces",
@@ -33658,14 +34153,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "enter-copy-exceptions"
+        "enter-copy-exceptions",
+        "copy-entry-semantic-integrity"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-copy-entry-semantic-integrity.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Salvation Colossus",
@@ -35095,14 +35603,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "suspended-counter-complete-bodies"
+        "suspended-counter-complete-bodies",
+        "suspended-filter-union"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Shocker, Unshakable",
@@ -35188,8 +35709,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intervening-predicate-cohort"
+      ],
+      "previous_source_coverage_status_before_next03": "unaddressed",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Sidequest: Catch a Fish // Cooking Campsite",
@@ -36071,16 +36606,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "complete-die-result-programs"
+        "complete-die-result-programs",
+        "numeric-result-tables"
       ],
-      "source_review_commit": "b1ba7ad294ea5fd0866313410d472f46e9c1672d",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
       "integrated_source_review_commit": "b7a9be902092fbfa9246f9eabd302a2d75b4311a",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-die-result-programs.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Songcrafter Mage",
@@ -37285,16 +37832,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "plural-controller-and-fixed-untap-steps"
+        "plural-controller-and-fixed-untap-steps",
+        "plural-controller-untap"
       ],
-      "source_review_commit": "0692003a701201f7abd1476ac8cecad20cb5b3b6",
+      "source_review_commit": "99c09f994aafc7396a72eb57e723ab38bff82c99",
       "integrated_source_review_commit": "020896ba82af6d3a63239f19fe4564d365c6e630",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-plural-controller-untap.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Sudden Substitution",
@@ -40152,14 +40711,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "suspended-counter-complete-bodies"
+        "suspended-counter-complete-bodies",
+        "suspended-filter-union"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Timecrafting",
@@ -40168,14 +40740,27 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "suspended-counter-complete-bodies"
+        "suspended-counter-complete-bodies",
+        "suspended-filter-union"
       ],
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "source_review_commit": "5db6fa3aa673192cc83d241631e229583711be2c",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-suspended-counter-bodies.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Timely Reinforcements",
@@ -42816,8 +43401,22 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "unaddressed",
-      "source_families": []
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
+      "source_families": [
+        "intervening-predicate-cohort"
+      ],
+      "previous_source_coverage_status_before_next03": "unaddressed",
+      "source_review_commit": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "reports/card-failure-campaign/intervening-predicate-cohort-source-20261007.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Wan Shi Tong, All-Knowing",
@@ -44275,16 +44874,28 @@
       ],
       "baseline_category": "parser_failure",
       "verified_compile_recovery": false,
-      "source_coverage_status": "reheld_current_main_failure",
+      "source_coverage_status": "implemented_pending_full_corpus_validation",
       "source_families": [
-        "complete-die-result-programs"
+        "complete-die-result-programs",
+        "numeric-result-tables"
       ],
-      "source_review_commit": "b1ba7ad294ea5fd0866313410d472f46e9c1672d",
+      "source_review_commit": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
       "integrated_source_review_commit": "b7a9be902092fbfa9246f9eabd302a2d75b4311a",
       "pre_port_source_coverage_status": "implemented_pending_full_corpus_validation",
       "pre_refresh_source_coverage_status": "implemented_pending_full_corpus_validation",
       "current_main_rehold_record": "fixtures/card-failure-campaign/current-residual-source-coverage.json",
-      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit."
+      "readmission_requirement": "Subsequent substantive source correction and full-body source review on the current owners; historical proposals alone do not restore credit.",
+      "previous_source_coverage_status_before_next03": "reheld_current_main_failure",
+      "current_source_admission": {
+        "series": "next03",
+        "combined_source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "combined_source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+        "evidence": "architecture/card-failure-die-result-programs.md",
+        "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+        "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+        "new_source_validation": "UNRUN",
+        "verified_compile_recovery": false
+      }
     },
     {
       "card_name": "Wyll, Blade of Frontiers",
@@ -45907,7 +46518,463 @@
       "next-step-durations"
     ],
     "execution": "UNRUN. Only offline retained JSON/file/hash/Git inspection and source-accounting document edits. No build, compiler, test, corpus/analysis rerun, formatter, generation, probe or replay.",
-    "accounting": "1238 + 18 = 1256 original source-eligible IDs / 1260 entries; 96 + 28 = 124 current residual source proposals / 125 entries. 68 residual full-body + 56 shared-blocker = 124. 47 original-residual + 77 regression = 124. Eight supported semantic corrections yield 132 touched identities / 133 entries. All measured outcomes remain unchanged."
+    "accounting": "1238 + 18 = 1256 original source-eligible IDs / 1260 entries; 96 + 28 = 124 current residual source proposals / 125 entries. 68 residual full-body + 56 shared-blocker = 124. 47 original-residual + 77 regression = 124. Eight supported semantic corrections yield 132 touched identities / 133 entries. All measured outcomes remain unchanged.",
+    "historical_record": true,
+    "current_base_successor": "next_series_03_reconciliation"
   },
-  "current_source_admission": "next_series_02_reconciliation"
+  "current_source_admission": "next_series_03_reconciliation",
+  "next_series_03_reconciliation": {
+    "series": "next03",
+    "stage": 102,
+    "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+    "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+    "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+    "main_commit": "5cc46c1fa41edb235aacd8e7567ad4ab2f12b7a1",
+    "source_review_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+    "source_review_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+    "evidence": "architecture/card-failure-next-series-03-source-admission.md",
+    "fresh_full_body_unique": 22,
+    "fresh_full_body_entries": 23,
+    "fresh_original_baseline_credit": 20,
+    "fresh_restored_original_unique": 15,
+    "fresh_restored_original_entries": 16,
+    "fresh_new_original_unique": 5,
+    "fresh_regression_proposals_unique": 2,
+    "fresh_held_unique_not_counted": 8,
+    "current_base_proposed_unique": 1276,
+    "current_base_proposed_entries": 1281,
+    "current_residual_source_proposed_unique": 146,
+    "current_residual_source_proposed_entries": 148,
+    "current_packet_total_touched_unique": 154,
+    "current_packet_total_touched_entries": 156,
+    "current_reheld_inherited_unique": 30,
+    "current_reheld_inherited_entries": 30,
+    "prior_admission": "next_series_02_reconciliation",
+    "original_frozen_source_gate": {
+      "scope": "Original frozen e8740178 stack07 residual identities. The majority criterion remains 1597 of the original 3193; the refreshed residual set does not replace this stopping condition.",
+      "status": "CLOSED_UNTIL_ORIGINAL_SOURCE_MAJORITY",
+      "threshold_denominator_unique_remaining": 3193,
+      "majority_minimum_unique_remaining": 1597,
+      "reconciled_source_eligible_unique": 1276,
+      "source_eligible_shortfall_to_threshold": 321,
+      "semantic_holds_count_as_coverage": false,
+      "reheld_inherited_unique_excluded": 30,
+      "reheld_inherited_entries_excluded": 30,
+      "partial_bodies_count_as_coverage": false,
+      "new_fixture_partials_excluded_unique": 13,
+      "execution_authorized": false,
+      "note": "Source eligibility excludes semantic holds, unresolved re-holds, and partial bodies. The one-time clean-main refresh override is consumed; new-source execution stays closed until the original source-majority condition is met.",
+      "next_series_02_held_candidates_excluded_unique": 12,
+      "next_series_03_held_candidates_excluded_unique": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "current_residual_prioritization": {
+      "scope": "Unique Oracle identities unresolved in the completed clean-main 5cc46c1 authoritative refresh, including parse-failed, permissive and strict-but-lossy results.",
+      "status": "PRIORITIZATION_ONLY_NOT_EXECUTION_GATE",
+      "current_residual_unique": 2005,
+      "reviewed_new_source_proposed_residual_unique": 146,
+      "mathematical_comparison_only": {
+        "majority_unique": 1003,
+        "shortfall_unique": 857,
+        "execution_gating_role": "none"
+      },
+      "already_supported_inherited_identities_excluded_from_residual_coverage": 1201,
+      "reheld_inherited_identities_excluded_from_residual_coverage": 30,
+      "supported_but_semantic_change_new_identities_excluded_from_residual_coverage": 8,
+      "new_fixture_partials_excluded_from_residual_coverage": 13,
+      "changes_original_execution_stopping_condition": false,
+      "note": "146/2005 residual source proposals: 90 full-body (including 25 restored) and 56 shared blocker repairs. Comparison-only 1003/857 has no execution authority; original source gate remains 1597/3193. NEXT03 source accounting cleared by independent bounded review. No new measured recovery.",
+      "reviewed_new_source_proposed_residual_entries": 148,
+      "full_body_source_proposed_residual_unique": 90,
+      "shared_blocker_repair_proposed_residual_unique": 56,
+      "formerly_supported_regression_proposed_unique": 79,
+      "formerly_supported_regression_unaddressed_unique": 72,
+      "next_series_02_held_candidates_excluded_from_residual_coverage": 12,
+      "next_series_03_held_candidates_excluded_from_residual_coverage": 8,
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization."
+    },
+    "combined_source_review": {
+      "status": "independently_source_reviewed_UNVALIDATED_UNRUN",
+      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "source_tree": "851857c8bbb7847b56c6b73717d332c465fd333d",
+      "compatibility_source_review_commit": "00780491925c79b215884fb5c1ba09088ce40cd9",
+      "family_source_review_commits": {
+        "intervening-predicate-cohort": "09ed42b1db1d1a1b87eb962b44f4c4a371262d2e",
+        "copy-entry-semantic-integrity": "c85bf99e86fa690caba0e811c623d0a8b59fd088",
+        "suspended-filter-union": "5db6fa3aa673192cc83d241631e229583711be2c",
+        "numeric-result-tables": "41f9a7b2ae7346948445b55ecd0f7235c5fb6623",
+        "plural-controller-untap": "99c09f994aafc7396a72eb57e723ab38bff82c99"
+      },
+      "final_combined_clearance": "cleared_source_only_UNVALIDATED_UNRUN",
+      "admission_condition": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "compiled_artifact_version": 14,
+      "public_digest_version": 9,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "published_parent_schema_hash": "cbaf3a819cee97d5351ddc85c7789a85508caace7573a7f8aa3fe7af0b87854c",
+      "published_parent_pr": 868,
+      "evidence": "architecture/card-failure-next-series-03-compatibility.md",
+      "admission_evidence": "architecture/card-failure-next-series-03-source-admission.md",
+      "execution": "All executable scenarios UNRUN. Genuine v14 artifacts/catalogs, original v5 provisioning, matched compiler/engine/WASM/glue/layout, native savepoints and authenticated replay remain deferred.",
+      "review_scope": "Five bounded source-reviewed cohorts plus coordinated 14/9/27 compatibility; final combined review cleared at the pinned anchor. Wyll printed mana correction at final anchor. No executable or measured recovery claim.",
+      "independent_final_review_evidence": [
+        {
+          "path": "reports/card-failure-campaign/next03-independent-final-review.md",
+          "sha256": "8f34317d12a7bcf1fe0d1bcb10b096b61fc96c1c1cb4308e8a994261c6a961ac",
+          "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        },
+        {
+          "path": "reports/card-failure-campaign/next03-compatibility-independent-review.md",
+          "sha256": "62e2eec1fd90f569b5b08c0a1e0c2028db11513934d70011be5f272c930ea29c",
+          "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+          "status": "source_review_clear_UNVALIDATED_UNRUN"
+        }
+      ]
+    },
+    "current_recovery_architecture": {
+      "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+      "note": "architecture/card-failure-next-series-03-compatibility.md",
+      "gameplay_recovery": "Native root/inactive-lane savepoints; exact local same-build WASM images for trusted analysis and checked persisted recovery; authenticated transcript recovery using verified local anchors plus suffix replay or accepted-genesis full replay.",
+      "public_audit_checkpoint_version": 9,
+      "public_audit_is_gameplay_restore": false,
+      "compiled_artifact_version": 14,
+      "signed_audit_protocol_version": 27,
+      "manabrew_protocol_version": 3,
+      "engine_schema_hash": "292e6db310f90613f13024fb4d135e405483443b81ef85b38f04e6755f6fdd7f",
+      "validation": "Independent bounded cohort and compatibility source reviews cleared 92168f50060c362c88d5c1ecf6477dbbffa11839. Source admission only: UNVALIDATED; all executable scenarios UNRUN. No measured recovery or execution authorization.",
+      "semantic_migration_note": "architecture/card-failure-next-series-03-compatibility.md"
+    },
+    "identity_sets": {
+      "next03_all": {
+        "unique": 22,
+        "sha256": "b75f192f2c159f476a87a5f7f7c284b9d3df044388dcb84d7d0202f69867fe60"
+      },
+      "next03_original": {
+        "unique": 20,
+        "sha256": "cdbd03e036ce4e2b3ad53ad13309e86c3e6441306bf26193507d7359ac718715"
+      },
+      "next03_new_original": {
+        "unique": 5,
+        "sha256": "51225eb0bd921eb24f788aaec658a0ad7192ed1e392e2d32fe3e192ba73d2413"
+      },
+      "next03_restored_original": {
+        "unique": 15,
+        "sha256": "77abb03a5506dd2a2925d0749cf99ac3e1a3434bc19b29d54a15ba7f9c9fc257"
+      },
+      "next03_regression": {
+        "unique": 2,
+        "sha256": "52fe88601285b45f279f74635d775932dff209720fb50b1509026fb32600953c"
+      },
+      "next03_scoped_holds": {
+        "unique": 8,
+        "sha256": "203d3964d8505a57ee58624134e530c9955129c4716f99733211487ea2bdb80a"
+      },
+      "before_eligible_original": {
+        "unique": 1256,
+        "sha256": "b5512787b18ef2784522f5646594d03208d7391b381430c304c22758c7d4f826"
+      },
+      "after_eligible_original_if_cleared": {
+        "unique": 1276,
+        "sha256": "72cb8399a29c945b7b683f7885393cc8e2638630708e0f25e8c698b5e79c66e9"
+      },
+      "before_residual_proposals": {
+        "unique": 124,
+        "sha256": "a545f611c73a133481391a42fe04f3773a1e0d9210e48751f6982d03055a2ed1"
+      },
+      "after_residual_proposals_if_cleared": {
+        "unique": 146,
+        "sha256": "42a54ba1c2232f64a93eb74de6e88bf2fde88195e4d9179f84d97bb731d463e7"
+      },
+      "before_reholds": {
+        "unique": 45,
+        "sha256": "dae0d4d90e8d279e247e08ac4c3c1c5ac010225a0749219bfa2b8302cf27ade5"
+      },
+      "after_reholds_if_cleared": {
+        "unique": 30,
+        "sha256": "8c368119db9906cbf7fb910e55a03137136ff900325b92b48c72cf8d337032af"
+      },
+      "before_restored": {
+        "unique": 10,
+        "sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c"
+      },
+      "after_restored_if_cleared": {
+        "unique": 25,
+        "sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a"
+      },
+      "after_total_touched_if_cleared": {
+        "unique": 154,
+        "sha256": "c6f059250c4a78efcc532a685dab00bee76b62a0b3cf8a61c0be3dedd2e1f9a9"
+      },
+      "before_tier_full-body source proposal": {
+        "unique": 58,
+        "sha256": "d598002db1216b370a0b610fc2306a454317fa81c0b0e2ed1097c285f6576e10"
+      },
+      "after_tier_full-body source proposal": {
+        "unique": 65,
+        "sha256": "5dfdf7f3c9dd3dd2a3910aa22267c041802cac8eba5554739549816837806633"
+      },
+      "before_tier_restored full-body source proposal": {
+        "unique": 10,
+        "sha256": "57c0d9209ad9b5ded054e9794eb69b1f74d39880125deeaec6284b902d07d71c"
+      },
+      "after_tier_restored full-body source proposal": {
+        "unique": 25,
+        "sha256": "c987df6114d5dc16b1d6d15f519bb23c8d433c9f5cc9a391cc3615229f2f0d9a"
+      },
+      "before_tier_shared blocker repair proposed": {
+        "unique": 56,
+        "sha256": "be1dda2024ac3037b5cb08ca02a2504fcac577d3d101ded8090608443d1bff42"
+      },
+      "after_tier_shared blocker repair proposed": {
+        "unique": 56,
+        "sha256": "be1dda2024ac3037b5cb08ca02a2504fcac577d3d101ded8090608443d1bff42"
+      }
+    },
+    "held_candidates": [
+      {
+        "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+        "names": [
+          "Consul's Lieutenant"
+        ],
+        "family_id": "intervening-predicate-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Renown and complete combat body remain outside the five reviewed predicate bodies.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Consul's Lieutenant",
+          "oracle_id": "a38b672f-4739-4b7e-8958-2a455510656e",
+          "source_matrix_statuses": [
+            "unaddressed"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+        "names": [
+          "The Notary Hobbits"
+        ],
+        "family_id": "intervening-predicate-cohort",
+        "status": "held_not_counted",
+        "remaining_blocker": "Whole-body copy-token and characteristic-exception ownership remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Notary Hobbits",
+          "oracle_id": "dc20b29b-856e-4d45-99cd-5e12cfc2324d",
+          "source_matrix_statuses": [
+            "unaddressed"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+        "names": [
+          "Sakashima the Impostor"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete compound name/legendary/activated-ability exception remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Sakashima the Impostor",
+          "oracle_id": "a7243d25-22a2-4df5-adaf-1f40f5330ec1",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+        "names": [
+          "Superior Spider-Man"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete entry-copy choice and exception body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Superior Spider-Man",
+          "oracle_id": "636cc915-9d1b-4ffe-9e74-795b78663911",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+        "names": [
+          "The Fourteenth Doctor"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete reveal/copy body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Fourteenth Doctor",
+          "oracle_id": "0afcf1eb-ac2c-4bb0-8823-9fe45968c2d9",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+        "names": [
+          "The Master, Formed Anew"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete linked-exile/copy body remains held.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "The Master, Formed Anew",
+          "oracle_id": "e7828284-543d-4f8b-9c5e-a8f082010398",
+          "source_matrix_statuses": [],
+          "original_matrix_member": false,
+          "comparison_outcome": "regressed",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": false
+        }
+      },
+      {
+        "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+        "names": [
+          "Vesuvan Doppelganger"
+        ],
+        "family_id": "copy-entry-semantic-integrity",
+        "status": "held_not_counted",
+        "remaining_blocker": "Complete copy body remains a historical partial.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Vesuvan Doppelganger",
+          "oracle_id": "aeaccab9-3e2c-4a40-a483-52c4972b2014",
+          "source_matrix_statuses": [
+            "partial_not_counted"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": true
+        }
+      },
+      {
+        "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+        "names": [
+          "Revivify"
+        ],
+        "family_id": "numeric-result-tables",
+        "status": "held_not_counted",
+        "remaining_blocker": "Historical collection-binding ownership remains held; numeric-table source repair alone is insufficient.",
+        "original_baseline_source_credit": 0,
+        "current_residual_source_credit": 0,
+        "new_source_validation": "UNRUN",
+        "prior_scope": {
+          "name": "Revivify",
+          "oracle_id": "55eb3c21-6834-4c62-8ab9-54b901531fed",
+          "source_matrix_statuses": [
+            "partial_not_counted"
+          ],
+          "original_matrix_member": true,
+          "comparison_outcome": "still_failing",
+          "current_failure_entries": 1,
+          "overlaps_current_rehold": false,
+          "overlaps_prior_13_partials": false,
+          "overlaps_next02_12_holds": false,
+          "overlaps_any_original_partial": true
+        }
+      }
+    ],
+    "family_ids": [
+      "intervening-predicate-cohort",
+      "copy-entry-semantic-integrity",
+      "suspended-filter-union",
+      "numeric-result-tables",
+      "plural-controller-untap"
+    ],
+    "fixture_fidelity_scope": "All positive candidate fixture semantic fields and four full copy literals match frozen source. Four unrelated/held numeric fixture text mismatches remain excluded. Positive Wyll mana is corrected to {2}{R}.",
+    "frozen_uncompressed_sha256": "9915ac0e2ed2c6fa7e6351842666dc024499e6e4f42812f548036f967bec374c",
+    "input_file_sha256": {
+      "fixtures/intervening_predicate_cohort.json.fixture": "4b5b2cfc3247ce535a0a79b3b047fec8af34301b06ba834908e0739390b1eaa7",
+      "fixtures/enter_copy_exceptions.json.fixture": "a24280db0e26b4bb27bc7879974d0fe40cfc38caec4866d990adb61bf14f6a99",
+      "fixtures/suspended_counter_bodies.json.fixture": "1a67ae27b2652dacda60e5a460477d44635d40f9c075c2be2dcca1baf4a3c91a",
+      "fixtures/die_result_programs.json.fixture": "3e3ed2cf3bd70dc0c48738b6f839e19eee6b0a7a0f10c66bc99506bc4540ac49",
+      "fixtures/plural_controller_untap.json.fixture": "d499bf4a68b644a595dfb1ae0c394291d4259769c8a82c4e8fc3b0a872d0fc97",
+      "crates/ironsmith-compiler-runtime/tests/copy_entry_semantic_integrity.rs": "6794cd27076b324c86b067461d646eeab2f5484203abbf34012e94005b081ac0",
+      "fixtures/card-failure-campaign/cards-20261003.json.xz": "a38a53fb6da122f0f7240800d203386fcaa437190414221476719cb46086e1f0",
+      "fixtures/card-failure-campaign/source-coverage.json": "7131a720ad56d9f71e9f94e7699537a8c87825e784f6d4ba371685ea2c8085bf",
+      "fixtures/card-failure-campaign/current-residual-source-coverage.json": "e1d2a50446482f55b2f5128dc62ba3a342c55fc90d046bd6247202540e3d10cd",
+      "fixtures/card-failure-campaign/baseline-e8740178.snapshot.json.gz": "c34c06c92ca2a1e1b92d8cf8b1c9480ef2f2445aa7efcba28b8099d5f754cd12",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/current-failures.json.gz": "b082f94a6de082248d8da68336704acd69b42e1ed78466ecc567a07d5e67cc31",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/baseline-and-proposal-comparison.json.gz": "df29e1af76ea411ee62626630aa59e1b884fce8eec3feb632a24c0c757926b75",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/prior-proposals-55-unresolved.json.gz": "b0fa38345f7f9195013d3c74360742381c89c994d3866f71137c76c36ca9fcc1",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/manifest.json": "a59fcd2cd5f02b6d05e886106ce9847c7d92678b714f4e8cce22fad555315a5f",
+      "reports/card-failure-campaign/refresh-20261007-main5cc46c1/summary.json": "981480eb73b8bcedcb3136841070ced5a8ea45f29a04df91cfc5666ff533dd12"
+    },
+    "execution": "UNRUN. Offline retained source/JSON/hash/Git inspection and metadata edits only. No builds, tests, probes, formatters, corpus/analysis pipeline, generation or remote writes.",
+    "accounting": "1256 + 20 = 1276 originals / 1281 entries; 124 + 22 = 146 residual / 148 entries. Re-holds 45 - 15 = 30; restored 10 + 15 = 25 IDs / 26 entries. Residual 67 original + 79 regression = 146; 90 full-body + 56 shared blocker = 146. Eight supported semantic corrections yield 154 touched IDs / 156 entries. Measured outcomes unchanged.",
+    "independent_final_review_evidence": [
+      {
+        "path": "reports/card-failure-campaign/next03-independent-final-review.md",
+        "sha256": "8f34317d12a7bcf1fe0d1bcb10b096b61fc96c1c1cb4308e8a994261c6a961ac",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      },
+      {
+        "path": "reports/card-failure-campaign/next03-compatibility-independent-review.md",
+        "sha256": "62e2eec1fd90f569b5b08c0a1e0c2028db11513934d70011be5f272c930ea29c",
+        "source_commit": "92168f50060c362c88d5c1ecf6477dbbffa11839",
+        "status": "source_review_clear_UNVALIDATED_UNRUN"
+      }
+    ]
+  }
 }
